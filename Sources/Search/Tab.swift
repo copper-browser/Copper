@@ -920,6 +920,13 @@ final class Tab: ObservableObject, Identifiable {
     /// than showing the white that is left.
     var stale = false
 
+    /// When this page's process last went away, oldest first, over the
+    /// last minute. Memory pressure takes a process now and then; a page
+    /// that takes its own down every time it loads does it every couple of
+    /// seconds, and loading it again each time was a tab that reloaded
+    /// forever — an Amazon sign-in page did it all afternoon.
+    private var crashes: [Date] = []
+
     /// The process behind this page just died while it was the one on
     /// screen. `reload()`/`reloadFromOrigin()` lean on state the dead
     /// process was keeping — asking for the address back instead is the
@@ -928,8 +935,18 @@ final class Tab: ObservableObject, Identifiable {
     /// it. Tried twice: right after a process dies, WebKit doesn't always
     /// accept the very next load, which is what a reload that looks like it
     /// did nothing actually was.
+    ///
+    /// A third death inside a minute stops it: the page is left on the
+    /// failure view, whose button is one more load when you ask for it.
     func recoverFromCrash() {
         guard let address else { return }
+        let now = Date()
+        crashes = crashes.filter { now.timeIntervalSince($0) < 60 } + [now]
+        guard crashes.count < 3 else {
+            cancelRecovery()
+            failure = "This page keeps crashing."
+            return
+        }
         failure = nil
         loadAndVerify(address)
     }
