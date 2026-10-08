@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Copper extension-tabs fixture",
+  "version": "1.0",
+  "description": "Test fixture for docs/fixtures/extension-tabs-e2e.sh: opens tabs from its pages and injects a module into every frame, the way 1Password does.",
+  "permissions": ["tabs", "scripting", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html", "default_title": "Fixture" },
+  "content_scripts": [
+    { "matches": ["<all_urls>"], "all_frames": true, "run_at": "document_start", "js": ["content.js"] }
+  ],
+  "web_accessible_resources": [
+    { "matches": ["<all_urls>"], "resources": ["injected.js"] }
+  ]
+}
