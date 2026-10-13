@@ -15,6 +15,7 @@
  *   columns  string[]                   whole value, last writer wins
  *   rows     {id, label}[]              whole value, last writer wins
  *   pick:<rowId>  {col, by, byId, at}   one key per row
+ *   note:<rowId>  {text, by, byId, at}  a row's comment, one key per row
  *
  * A pick lives under its row's own key, so two people clicking different rows
  * at the same moment both stick: neither rewrites the other's. `col` is the
@@ -31,6 +32,8 @@ import {
   VIEW_CHECKLIST,
   WHO_PREFIX,
   insertRowLine,
+  noteBlock,
+  noteLines,
   noteText,
   oneLine,
   parseChecklistText,
@@ -39,25 +42,37 @@ import {
   rowLine,
   whoKey,
   writeRowLabel,
+  writeRowNote,
   writeRowPick,
   writeTitle,
   type ParsedChecklist,
   type TextRow,
 } from './checklist-text'
 import type { CanvasStore, Origin } from './doc'
-import type { ChecklistPick, ChecklistRow } from './types'
+import type { ChecklistNote, ChecklistPick, ChecklistRow } from './types'
 
 export const PICK_PREFIX = 'pick:'
+/** A legacy card's comment on a row: `note:<rowId>` → `{text, by, byId, at}`. */
+export const NOTE_PREFIX = 'note:'
+/** Who last wrote a note's row comment, and when: `noteBy:<label key>` → `{by, byId, at}` (the words are the text's). */
+export const NOTE_BY_PREFIX = 'noteBy:'
 export const MAX_COLUMNS = 4
 export const MAX_ROWS = 60
 /** Labels are cut to these many characters (UTF-16 units, as JavaScript counts). */
 export const MAX_COLUMN_LABEL = 40
 export const MAX_ROW_LABEL = 200
+/** A row's comment is cut to these many characters. */
+export const MAX_NOTE = 4000
 export const DEFAULT_COLUMNS: readonly string[] = ['Yes', 'No']
 /** Ids a caller may give a row. */
 export const ROW_ID = /^[A-Za-z0-9_-]{1,32}$/
 
 export const pickKey = (rowId: string) => PICK_PREFIX + rowId
+export const noteKey = (rowId: string) => NOTE_PREFIX + rowId
+export const noteByKey = (label: string) => NOTE_BY_PREFIX + rowKey(label)
+
+/** A comment as it is kept: `\n` line breaks, at most `MAX_NOTE` characters. */
+export const cleanNote = (text: string) => noteLines(text).slice(0, MAX_NOTE)
 
 export function newRowId(): string {
   let id = 'r'
@@ -122,6 +137,30 @@ export function readPicks(m: Y.Map<unknown>, rows: readonly ChecklistRow[], colu
   return out
 }
 
+/** Who wrote a comment and when (`noteBy:` on a note); null when unknown. */
+function readNoteBy(v: unknown): Omit<ChecklistNote, 'text'> | null {
+  const o = plain(v)
+  if (!o || typeof o.by !== 'string') return null
+  return { by: o.by, byId: typeof o.byId === 'string' ? o.byId : '', at: finite(o.at) ? o.at : 0 }
+}
+
+/** A legacy card's comment on a row, when it has words. */
+export function readLegacyNote(v: unknown): ChecklistNote | null {
+  const o = plain(v)
+  if (!o || typeof o.text !== 'string' || !o.text) return null
+  return { text: o.text, ...(readNoteBy(o) ?? { by: '', byId: '', at: 0 }) }
+}
+
+/** A legacy card's comments, by row id. */
+export function readNotes(m: Y.Map<unknown>, rows: readonly ChecklistRow[]): Record<string, ChecklistNote> {
+  const out: Record<string, ChecklistNote> = {}
+  for (const row of rows) {
+    const note = readLegacyNote(m.get(noteKey(row.id)))
+    if (note) out[row.id] = note
+  }
+  return out
+}
+
 /** How many rows picked each column, in column order. */
 export function tally(columns: readonly string[], rows: readonly ChecklistRow[], picks: Readonly<Record<string, ChecklistPick>>) {
   const out: Record<string, number> = {}
@@ -142,6 +181,8 @@ export const CHECKLIST_LAYOUT = {
   /** Column header band (several columns only). */
   columnsHead: 28,
   row: 34,
+  /** A row's collapsed comment: one muted line under it. */
+  note: 22,
   /** Padding around the rows and the card's border. */
   foot: 14,
   /** One choice column. */
@@ -159,10 +200,10 @@ export function checklistWidth(columns: number): number {
   return columns <= 1 ? 280 : L.pad * 2 + L.label + L.col * columns
 }
 
-/** The height a card needs before anyone has measured it (one line per label). */
-export function checklistHeight(columns: number, rows: number): number {
+/** The height a card needs before anyone has measured it (one line per label, one per comment). */
+export function checklistHeight(columns: number, rows: number, notes = 0): number {
   const L = CHECKLIST_LAYOUT
-  return L.head + (columns > 1 ? L.columnsHead : 0) + L.row * Math.max(rows, 1) + L.foot
+  return L.head + (columns > 1 ? L.columnsHead : 0) + L.row * Math.max(rows, 1) + L.note * notes + L.foot
 }
 
 // ---- writes (inside a transaction) -----------------------------------------------
@@ -203,14 +244,24 @@ export function writeColumns(m: Y.Map<unknown>, next: readonly string[], renames
   }
 }
 
-/** New rows; the picks of rows that are gone go with them. */
+/** New rows; the picks and comments of rows that are gone go with them. */
 export function writeRows(m: Y.Map<unknown>, next: readonly ChecklistRow[]) {
   m.set(
     'rows',
     next.map(r => ({ id: r.id, label: r.label }))
   )
-  const keep = new Set(next.map(r => pickKey(r.id)))
-  for (const key of [...m.keys()]) if (key.startsWith(PICK_PREFIX) && !keep.has(key)) m.delete(key)
+  const keep = new Set(next.flatMap(r => [pickKey(r.id), noteKey(r.id)]))
+  for (const key of [...m.keys()]) if ((key.startsWith(PICK_PREFIX) || key.startsWith(NOTE_PREFIX)) && !keep.has(key)) m.delete(key)
+}
+
+/** Set (or with '' clear) a legacy card's comment on one row. Touches no other row. */
+export function writeLegacyNote(m: Y.Map<unknown>, rowId: string, text: string, by: Picker, at = Date.now()) {
+  const key = noteKey(rowId)
+  if (!text) {
+    if (m.has(key)) m.delete(key)
+    return
+  }
+  m.set(key, { text, by: by.name, byId: by.id, at })
 }
 
 // ---- a note shown as a checklist (checklist-text.ts) -----------------------------
@@ -239,11 +290,13 @@ export function readNoteChecklist(m: Y.Map<unknown>, text: string) {
   const parsed = parseChecklistText(text, columns)
   const rows: ChecklistRow[] = parsed.rows.map(r => ({ id: noteRowId(r.index), label: r.label }))
   const picks: Record<string, ChecklistPick> = {}
+  const notes: Record<string, ChecklistNote> = {}
   for (const r of parsed.rows) {
+    if (r.note) notes[noteRowId(r.index)] = { text: r.note, ...(readNoteBy(m.get(noteByKey(r.label))) ?? { by: '', byId: '', at: 0 }) }
     if (!r.pick) continue
     picks[noteRowId(r.index)] = noteWho(m, r) ?? { col: r.pick, by: '', byId: '', at: 0 }
   }
-  return { title: parsed.title, columns, rows, picks }
+  return { title: parsed.title, columns, rows, picks, notes }
 }
 
 /** The note's row `id` (or, when the text moved under it, the row with that label). */
@@ -252,6 +305,14 @@ function noteRow(parsed: ParsedChecklist, id: string, label?: string): TextRow |
   if (at && (label === undefined || at.label === label)) return at
   if (label === undefined) return null
   return parsed.rows.find(r => r.label === label) ?? null
+}
+
+/** Set (or with '' clear) a note row's comment and who wrote it. */
+export function writeNoteNote(m: Y.Map<unknown>, t: Y.Text, row: TextRow, text: string, by: Picker, at = Date.now()) {
+  writeRowNote(t, row, text)
+  const key = noteByKey(row.label)
+  if (text) m.set(key, { by: by.name, byId: by.id, at })
+  else if (m.has(key)) m.delete(key)
 }
 
 /** Set (or clear) a note row's pick and who made it. */
@@ -367,13 +428,15 @@ export function setRowLabel(store: CanvasStore, id: string, rowId: string, label
       const row = noteRow(c.parsed, rowId)
       const next = oneLine(clean)
       if (!row || row.label === next) return
-      // Who picked it follows the row to its new name.
-      const from = whoKey(row.label)
-      const to = whoKey(next)
-      const who = c.m.get(from)
-      if (from !== to && who !== undefined && !c.parsed.rows.some(r => r !== row && rowKey(r.label) === rowKey(row.label))) {
+      // Who picked it, and who wrote its comment, follow the row to its new name.
+      const alone = !c.parsed.rows.some(r => r !== row && rowKey(r.label) === rowKey(row.label))
+      for (const key of [whoKey, noteByKey]) {
+        const from = key(row.label)
+        const to = key(next)
+        const value = c.m.get(from)
+        if (from === to || value === undefined || !alone) continue
         c.m.delete(from)
-        if (next.trim()) c.m.set(to, who)
+        if (next.trim()) c.m.set(to, value)
       }
       writeRowLabel(c.t, row, next)
       touch(c.m)
@@ -421,7 +484,10 @@ export function removeRow(store: CanvasStore, id: string, rowId: string, origin:
       const row = noteRow(c.parsed, rowId)
       if (!row) return
       removeRowLine(c.t, row)
-      if (!c.parsed.rows.some(r => r !== row && rowKey(r.label) === rowKey(row.label))) c.m.delete(whoKey(row.label))
+      if (!c.parsed.rows.some(r => r !== row && rowKey(r.label) === rowKey(row.label))) {
+        c.m.delete(whoKey(row.label))
+        c.m.delete(noteByKey(row.label))
+      }
       touch(c.m)
       return
     }
@@ -430,6 +496,31 @@ export function removeRow(store: CanvasStore, id: string, rowId: string, origin:
       c.m,
       c.rows.filter(r => r.id !== rowId)
     )
+    touch(c.m)
+  }, origin)
+}
+
+/**
+ * One row's comment, as typed: '' clears it. Only that row's comment lines
+ * (or, on a legacy card, its `note:` key) change. `label` is as for
+ * `togglePick`: should the text have moved under the editor, the row with
+ * that label is the one meant.
+ */
+export function setRowNote(store: CanvasStore, id: string, rowId: string, text: string, by: Picker, origin: Origin = 'local', label?: string) {
+  store.transact(() => {
+    const c = current(store, id)
+    if (!c) return
+    const clean = cleanNote(text)
+    if (c.kind === 'note') {
+      const row = noteRow(c.parsed, rowId, label)
+      if (!row || row.note === clean) return
+      writeNoteNote(c.m, c.t, row, clean, by)
+      touch(c.m)
+      return
+    }
+    if (!c.rows.some(r => r.id === rowId)) return
+    if ((readLegacyNote(c.m.get(noteKey(rowId)))?.text ?? '') === clean) return
+    writeLegacyNote(c.m, rowId, clean, by)
     touch(c.m)
   }, origin)
 }
@@ -561,16 +652,16 @@ export function cleanRows(v: unknown, existing: readonly ChecklistRow[] = []): C
   return out
 }
 
-/** The row `ref` names: its id, its label, or its label in any case. */
-export function findRow(rows: readonly ChecklistRow[], ref: string): ChecklistRow {
+/** The row `ref` names: its id, its label, or its label in any case. `field` names the op's key in a complaint. */
+export function findRow(rows: readonly ChecklistRow[], ref: string, field = 'picks'): ChecklistRow {
   const byId = rows.find(r => r.id === ref)
   if (byId) return byId
   for (const same of [(r: ChecklistRow) => r.label === ref, (r: ChecklistRow) => fold(r.label) === fold(ref)]) {
     const hits = rows.filter(same)
     if (hits.length === 1) return hits[0]!
-    if (hits.length > 1) return bad(`\`picks\`: more than one row is called ${JSON.stringify(ref)} — use its id`)
+    if (hits.length > 1) return bad(`\`${field}\`: more than one row is called ${JSON.stringify(ref)} — use its id`)
   }
-  return bad(`\`picks\`: no row ${JSON.stringify(ref)}`)
+  return bad(`\`${field}\`: no row ${JSON.stringify(ref)}`)
 }
 
 /**
@@ -596,26 +687,66 @@ export function cleanPicks(v: unknown, rows: readonly ChecklistRow[], columns: r
   return [...out]
 }
 
-/** The checklist as an agent reads it (`canvas_read`). */
-export function summarizeChecklist(columns: readonly string[], rows: readonly ChecklistRow[], picks: Readonly<Record<string, ChecklistPick>>) {
+/**
+ * `notes`: `{rowIdOrLabel: text | null}` → `[rowId, text]`, '' clearing the
+ * row's comment (null, false and "" all clear). Text is cut to `MAX_NOTE`.
+ */
+export function cleanNotes(v: unknown, rows: readonly ChecklistRow[]): [string, string][] {
+  const o = plain(v)
+  if (!o) return bad('`notes` must be an object like {"Ann": "Back at 6"}')
+  const out = new Map<string, string>()
+  for (const [ref, value] of Object.entries(o)) {
+    const row = findRow(rows, ref, 'notes')
+    if (value === null || value === false) out.set(row.id, '')
+    else if (typeof value === 'string') out.set(row.id, cleanNote(value))
+    else return bad('`notes` values must be text or null')
+  }
+  return [...out]
+}
+
+/** A row's comment as an agent reads it: `note`, and who wrote it and when when known. */
+function noteSummary(n: ChecklistNote | undefined, clip: (s: string) => string) {
+  if (!n) return {}
+  return { note: clip(n.text), ...(n.by ? { noteBy: n.by } : {}), ...(n.at ? { noteAt: n.at } : {}) }
+}
+
+type Notes = Readonly<Record<string, ChecklistNote>>
+const asIs = (s: string) => s
+
+/** The checklist as an agent reads it (`canvas_read`). `clip` shortens a long comment. */
+export function summarizeChecklist(
+  columns: readonly string[],
+  rows: readonly ChecklistRow[],
+  picks: Readonly<Record<string, ChecklistPick>>,
+  notes: Notes = {},
+  clip: (s: string) => string = asIs
+) {
   return {
     columns: [...columns],
     rows: rows.map(r => {
       const p = picks[r.id]
-      return p ? { id: r.id, label: r.label, pick: p.col, by: p.by, at: p.at } : { id: r.id, label: r.label, pick: null }
+      const n = noteSummary(notes[r.id], clip)
+      return p ? { id: r.id, label: r.label, pick: p.col, by: p.by, at: p.at, ...n } : { id: r.id, label: r.label, pick: null, ...n }
     }),
     tally: tally(columns, rows, picks),
   }
 }
 
 /** A note's checklist as an agent reads it: rows by label (their place is their id), who and when only when known. */
-export function summarizeNoteChecklist(columns: readonly string[], rows: readonly ChecklistRow[], picks: Readonly<Record<string, ChecklistPick>>) {
+export function summarizeNoteChecklist(
+  columns: readonly string[],
+  rows: readonly ChecklistRow[],
+  picks: Readonly<Record<string, ChecklistPick>>,
+  notes: Notes = {},
+  clip: (s: string) => string = asIs
+) {
   return {
     columns: [...columns],
     rows: rows.map(r => {
       const p = picks[r.id]
-      if (!p) return { label: r.label, pick: null }
-      return { label: r.label, pick: p.col, ...(p.by ? { by: p.by } : {}), ...(p.at ? { at: p.at } : {}) }
+      const n = noteSummary(notes[r.id], clip)
+      if (!p) return { label: r.label, pick: null, ...n }
+      return { label: r.label, pick: p.col, ...(p.by ? { by: p.by } : {}), ...(p.at ? { at: p.at } : {}), ...n }
     }),
     tally: tally(columns, rows, picks),
   }
@@ -639,13 +770,19 @@ export function ago(at: number, now = Date.now()): string {
 /** Who made a pick and when: "Ann · 4 min ago". */
 export const pickedBy = (p: ChecklistPick, now = Date.now()) => [p.by, ago(p.at, now)].filter(Boolean).join(' · ')
 
-/** Plain text for copy and search: the title, then one line per row. */
-export function checklistText(title: string, rows: readonly ChecklistRow[], picks: Readonly<Record<string, ChecklistPick>> = {}, columns: readonly string[] = []) {
+/** Plain text for copy and search: the title, then one line per row (its comment quoted under it). */
+export function checklistText(
+  title: string,
+  rows: readonly ChecklistRow[],
+  picks: Readonly<Record<string, ChecklistPick>> = {},
+  columns: readonly string[] = [],
+  notes: Notes = {}
+) {
   const one = columns.length === 1
   const lines = rows.map(r => {
     const p = picks[r.id]
-    if (one) return `- [${p ? 'x' : ' '}] ${r.label}`
-    return p ? `- ${r.label}: ${p.col}` : `- ${r.label}`
+    const line = one ? `- [${p ? 'x' : ' '}] ${r.label}` : p ? `- ${r.label}: ${p.col}` : `- ${r.label}`
+    return line + noteBlock(notes[r.id]?.text ?? '')
   })
   return [title.trim(), ...lines].filter(Boolean).join('\n')
 }

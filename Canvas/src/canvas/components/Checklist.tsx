@@ -6,9 +6,18 @@
  * label or column to rename it; while one is open, a click on another moves
  * the editor there. Model and rules: `../checklist.ts` — the same card for a
  * note in the checklist view (its text is the list) and the legacy shape.
+ *
+ * A row can carry a comment. Collapsed (the default), a row with one shows a
+ * single muted line of it under the row; a row without one offers to add one
+ * only on hover or keyboard focus. Opening one is this viewer's own business
+ * (never stored): the editor opens under its row, grows to eight lines and
+ * then scrolls in itself, and while it is open the card keeps the height it
+ * had — the rows scroll inside it — so the stored size never changes and
+ * nothing spills past the card. The toggle, Escape or a click elsewhere close
+ * it.
  */
 import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react'
-import { Plus, Trash2, X } from 'lucide-react'
+import { MessageSquarePlus, MessageSquareText, Plus, Trash2, X } from 'lucide-react'
 import {
   CHECKLIST_MIN,
   MAX_COLUMNS,
@@ -22,14 +31,17 @@ import {
   removeRow,
   renameColumn,
   setRowLabel,
+  setRowNote,
   setTitle,
   tally,
   togglePick,
 } from '../checklist'
+import { oneLine } from '../checklist-text'
 import { contrastInk, inkOn, paperOf, strokeOf } from '../colors'
 import { countRender } from '../debug'
 import { INIT } from '../doc'
-import { isNamedColor, type ChecklistPick, type ChecklistRow, type Shape } from '../types'
+import { textSplice } from '../text-diff'
+import { isNamedColor, type ChecklistNote, type ChecklistPick, type ChecklistRow, type Shape } from '../types'
 import { useBoard } from './context'
 import { cn, useMountFocus } from './ui'
 import './checklist.css'
@@ -187,6 +199,127 @@ function Cell({ row, col, pick, readOnly, onToggle, onKey }: CellProps) {
   )
 }
 
+/** A comment as it is left when its editor closes: no blank lines around it. */
+const tidyNote = (s: string) => s.replace(/^(?:[ \t]*\n)+/, '').trimEnd()
+
+/** The rows' scroller around an element, scrolled (world px) so `el` shows; its top wins. */
+function reveal(el: HTMLElement) {
+  const list = el.closest<HTMLElement>('.cl-rows')
+  if (!list || list.scrollHeight <= list.clientHeight) return
+  const scale = list.getBoundingClientRect().height / (list.offsetHeight || 1) || 1
+  const below = (el.getBoundingClientRect().bottom - list.getBoundingClientRect().bottom) / scale
+  if (below > 0) list.scrollTop += below
+  const above = (list.getBoundingClientRect().top - el.getBoundingClientRect().top) / scale
+  if (above > 0) list.scrollTop -= above
+}
+
+/**
+ * A row's comment, open: a textarea that grows with its words up to eight
+ * lines, then scrolls in itself. Every change is written at once (only that
+ * row's comment lines change); someone else's typing shows as it arrives,
+ * the caret staying among the same words.
+ */
+function NoteEditor({
+  row,
+  name,
+  value,
+  meta,
+  readOnly,
+  onChange,
+  onClose,
+}: {
+  row: string
+  name: string
+  value: string
+  meta: string
+  readOnly: boolean
+  onChange: (next: string) => void
+  /** `key`: Escape, which leaves focus on the row's toggle. */
+  onClose: (how: 'key' | 'away') => void
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  const composing = useRef(false)
+  const grow = () => {
+    const el = ref.current
+    if (!el) return
+    // Shrinking it to measure must not move the rows' scroll.
+    const list = el.closest<HTMLElement>('.cl-rows')
+    const top = list?.scrollTop ?? 0
+    el.style.height = '0px'
+    el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`
+    if (list) list.scrollTop = top
+  }
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    grow()
+    el.focus({ preventScroll: true })
+    el.setSelectionRange(el.value.length, el.value.length)
+    reveal(el.closest<HTMLElement>('.cl-row') ?? el)
+    // The press that opened it may hand focus back to the board as it settles.
+    const timer = setTimeout(() => {
+      if (ref.current && document.activeElement !== ref.current) ref.current.focus({ preventScroll: true })
+    }, 30)
+    return () => clearTimeout(timer)
+  }, [])
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el || composing.current || el.value === value) return
+    const d = textSplice(el.value, value)
+    const map = (i: number) => (i <= d.index ? i : i >= d.index + d.remove ? i + d.insert.length - d.remove : d.index + d.insert.length)
+    const focused = document.activeElement === el
+    const a = el.selectionStart
+    const b = el.selectionEnd
+    el.value = value
+    if (focused) el.setSelectionRange(map(a), map(b))
+    grow()
+  }, [value])
+  /** A blur that lasts and leaves the comment: the click went elsewhere. */
+  const blurred = () =>
+    setTimeout(() => {
+      const el = ref.current
+      if (!el || document.activeElement === el) return
+      if (document.activeElement?.closest(`[data-note-row="${CSS.escape(row)}"]`)) return
+      onClose('away')
+    }, 80)
+  return (
+    <div className="cl-note-edit">
+      <textarea
+        ref={ref}
+        aria-label={`Comment on ${name}`}
+        defaultValue={value}
+        placeholder={readOnly ? '' : 'Add a comment…'}
+        readOnly={readOnly}
+        rows={1}
+        spellCheck
+        className="cl-note-field"
+        onChange={e => {
+          if (readOnly) return
+          onChange(e.currentTarget.value)
+          grow()
+        }}
+        onCompositionStart={() => {
+          composing.current = true
+        }}
+        onCompositionEnd={() => {
+          composing.current = false
+        }}
+        onKeyDown={e => {
+          e.stopPropagation()
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            onClose('key')
+          }
+        }}
+        onBlur={blurred}
+        onPointerDown={stop}
+        onDoubleClick={stop}
+      />
+      {meta && <div className="cl-note-meta">{meta}</div>}
+    </div>
+  )
+}
+
 /** Where the editor is: `part:cl-title`, `part:cl-row:<id>`, `part:cl-col:<index>`. */
 function editTarget(field: string | null) {
   if (!field?.startsWith('part:cl-')) return null
@@ -213,6 +346,7 @@ export const ChecklistView = memo(function ChecklistView({
   const columns = shape.columns ?? []
   const rows = shape.rows ?? []
   const picks = shape.picks ?? {}
+  const notes = shape.notes ?? {}
   const counts = tally(columns, rows, picks)
   const single = columns.length === 1
   const target = editTarget(editing)
@@ -223,11 +357,56 @@ export const ChecklistView = memo(function ChecklistView({
   const grid = single ? '28px minmax(0, 1fr)' : `minmax(0, 1fr) repeat(${columns.length}, var(--cl-col))`
   const done = Object.keys(picks).length
 
+  // ---- a row's comment, open (this viewer's own state, never stored) ------------
+  /** The open comment's row (by id, else by label should the rows move) and the card's height when it opened. */
+  const [open, setOpen] = useState<{ id: string; label: string; h: number } | null>(null)
+  const openRow = open
+    ? (rows.find(r => r.id === open.id && r.label === open.label) ?? rows.find(r => r.label === open.label) ?? rows.find(r => r.id === open.id))
+    : undefined
+  // Follow the row should it move or be renamed under the editor; close when it goes.
+  if (open && (!openRow || openRow.id !== open.id || openRow.label !== open.label))
+    setOpen(openRow ? { ...open, id: openRow.id, label: openRow.label } : null)
+  /** While one is open the card keeps its height and its rows scroll. */
+  const locked = open && openRow ? open.h : null
+  /** This viewer changed the open comment: closing it tidies blank lines away. */
+  const edited = useRef(false)
+  const toggleNote = (row: ChecklistRow) => {
+    if (open && openRow?.id === row.id) {
+      closeNote()
+      return
+    }
+    if (open) closeNote()
+    edited.current = false
+    setOpen({ id: row.id, label: row.label, h: card.current?.offsetHeight ?? shape.h })
+  }
+  /** Close the open comment (with `only`, only while that row's is the one open: a late blur must not close the next). */
+  const closeNote = (only?: string) => {
+    const row = openRow
+    if (only !== undefined && row?.id !== only) return
+    setOpen(o => (only !== undefined && o?.id !== only ? o : null))
+    if (!row || readOnly || !edited.current) return
+    edited.current = false
+    const now = store.live(shape.id)?.notes?.[row.id]?.text ?? ''
+    if (tidyNote(now) !== now) setRowNote(store, shape.id, row.id, tidyNote(now), me, 'local', row.label)
+  }
+  const rowsRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    // The board's wheel listener is native; while the rows scroll, the wheel is theirs.
+    const el = rowsRef.current
+    if (!el || locked === null) return
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey && el.scrollHeight > el.clientHeight + 1) e.stopPropagation()
+    }
+    el.addEventListener('wheel', onWheel)
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [locked])
+
   // ---- height follows the content (written by editors, outside undo) ----------
   const card = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
     const el = card.current
-    if (!el || readOnly || typeof ResizeObserver === 'undefined') return
+    // An open comment holds the card's height: nothing to measure until it closes.
+    if (!el || readOnly || locked !== null || typeof ResizeObserver === 'undefined') return
     let timer: ReturnType<typeof setTimeout> | null = null
     const measure = () => {
       if (timer) clearTimeout(timer)
@@ -244,7 +423,7 @@ export const ChecklistView = memo(function ChecklistView({
       ro.disconnect()
       if (timer) clearTimeout(timer)
     }
-  }, [store, shape.id, readOnly])
+  }, [store, shape.id, readOnly, locked])
 
   // ---- editing -----------------------------------------------------------------
   /** A row this card added and is naming: left empty, it goes again. */
@@ -320,11 +499,12 @@ export const ChecklistView = memo(function ChecklistView({
       aria-label={titleText ? `Checklist: ${titleText}` : 'Checklist'}
       aria-readonly={readOnly || undefined}
       onPointerDown={onCardDown}
-      className={cn('cl-card absolute left-0 top-0', single && 'cl-single', selected && 'cl-selected')}
+      className={cn('cl-card absolute left-0 top-0', single && 'cl-single', selected && 'cl-selected', locked !== null && 'cl-locked')}
       style={
         {
           width: shape.w,
           minHeight: CHECKLIST_MIN.h,
+          ...(locked !== null ? { height: locked } : {}),
           transform: `translate(${shape.x}px, ${shape.y}px)`,
           '--cl-accent': accent,
           '--cl-check': check,
@@ -423,9 +603,12 @@ export const ChecklistView = memo(function ChecklistView({
             </div>
           )}
         </div>
-        <div role="rowgroup" className="cl-rows">
+        <div role="rowgroup" className="cl-rows" ref={rowsRef}>
           {rows.map((row, ri) => {
             const pick = picks[row.id]
+            const note: ChecklistNote | undefined = notes[row.id]
+            const noteOpen = openRow?.id === row.id
+            const name = row.label.trim() || 'this row'
             const editingRow = target?.kind === 'row' && target.id === row.id
             const label = (
               <span
@@ -492,6 +675,27 @@ export const ChecklistView = memo(function ChecklistView({
                         <X className="h-3 w-3" aria-hidden="true" />
                       </button>
                     )}
+                    {(!readOnly || note) && (
+                      <button
+                        type="button"
+                        aria-label={noteOpen ? `Close the comment on ${name}` : note ? `Comment on ${name}` : `Add a comment on ${name}`}
+                        aria-expanded={noteOpen}
+                        data-note-row={row.id}
+                        className={cn('cl-icon-btn cl-note-toggle', selected && !readOnly && 'cl-note-toggle-shift')}
+                        onPointerDown={e => {
+                          e.stopPropagation()
+                          // An open comment keeps focus, so the click (not its blur) closes it.
+                          if (noteOpen) e.preventDefault()
+                        }}
+                        onDoubleClick={stop}
+                        onClick={e => {
+                          e.stopPropagation()
+                          toggleNote(row)
+                        }}
+                      >
+                        {note ? <MessageSquareText className="h-3.5 w-3.5" aria-hidden="true" /> : <MessageSquarePlus className="h-3.5 w-3.5" aria-hidden="true" />}
+                      </button>
+                    )}
                   </>
                 )}
               </span>
@@ -507,8 +711,45 @@ export const ChecklistView = memo(function ChecklistView({
                 onKey={cellKey(ri, ci)}
               />
             ))
+            const comment = noteOpen ? (
+              <div role="cell" className="cl-note" data-note-row={row.id}>
+                <NoteEditor
+                  row={row.id}
+                  name={name}
+                  value={note?.text ?? ''}
+                  meta={note ? pickedBy({ col: '', by: note.by, byId: note.byId, at: note.at }) : ''}
+                  readOnly={readOnly}
+                  onChange={next => {
+                    edited.current = true
+                    setRowNote(store, shape.id, row.id, next, me, 'local', row.label)
+                  }}
+                  onClose={how => {
+                    if (how === 'key') (document.querySelector(`[data-id="${CSS.escape(shape.id)}"] .cl-note-toggle[data-note-row="${CSS.escape(row.id)}"]`) as HTMLElement | null)?.focus({ preventScroll: true })
+                    closeNote(row.id)
+                  }}
+                />
+              </div>
+            ) : note ? (
+              <div role="cell" className="cl-note" data-note-row={row.id}>
+                <button
+                  type="button"
+                  aria-expanded={false}
+                  className="cl-note-peek"
+                  onPointerDown={stop}
+                  onDoubleClick={stop}
+                  onClick={e => {
+                    e.stopPropagation()
+                    toggleNote(row)
+                  }}
+                >
+                  <MessageSquareText className="cl-note-icon" aria-hidden="true" />
+                  <span className="sr-only">Comment on {name}: </span>
+                  <span className="cl-note-peek-text">{oneLine(note.text)}</span>
+                </button>
+              </div>
+            ) : null
             return (
-              <div key={row.id} role="row" className={cn('cl-grid cl-row', pick && 'cl-row-picked')}>
+              <div key={row.id} role="row" className={cn('cl-grid cl-row', pick && 'cl-row-picked', noteOpen && 'cl-row-open')}>
                 {single ? (
                   <>
                     {cells}
@@ -520,6 +761,7 @@ export const ChecklistView = memo(function ChecklistView({
                     {cells}
                   </>
                 )}
+                {comment}
               </div>
             )
           })}

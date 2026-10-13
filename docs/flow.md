@@ -118,6 +118,15 @@ Access and a keychain "Always Allow" are given once. Builds signed ad hoc
 before that release were tied to one build each, so they have to be given
 once more after updating to it.
 
+Giving it once more is not enough on its own for App Data: tccd keeps the
+ad-hoc build's record (its `cdhash` requirement), never matches the signed
+build against it ("Failed to match existing code requirement"), records each
+read denied again, and the switch falls back off whenever it is turned on.
+So **Allow in System Settings…**, while the folder is locked, first clears
+Copper's own App Data record (`tccutil reset SystemPolicyAppDataDetailed
+<bundle id>`; the locked record grants nothing) and lists the folder once, so
+the record the switch changes carries the running signature.
+
 ### Safari
 
 Safari's files (`~/Library/Safari`, and its container for open tabs) are

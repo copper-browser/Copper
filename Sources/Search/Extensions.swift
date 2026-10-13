@@ -131,7 +131,13 @@ final class Extensions: NSObject, ObservableObject {
         controller.didOpenWindow(window)
         browser.$tabs
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] tabs in self?.follow(tabs) }
+            .sink { [weak self] _ in self?.follow() }
+            .store(in: &bag)
+        // Fork (extension-pages): a tab coming or going in a space not on
+        // screen changes what extensions see too.
+        Spaces.shared.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.follow() }
             .store(in: &bag)
         browser.$activeID
             .removeDuplicates()
@@ -161,8 +167,9 @@ final class Extensions: NSObject, ObservableObject {
         return made
     }
 
-    /// Private tabs keep nothing and see no extensions.
-    var visibleTabs: [Tab] { browser?.tabs.filter { !$0.shy } ?? [] }
+    /// Private tabs keep nothing and see no extensions. Every space's tabs,
+    /// not only the one on screen (Fork: ExtensionPages.every).
+    var visibleTabs: [Tab] { ExtensionPages.every(in: browser) }
 
     var activeAdapter: ExtensionTab? {
         // The window in front's page, not always the first window's. (Fork: windows)
@@ -170,8 +177,8 @@ final class Extensions: NSObject, ObservableObject {
         return adapter(for: tab)
     }
 
-    private func follow(_ tabs: [Tab]) {
-        let now = tabs.filter { !$0.shy }
+    private func follow() {
+        let now = visibleTabs
         let ids = now.map(\.id)
         let gone = order.filter { !ids.contains($0) }
         for id in gone {

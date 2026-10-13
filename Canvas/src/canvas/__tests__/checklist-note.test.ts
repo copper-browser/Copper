@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
-import { addColumn, addRow, isChecklist, removeColumn, removeRow, renameColumn, setRowLabel, setTitle, togglePick } from '../checklist'
-import { checklistMarkdown, parseChecklistText } from '../checklist-text'
+import { addColumn, addRow, checklistText, isChecklist, removeColumn, removeRow, renameColumn, setRowLabel, setRowNote, setTitle, togglePick } from '../checklist'
+import { checklistMarkdown, noteBlock, noteText, parseChecklistText, replaceRows, rowBlock, writeRowNote } from '../checklist-text'
 import { CanvasStore, HOST } from '../doc'
 import { toggleTask } from '../markdown-lite'
 import { boardSearchItems } from '../search'
@@ -204,5 +204,224 @@ describe('a note in the checklist view', () => {
   it('is found by its text, as a checklist', () => {
     const { store } = note('### Going\n- [ ] Ann')
     expect(boardSearchItems(store.getShapes().values())).toMatchObject([{ ref: 'n', kind: 'checklist', text: '### Going\n- [ ] Ann' }])
+  })
+})
+
+describe("a row's comment", () => {
+  const COLS = ['Yes', 'Later', 'Talk', 'No']
+  const LAND = [
+    '### Where we land',
+    '- [x] 1. Source of truth · No',
+    "  > We already have InvenTree; pull, don't own.",
+    '  > Second line.',
+    '- [ ] 2. Scope',
+    '- [x] 3. Owner · Yes',
+    '  > Ops.',
+  ].join('\n')
+  const notes = (store: CanvasStore, id: string) => {
+    const s = store.get(id)!
+    return s.rows!.map(r => [r.label, s.notes?.[r.id]?.text ?? null])
+  }
+
+  it('reads indented quote lines under a task line as its comment, never as a row or a title', () => {
+    const p = parseChecklistText(LAND, COLS)
+    expect(p.title).toBe('Where we land')
+    expect(p.rows.map(r => [r.label, r.pick, r.note])).toEqual([
+      ['1. Source of truth', 'No', "We already have InvenTree; pull, don't own.\nSecond line."],
+      ['2. Scope', null, ''],
+      ['3. Owner', 'Yes', 'Ops.'],
+    ])
+    expect(LAND.slice(p.rows[0]!.lineEnd, p.rows[0]!.blockEnd)).toBe("\n  > We already have InvenTree; pull, don't own.\n  > Second line.")
+    expect(p.rows[1]!.blockEnd).toBe(p.rows[1]!.lineEnd)
+  })
+
+  it('a comment that looks like a row or a heading is still a comment; quotes not under a row are no one’s', () => {
+    const p = parseChecklistText(['  > ### Not the title', '### Real', '> loose quote', '- [ ] Ann', '  > - [x] not a row', '  > ### nor a title', '', '  > after a blank line'].join('\n'), ['Done'])
+    expect(p.title).toBe('Real')
+    expect(p.rows.map(r => [r.label, r.note])).toEqual([['Ann', '- [x] not a row\n### nor a title']])
+  })
+
+  it('writes what it reads, whatever the words', () => {
+    for (const note of ['one', ' leading space', 'trailing space ', 'two\nlines', 'a\n\nparagraph', 'ends in a break\n', '\n\nstarts blank', '> a quote', '   ']) {
+      const text = rowBlock('Ann', 'No', COLS, note)
+      const row = parseChecklistText(text, COLS).rows[0]!
+      expect(row.note).toBe(note)
+      expect(row.label).toBe('Ann')
+      expect(row.pick).toBe('No')
+    }
+    expect(noteBlock('')).toBe('')
+    expect(noteBlock('a\r\n\r\nb')).toBe('\n  > a\n  >\n  > b')
+    expect(checklistMarkdown('G', [{ label: 'Ann', pick: 'Yes', note: 'hi' }, { label: 'Bob', pick: null }], ['Yes', 'No'])).toBe('### G\n- [x] Ann · Yes\n  > hi\n- [ ] Bob')
+  })
+
+  it('an edit changes only the characters it means to', () => {
+    const doc = new Y.Doc()
+    const t = doc.getText('t')
+    t.insert(0, LAND)
+    const deltas: unknown[] = []
+    t.observe(e => deltas.push(e.delta))
+    writeRowNote(t, parseChecklistText(t.toString(), COLS).rows[0]!, "We already have InvenTree; pull, don't own.\nSecond line, longer.")
+    expect(deltas).toEqual([[{ retain: LAND.indexOf('Second line.') + 'Second line'.length }, { insert: ', longer' }]])
+    writeRowNote(t, parseChecklistText(t.toString(), COLS).rows[1]!, 'New')
+    writeRowNote(t, parseChecklistText(t.toString(), COLS).rows[2]!, '')
+    expect(t.toString()).toBe(
+      [
+        '### Where we land',
+        '- [x] 1. Source of truth · No',
+        "  > We already have InvenTree; pull, don't own.",
+        '  > Second line, longer.',
+        '- [ ] 2. Scope',
+        '  > New',
+        '- [x] 3. Owner · Yes',
+      ].join('\n')
+    )
+  })
+
+  it('travels with its row: picks, renames, new rows, columns and reordering keep it; removing the row takes it', () => {
+    const { store, id } = note(LAND, COLS)
+    togglePick(store, id, 't0', 'Later', ann)
+    togglePick(store, id, 't1', 'Talk', ann)
+    setRowLabel(store, id, 't0', '1. Source of record')
+    expect(addRow(store, id, 't0', 'New')).toBe('t1')
+    renameColumn(store, id, 0, 'Sure')
+    expect(store.get(id)!.text).toBe(
+      [
+        '### Where we land',
+        '- [x] 1. Source of record · Later',
+        "  > We already have InvenTree; pull, don't own.",
+        '  > Second line.',
+        '- [ ] New',
+        '- [x] 2. Scope · Talk',
+        '- [x] 3. Owner · Sure',
+        '  > Ops.',
+      ].join('\n')
+    )
+    // Reordering (as an agent's `rows` does) moves each comment with its row.
+    store.transact(() => {
+      const m = store.shapes.get(id)!
+      const t = noteText(m)
+      const p = parseChecklistText(t.toString(), store.get(id)!.columns!)
+      replaceRows(t, p, [2, 0, 3, 1].map(i => rowBlock(p.rows[i]!.label, p.rows[i]!.pick, store.get(id)!.columns!, p.rows[i]!.note)))
+    })
+    expect(notes(store, id)).toEqual([
+      ['2. Scope', null],
+      ['1. Source of record', "We already have InvenTree; pull, don't own.\nSecond line."],
+      ['3. Owner', 'Ops.'],
+      ['New', null],
+    ])
+    removeRow(store, id, 't1')
+    expect(store.get(id)!.text).toBe('### Where we land\n- [x] 2. Scope · Talk\n- [x] 3. Owner · Sure\n  > Ops.\n- [ ] New')
+    removeRow(store, id, 't1')
+    expect(store.get(id)!.text).toBe('### Where we land\n- [x] 2. Scope · Talk\n- [ ] New')
+  })
+
+  it('the board writes it with who and when; who follows a rename and goes with the row; empty is no lines', () => {
+    const { store, id } = note('### Going\n- [ ] Ann\n- [ ] Bob')
+    setRowNote(store, id, 't0', 'Back at 6\r\nmaybe', ada)
+    expect(store.get(id)!.text).toBe('### Going\n- [ ] Ann\n  > Back at 6\n  > maybe\n- [ ] Bob')
+    expect(store.get(id)!.notes!.t0).toMatchObject({ text: 'Back at 6\nmaybe', by: 'Ada Lovelace', byId: 'u-ada' })
+    expect(store.get(id)!.notes!.t0!.at).toBeGreaterThan(0)
+    expect(store.get(id)!.notes!.t1).toBeUndefined()
+    setRowLabel(store, id, 't0', 'Ann B')
+    expect(store.shapes.get(id)!.get('noteBy:ann b')).toMatchObject({ by: 'Ada Lovelace' })
+    expect(store.shapes.get(id)!.has('noteBy:ann')).toBe(false)
+    setRowNote(store, id, 't0', '', ann)
+    expect(store.get(id)!.text).toBe('### Going\n- [ ] Ann B\n- [ ] Bob')
+    expect(store.shapes.get(id)!.has('noteBy:ann b')).toBe(false)
+    setRowNote(store, id, 't1', 'x', ann)
+    removeRow(store, id, 't1')
+    expect(store.get(id)!.text).toBe('### Going\n- [ ] Ann B')
+    expect(store.shapes.get(id)!.has('noteBy:bob')).toBe(false)
+    // A comment found by its label when the text moved under the editor.
+    store.setText(id, '- [ ] Zed\n- [ ] Ann B')
+    setRowNote(store, id, 't0', 'hi', ann, 'local', 'Ann B')
+    expect(store.get(id)!.text).toBe('- [ ] Zed\n- [ ] Ann B\n  > hi')
+  })
+
+  it('copies and searches with the comments', () => {
+    const { store, id } = note(LAND, COLS)
+    const s = store.get(id)!
+    expect(checklistText(s.title, s.rows!, s.picks!, s.columns!, s.notes!)).toBe(
+      "Where we land\n- 1. Source of truth: No\n  > We already have InvenTree; pull, don't own.\n  > Second line.\n- 2. Scope\n- 3. Owner: Yes\n  > Ops."
+    )
+    expect(boardSearchItems(store.getShapes().values())[0]!.text).toContain('InvenTree')
+  })
+
+  it('an older Copper ticks the right row around comment lines, and shows them as a quote', () => {
+    const { store, id } = note(LAND, COLS)
+    oldTick(store, id, 4) // "- [ ] 2. Scope", the fifth line
+    expect(picks(store, id)).toEqual([
+      ['1. Source of truth', 'No'],
+      ['2. Scope', 'Yes'],
+      ['3. Owner', 'Yes'],
+    ])
+    expect(notes(store, id)[0]![1]).toContain('InvenTree')
+  })
+
+  describe('from two Coppers at the same moment', () => {
+    it('comments on different rows both stick', () => {
+      const { a, b, id, sync } = pair('### W\n- [ ] Ann\n- [ ] Bob\n- [ ] Cy', ['Yes', 'No'])
+      setRowNote(a, id, 't0', 'Ann says hi', ada)
+      setRowNote(b, id, 't2', 'Cy\ntoo', ann)
+      setRowNote(a, id, 't1', 'Bob', ada)
+      sync()
+      for (const s of [a, b]) {
+        expect(s.get(id)!.text).toBe('### W\n- [ ] Ann\n  > Ann says hi\n- [ ] Bob\n  > Bob\n- [ ] Cy\n  > Cy\n  > too')
+        expect(notes(s, id)).toEqual([
+          ['Ann', 'Ann says hi'],
+          ['Bob', 'Bob'],
+          ['Cy', 'Cy\ntoo'],
+        ])
+      }
+    })
+
+    it('typing in different lines of one comment merges', () => {
+      const { a, b, id, sync } = pair('- [ ] Ann\n  > one\n  > two', ['Yes', 'No'])
+      setRowNote(a, id, 't0', 'one, and more\ntwo', ada)
+      setRowNote(b, id, 't0', 'one\ntwo, and less', ann)
+      sync()
+      for (const s of [a, b]) expect(notes(s, id)).toEqual([['Ann', 'one, and more\ntwo, and less']])
+    })
+
+    it('a pick, a rename and a first comment on the same row all stick', () => {
+      const { a, b, id, sync } = pair('- [ ] Ann\n- [ ] Bob\n- [ ] Cy', ['Yes', 'No'])
+      togglePick(a, id, 't0', 'No', ada)
+      setRowLabel(a, id, 't1', 'Bobby')
+      setRowNote(b, id, 't0', 'running late', ann)
+      setRowNote(b, id, 't1', 'vegan', ann)
+      sync()
+      for (const s of [a, b]) {
+        expect(s.get(id)!.text).toBe('- [x] Ann · No\n  > running late\n- [ ] Bobby\n  > vegan\n- [ ] Cy')
+        expect(picks(s, id)).toEqual([
+          ['Ann', 'No'],
+          ['Bobby', null],
+          ['Cy', null],
+        ])
+      }
+    })
+
+    it('a comment being written stays with its row while someone adds a row right after it', () => {
+      const { a, b, id, sync } = pair('- [ ] Ann\n  > first\n- [ ] Bob', ['Yes', 'No'])
+      setRowNote(a, id, 't0', 'first\nsecond', ada)
+      addRow(b, id, 't0', 'New')
+      sync()
+      for (const s of [a, b]) {
+        expect(s.get(id)!.text).toBe('- [ ] Ann\n  > first\n  > second\n- [ ] New\n- [ ] Bob')
+        expect(notes(s, id)).toEqual([
+          ['Ann', 'first\nsecond'],
+          ['New', null],
+          ['Bob', null],
+        ])
+      }
+    })
+
+    it('a row removed by one and a comment on another by the other both land', () => {
+      const { a, b, id, sync } = pair('- [ ] Ann\n  > a\n- [ ] Bob\n  > b\n- [ ] Cy', ['Yes', 'No'])
+      removeRow(a, id, 't1')
+      setRowNote(b, id, 't0', 'a, edited', ann)
+      setRowNote(b, id, 't2', 'c', ann)
+      sync()
+      for (const s of [a, b]) expect(s.get(id)!.text).toBe('- [ ] Ann\n  > a, edited\n- [ ] Cy\n  > c')
+    })
   })
 })

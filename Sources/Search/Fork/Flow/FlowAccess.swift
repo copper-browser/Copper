@@ -82,6 +82,31 @@ enum FlowAccess {
         "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
     ]
 
+    /// A record tccd made for an earlier Copper signed differently (an
+    /// ad-hoc build's cdhash, before the stable certificate) never matches
+    /// this one: every read logs "Failed to match existing code requirement",
+    /// is recorded denied, and the switch in System Settings falls back off
+    /// each time the person turns it on. While the folder is locked the record
+    /// grants nothing, so forget it and list the folder once: tccd records a
+    /// fresh entry under the running signature, and that switch sticks.
+    /// Only Copper's own entry for this one service is touched.
+    static func renewRecord(for root: URL) {
+        guard !Store.testing, let bundle = Bundle.main.bundleIdentifier else { return }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        process.arguments = ["reset", "SystemPolicyAppDataDetailed", bundle]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            NSLog("Copper: Flow could not renew the App Data record: %@", error.localizedDescription)
+            return
+        }
+        _ = state(of: root)
+    }
+
     @discardableResult
     static func openPrivacySettings(fullDisk: Bool = false) -> String {
         let pages = fullDisk ? fullDiskPages : privacyPages

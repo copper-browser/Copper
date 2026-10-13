@@ -276,6 +276,13 @@ final class ExtensionPopup: NSObject, WKUIDelegate, WKNavigationDelegate, NSPopo
 
     func webViewDidClose(_ webView: WKWebView) { close() }
 
+    /// Fork (extension-pages): the popup sending itself to a web address
+    /// opens it in a tab and closes; WebKit would drop the load
+    /// (Fork/ExtensionPages.swift).
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
+        ExtensionPages.leavePopup(action, in: webView) ? .cancel : .allow
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { follow() }
 
     /// A link that asks for a new window becomes a tab, and the popup goes —

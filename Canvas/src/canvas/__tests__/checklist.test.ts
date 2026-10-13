@@ -6,9 +6,11 @@ import {
   ago,
   checklistText,
   cleanColumns,
+  cleanNotes,
   cleanPicks,
   cleanRows,
   nextColumnLabel,
+  noteKey,
   pickKey,
   readColumns,
   readRows,
@@ -16,6 +18,8 @@ import {
   removeRow,
   renameColumn,
   setRowLabel,
+  setRowNote,
+  summarizeChecklist,
   tally,
   togglePick,
 } from '../checklist'
@@ -238,5 +242,52 @@ describe('checklist text, search and time', () => {
     expect(ago(now - 3 * 3_600_000, now)).toBe('3 h ago')
     expect(ago(now - 26 * 3_600_000, now)).toBe('yesterday')
     expect(ago(0, now)).toBe('')
+  })
+})
+
+describe("a legacy card's row comments", () => {
+  it('sit under note:<rowId>, one per row, with who and when; a removed row takes its comment', () => {
+    const { store, id } = board()
+    setRowNote(store, id, 'r1', 'vegan\r\nno nuts', ann)
+    expect(store.shapes.get(id)!.get(noteKey('r1'))).toMatchObject({ text: 'vegan\nno nuts', by: 'Ann', byId: 'u-ann' })
+    expect(store.get(id)!.notes).toEqual({ r1: expect.objectContaining({ text: 'vegan\nno nuts', by: 'Ann' }) })
+    setRowNote(store, id, 'r9', 'no such row', ann)
+    expect(store.shapes.get(id)!.has(noteKey('r9'))).toBe(false)
+    removeRow(store, id, 'r1')
+    expect(store.shapes.get(id)!.has(noteKey('r1'))).toBe(false)
+    setRowNote(store, id, 'r0', 'x', ann)
+    setRowNote(store, id, 'r0', '', ann)
+    expect(store.shapes.get(id)!.has(noteKey('r0'))).toBe(false)
+  })
+
+  it('two people commenting on different rows at once both stick', () => {
+    const { a, b, id, sync } = pair()
+    setRowNote(a, id, 'r0', 'from a', ann)
+    setRowNote(b, id, 'r2', 'from b', bob)
+    sync()
+    for (const s of [a, b]) expect(Object.entries(s.get(id)!.notes!).map(([k, n]) => [k, n.text])).toEqual([
+      ['r0', 'from a'],
+      ['r2', 'from b'],
+    ])
+  })
+
+  it('reads, copies and searches with them; agents name rows by label', () => {
+    const { store, id } = board()
+    setRowNote(store, id, 'r0', 'late', ann)
+    const s = store.get(id)!
+    const sum = summarizeChecklist(s.columns!, s.rows!, s.picks!, s.notes!)
+    expect(sum.rows[0]).toMatchObject({ id: 'r0', label: 'Ann', pick: null, note: 'late', noteBy: 'Ann' })
+    expect(sum.rows[1]).toEqual({ id: 'r1', label: 'Bob', pick: null })
+    expect(checklistText(s.title, s.rows!, s.picks!, s.columns!, s.notes!)).toBe('Dinner Tue\n- Ann\n  > late\n- Bob\n- Cy')
+    expect(JSON.stringify(boardSearchItems([s])[0])).toContain('late')
+    expect(cleanNotes({ ann: 'x\r\ny', Bob: null, r2: '' }, s.rows!)).toEqual([
+      ['r0', 'x\ny'],
+      ['r1', ''],
+      ['r2', ''],
+    ])
+    expect(cleanNotes({ Ann: 'z'.repeat(5000) }, s.rows!)[0]![1]).toHaveLength(4000)
+    expect(() => cleanNotes({ Zed: 'x' }, s.rows!)).toThrow(/`notes`: no row "Zed"/)
+    expect(() => cleanNotes({ Ann: 3 }, s.rows!)).toThrow(/text or null/)
+    expect(() => cleanNotes('x', s.rows!)).toThrow(/object/)
   })
 })

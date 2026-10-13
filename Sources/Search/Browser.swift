@@ -2243,6 +2243,13 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
             }
         }
 
+        // Fork (extension-pages): an extension's page leaving for the web
+        // goes in a view that can show it (Fork/ExtensionPages.swift).
+        if ExtensionPages.leave(action, url: url, in: webView, browser: self) {
+            decisionHandler(.cancel)
+            return
+        }
+
         // The next document gets this site's stylesheet of hidden things,
         // decided here because here is the last moment before it loads.
         if action.targetFrame?.isMainFrame ?? true, let tab = tab(for: webView) {
@@ -2272,6 +2279,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
         if CanvasHost.popup(action, from: webView, browser: self) { return nil } // Fork (canvas-hooks): a window from a board's live frame is an ordinary tab (Fork/Canvas/CanvasFrames)
+        if ExtensionPages.popup(action, from: webView, browser: self) { return nil } // Fork (extension-pages): an extension page's window at a web address is an ordinary tab
         let from = tab(for: webView)?.id ?? activeID
         let tab = Tab(shy: tab(for: webView)?.shy ?? false, configuration: configuration)
         adopt(tab)

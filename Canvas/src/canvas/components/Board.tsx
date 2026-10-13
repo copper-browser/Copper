@@ -13,6 +13,7 @@ import {
   type CSSProperties,
   useSyncExternalStore,
   type DragEvent as ReactDragEvent,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { controller, type Session } from '../../controller'
@@ -45,7 +46,8 @@ import { growFor } from '../overflow'
 import { imageFile, imageFromFile, imageFromUrl, imageSizeFor, isUrlText, looksLikeImageUrl, urlFrom } from '../images'
 import { MIN_SIZE, isResizable, minSizeOf, resizeBox, resizeBoxKeepAspect, type Handle } from '../resize'
 import { LIVE_SIZE, framesToMount, frameUrl } from '../frames'
-import { arrowLabelBox, revealView, type SearchResult } from '../search'
+import { COMMENT_REF, arrowLabelBox, revealView, type SearchResult } from '../search'
+import { isShown, type CommentAuthor } from '../comments'
 import { statusView } from '../status'
 import { SHAPE_SIZE, isRefEndpoint, type Endpoint, type NamedColor, type Shape, type ShapeColor } from '../types'
 import { LaserCanvas, LaserTrails } from '../laser'
@@ -84,11 +86,24 @@ import {
   type RingPlace,
 } from './Overlays'
 import { SearchBox } from './SearchBox'
+import {
+  BoardMenu,
+  COMMENT_KEYS,
+  CommentPins,
+  CommentPopover,
+  CommentsPanel,
+  PANEL_W,
+  PIN_H,
+  POP_W,
+  pinPlaces,
+  type CommentFocus,
+  type MenuItem,
+} from './Comments'
 import { ArrowLabel, ArrowLayer, FrameView, ImageView, LinkView, StickyView, TextView, type DrawnArrow } from './Shapes'
 import { ChecklistView, checklistEditField } from './Checklist'
 import { checklistText, isChecklist } from '../checklist'
 import { WebFrame, type FrameUser } from './WebFrame'
-import { cn } from './ui'
+import { MOD, cn } from './ui'
 
 type Gesture =
   | { kind: 'pan'; start: Point; view: View }
@@ -140,8 +155,8 @@ const isTextField = (el: EventTarget | null) =>
 
 const NO_USERS: readonly FrameUser[] = []
 
-/** A checklist as plain text for the clipboard: its title, then each row and its pick. */
-const copyChecklist = (s: Shape | undefined) => (s ? checklistText(s.title, s.rows ?? [], s.picks ?? {}, s.columns ?? []) : '')
+/** A checklist as plain text for the clipboard: its title, then each row, its pick and its comment. */
+const copyChecklist = (s: Shape | undefined) => (s ? checklistText(s.title, s.rows ?? [], s.picks ?? {}, s.columns ?? [], s.notes ?? {}) : '')
 
 const sortZ = (a: Shape, b: Shape) => a.z - b.z || a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 
@@ -195,6 +210,12 @@ export function Board({ session }: { session: Session }) {
   const [help, setHelp] = useState(false)
   const [toasts, setToasts] = useState<Toast[]>([])
   const [history, setHistory] = useState({ undo: false, redo: false })
+  /** Comment threads on shapes (`comments.ts`); the open one, the panel, the right-click menu. */
+  const threads = useSyncExternalStore(store.comments.subscribe, store.comments.getThreads)
+  const [commentsOpen, setCommentsOpen] = useState(false)
+  const [commentFocus, setCommentFocus] = useState<CommentFocus | null>(null)
+  const [menu, setMenu] = useState<{ at: Point; id: string } | null>(null)
+  const author = useMemo<CommentAuthor>(() => ({ id: me.id, name: me.name }), [me.id, me.name])
   const gesture = useRef<Gesture | null>(null)
   const pointer = useRef<Point | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -862,6 +883,8 @@ export function Board({ session }: { session: Session }) {
     const c = screenToWorld(view, p)
     flight.cancel()
     setLinkAt(null)
+    setMenu(null)
+    if (commentFocus) setCommentFocus(null)
     // A press anywhere but the frame in use (its bar) hands the keyboard back to the board.
     if (activeId && target.closest('[data-id]')?.getAttribute('data-id') !== activeId) setActiveFrame(null)
     if (e.button === 1 || tool === 'hand' || space) {
@@ -1324,7 +1347,9 @@ export function Board({ session }: { session: Session }) {
         return
       }
       if (e.key === 'Escape') {
-        if (activeId) deactivate()
+        if (commentFocus) setCommentFocus(null)
+        else if (menu) setMenu(null)
+        else if (activeId) deactivate()
         else if (pendingFrom || draft) {
           setPendingFrom(null)
           setDraft(null)
@@ -1554,7 +1579,7 @@ export function Board({ session }: { session: Session }) {
 
   // ---- search ---------------------------------------------------------------------
 
-  const search = useBoardSearch({ shapes, viewport })
+  const search = useBoardSearch({ shapes, threads, viewport })
   const locate = useCallback(
     (ref: string): { box: Box; seg?: RingPlace['seg'] } | null => {
       const path = live.arrowById.get(ref)
@@ -1565,11 +1590,143 @@ export function Board({ session }: { session: Session }) {
     [live]
   )
   const revealHit = (hit: SearchResult) => {
+    if (revealComment(hit.ref)) return
     const at = locate(hit.ref)
     if (!at) return
     const { w, h } = sizeRef.current
     // Centred in what the search box above and the tool bar below leave free.
     flight.fly(revealView(at.box, view, w, h, { top: search.coveredTop(), bottom: TOOLBAR_PX }), () => select([hit.ref]))
+  }
+
+  // ---- comments ------------------------------------------------------------------
+
+  /** What the popover and the panel leave free on the right (screen px). */
+  const commentRight = size.w - (commentsOpen ? Math.min(PANEL_W, size.w - 24) + 24 : 0)
+
+  /**
+   * Bring a shape's pin corner into view, unless it is already showing left of
+   * the panel: then the board stays put. Otherwise fly to fit the shape in what
+   * the panel and the popover leave free.
+   */
+  const showForComment = useCallback(
+    (id: string) => {
+      const b = boundsOf(id) ?? (() => {
+        const s = store.live(id)
+        return s && s.type !== 'arrow' ? s : null
+      })()
+      if (!b) return
+      const { w, h } = sizeRef.current
+      const v = viewRef.current
+      const panel = commentsOpen ? Math.min(PANEL_W, w - 24) + 24 : 0
+      const popover = w - panel > POP_W * 2 + 120 ? POP_W + 24 : 0
+      const room = { w: Math.max(240, w - panel - popover), h }
+      const right = (b.x + b.w) * v.z + v.x
+      const top = b.y * v.z + v.y
+      if (right >= 40 && right <= w - panel - 8 && top >= 56 && top <= h - 160) return
+      flight.fly(fitBoxes([b], room.w, room.h, 72, Math.max(v.z, 1)))
+    },
+    [boundsOf, store, commentsOpen, flight]
+  )
+
+  /** A new thread on `id`, composer focused. */
+  const startComment = useCallback(
+    (id: string) => {
+      if (readOnly || !store.live(id)) return
+      setMenu(null)
+      setEditing(null)
+      showForComment(id)
+      setCommentFocus({ kind: 'new', anchor: id })
+    },
+    [readOnly, store, showForComment]
+  )
+
+  /** Open a thread (from the panel, a search hit, a pin): its shape flown into view first. */
+  const openThread = useCallback(
+    (threadId: string, at?: Point) => {
+      const t = store.comments.get(threadId)
+      if (!t) return
+      setMenu(null)
+      if (store.live(t.anchor)) {
+        showForComment(t.anchor)
+        select([t.anchor])
+      }
+      setCommentFocus({ kind: 'thread', id: threadId, ...(at ? { at } : {}) })
+    },
+    [store, showForComment, select]
+  )
+
+  const closeComment = useCallback(() => {
+    setCommentFocus(null)
+    viewport.current?.focus({ preventScroll: true })
+  }, [])
+
+  const pins = useMemo(
+    () =>
+      pinPlaces({
+        threads,
+        boundsOf,
+        toScreen: p => ({ x: p.x * view.z + view.x, y: p.y * view.z + view.y }),
+        size,
+        focus: commentFocus,
+      }),
+    [threads, boundsOf, view, size, commentFocus]
+  )
+  const focusAnchor = commentFocus?.kind === 'thread' ? (threads.find(t => t.id === commentFocus.id)?.anchor ?? null) : (commentFocus?.anchor ?? null)
+  const focusPin = focusAnchor ? pins.find(p => p.anchor === focusAnchor) : undefined
+  const openCount = useMemo(() => threads.filter(t => !t.resolved && isShown(t)).length, [threads])
+
+  // ⌥⌘M comments on the selection — or on the shape being typed in — from anywhere but a comment.
+  const commentKey = useRef<(e: KeyboardEvent) => void>(() => {})
+  useEffect(() => {
+    commentKey.current = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || !e.altKey || e.shiftKey || (e.code !== 'KeyM' && e.key.toLowerCase() !== 'm')) return
+      const t = e.target as Element | null
+      if (t?.closest?.('[data-testid="comment-popover"], [data-testid="comments-panel"], [role="dialog"]') || help) return
+      // A field that is not the shape being edited (search, a link's address) keeps its keys.
+      if (isTextField(t) && !editing) return
+      const id = editing?.id ?? (selected.length === 1 ? selected[0]!.id : null)
+      if (!id || readOnly) return
+      e.preventDefault()
+      e.stopPropagation()
+      if (editing) endEdit(editing.id)
+      startComment(id)
+    }
+  })
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => commentKey.current(e)
+    window.addEventListener('keydown', down, true)
+    return () => window.removeEventListener('keydown', down, true)
+  }, [])
+
+  // A thread asked for by a search hit (`comment:<id>`).
+  const revealComment = (ref: string) => {
+    if (!ref.startsWith(COMMENT_REF)) return false
+    openThread(ref.slice(COMMENT_REF.length))
+    return true
+  }
+
+  const menuItems = (id: string): (MenuItem | 'divider')[] => [
+    { label: 'Comment', keys: COMMENT_KEYS, run: () => startComment(id) },
+    'divider',
+    { label: 'Duplicate', keys: `${MOD}D`, run: duplicate },
+    { label: 'Bring to front', keys: `${MOD}]`, run: () => restack(true) },
+    { label: 'Send to back', keys: `${MOD}[`, run: () => restack(false) },
+    'divider',
+    { label: 'Delete', keys: '⌫', danger: true, run: removeSelected },
+  ]
+
+  const onContextMenu = (e: ReactMouseEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const target = e.target as Element
+    if (readOnly || isTextField(target) || target.closest('[data-testid="comment-popover"], [data-testid="comments-panel"], [data-testid="board-menu"]')) return
+    const id = target.closest('[data-id]')?.getAttribute('data-id') ?? null
+    if (!id || !live.byId.has(id)) {
+      setMenu(null)
+      return
+    }
+    if (!selection.has(id)) select([id])
+    setCommentFocus(null)
+    setMenu({ at: localPoint(e), id })
   }
 
   // ---- what to draw -----------------------------------------------------------------
@@ -1617,6 +1774,8 @@ export function Board({ session }: { session: Session }) {
   const toScreen = (p: Point) => ({ x: view.x + p.x * view.z, y: view.y + p.y * view.z })
   const barAt = (() => {
     if (selected.length === 0 || drag || marquee || draft || readOnly || size.w === 0) return null
+    // A comment open on the board has the stage; the bar comes back when it closes.
+    if (commentFocus || menu) return null
     if (editId && single?.type === 'sticky' && !isChecklist(single)) return null
     const u = unionBox(selected.map(s => boundsOf(s.id)).filter((b): b is Box => !!b))
     if (!u) return null
@@ -1705,7 +1864,7 @@ export function Board({ session }: { session: Session }) {
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onPointerLeave={onPointerLeave}
-        onContextMenu={e => e.preventDefault()}
+        onContextMenu={onContextMenu}
         onDragOver={onDragOver}
         onDragLeave={() => setDropping(false)}
         onDrop={onDrop}
@@ -1790,6 +1949,17 @@ export function Board({ session }: { session: Session }) {
           <AgentCursors agents={agents} zoom={view.z} />
         </div>
         <LaserCanvas trails={trails} view={view} />
+        <CommentPins
+          pins={pins}
+          focus={commentFocus}
+          onOpen={pin => {
+            setMenu(null)
+            // The pin of what is open closes it, as in Figma.
+            if (commentFocus && focusAnchor === pin.anchor) closeComment()
+            else if (pin.threads.length === 1) setCommentFocus({ kind: 'thread', id: pin.threads[0]!.id })
+            else if (pin.threads.length > 1) setCommentFocus({ kind: 'shape', anchor: pin.anchor })
+          }}
+        />
 
         {shapes.size === 0 && !editId && <EmptyHint readOnly={readOnly} />}
         {hintAt && <EditHint at={hintAt} above={hintAt.above} />}
@@ -1810,6 +1980,7 @@ export function Board({ session }: { session: Session }) {
             onRemoveImage={() => single && store.update(single.id, { image: null } as unknown as Partial<Shape>)}
             onOpen={() => single?.url && openUrl(single.url)}
             onLive={single?.type === 'link' && frameUrl(single.url) ? on => setLive(single.id, on) : undefined}
+            onComment={single && !readOnly ? () => startComment(single.id) : undefined}
           />
         )}
 
@@ -1817,6 +1988,14 @@ export function Board({ session }: { session: Session }) {
         <TopRight
           onSearch={() => (search.open ? search.close() : search.show())}
           searchOpen={search.open}
+          comments={{
+            open: commentsOpen,
+            count: openCount,
+            onToggle: () => {
+              setCommentsOpen(o => !o)
+              setMenu(null)
+            },
+          }}
           onHelp={() => setHelp(true)}
           share={share}
           peers={peers}
@@ -1834,6 +2013,41 @@ export function Board({ session }: { session: Session }) {
           onShare={() => postToHost({ type: 'share' })}
         />
         <SearchBox search={search} onReveal={revealHit} />
+        {commentsOpen && (
+          <CommentsPanel
+            threads={threads}
+            shapes={shapes}
+            focus={commentFocus}
+            readOnly={readOnly}
+            onPick={(t, at) => openThread(t.id, at)}
+            onClose={() => {
+              setCommentsOpen(false)
+              viewport.current?.focus({ preventScroll: true })
+            }}
+          />
+        )}
+        {commentFocus && (
+          <CommentPopover
+            key={commentFocus.kind === 'thread' ? commentFocus.id : `${commentFocus.kind}:${commentFocus.anchor}`}
+            focus={commentFocus}
+            threads={threads}
+            shapes={shapes}
+            store={store.comments}
+            me={author}
+            readOnly={readOnly}
+            pin={focusPin ? { x: focusPin.x, y: focusPin.y, w: PIN_H, h: PIN_H } : null}
+            area={{ w: size.w, h: size.h, right: commentRight }}
+            onFocus={setCommentFocus}
+            onClose={closeComment}
+            onResolved={id =>
+              toast('Comment resolved', 'info', 4000, { label: 'Undo', run: () => store.comments.setResolved(id, false, author) })
+            }
+            onDeleted={(thread, message, text) =>
+              toast('Comment deleted', 'info', 8000, { label: 'Undo', run: () => store.comments.restore(thread, message, text, author) })
+            }
+          />
+        )}
+        {menu && <BoardMenu at={menu.at} area={size} items={menuItems(menu.id)} onClose={() => setMenu(null)} />}
 
         <Toolbar
           tool={tool}

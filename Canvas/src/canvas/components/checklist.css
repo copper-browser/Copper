@@ -154,6 +154,153 @@
   opacity: 1;
 }
 
+/* A row's comment toggle: on hover or keyboard focus (always while open), at
+   the label's end, over it like the remove button — so showing it moves nothing. */
+.cl-note-toggle {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  translate: 0 -50%;
+  opacity: 0;
+  background: var(--surface);
+  transition: opacity 0.12s ease;
+}
+.cl-note-toggle-shift {
+  right: 26px;
+}
+.cl-row:hover .cl-note-toggle,
+.cl-note-toggle:focus-visible,
+.cl-note-toggle[aria-expanded='true'] {
+  opacity: 1;
+}
+.cl-note-toggle[aria-expanded='true'] {
+  color: var(--cl-accent);
+}
+.cl-note-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+/* The comment under its row, across the whole row. */
+.cl-note {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding-right: 6px;
+}
+.cl-single .cl-note {
+  padding-left: 28px;
+}
+/* Collapsed: one muted line, cut with an ellipsis (never a scrollbar). */
+.cl-note-peek {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  margin: -4px 0 0;
+  padding: 0 0 6px;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+.cl-note-peek:hover {
+  color: var(--ink-2);
+}
+.cl-note-peek:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+.cl-note-icon {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  opacity: 0.8;
+}
+.cl-note-peek-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* Open: the words wrap; past eight lines the field scrolls in itself. */
+.cl-note-edit {
+  padding: 0 0 8px;
+}
+.cl-note-field {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: calc(1.45em * 2 + 14px);
+  max-height: calc(1.45em * 8 + 14px);
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: none;
+  resize: none;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.dark .cl-note-field {
+  color-scheme: dark;
+}
+.cl-note-field::placeholder {
+  color: var(--ink-4);
+}
+.cl-note-field:focus {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.cl-note-meta {
+  margin-top: 4px;
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--ink-4);
+}
+
+/* While a comment is open the card keeps its height: the rows scroll inside it. */
+.cl-locked {
+  display: flex;
+  flex-direction: column;
+}
+.cl-locked > div {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+.cl-locked .cl-band {
+  flex: none;
+}
+.cl-locked .cl-rows {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 0 0 11px 11px;
+  /* No bar of its own (it would push the columns over as the comment opens):
+     the cut-off row at the bottom says there is more, as an overlay bar does. */
+  scrollbar-width: none;
+}
+.cl-locked .cl-rows::-webkit-scrollbar {
+  display: none;
+}
+
 .cl-cell {
   position: relative;
   display: flex;

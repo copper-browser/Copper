@@ -196,3 +196,81 @@ describe('legacy checklist shapes (type "checklist")', () => {
     expect(store.shapes.get('old')!.get(pickKey('r0'))).toMatchObject({ col: 'Yes' })
   })
 })
+
+describe('checklist ops: row comments (`notes`)', () => {
+  it('adds a card with comments under their rows, attributed, and reads them back', () => {
+    const r = run([
+      {
+        op: 'add',
+        shape: {
+          type: 'checklist',
+          id: 'land',
+          x: 0,
+          y: 0,
+          title: 'Where we land',
+          columns: ['Yes', 'Later', 'Talk', 'No'],
+          rows: ['1. Source of truth', '2. Scope'],
+          picks: { '1. Source of truth': 'No' },
+          notes: { '1. source of truth': "We already have InvenTree; pull, don't own.\nSecond line.", '2. Scope': '' },
+        },
+      },
+    ])
+    expect(r.errors).toEqual([])
+    expect(text('land')).toBe("### Where we land\n- [x] 1. Source of truth · No\n  > We already have InvenTree; pull, don't own.\n  > Second line.\n- [ ] 2. Scope")
+    expect(store.get('land')!.h).toBe(49 + 28 + 34 * 2 + 22 + 14)
+    expect(store.shapes.get('land')!.get('noteBy:1. source of truth')).toMatchObject({ by: 'Scout', byId: 'agent:s' })
+    expect(read('land').rows).toEqual([
+      { label: '1. Source of truth', pick: 'No', by: 'Scout', at: expect.any(Number), note: "We already have InvenTree; pull, don't own.\nSecond line.", noteBy: 'Scout', noteAt: expect.any(Number) },
+      { label: '2. Scope', pick: null },
+    ])
+  })
+
+  it('updates comments by label (null clears), keeps them through a rows rewrite, and fails cleanly', () => {
+    run([{ op: 'add', shape: { type: 'checklist', id: 'c', x: 0, y: 0, title: 'T', rows: ['Ann', 'Bob', 'Cy'], notes: { Bob: 'b' } } }])
+    const h0 = store.get('c')!.h
+    expect(run([{ op: 'update', id: 'c', patch: { notes: { Ann: 'a\nmore', Bob: null } } }]).errors).toEqual([])
+    expect(text('c')).toBe('### T\n- [ ] Ann\n  > a\n  > more\n- [ ] Bob\n- [ ] Cy')
+    expect(store.shapes.get('c')!.has('noteBy:bob')).toBe(false)
+    expect(store.get('c')!.h).toBe(h0)
+    run([{ op: 'update', id: 'c', patch: { notes: { Cy: 'c' } } }])
+    expect(store.get('c')!.h).toBe(h0 + 22)
+    // Rows replaced: each keeps its comment by label; a row that goes takes its comment.
+    run([{ op: 'update', id: 'c', patch: { rows: ['Cy', 'Dee', 'ann'], picks: { Dee: 'No' } } }])
+    expect(text('c')).toBe('### T\n- [ ] Cy\n  > c\n- [x] Dee · No\n- [ ] ann\n  > a\n  > more')
+    expect(store.shapes.get('c')!.has('noteBy:cy')).toBe(true)
+    // A bad comment fails the whole update, writing nothing.
+    const before = text('c')
+    const bad = run([
+      { op: 'update', id: 'c', patch: { title: 'New', notes: { Zed: 'x' } } },
+      { op: 'update', id: 'c', patch: { notes: { Cy: 4 } } },
+      { op: 'update', id: 'c', patch: { notes: 'Cy' } },
+    ])
+    expect(bad.errors.map(e => e.error)).toEqual(['`notes`: no row "Zed"', '`notes` values must be text or null', '`notes` must be an object like {"Ann": "Back at 6"}'])
+    expect(text('c')).toBe(before)
+    // A plain note takes no comments; `text` and `notes` on an add is one too many.
+    run([{ op: 'add', shape: { type: 'sticky', id: 'p', text: 'hi' } }])
+    const plain = run([
+      { op: 'update', id: 'p', patch: { notes: { a: 'x' } } },
+      { op: 'add', shape: { type: 'sticky', view: 'checklist', text: '- [ ] a', notes: { a: 'x' } } },
+    ])
+    expect(plain.errors.map(e => e.error)).toEqual([expect.stringMatching(/unknown prop `notes` for sticky/), 'give the note `text`, or `title`/`rows`/`picks`/`notes`, not both'])
+  })
+
+  it('clips a long comment in a read unless full', () => {
+    run([{ op: 'add', shape: { type: 'checklist', id: 'c', rows: ['Ann'], notes: { Ann: 'x'.repeat(900) } } }])
+    expect(read('c').rows![0]!.note).toHaveLength(501)
+    expect(readAll({ full: true }).find(s => s.id === 'c')!.rows![0]!.note).toHaveLength(900)
+  })
+
+  it('a legacy checklist takes comments too, under note:<rowId>', () => {
+    store.create({ type: 'checklist', id: 'old', title: 'Old', columns: ['Yes', 'No'], rows: [{ id: 'a', label: 'Ann' }, { id: 'b', label: 'Bob' }] })
+    expect(run([{ op: 'update', id: 'old', patch: { notes: { Ann: 'hi', b: 'yo' } } }]).errors).toEqual([])
+    expect(store.shapes.get('old')!.get('note:a')).toMatchObject({ text: 'hi', by: 'Scout' })
+    expect(read('old').rows).toMatchObject([
+      { id: 'a', label: 'Ann', pick: null, note: 'hi', noteBy: 'Scout' },
+      { id: 'b', label: 'Bob', pick: null, note: 'yo' },
+    ])
+    run([{ op: 'update', id: 'old', patch: { rows: [{ id: 'a', label: 'Ann' }], notes: { Ann: null } } }])
+    expect(store.shapes.get('old')!.has('note:a') || store.shapes.get('old')!.has('note:b')).toBe(false)
+  })
+})

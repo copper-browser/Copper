@@ -12,13 +12,17 @@
 import { arrowPath } from './arrows'
 import { MAX_ZOOM, MIN_ZOOM, type Box, type Point, type Segment, type View } from './geometry'
 import { parseMarkdownLite, type Inline } from './markdown-lite'
+import { isShown, type CommentThread } from './comments'
 import type { Shape } from './types'
 
-export type SearchKind = 'frame' | 'sticky' | 'text' | 'arrow' | 'link' | 'checklist'
+export type SearchKind = 'frame' | 'sticky' | 'text' | 'arrow' | 'link' | 'checklist' | 'comment'
+
+/** A comment thread's search ref: `comment:<threadId>` (never a shape id). */
+export const COMMENT_REF = 'comment:'
 
 /** One searchable thing on the board. */
 export interface SearchItem {
-  /** The shape id. */
+  /** The shape id, or `comment:<threadId>` for a comment thread. */
   ref: string
   kind: SearchKind
   /** Frame title, link title, arrow label or note text; markdown is fine. */
@@ -326,6 +330,7 @@ const KIND_ORDER: Record<SearchKind, number> = {
   checklist: 2,
   text: 3,
   arrow: 4,
+  comment: 5,
 }
 
 /** Best first: score, then frames before notes, then top to bottom, left to right. */
@@ -414,8 +419,9 @@ export function boardSearchItems(shapes: Iterable<Shape>): SearchItem[] {
     if (s.type === 'sticky' || s.type === 'text') text = s.text
     else if (s.type === 'frame' || s.type === 'link') text = s.title
     else if (s.type === 'arrow') text = s.label ?? ''
-    // A checklist answers to its title and every row's label.
-    else if (s.type === 'checklist') text = [s.title, ...(s.rows ?? []).map(r => r.label)].filter(t => t.trim()).join('\n')
+    // A checklist answers to its title, every row's label and every row's comment.
+    else if (s.type === 'checklist')
+      text = [s.title, ...(s.rows ?? []).flatMap(r => [r.label, s.notes?.[r.id]?.text ?? ''])].filter(t => t.trim()).join('\n')
     if (s.type === 'image') continue
     if (!text.trim() && !(s.type === 'link' && s.url)) continue
     if (s.type === 'arrow' && !arrowPath(s, id => boxes.get(id) ?? null)) continue
@@ -424,6 +430,27 @@ export function boardSearchItems(shapes: Iterable<Shape>): SearchItem[] {
     if (s.type === 'link' && s.url) item.url = s.url
     if (s.type !== 'arrow') item.at = { x: s.x, y: s.y }
     if (s.by) item.by = s.by
+    out.push(item)
+  }
+  return out
+}
+
+/**
+ * Comment threads, found by what was said in them (deleted messages left
+ * out), ranked after shapes and placed where their shape is.
+ */
+export function commentSearchItems(threads: Iterable<CommentThread>, shapes: ReadonlyMap<string, Shape>): SearchItem[] {
+  const out: SearchItem[] = []
+  for (const t of threads) {
+    if (!isShown(t)) continue
+    const text = t.messages
+      .filter(m => !m.deleted)
+      .map(m => m.text)
+      .join('\n')
+    if (!text.trim()) continue
+    const item: SearchItem = { ref: `${COMMENT_REF}${t.id}`, kind: 'comment', text, by: t.by }
+    const s = shapes.get(t.anchor)
+    if (s && s.type !== 'arrow') item.at = { x: s.x, y: s.y }
     out.push(item)
   }
   return out

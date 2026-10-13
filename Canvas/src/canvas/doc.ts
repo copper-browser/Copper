@@ -1,10 +1,12 @@
 /**
  * One canvas document: the Y.Doc, its maps, tolerant reads, the mutations the
- * board and the ops share, and an undo manager scoped to `shapes`.
+ * board and the ops share, and an undo manager scoped to `shapes` (comment
+ * threads, `comments.ts`, live beside them and are never undone).
  */
 import * as Y from 'yjs'
-import { readColumns, readNoteChecklist, readPicks, readRows } from './checklist'
+import { readColumns, readNoteChecklist, readNotes, readPicks, readRows } from './checklist'
 import { VIEW_CHECKLIST } from './checklist-text'
+import { CommentStore } from './comments'
 import { SIDES, type Point, type Side } from './geometry'
 import { textSplice } from './text-diff'
 import {
@@ -44,8 +46,8 @@ export type ShapeProps = Partial<Omit<Shape, 'id' | 'type'>>
 export type ShapeInput = { type: ShapeType; id?: string } & ShapeProps
 
 const TEXT_KEYS = new Set(['text'])
-/** Read-side only: a checklist's picks live under their own `pick:<rowId>` keys (`checklist.ts`). */
-const DERIVED_KEYS = new Set(['picks'])
+/** Read-side only: a checklist's picks and comments live under their own keys, or in its text (`checklist.ts`). */
+const DERIVED_KEYS = new Set(['picks', 'notes'])
 /** A note in the checklist view reads its title and rows from its text: never stored as props. */
 const NOTE_DERIVED = new Set(['title', 'rows'])
 const ROUNDED = new Set(['x', 'y', 'w', 'h'])
@@ -147,6 +149,7 @@ export function readShape(id: string, m: unknown): Shape | null {
     shape.columns = list.columns
     shape.rows = list.rows
     shape.picks = list.picks
+    shape.notes = list.notes
   }
   if (type === 'checklist') {
     const columns = readColumns(m.get('columns'))
@@ -154,6 +157,7 @@ export function readShape(id: string, m: unknown): Shape | null {
     shape.columns = columns
     shape.rows = rows
     shape.picks = readPicks(m, rows, columns)
+    shape.notes = readNotes(m, rows)
   }
   return shape
 }
@@ -184,6 +188,8 @@ export class CanvasStore {
   readonly shapes: Y.Map<Y.Map<unknown>>
   readonly agents: Y.Map<unknown>
   readonly meta: Y.Map<unknown>
+  /** Comment threads on shapes: their own top-level map, outside the undo manager's scope. */
+  readonly comments: CommentStore
   readonly undo: Y.UndoManager
   private snapshot = new Map<string, Shape>()
   private listeners = new Set<Listener>()
@@ -194,6 +200,8 @@ export class CanvasStore {
     this.shapes = doc.getMap<Y.Map<unknown>>('shapes')
     this.agents = doc.getMap<unknown>('agents')
     this.meta = doc.getMap<unknown>('meta')
+    this.comments = new CommentStore(doc)
+    // `shapes` only: ⌘Z never takes back a comment (nor a comment a shape edit).
     this.undo = new Y.UndoManager([this.shapes], {
       captureTimeout: 500,
       trackedOrigins: new Set([null, LOCAL, AGENT]),
@@ -223,6 +231,7 @@ export class CanvasStore {
 
   destroy() {
     this.shapes.unobserveDeep(this.observer)
+    this.comments.destroy()
     this.undo.destroy()
     this.listeners.clear()
   }

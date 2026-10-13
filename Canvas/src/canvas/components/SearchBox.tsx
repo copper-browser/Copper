@@ -1,6 +1,6 @@
 /** The board's search box (screen space, top centre). State lives in `useBoardSearch`. */
 import { Fragment, useEffect, useId, useRef, type KeyboardEvent } from 'react'
-import { ArrowUpRight, ChevronDown, ChevronUp, Frame, Link2, ListChecks, Search, StickyNote, Type, X } from 'lucide-react'
+import { ArrowUpRight, ChevronDown, ChevronUp, Frame, Link2, ListChecks, MessageSquare, Search, StickyNote, Type, X } from 'lucide-react'
 import type { Highlighted, SearchKind, SearchResult } from '../search'
 import type { BoardSearch } from '../use-search'
 import { IconButton, Panel, cn } from './ui'
@@ -12,6 +12,7 @@ const KIND_ICON: Record<SearchKind, typeof StickyNote> = {
   arrow: ArrowUpRight,
   link: Link2,
   checklist: ListChecks,
+  comment: MessageSquare,
 }
 const KIND_LABEL: Record<SearchKind, string> = {
   frame: 'Frame',
@@ -20,6 +21,7 @@ const KIND_LABEL: Record<SearchKind, string> = {
   arrow: 'Arrow label',
   link: 'Link',
   checklist: 'Checklist',
+  comment: 'Comment',
 }
 
 const MAX_ROWS = 100
@@ -105,7 +107,7 @@ export function SearchBox({ search, onReveal }: { search: BoardSearch; onReveal:
           <input
             ref={inputRef}
             role="combobox"
-            aria-label="Search notes, frames, links and arrows"
+            aria-label="Search notes, frames, links, arrows and comments"
             aria-expanded={hasQuery && n > 0}
             aria-controls={listId}
             aria-activedescendant={active >= 0 ? optionId(active) : undefined}

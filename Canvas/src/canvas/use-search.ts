@@ -4,11 +4,14 @@
  * find never opens over the board).
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
-import { boardSearchItems, indexSearchItems, searchIndex, snippetChars, stepHit, type SearchResult } from './search'
+import type { CommentThread } from './comments'
+import { boardSearchItems, commentSearchItems, indexSearchItems, searchIndex, snippetChars, stepHit, type SearchResult } from './search'
 import type { Shape } from './types'
 
 const isMac = () =>
   typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent)
+
+const NO_THREADS: readonly CommentThread[] = []
 
 export interface BoardSearch {
   open: boolean
@@ -33,9 +36,12 @@ export interface BoardSearch {
 
 export function useBoardSearch({
   shapes,
+  threads = NO_THREADS,
   viewport,
 }: {
   shapes: ReadonlyMap<string, Shape>
+  /** Comment threads: found by what was said in them. */
+  threads?: readonly CommentThread[]
   viewport: RefObject<HTMLElement | null>
 }): BoardSearch {
   const [open, setOpen] = useState(false)
@@ -45,7 +51,10 @@ export function useBoardSearch({
   const inputRef = useRef<HTMLInputElement>(null)
   const boxRef = useRef<HTMLDivElement>(null)
 
-  const items = useMemo(() => (open ? boardSearchItems(shapes.values()) : []), [open, shapes])
+  const items = useMemo(
+    () => (open ? [...boardSearchItems(shapes.values()), ...commentSearchItems(threads, shapes)] : []),
+    [open, shapes, threads]
+  )
   const index = useMemo(() => indexSearchItems(items), [items])
   // Snippets are cut to what a row shows, centred on the match, so a narrow
   // box still shows the matched word.

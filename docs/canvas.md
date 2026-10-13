@@ -132,6 +132,16 @@ row left empty is dropped. While the card is hovered or selected, *Add row* and 
 under it; a selected card shows × on a row to remove it. The height follows the rows (only the
 side edges resize).
 
+**Row comments.** Any row can carry a comment — why a pick, a caveat, a link — as long as it needs
+to be. A row without one shows a comment button at the end of its label only on hover or keyboard
+focus; a row with one shows a single muted line of it under the row, cut with an ellipsis, so a
+long comment never takes over the card. A click on that line or the button opens it under the row:
+a field that grows to eight lines and then scrolls in itself, with who last wrote it and when. The
+same button, Escape or a click elsewhere closes it. Open or closed is each viewer's own (never
+stored or shared). While one is open the card keeps the height it had and its rows scroll inside
+it, so the stored size never changes and nothing spills past the card; it settles to its rows when
+the comment closes. Everyone sees the words as they are typed.
+
 **Stored as a note**, so every Copper shows it: a `sticky` with `view: "checklist"` whose text is
 the list, in the markdown any note draws as task boxes —
 
@@ -140,6 +150,8 @@ the list, in the markdown any note draws as task boxes —
 - [ ] Ann
 - [x] Ada Lovelace
 - [x] Bob · No
+  > Back from Lisbon on the 4th;
+  > can do the week after.
 ```
 
 The first `#`/`##`/`###` heading is the title and each `- [ ]` / `- [x]` line a row. `columns` is a
@@ -149,21 +161,100 @@ only its own line (box and suffix) through the note's `Y.Text`, so ticks on diff
 old and new clients at the same moment all stick. Who picked and when are kept beside it
 (`who:<label>` on the shape) and shown only while they agree with the text. Copper
 1.0.20261006.28 and older draw the same shape as a note with clickable task boxes; their ticks
-show on the card and the card's on the note. Model and rules: `Canvas/src/canvas/checklist.ts`
+show on the card and the card's on the note. A row's comment is the indented `>` lines right under
+its task line (a blank comment line is a bare `  >`; no comment, no lines): it moves with its row
+when rows are picked, renamed or reordered, goes when the row is removed, is never read as a row or
+a title, and an older Copper shows it as a quote under the item. Writing it changes only the
+characters of its own lines, so comments on different rows — or different lines of one — from two
+Coppers at once both stick; a first comment goes in after the row's line break, so a pick or a
+rename of the same row at the same moment stays on the row's line. Who last wrote it and when sit
+beside it (`noteBy:<label>`) and follow a rename. Model and rules: `Canvas/src/canvas/checklist.ts`
 and `checklist-text.ts`.
 
-Agents add one with `{type:'checklist', title, columns?, rows:['Ann', …], picks?:{'Ann':'Yes'}}`
-and update `picks` by row label (`null` clears), `rows`, `columns` and `title` (each an edit of the
+Agents add one with `{type:'checklist', title, columns?, rows:['Ann', …], picks?:{'Ann':'Yes'},
+notes?:{'Ann':'Back at 6'}}` and update `picks` and `notes` by row label (`null` clears), `rows`
+(each kept row keeps its pick and comment by label), `columns` and `title` (each an edit of the
 text). `{op:'update', id, patch:{view:'checklist', columns?:[…]}}` turns a note that already holds
 a heading and a task list into a card in place — the text, and so its ticks, untouched;
 `view: null` makes it a plain note again. `canvas_read` gives `view`, `title`, `columns`,
-`rows:[{label, pick, by?, at?}]`, `tally` and the `text`. `./bench --world W canvas checklist
+`rows:[{label, pick, by?, at?, note?, noteBy?, noteAt?}]` (`note` only for a row with a comment, cut
+at 500 characters unless `full`), `tally` and the `text`. `./bench --world W canvas checklist
 [SHAPE]` reads them and `canvas check SHAPE COL ROW…` clicks a box with real mouse input
 (`CanvasChecklistBench.swift`).
 
 The first cut stored a checklist as its own `type: "checklist"` (picks under `pick:<rowId>`);
 copper-cloud 0.6.0's REST `/ops` still makes those, and this page still draws, clicks and
-updates them. Older Coppers don't draw that type at all.
+updates them; their row comments sit under `note:<rowId>` (`{text, by, byId, at}`), and a row that
+goes takes its comment. Older Coppers don't draw that type at all.
+
+## Comments on shapes
+
+*Page: `Canvas/src/canvas/comments.ts` (model and writes), `components/Comments.tsx` (pins, thread
+popover, Comments panel, right-click menu), wired in `components/Board.tsx`.*
+
+Figma- / Google Docs-style threads on any shape — above all a frame, which on a deck board is a
+whole slide or section. **Starting one:** select one shape and choose **Comment** in the selection
+bar, right-click it and choose **Comment**, or press **⌥⌘M** (Google Docs' *Insert comment*; `C` is
+the chat here, so Figma's `C` was taken). ⌥⌘M also works while typing in the shape: the edit ends
+and the comment starts. A new thread opens a small popover beside the shape's top-right corner with
+the composer focused; Return posts (Shift+Return is a new line), Escape or Cancel closes it, and an
+unsent draft is kept for that shape until the page reloads. The view flies to the shape first when
+it is off screen or under the panel.
+
+**On the board.** Each shape with open threads has one quiet pin just off its top-right corner —
+the author's initials for one thread, a comment icon and a count for several — at the same size at
+every zoom, moving with the shape (also while it is dragged). A click opens the thread (or, for
+several, the list of that shape's threads, each opening its own). Resolved threads have no pin
+unless open.
+
+**A thread** is its messages in order — avatar, name, how long ago (the full time on hover),
+*edited* when it was — and a reply field at the bottom that grows to about seven lines and then
+scrolls in itself. Anyone who can edit can reply; authors can edit (in place, Return saves, Escape
+cancels) and delete their own messages, from buttons that show on hover or keyboard focus. A
+deleted first message leaves *Comment deleted* above the replies; a thread with every message
+deleted stops showing. **Resolve** (✓ in the header) hides its pin and offers *Undo* for a moment;
+**Reopen** (↺) or any new reply brings it back. Words wrap anywhere, a link opens in a tab, and
+the popover keeps inside the window: beside the pin when there is room, else on its other side, at
+most 560 px tall with the messages scrolling.
+
+**Comments panel.** The speech-bubble button beside chat and search shows it on the board's right:
+open threads first (newest activity first), then a collapsed *Resolved* group. Each row says which
+shape it is on (a frame's title, a note's first line, a checklist's title…), who started it, the
+first message (two lines), the reply count and the last activity. A click flies to the shape,
+selects it and opens the thread beside it. A thread whose shape was deleted stays listed as *on a
+deleted shape* with the name the shape had, opens beside the panel, and comes back to the shape if
+an undo restores it. **Search** (⌘F) finds comments by their words too; picking one opens its thread.
+
+**Stored apart from the shapes.** A top-level `Y.Map` named `comments` in the canvas document:
+
+```
+comments: Y.Map<threadId, Y.Map{
+  id, anchor (shape id), anchorName,             // the shape's name when last written, for when it is gone
+  by, byId, at,                                  // who started it (the board's identity, as `by`/`byId` on shapes and chat), ms
+  resolved, resolvedBy?, resolvedById?, resolvedAt?,
+  messages: Y.Array<Y.Map{id, by, byId, at, text, editedAt?, deleted?}>
+}>
+```
+
+Every write touches only its own keys, so two Coppers merge: two replies at once are two pushes
+(both land, in the same order everywhere); resolving sets three keys on the thread while a reply
+pushes onto its list (both land); an edit sets `text`/`editedAt` on its message; a delete leaves a
+tombstone (`deleted: true`, text cleared), so a reply racing it is never lost. A reply to a resolved
+thread reopens it (as Docs and Figma do). Shape writes never touch the map and comment writes never
+touch a shape. The board's undo manager is scoped to `shapes`, so ⌘Z never takes back a comment and
+a comment never pushes a shape edit off the undo stack (origin `comment`; agents' ops use `agent`
+but stay out of undo the same way). The map goes out with every other update — `updates.log`,
+`snapshot.bin` (`exportState` is the whole document), the room — and older Coppers carry it
+unread. Copying, duplicating or pasting a shape doesn't copy its threads (a copy is a new shape);
+deleting a shape keeps them. Messages are plain text, at most 10,000 characters. @mentions are not
+part of comments (the chat's mentions and notifications are chat-only).
+
+**Agents.** `canvas_read` carries `comments:[{id, anchor, anchorDeleted?, resolved, resolvedBy?,
+messages:[{id, by, at, text, edited?}]}]` (deleted messages left out, text cut at 500 unless
+`full`; with `ids`/`inView` only threads on the shapes returned). `canvas_apply` takes
+`{op:'comment', on: shapeId, text, id?}` (a new thread; `ids[i]` is its id), `{op:'reply', thread,
+text}` and `{op:'resolve', thread, resolved?: true|false}`, attributed to the caller like any write.
+copper-cloud's REST `/ops` doesn't know these ops; its rooms persist and relay the map untouched.
 
 ## Live web frames
 
@@ -454,7 +545,7 @@ peer are hidden on expiry too. Human collaborators and the shapes' author attrib
 |---|---|---|
 | `canvas_list` | — | `{canvases:[{id,name,kind,open,live,collaborators,url,updatedAt,role?,members?}], cloud}` |
 | `canvas_open` | `id` (or name) \| `name`, `foreground?` | the canvas's summary, once its page is up (background by default) |
-| `canvas_read` | `id?`, `full?` | `{canvas:{id,name,kind}, viewport, shapes:[{id,type,x,y,w,h,color,text\|title\|label\|url,by}], agents, selection}` |
+| `canvas_read` | `id?`, `full?` | `{canvas:{id,name,kind}, viewport, shapes:[{id,type,x,y,w,h,color,text\|title\|label\|url,by}], comments:[{id,anchor,resolved,messages}], agents, selection}` |
 | `canvas_apply` | `id?`, `ops` (required), `as?` | `{applied, ids, errors}` |
 | `canvas_select` | `id?`, `shapeIds` | — |
 | `canvas_focus` | `id?`, `shapeIds` | — (zooms the view to them) |
@@ -472,7 +563,8 @@ which rides as `_meta.summary` and is what the Driver pane's row says after the 
 the page.
 Ops: `add {shape:{type, x?, y?, w?, h?, color?, …}}` (no x/y → free space near the view),
 `update {id, patch}`, `move {id, dx, dy}`, `resize {id, w, h}`, `delete {id}`, `connect {from, to,
-label?}`, `clear {confirm:true}`. Colours: yellow, pink, blue, green, purple, gray, white, `#hex`.
+label?}`, `comment {on, text}`, `reply {thread, text}`, `resolve {thread, resolved?}` (comment threads,
+[Comments on shapes](#comments-on-shapes)), `clear {confirm:true}`. Colours: yellow, pink, blue, green, purple, gray, white, `#hex`.
 
 ```sh
 copper tools | grep canvas_

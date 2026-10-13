@@ -22,6 +22,7 @@ import {
   ListChecks,
   Lock,
   Maximize,
+  MessageSquarePlus,
   Minus,
   MonitorPlay,
   MousePointer2,
@@ -47,6 +48,7 @@ import { ChatButton } from '../chat/ChatButton'
 import { chat } from '../chat'
 import type { PeerView } from './Overlays'
 import { AgentDot } from './Overlays'
+import { COMMENT_KEYS, CommentsButton } from './Comments'
 import { Divider, EDIT_HINT_ID, IconButton, Kbd, MOD, Panel, Tip, cn } from './ui'
 
 export type Tool = 'select' | 'hand' | 'sticky' | 'text' | 'frame' | 'arrow' | 'image' | 'link' | 'checklist' | 'laser'
@@ -550,6 +552,7 @@ export function ShareButton({ share, onShare }: { share: ShareButtonState | null
 export function TopRight({
   onSearch,
   searchOpen,
+  comments,
   onHelp,
   share,
   peers,
@@ -560,6 +563,8 @@ export function TopRight({
 }: {
   onSearch: () => void
   searchOpen: boolean
+  /** The Comments panel: shown or not, how many threads are open, the toggle. */
+  comments: { open: boolean; count: number; onToggle: () => void }
   onHelp: () => void
   share: ShareButtonState | null
   peers: readonly PeerView[]
@@ -573,6 +578,7 @@ export function TopRight({
       <Facepile peers={peers} agents={agents} onPeer={onPeer} onAgent={onAgent} />
       <ShareButton share={share} onShare={onShare} />
       <ChatButton hub={chat} />
+      <CommentsButton open={comments.open} count={comments.count} onToggle={comments.onToggle} />
       <IconButton size="sm" label="Search" keys={`${MOD}F`} tipBelow tipEnd active={searchOpen} onClick={onSearch}>
         <Search className="h-4 w-4" />
       </IconButton>
@@ -597,6 +603,7 @@ export function SelectionBar({
   onRemoveImage,
   onOpen,
   onLive,
+  onComment,
   below,
 }: {
   at: { x: number; y: number }
@@ -612,6 +619,8 @@ export function SelectionBar({
   onOpen: () => void
   /** A link: show the site live (true) or as its card (false); absent when it can't be live. */
   onLive?: (live: boolean) => void
+  /** Start a comment thread on the one selected shape; absent when several are selected. */
+  onComment?: () => void
   below: boolean
 }) {
   const single = shapes.length === 1 ? shapes[0]! : null
@@ -699,6 +708,22 @@ export function SelectionBar({
           <IconButton size="sm" label="Remove image" className="rounded-full" onClick={onRemoveImage}>
             <ImageOff className="h-4 w-4" />
           </IconButton>
+        </>
+      )}
+      {single && onComment && (
+        <>
+          <Divider />
+          <button
+            type="button"
+            aria-label={`Comment (${COMMENT_KEYS})`}
+            data-testid="selection-comment"
+            className="tip-host inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full pl-2 pr-2.5 text-[12.5px] font-medium text-ink-2 outline-none transition-colors duration-100 hover:bg-surface-2 hover:text-ink focus-visible:ring-2 focus-visible:ring-accent/60"
+            onClick={onComment}
+          >
+            <MessageSquarePlus className="h-4 w-4" aria-hidden="true" />
+            Comment
+            <Tip label="Comment" keys={COMMENT_KEYS} />
+          </button>
         </>
       )}
       <Divider />
@@ -820,6 +845,7 @@ const SHORTCUTS: [string, string[]][] = [
   ['Nudge', ['←↑↓→', '⇧ ×10']],
   ['Bring to front / send to back', [`${MOD}]`, `${MOD}[`]],
   ['Search', [`${MOD}F`]],
+  ['Comment on the selected shape', [COMMENT_KEYS]],
   ['Chat (shared canvases)', ['C']],
   ['Zoom in / out', ['+', '−']],
   ['Zoom to fit / selection', ['⇧1', '⇧2']],

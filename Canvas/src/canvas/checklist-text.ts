@@ -15,6 +15,18 @@
  * with the text. Every write changes only the characters of its own line —
  * the box, the label or the suffix — so ticks on different rows from any two
  * Coppers, old or new, merge.
+ *
+ * A row's comment sits right under its task line, as indented quote lines —
+ *
+ *   - [x] Bob · No
+ *     > We already have one; pull, don't own.
+ *     >
+ *     > A second paragraph.
+ *
+ * — so it travels with its row when rows are renamed, picked or reordered,
+ * goes when the row goes, and an older Copper shows it as a quote under the
+ * item. A comment line is never a row or a title. Writing one changes only
+ * the characters of its own lines; no comment is no lines.
  */
 import * as Y from 'yjs'
 import { textSplice } from './text-diff'
@@ -28,6 +40,10 @@ const HEADING = /^(#{1,3})(\s+)(.*?)\s*#*\s*$/
 /** `- [ ] label`, `* [x] label`, `1. [ ] label`; a doubled box (`[xx]`, two ticks merged) still reads. */
 const TASK_LINE = /^(\s*(?:[-*]|\d{1,9}[.)])\s+)\[([ xX]{1,3})\](?:([ \t]+)(.*))?$/
 const SUFFIX = /\s+·\s+([^·]+?)\s*$/
+/** A comment line under a task line: indented, then `>` and one optional space. */
+const NOTE_LINE = /^[ \t]+> ?(.*)$/
+/** How this page writes a comment line (before its words). */
+const NOTE_LEAD = '  >'
 
 const fold = (s: string) => s.trim().toLowerCase()
 
@@ -37,6 +53,19 @@ export const whoKey = (label: string) => WHO_PREFIX + rowKey(label)
 
 /** One line, as a label or a title can only be. */
 export const oneLine = (s: string) => s.replace(/[\r\n]+/g, ' ')
+
+/** A comment as it is kept: line breaks are `\n`. */
+export const noteLines = (s: string) => s.replace(/\r\n?/g, '\n')
+
+/** A comment's lines as they follow its task line (each with the line break before it); none when empty. */
+export function noteBlock(note: string): string {
+  const clean = noteLines(note)
+  if (!clean) return ''
+  return clean
+    .split('\n')
+    .map(l => `\n${NOTE_LEAD}${l ? ` ${l}` : ''}`)
+    .join('')
+}
 
 export interface TextRow {
   /** Order among the task lines, from 0. */
@@ -59,6 +88,10 @@ export interface TextRow {
   labelEnd: number
   /** Something (a space at least) follows the box. */
   hasBody: boolean
+  /** The row's comment ('' for none): its quote lines under the task line, joined by `\n`. */
+  note: string
+  /** Where the row's last line ends: its last comment line, else `lineEnd`. */
+  blockEnd: number
 }
 
 export interface ParsedChecklist {
@@ -73,10 +106,22 @@ export function parseChecklistText(text: string, columns: readonly string[]): Pa
   const out: ParsedChecklist = { title: '', heading: null, rows: [] }
   const byFold = new Map(columns.map(c => [fold(c), c] as const))
   let at = 0
+  /** The row whose comment lines may follow, and those lines so far. */
+  let open: { row: TextRow; lines: string[] } | null = null
   for (const line of text.split('\n')) {
     const start = at
     const end = start + line.length
     at = end + 1
+    if (open) {
+      const note = NOTE_LINE.exec(line)
+      if (note) {
+        open.lines.push(note[1] ?? '')
+        open.row.note = open.lines.join('\n')
+        open.row.blockEnd = end
+        continue
+      }
+      open = null
+    }
     const task = TASK_LINE.exec(line)
     if (task) {
       const lead = task[1] ?? ''
@@ -95,7 +140,7 @@ export function parseChecklistText(text: string, columns: readonly string[]): Pa
         suffix = named
       }
       const ticked = /x/i.test(box)
-      out.rows.push({
+      const row: TextRow = {
         index: out.rows.length,
         label,
         ticked,
@@ -108,7 +153,11 @@ export function parseChecklistText(text: string, columns: readonly string[]): Pa
         labelStart,
         labelEnd: labelStart + label.length,
         hasBody: task[3] !== undefined,
-      })
+        note: '',
+        blockEnd: end,
+      }
+      out.rows.push(row)
+      open = { row, lines: [] }
       continue
     }
     if (!out.heading) {
@@ -129,9 +178,18 @@ export function rowLine(label: string, pick: string | null, columns: readonly st
   return `- [${pick ? 'x' : ' '}] ${oneLine(label)}${tail}`
 }
 
-/** A whole checklist note: the title as a heading, then one line per row. */
-export function checklistMarkdown(title: string, rows: readonly { label: string; pick: string | null }[], columns: readonly string[]): string {
-  const lines = rows.map(r => rowLine(r.label, r.pick, columns))
+/** A row's line and, under it, its comment's lines. */
+export function rowBlock(label: string, pick: string | null, columns: readonly string[], note = ''): string {
+  return rowLine(label, pick, columns) + noteBlock(note)
+}
+
+/** A whole checklist note: the title as a heading, then one line per row (and its comment's lines). */
+export function checklistMarkdown(
+  title: string,
+  rows: readonly { label: string; pick: string | null; note?: string }[],
+  columns: readonly string[]
+): string {
+  const lines = rows.map(r => rowBlock(r.label, r.pick, columns, r.note))
   if (title.trim()) lines.unshift(`### ${oneLine(title).trim()}`)
   return lines.join('\n')
 }
@@ -185,13 +243,37 @@ export function writeRowLabel(t: Y.Text, row: TextRow, label: string) {
 }
 
 /**
- * A new row's line after row `after` (null: after the last row, else under the
- * title, else at the end). Its index among the rows.
+ * Set (or with '' clear) one row's comment: only its comment lines change, and
+ * of those only the characters that differ, so two people writing in
+ * different rows' comments — or different lines of one — both stick.
+ */
+export function writeRowNote(t: Y.Text, row: TextRow, note: string) {
+  const text = t.toString()
+  const prev = text.slice(row.lineEnd, row.blockEnd)
+  const next = noteBlock(note)
+  if (prev === next) return
+  // A first comment goes in just after the line break that ends the row's
+  // line, so a pick or a label edit at that line's end at the same moment
+  // stays on the line (the last line of the text has no break to follow).
+  if (!prev && row.lineEnd < text.length) {
+    t.insert(row.lineEnd + 1, `${next.slice(1)}\n`)
+    return
+  }
+  spliceWithin(t, row.lineEnd, prev, next)
+}
+
+/**
+ * A new row's line after row `after` and its comment (null: after the last
+ * row, else under the title, else at the end). Its index among the rows.
  */
 export function insertRowLine(t: Y.Text, parsed: ParsedChecklist, after: number | null, line: string): number {
   const ref = after !== null ? parsed.rows[after] : parsed.rows[parsed.rows.length - 1]
   if (ref) {
-    t.insert(ref.lineEnd, `\n${line}`)
+    // Just after the line break that ends the row's block, when there is one:
+    // a comment line someone adds to that row at the same moment goes before
+    // that break, so it stays the row's own rather than the new row's.
+    if (ref.blockEnd < t.length) t.insert(ref.blockEnd + 1, `${line}\n`)
+    else t.insert(ref.blockEnd, `\n${line}`)
     return ref.index + 1
   }
   if (parsed.heading) {
@@ -204,12 +286,13 @@ export function insertRowLine(t: Y.Text, parsed: ParsedChecklist, after: number 
   return 0
 }
 
-/** Remove a row's line (and one line break with it). */
+/** Remove a row's line and its comment's lines (and one line break with them). */
 export function removeRowLine(t: Y.Text, row: TextRow) {
   const length = t.toString().length
-  if (row.lineEnd < length) t.delete(row.lineStart, row.lineEnd - row.lineStart + 1)
-  else if (row.lineStart > 0) t.delete(row.lineStart - 1, row.lineEnd - row.lineStart + 1)
-  else if (row.lineEnd > 0) t.delete(0, row.lineEnd)
+  const end = row.blockEnd
+  if (end < length) t.delete(row.lineStart, end - row.lineStart + 1)
+  else if (row.lineStart > 0) t.delete(row.lineStart - 1, end - row.lineStart + 1)
+  else if (end > 0) t.delete(0, end)
 }
 
 /** The title: the first heading's words, or a new `###` heading on top. */
@@ -223,7 +306,10 @@ export function writeTitle(t: Y.Text, parsed: ParsedChecklist, title: string) {
   t.insert(0, t.length ? `### ${next}\n` : `### ${next}`)
 }
 
-/** Replace every row with `next` (one line each), where the rows were (or under the title). */
+/**
+ * Replace every row (with its comment's lines) by `next` — one row's block
+ * each (`rowBlock`) — where the rows were (or under the title).
+ */
 export function replaceRows(t: Y.Text, parsed: ParsedChecklist, next: readonly string[]) {
   const before = t.toString()
   const lines = before.split('\n')
@@ -234,10 +320,12 @@ export function replaceRows(t: Y.Text, parsed: ParsedChecklist, next: readonly s
   for (let i = 0, at = 0; i < lines.length; i++) {
     const start = at
     at += (lines[i] ?? '').length + 1
-    if (parsed.rows[n]?.lineStart === start) {
+    const row = parsed.rows[n]
+    if (row && start >= row.lineStart && start <= row.blockEnd) {
       isRow.add(i)
       if (firstRowLine < 0) firstRowLine = i
-      n++
+      // The block's last line: the next row's block is next.
+      if (at - 1 >= row.blockEnd) n++
     } else if (parsed.heading && start <= parsed.heading.start && parsed.heading.lineEnd <= at) headingLine = i
   }
   const out: string[] = []

@@ -1168,7 +1168,10 @@ final class Flow: ObservableObject {
     /// Files & Folders. Coming back to Copper re-checks (`becameActive`).
     func allow(_ source: FlowSource) {
         // Safari's files open with Full Disk Access; Chrome's with its own
-        // switch in Files & Folders.
+        // switch in Files & Folders, under a record that matches this build.
+        if !source.isSafari, FlowAccess.state(of: source.root) == .locked {
+            FlowAccess.renewRecord(for: source.root)
+        }
         let page = FlowAccess.openPrivacySettings(fullDisk: source.isSafari)
         askedAccess.insert(source.id)
         preferNext = source.id
