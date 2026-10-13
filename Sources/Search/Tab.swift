@@ -713,6 +713,7 @@ final class Tab: ObservableObject, Identifiable {
 
     func go(to url: URL) {
         cancelRecovery()
+        crashRecovery.reset()
         if CanvasTabs.reroute(self, to: url) { return } // Fork (canvas-hooks): a board opens in its own tab, and keeps it
         // Set straight away rather than waiting for the observer: the tab has to
         // stop being blank in the same frame the field disappears, or the empty
@@ -920,12 +921,8 @@ final class Tab: ObservableObject, Identifiable {
     /// than showing the white that is left.
     var stale = false
 
-    /// When this page's process last went away, oldest first, over the
-    /// last minute. Memory pressure takes a process now and then; a page
-    /// that takes its own down every time it loads does it every couple of
-    /// seconds, and loading it again each time was a tab that reloaded
-    /// forever — an Amazon sign-in page did it all afternoon.
-    private var crashes: [Date] = []
+    /// Pure policy, shared by the delegate and the wake-up health check.
+    private var crashRecovery = CrashRecovery()
 
     /// The process behind this page just died while it was the one on
     /// screen. `reload()`/`reloadFromOrigin()` lean on state the dead
@@ -940,11 +937,11 @@ final class Tab: ObservableObject, Identifiable {
     /// failure view, whose button is one more load when you ask for it.
     func recoverFromCrash() {
         guard let address else { return }
-        let now = Date()
-        crashes = crashes.filter { now.timeIntervalSince($0) < 60 } + [now]
-        guard crashes.count < 3 else {
+        guard crashRecovery.permitsRecovery() else {
             cancelRecovery()
-            failure = "This page keeps crashing."
+            stale = false
+            uncover()
+            failure = "This page keeps crashing. Try turning off extensions in Settings › Extensions."
             return
         }
         failure = nil
@@ -1017,6 +1014,7 @@ final class Tab: ObservableObject, Identifiable {
     /// Asked anything at all, the page answers with one particular error, and
     /// the answer to that is to load it again.
     func revive() {
+        guard !crashRecovery.halted else { return }
         if stale {
             stale = false
             recoverFromCrash()
@@ -1095,10 +1093,12 @@ final class Tab: ObservableObject, Identifiable {
     /// Again from the network. A view that has lost its document is given
     /// the address back instead: there is nothing else for it to reload.
     func reload() {
+        cancelRecovery()
+        failure = nil
         // A pin put down with ⌘W has no view left to reload; waking it is
         // the reload.
         guard !wake() else { return }
-        if hollow, let address {
+        if hollow || crashRecovery.halted, let address {
             web.load(URLRequest(url: address))
         } else {
             web.reloadFromOrigin()
@@ -1110,6 +1110,8 @@ final class Tab: ObservableObject, Identifiable {
     /// view, rather than `Store.websites`, because spaces can have profiles of
     /// their own. `done` receives the records removed for the bench.
     func hardReload(_ done: (([String]) -> Void)? = nil) {
+        cancelRecovery()
+        failure = nil
         // Match reload(): an asleep tab has no live page to clear yet, and
         // waking it is the useful work. A hollow view likewise needs its
         // address loaded instead of asking an empty document to reload.
@@ -1117,7 +1119,7 @@ final class Tab: ObservableObject, Identifiable {
             done?([])
             return
         }
-        if hollow, let address {
+        if hollow || crashRecovery.halted, let address {
             web.load(URLRequest(url: address))
             done?([])
             return
