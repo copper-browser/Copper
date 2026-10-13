@@ -10,6 +10,8 @@ served by GitHub Pages at `https://copper-browser.github.io/Copper/`.
   - `copper-google.webp` — the hero still (2240×1480, shown at 1120 CSS px).
   - `copper-motion.mp4` + `copper-motion.webp` — tabs, ⌘K, spaces, tabs on top (loop + poster).
   - `copper-jev.mp4` + `copper-jev.webp` — Jev running one goal, driver timeline open.
+  - `copper-linux.webp` + `copper-linux-dark.webp` — Copper for Linux (WebKitGTK, GDK_SCALE=2
+    on Xvfb), light and dark, on the same backdrops as `copper-motion`; 2240×1480 like it.
   Videos are H.264, muted, `+faststart`; they play only while on screen, have a Pause
   button, and show just the poster under `prefers-reduced-motion`.
 - `.nojekyll` — serve the files as they are.

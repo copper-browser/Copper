@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Copper — the open source Mac browser, with agents built in</title>
-<meta name="description" content="Copper is an open source Mac browser on WebKit: Arc-style spaces, agents built in, Bitwarden sign-in for agents, a multiplayer canvas, and Copper Cloud, a server you host yourself. MIT licensed.">
+<title>Copper — the open source browser for Mac and Linux, with agents built in</title>
+<meta name="description" content="Copper is an open source browser for Mac and Linux on WebKit: Arc-style spaces, agents built in, Bitwarden sign-in for agents, a multiplayer canvas, and Copper Cloud, a server you host yourself. MIT licensed.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#F8F2EA" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0C0A09" media="(prefers-color-scheme: dark)">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Copper">
 <meta property="og:title" content="Copper — full Arc parity, and open source">
-<meta property="og:description" content="A fast little Mac browser with agents built in, plus a server you run yourself. MIT, all of it.">
+<meta property="og:description" content="A fast little browser for Mac and Linux with agents built in, plus a server you run yourself. MIT, all of it.">
 <meta property="og:image" content="https://copper-browser.github.io/Copper/assets/og.jpg">
 <meta property="og:url" content="https://copper-browser.github.io/Copper/">
 <meta property="og:image:width" content="1200">
@@ -19,7 +19,7 @@
 <meta property="og:image:alt" content="Copper at a glance: spaces with animated sidebars, agents in your tabs, Jev in 200 ms, Bitwarden sign-in with 2FA, Copper Cloud, a multiplayer canvas, and MIT.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Copper — full Arc parity, and open source">
-<meta name="twitter:description" content="A fast little Mac browser with agents built in, plus a server you run yourself. MIT, all of it.">
+<meta name="twitter:description" content="A fast little browser for Mac and Linux with agents built in, plus a server you run yourself. MIT, all of it.">
 <meta name="twitter:image" content="https://copper-browser.github.io/Copper/assets/og.jpg">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
 <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
@@ -483,6 +483,9 @@ kbd {
 .meta { margin-top: 18px; font-size: 14px; color: var(--ink-2); display: flex; flex-wrap: wrap; column-gap: 22px; row-gap: 4px; }
 .meta span { display: inline-flex; align-items: center; gap: 7px; }
 .meta span::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--patina); }
+.also { margin-top: 10px; font-size: 14px; color: var(--ink-2); }
+.also a { color: var(--ink); font-weight: 500; text-decoration-color: var(--line-2); text-underline-offset: 3px; white-space: nowrap; transition: text-decoration-color .15s ease; }
+.also a:hover { text-decoration-color: var(--accent); }
 
 /* ---------- bento ---------- */
 .bento {
@@ -709,6 +712,7 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
         <li><a href="#agents">Agents</a></li>
         <li><a href="#canvas">Canvas</a></li>
         <li><a href="#cloud">Cloud</a></li>
+        <li><a href="#linux">Linux</a></li>
         <li><a href="#install">Install</a></li>
         <li><a href="https://github.com/copper-browser/Copper">GitHub</a></li>
       </ul>
@@ -728,7 +732,7 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
     <section class="hero wrap" aria-labelledby="hero-title">
       <p class="quip"><b>Yes</b><span>Everyone is forking a WebKit browser. We spent the tokens so you don't have to.</span></p>
       <h1 id="hero-title">Full Arc parity, and <em>open source.</em></h1>
-      <p class="lead">Copper is a fast little Mac browser with agents built in, plus a server you run yourself. <strong>MIT, all of it.</strong></p>
+      <p class="lead">Copper is a fast little browser for Mac and Linux with agents built in, plus a server you run yourself. <strong>MIT, all of it.</strong></p>
       <div class="hero-actions">
         <a class="btn" href="#install"><svg aria-hidden="true"><use href="#i-down"/></svg>Download for macOS</a>
         <div class="cmd">
@@ -737,6 +741,7 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
         </div>
       </div>
       <p class="meta"><span>macOS 14 or later</span><span>Apple Silicon</span><span>9 MB download</span><span>No account</span></p>
+      <p class="also">Also on Linux, for x86_64 and arm64. <a href="#linux">Install it with one line</a></p>
     </section>
 
     <section class="wrap" aria-label="Copper at a glance">
@@ -770,7 +775,7 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
         </a>
         <a class="t t-cloud" href="#cloud">
           <h3>Run your own <em>Copper Cloud.</em></h3>
-          <p>One Rust binary and Postgres. Syncs spaces, tabs, bookmarks and history between Macs.</p>
+          <p>One Rust binary and Postgres. Syncs spaces, tabs, bookmarks and history between Macs and Linux machines.</p>
           <span class="t-term" aria-hidden="true"><span class="d">$</span> curl -fsSL …/copper-cloud/main/install.sh | sudo sh<br><span class="d">Admin portal:</span> https://203.0.113.10/<br><span class="d">Access mode:</span> directory<br><span class="a">copper-cloud://203.0.113.10:443/#k=ck_…&amp;fp=…</span></span>
         </a>
         <a class="t t-canvas" href="#canvas">
@@ -1083,7 +1088,7 @@ Jev said <span class="ok">DONE</span>, 96% sure
       <div class="feature-copy">
         <span class="kicker">Copper Cloud</span>
         <h2 id="cloud-title">Run your own <em>Copper Cloud.</em></h2>
-        <p>Copper Cloud is the server half: one Rust binary and Postgres, installed with one command on any Linux machine, or with Terraform on AWS. It syncs spaces, tabs, bookmarks and history between your Macs and hosts live canvas rooms.</p>
+        <p>Copper Cloud is the server half: one Rust binary and Postgres, installed with one command on any Linux machine, or with Terraform on AWS. It syncs spaces, tabs, bookmarks and history between your computers, Mac or Linux, and hosts live canvas rooms.</p>
         <div class="cmd"><code>curl -fsSL https://raw.githubusercontent.com/copper-browser/copper-cloud/main/install.sh | sudo sh</code><button class="copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/copper-browser/copper-cloud/main/install.sh | sudo sh" aria-label="Copy the Copper Cloud install command"><svg class="i-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="i-check" aria-hidden="true"><use href="#i-check"/></svg><span>Copy</span></button></div>
         <ul class="facts">
           <li><span><strong>Off until you turn it on,</strong> and it never carries passwords. You pick what syncs.</span></li>
@@ -1122,12 +1127,37 @@ Jev said <span class="ok">DONE</span>, 96% sure
       </tbody>
     </table>
     <p class="ptable-note">A private tab (<kbd>⇧⌘N</kbd>) has its own cookie jar and leaves nothing behind when it closes.</p>
+    <p class="ptable-note">On Linux the same files live in <code>~/.local/<wbr>share/<wbr>copper/</code>, passwords go to your Secret Service keyring, and the check for a newer version runs every six hours.</p>
+  </section>
+
+  <section class="sec wrap" id="linux" aria-labelledby="linux-title">
+    <div class="feature">
+      <div class="feature-copy">
+        <span class="kicker">Copper for Linux</span>
+        <h2 id="linux-title">The same Copper, <em>on Linux.</em></h2>
+        <p>A native port in Rust, on GTK&nbsp;4, libadwaita and WebKitGTK, so underneath it is still WebKit. Spaces, the one field, the ad blocker, hide anything, reading mode, private tabs and Canvas all came along, with Ctrl where the Mac has ⌘.</p>
+        <div class="cmd"><code>curl -fsSL https://github.com/copper-browser/copper-linux/releases/latest/download/install.sh | sh</code><button class="copy" type="button" data-copy="curl -fsSL https://github.com/copper-browser/copper-linux/releases/latest/download/install.sh | sh" aria-label="Copy the Linux install command"><svg class="i-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="i-check" aria-hidden="true"><use href="#i-check"/></svg><span>Copy</span></button></div>
+        <ul class="facts">
+          <li><span><strong>Ubuntu 24.04+, Debian 13+ and Fedora 41+,</strong> on x86_64 and arm64. The line installs a <code>.deb</code> where apt can, and the Flatpak everywhere else.</span></li>
+          <li><span><strong>Syncs with your Mac</strong> through Copper Cloud. On the Mac, Settings › Cloud › Pair another Mac makes a code; paste it into Settings › Cloud here.</span></li>
+          <li><span><strong>The same agents.</strong> The same MCP tools and <code>copper</code> command, Jev and sign-in for agents included.</span></li>
+        </ul>
+      </div>
+      <figure class="media">
+        <div class="frame"><img src="assets/copper-linux.webp" data-light="assets/copper-linux.webp" data-dark="assets/copper-linux-dark.webp" width="2240" height="1480" loading="lazy" decoding="async" alt="Copper for Linux on the Wikipedia article for Copper. The column on the left, in the Personal space's pale copper, holds back, forward and reload, the space's name and five tabs: Copper on Wikipedia, Copper on GitHub, a sandwich bread recipe, NPR News and OpenStreetMap, with three space dots at the bottom. The address sits above the page, beside GNOME's minimize, maximize and close buttons."><script>copperMedia(document.currentScript.previousElementSibling)</script></div>
+        <figcaption>Copper on Ubuntu 24.04. The same column and the same page, with GNOME's window buttons.</figcaption>
+      </figure>
+    </div>
+    <div class="note-row">
+      <h3>Not on Linux yet</h3>
+      <p>Extensions, Netflix, Spotify and other DRM-protected media, calls in Meet, Teams or Discord, passkeys and security keys, Voice, and picture-in-picture above other apps. The WebKitGTK that Ubuntu and Flathub ship has no extensions, Widevine, WebRTC or WebAuthn, and Wayland lets no app keep a window on top. The ⌘E agent pane and moving in from Arc, Safari or Dia stay on the Mac; moving in from Chrome, Chromium or Brave works.</p>
+    </div>
   </section>
 
   <section class="sec wrap" id="install" aria-labelledby="install-title">
     <div class="sec-head">
       <h2 id="install-title">Install.</h2>
-      <p>For macOS 14 Sonoma or later, on Apple Silicon. Pick one; after that Copper updates itself.</p>
+      <p>On a Mac, macOS 14 Sonoma or later on Apple Silicon: pick one, and after that Copper updates itself. On Linux it is one line.</p>
     </div>
     <div class="install">
       <div class="method">
@@ -1155,14 +1185,29 @@ Jev said <span class="ok">DONE</span>, 96% sure
           </div>
         </div>
       </div>
+      <div class="method" id="install-linux">
+        <h3>Linux</h3>
+        <div class="method-body">
+          <div class="cmd"><code>curl -fsSL https://github.com/copper-browser/copper-linux/releases/latest/download/install.sh | sh</code><button class="copy" type="button" data-copy="curl -fsSL https://github.com/copper-browser/copper-linux/releases/latest/download/install.sh | sh" aria-label="Copy the Linux install command"><svg class="i-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="i-check" aria-hidden="true"><use href="#i-check"/></svg><span>Copy</span></button></div>
+          <p>For x86_64 and arm64. Ubuntu 24.04+ and Debian 13+ get a <code class="inline">.deb</code> through apt; Fedora 41+ and everything else get the Flatpak. Copper tells you when a new version is out, and running the line again updates it.</p>
+          <ul class="links" aria-label="Linux downloads">
+            <li><a href="https://github.com/copper-browser/copper-linux/releases/latest/download/copper_amd64.deb">.deb for amd64</a></li>
+            <li><a href="https://github.com/copper-browser/copper-linux/releases/latest/download/copper_arm64.deb">.deb for arm64</a></li>
+            <li><a href="https://github.com/copper-browser/copper-linux/releases/latest/download/copper-x86_64.flatpak">Flatpak for x86_64</a></li>
+            <li><a href="https://github.com/copper-browser/copper-linux/releases/latest/download/copper-aarch64.flatpak">Flatpak for arm64</a></li>
+            <li><a href="https://github.com/copper-browser/copper-linux/releases">All Linux releases</a></li>
+          </ul>
+        </div>
+      </div>
     </div>
     <div class="after">
       <ul class="links">
         <li><a href="https://github.com/copper-browser/Copper/releases">Releases</a></li>
         <li><a href="https://github.com/copper-browser/Copper">Source</a></li>
         <li><a href="https://github.com/copper-browser/homebrew-copper">Homebrew tap</a></li>
+        <li><a href="https://github.com/copper-browser/copper-linux">Linux source</a></li>
       </ul>
-      <span>Pure Swift, no dependencies beyond what Apple ships.</span>
+      <span>Pure Swift on the Mac, with nothing Apple doesn't ship. Rust on GTK&nbsp;4 and WebKitGTK on Linux.</span>
     </div>
   </section>
 
@@ -1174,9 +1219,10 @@ Jev said <span class="ok">DONE</span>, 96% sure
       <div class="feature-copy">
         <span class="kicker">Open source</span>
         <h2 id="source-title">MIT, <em>all of it.</em></h2>
-        <p>The browser and the server. Read it, build it, fork it. No account, no telemetry, and issues and pull requests are welcome.</p>
+        <p>The browser, on the Mac and Linux, and the server. Read it, build it, fork it. No account, no telemetry, and issues and pull requests are welcome.</p>
         <ul class="repos">
           <li><a href="https://github.com/copper-browser/Copper">github.com/copper-browser/Copper</a></li>
+          <li><a href="https://github.com/copper-browser/copper-linux">github.com/copper-browser/copper-linux</a></li>
           <li><a href="https://github.com/copper-browser/copper-cloud">github.com/copper-browser/copper-cloud</a></li>
         </ul>
         <div class="hero-actions">
