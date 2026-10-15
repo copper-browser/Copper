@@ -77,8 +77,8 @@ export function assignOptions(
       color: p.color || personColor(p),
       ...(mine ? { me: true } : {}),
       score: s,
-      // You lead the list until something is typed; then the best match does.
-      rank: !q && mine ? -1 : i,
+      // You lead the list, and any tie once something is typed; else the best match does.
+      rank: mine ? -1 : i,
     })
   })
   board.forEach((p, i) => {

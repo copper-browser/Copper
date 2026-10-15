@@ -3,7 +3,7 @@ import * as Y from 'yjs'
 import { Controller } from '../../controller'
 import type { PageMessage } from '../../host-bridge'
 import { BridgeSocket } from '../../bridge-socket'
-import { ChatHub, parseChatPatch } from '../chat/hub'
+import { ChatHub, assignMentionId, assignedCard, parseChatPatch } from '../chat/hub'
 import { createChatApi, sendFromTool, withChat } from '../chat/api'
 import { CHAT_KEY, mentionToken, readLog } from '../chat/model'
 
@@ -215,5 +215,60 @@ describe('the panel', () => {
     expect(out.chat[0]).toMatchObject({ from: 'Ada Lovelace', text: '@Ann Example hello', mentions: [{ id: ANN, name: 'Ann Example' }] })
     hub.configure(null)
     expect(JSON.parse(api.read({})).chat).toBeUndefined()
+  })
+})
+
+describe('assignments (checklist rows) ride the mentions', () => {
+  it('tells people on the canvas newly put on a row — not you, not a name of its own — on a cloud that takes mentions', () => {
+    init()
+    hub.configure({ enabled: true, members, mentionsApi: true })
+    const told = hub.notifyAssigned({ shapeId: 'sprint', title: 'Sprint 12', row: 'Fix  the\nlogin', people: [{ id: ANN.toUpperCase() }, { id: ADA }, {}, { id: BOB }] })
+    expect(told).toEqual([ANN])
+    const m = posted('mention')
+    expect(m).toHaveLength(1)
+    expect(m[0]).toMatchObject({ userIds: [ANN], excerpt: 'Fix the login · Sprint 12' })
+    expect(assignedCard(m[0]!.messageId as string)).toBe('sprint')
+    expect(String(m[0]!.messageId).length).toBeLessThanOrEqual(128)
+    // Each assignment is its own mention.
+    hub.notifyAssigned({ shapeId: 'sprint', title: '', row: 'Notes', people: [{ id: ANN }] })
+    expect(posted('mention')[1]!.messageId).not.toBe(m[0]!.messageId)
+    expect(posted('mention')[1]).toMatchObject({ excerpt: 'Notes' })
+  })
+
+  it('tells no one on an older cloud, a canvas without chat, or a view-only one', () => {
+    init()
+    hub.configure({ enabled: true, members, mentionsApi: false })
+    expect(hub.notifyAssigned({ shapeId: 's', title: '', row: 'r', people: [{ id: ANN }] })).toEqual([])
+    hub.configure({ enabled: false, mentionsApi: true })
+    expect(hub.notifyAssigned({ shapeId: 's', title: '', row: 'r', people: [{ id: ANN }] })).toEqual([])
+    expect(posted('mention')).toHaveLength(0)
+  })
+
+  it('lists the canvas people with you first; a canvas on this Mac has only you', () => {
+    init()
+    expect(hub.people()).toEqual([{ id: ADA, name: 'Ada Lovelace', email: '', color: expect.any(String) }])
+    hub.configure({ enabled: true, members: [members[1]] })
+    expect(hub.people().map(p => p.name)).toEqual(['Ada Lovelace', 'Ann Example'])
+  })
+
+  it('Open on an assignment shows its card, not the chat, and reads it; the chat reading leaves it for the card', () => {
+    init()
+    const id = assignMentionId('sprint')
+    c.session!.doc.getArray(CHAT_KEY).push([{ id: 'm', authorId: ANN, authorName: 'Ann Example', text: `${mentionToken(ADA, 'Ada Lovelace')} hi`, mentions: [ADA], at: 1 }])
+    hub.configure({ enabled: true, members, mentionsApi: true, lastReadId: null, lastReadAt: 0, mentioned: ['m', id] })
+    expect(hub.assignedToMe('sprint')).toBe(id)
+    expect(hub.assignedToMe('other')).toBe('')
+    // The chat is read: its message's mention goes, the assignment stays for its card.
+    hub.markRead()
+    expect(hub.config.mentioned).toEqual([id])
+    expect(posted('chatRead').at(-1)).toMatchObject({ mentionIds: ['m'] })
+    const shown: string[] = []
+    hub.showCard = card => (shown.push(card), true)
+    expect(hub.reveal({ id })).toBe(true)
+    expect(shown).toEqual(['sprint'])
+    expect(hub.config.open).toBe(false)
+    expect(hub.assignFocus?.shapeId).toBe('sprint')
+    expect(hub.config.mentioned).toEqual([])
+    expect(posted('chatRead').at(-1)).toMatchObject({ mentionIds: [id] })
   })
 })

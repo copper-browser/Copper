@@ -260,9 +260,15 @@ function NoteEditor({
   const [caret, setCaret] = useState(-1)
   const [dismissed, setDismissed] = useState<number | null>(null)
   const [active, setActive] = useState(0)
-  const query = people && !readOnly && caret >= 0 ? mentionQuery(value, caret) : null
+  const typed = people && !readOnly && caret >= 0 ? mentionQuery(value, caret) : null
+  // "@Name" of someone on the row already (just picked, or written before) is not a question.
+  const query =
+    typed && !people?.assigned.some(p => value.startsWith(p.name, typed.start + 1) && !/[\p{L}\p{N}_]/u.test(value[typed.start + 1 + p.name.length] ?? ''))
+      ? typed
+      : null
   const asking = !!query && dismissed !== query.start
-  const options = asking && people ? assignOptions(chat.people(), people.board(), query.query, people.me, 8) : []
+  // Only people: in a comment, Return with nobody matching is a new line, never a name of its own.
+  const options = asking && people ? assignOptions(chat.people(), people.board(), query.query, people.me, 8).filter(o => !o.fresh) : []
   const at0 = Math.min(active, Math.max(0, options.length - 1))
   const [anchor, setAnchor] = useState<PopAnchor | null>(null)
   useLayoutEffect(() => {
@@ -359,7 +365,7 @@ function NoteEditor({
         }}
         onKeyDown={e => {
           e.stopPropagation()
-          if (asking && !composing.current && !e.nativeEvent.isComposing) {
+          if (asking && options.length > 0 && !composing.current && !e.nativeEvent.isComposing) {
             if (listKeys(e, options.length, setActive)) return
             if ((e.key === 'Enter' || e.key === 'Tab') && options[at0]) {
               e.preventDefault()

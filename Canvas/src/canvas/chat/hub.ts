@@ -369,9 +369,11 @@ export class ChatHub {
     const last = this.messages[this.messages.length - 1]
     if (!last) return
     const newlyRead = this.unread.mentionIds
-    const changed = last.id !== this.config.lastReadId || this.config.mentioned.length > 0
+    // An assignment is read by its card, not by the chat: it stays.
+    const assigned = this.config.mentioned.filter(id => assignedCard(id) !== null)
+    const changed = last.id !== this.config.lastReadId || this.config.mentioned.length > assigned.length
     if (!changed) return
-    this.config = { ...this.config, known: true, lastReadId: last.id, lastReadAt: last.at, mentioned: [] }
+    this.config = { ...this.config, known: true, lastReadId: last.id, lastReadAt: last.at, mentioned: assigned }
     this.baselinePending = false
     this.recompute()
     this.postRead(newlyRead)

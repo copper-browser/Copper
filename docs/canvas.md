@@ -905,6 +905,8 @@ mentioned person must be on the canvas; one whose `@Name` isn't in the text gets
 ./bench --world canvasE canvas chat focus ID | type ID TEXT | enter ID | escape ID | dom ID   # the composer as typed; what the panel shows
 ./bench --world canvasE canvas chat mentions | pill [open|dismiss] | frontmost on|off       # mentions, the pill, notices; act as if in front
 docs/fixtures/canvas-chat-e2e.sh "<link code>"      # three probe worlds: picker, chips, live, relaunch, mentions (0.6.0) or the degrade (older)
+docs/fixtures/checklist-e2e.sh "<link code>"        # checklist cards: one-click picks, same-millisecond ticks, old ⇄ new, legacy REST, cloud /read
+docs/fixtures/checklist-assignees-e2e.sh "<link code>"   # assignees: agent and picker, ids, the "assigned you" pill on both Macs, Open → card, same-millisecond, cloud /read
 ```
 
 ## Testing it

@@ -159,14 +159,9 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  pointer-events: none;
 }
 .cl-end:has(.cl-people) .cl-tools {
   right: calc(100% + 4px);
-}
-.cl-row:hover .cl-tools,
-.cl-row:focus-within .cl-tools {
-  pointer-events: auto;
 }
 .cl-tools .cl-icon-btn {
   opacity: 0;
@@ -177,7 +172,6 @@
 .cl-tools .cl-icon-btn:focus-visible,
 .cl-tools .cl-icon-btn[aria-expanded='true'] {
   opacity: 1;
-  pointer-events: auto;
 }
 .cl-tools .cl-icon-btn[aria-expanded='true'] {
   color: var(--cl-accent);
@@ -249,6 +243,7 @@
 .cl-people-tip {
   left: auto;
   right: 0;
+  width: max-content;
   transform: none;
 }
 .cl-people-btn:hover .cl-face-slot .cl-face {

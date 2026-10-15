@@ -29,6 +29,7 @@ import { CanvasStore, HOST } from '../doc'
 import { inlineText, parseMarkdownLite, toggleTask } from '../markdown-lite'
 import { boardSearchItems } from '../search'
 import * as released from './released/checklist-text-1012'
+import { assignOptions, boardAssignees } from '../assignees'
 
 const ann = { name: 'Ann', id: 'u-ann' }
 const ada = { name: 'Ada Lovelace', id: 'u-ada' }
@@ -385,5 +386,34 @@ describe('naming people', () => {
       { name: 'Cy', by: 'Dee', byId: 'u-dee', at: 5 },
     ])
     expect(out.added).toEqual([{ name: 'Cy', by: 'Dee', byId: 'u-dee', at: 5 }])
+  })
+})
+
+describe('the picker list', () => {
+  const people = [
+    { id: 'u-ann', name: 'Ann Example', email: 'ann@example.com' },
+    { id: 'u-me', name: 'Ada Lovelace', email: 'ada@example.com' },
+    { id: 'u-grace', name: 'Grace Hopper', email: 'grace@example.com' },
+  ]
+  const board = [{ name: 'Design team' }, { name: 'grace hopper' }, { name: 'Ann Example', id: 'u-ann' }, { name: 'Zed' }]
+  const names = (o: { name: string; fresh?: boolean }[]) => o.map(x => (x.fresh ? `+${x.name}` : x.name))
+
+  it('you first, then the canvas people, then other names from the board, each once', () => {
+    expect(names(assignOptions(people, board, '', 'u-me'))).toEqual(['Ada Lovelace', 'Ann Example', 'Grace Hopper', 'Design team', 'Zed'])
+    expect(assignOptions(people, board, '', 'u-me')[0]).toMatchObject({ me: true, id: 'u-me', email: 'ada@example.com' })
+  })
+
+  it('filters by name start, word start and email, best first; a typed name nobody has can be assigned', () => {
+    expect(names(assignOptions(people, board, 'ho', 'u-me'))).toEqual(['Grace Hopper', '+ho'])
+    expect(names(assignOptions(people, board, 'grace@', 'u-me'))).toEqual(['Grace Hopper', '+grace@'])
+    expect(names(assignOptions(people, board, '@design team', 'u-me'))).toEqual(['Design team'])
+    expect(assignOptions(people, board, 'kate@example.com', 'u-me')).toEqual([{ key: 'new:kate@example.com', name: 'kate@example.com', email: 'kate@example.com', color: expect.any(String), fresh: true }])
+    expect(names(assignOptions(people, board, 'a', 'u-me', 2))).toEqual(['Ada Lovelace', 'Ann Example', '+a'])
+  })
+
+  it('names used on the board, from every checklist', () => {
+    const { store } = note(BOARD, COLS)
+    store.create({ type: 'sticky', id: 'm', view: 'checklist', text: '- [ ] x\n  @Zed\n  @Ada Lovelace' })
+    expect(boardAssignees(store.getShapes().values()).map(p => p.name)).toEqual(['Collin Rijock', 'Ada Lovelace', 'Grace Hopper', 'Zed'])
   })
 })

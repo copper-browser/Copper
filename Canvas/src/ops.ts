@@ -473,6 +473,8 @@ function cleanNoteList(type: 'sticky' | 'checklist', raw: Record<string, unknown
   return out
 }
 
+/** What a new card made with assignees is wider by: two faces and their gap. */
+const ASSIGNEE_ROOM = 48
 const listRows = (labels: readonly string[]): ChecklistRow[] => labels.map((label, i) => ({ id: noteRowId(i), label }))
 const pickerOf = (as: Actor | null): Picker => ({ name: as?.name ?? 'Agent', id: as?.id ?? 'agent' })
 
@@ -541,7 +543,8 @@ function addChecklistNote(type: 'sticky' | 'checklist', raw: Record<string, unkn
   if (id) shape.id = id
   const min = minSizeOf({ type: 'sticky', view: VIEW_CHECKLIST })
   const size = {
-    w: Math.max(props.w ?? checklistWidth(cols.length), min.w),
+    // Room for the faces at the rows' ends, so the labels keep theirs.
+    w: Math.max(props.w ?? checklistWidth(cols.length) + (assigned.length ? ASSIGNEE_ROOM : 0), min.w),
     h: Math.max(props.h ?? checklistHeight(cols.length, rowCount, noteCount), min.h),
   }
   shape.w = size.w
