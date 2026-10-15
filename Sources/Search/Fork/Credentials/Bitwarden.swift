@@ -167,9 +167,13 @@ final class Bitwarden: ObservableObject {
         // after Settings has been opened.
         if Self.installed {
             restorePersistedSession()
-            Task {
-                await self.refreshStatus()
-                await self.refreshCacheIfPossible()
+            // The CLI is Node, and the vault is decoded here on the main
+            // thread: at launch both wait for the restored page to draw.
+            Launch.shared.whenSettled {
+                Task {
+                    await self.refreshStatus()
+                    await self.refreshCacheIfPossible()
+                }
             }
         }
     }

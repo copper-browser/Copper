@@ -102,6 +102,8 @@ import {
 import { ArrowLabel, ArrowLayer, FrameView, ImageView, LinkView, StickyView, TextView, type DrawnArrow } from './Shapes'
 import { ChecklistView, checklistEditField } from './Checklist'
 import { checklistText, isChecklist } from '../checklist'
+import { TimelineView } from './Timeline'
+import { TIMELINE_SIZE, isTimeline, neededHeight, newTimelineText } from '../timeline'
 import { WebFrame, type FrameUser } from './WebFrame'
 import { MOD, cn } from './ui'
 
@@ -504,7 +506,15 @@ export function Board({ session }: { session: Session }) {
       const s = store.get(id)
       if (!s) return
       const field: EditField =
-        s.type === 'frame' ? 'title' : s.type === 'arrow' ? 'label' : isChecklist(s) ? checklistEditField(null) : 'text'
+        s.type === 'frame'
+          ? 'title'
+          : s.type === 'arrow'
+            ? 'label'
+            : isChecklist(s)
+              ? checklistEditField(null)
+              : isTimeline(s)
+                ? 'part:tl-title'
+                : 'text'
       if (s.type === 'image' || s.type === 'link') return
       select([id])
       setEditing({ id, field })
@@ -688,7 +698,7 @@ export function Board({ session }: { session: Session }) {
       store.transact(() => {
         for (const s of selected) if (s.type !== 'image') store.update(s.id, { color })
       })
-      if (selected.some(s => s.type === 'sticky' && !isChecklist(s)) && typeof color === 'string' && !color.startsWith('#'))
+      if (selected.some(s => s.type === 'sticky' && !isChecklist(s) && !isTimeline(s)) && typeof color === 'string' && !color.startsWith('#'))
         setNoteColor(color as NamedColor)
     },
     [store, selected]
@@ -865,6 +875,13 @@ export function Board({ session }: { session: Session }) {
       setEditing({ id: hitId, field: checklistEditField(part) })
       return
     }
+    if (isTimeline(s)) {
+      // The card's own parts take their clicks; what reaches the board here is the header or empty room.
+      if (readOnly) return
+      select([hitId])
+      setEditing({ id: hitId, field: 'part:tl-title' })
+      return
+    }
     startEdit(hitId)
   }
 
@@ -952,6 +969,15 @@ export function Board({ session }: { session: Session }) {
       setTool('select')
       select([id])
       setEditing({ id, field: checklistEditField(null) })
+      return
+    }
+    if (!readOnly && tool === 'timeline') {
+      keepFocus.current = true
+      // A note in the timeline view: older Coppers show the same text as a readable note.
+      const id = createAt({ type: 'sticky', view: 'timeline', text: newTimelineText(), color: 'white', ...TIMELINE_SIZE }, c)
+      setTool('select')
+      select([id])
+      setEditing({ id, field: 'part:tl-title' })
       return
     }
     if (!readOnly && tool === 'arrow') {
@@ -1093,6 +1119,14 @@ export function Board({ session }: { session: Session }) {
         const delta = { x: c.x - g.start.x, y: c.y - g.start.y }
         const keep = g.type === 'image' ? !e.shiftKey : e.shiftKey
         const box = keep ? resizeBoxKeepAspect(g.box, g.handle, delta, min) : resizeBox(g.box, g.handle, delta, min)
+        if (g.view === 'timeline') {
+          // A timeline is never shorter than its content needs at the new width.
+          const need = Math.ceil(neededHeight(store.get(g.id)?.text ?? '', box.w))
+          if (box.h < need) {
+            if (g.handle.includes('n')) box.y = g.box.y + g.box.h - need
+            box.h = need
+          }
+        }
         g.at = box
         setDrag(new Map([[g.id, box]]))
         if (now - g.last > SEND_MS) {
@@ -1776,7 +1810,7 @@ export function Board({ session }: { session: Session }) {
     if (selected.length === 0 || drag || marquee || draft || readOnly || size.w === 0) return null
     // A comment open on the board has the stage; the bar comes back when it closes.
     if (commentFocus || menu) return null
-    if (editId && single?.type === 'sticky' && !isChecklist(single)) return null
+    if (editId && single?.type === 'sticky' && !isChecklist(single) && !isTimeline(single)) return null
     const u = unionBox(selected.map(s => boundsOf(s.id)).filter((b): b is Box => !!b))
     if (!u) return null
     const top = toScreen({ x: u.x + u.w / 2, y: u.y })
@@ -1792,7 +1826,7 @@ export function Board({ session }: { session: Session }) {
   // selection bar) has the space below; always on screen.
   const hintAt = (() => {
     // A checklist's fields are one line each, not markdown: no hint.
-    if (!editBox || size.w === 0 || isChecklist(editBox)) return null
+    if (!editBox || size.w === 0 || isChecklist(editBox) || isTimeline(editBox)) return null
     const top = toScreen({ x: editBox.x, y: editBox.y })
     const bottom = toScreen({ x: editBox.x, y: editBox.y + editBox.h })
     const floor = size.h - 84
@@ -1878,7 +1912,9 @@ export function Board({ session }: { session: Session }) {
             <FrameView key={s.id} shape={s} editing={editId === s.id} selected={selection.has(s.id)} zoom={view.z} />
           ))}
           {boxes.map(s =>
-            s.type === 'sticky' && !isChecklist(s) ? (
+            isTimeline(s) ? (
+              <TimelineView key={s.id} shape={s} editing={editId === s.id ? (editing?.field ?? null) : null} selected={selection.has(s.id)} />
+            ) : s.type === 'sticky' && !isChecklist(s) ? (
               <StickyView key={s.id} shape={s} editing={editId === s.id} />
             ) : s.type === 'text' ? (
               <TextView key={s.id} shape={s} editing={editId === s.id} />
@@ -2060,7 +2096,7 @@ export function Board({ session }: { session: Session }) {
           color={noteColor}
           onColor={c => {
             setNoteColor(c)
-            if (selected.some(s => s.type === 'sticky' && !isChecklist(s))) recolor(c)
+            if (selected.some(s => s.type === 'sticky' && !isChecklist(s) && !isTimeline(s))) recolor(c)
           }}
           readOnly={readOnly}
         />

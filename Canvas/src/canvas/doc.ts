@@ -9,6 +9,7 @@ import { VIEW_CHECKLIST } from './checklist-text'
 import { CommentStore } from './comments'
 import { SIDES, type Point, type Side } from './geometry'
 import { textSplice } from './text-diff'
+import { VIEW_TIMELINE, readNoteTimeline } from './timeline'
 import {
   DEFAULT_COLOR,
   SHAPE_SIZE,
@@ -47,7 +48,7 @@ export type ShapeInput = { type: ShapeType; id?: string } & ShapeProps
 
 const TEXT_KEYS = new Set(['text'])
 /** Read-side only: a checklist's picks and comments live under their own keys, or in its text (`checklist.ts`). */
-const DERIVED_KEYS = new Set(['picks', 'notes'])
+const DERIVED_KEYS = new Set(['picks', 'notes', 'timeline'])
 /** A note in the checklist view reads its title and rows from its text: never stored as props. */
 const NOTE_DERIVED = new Set(['title', 'rows'])
 const ROUNDED = new Set(['x', 'y', 'w', 'h'])
@@ -150,6 +151,12 @@ export function readShape(id: string, m: unknown): Shape | null {
     shape.rows = list.rows
     shape.picks = list.picks
     shape.notes = list.notes
+  }
+  if (type === 'sticky' && m.get('view') === VIEW_TIMELINE) {
+    const { title, timeline } = readNoteTimeline(shape.text)
+    shape.view = VIEW_TIMELINE
+    shape.title = title
+    shape.timeline = timeline
   }
   if (type === 'checklist') {
     const columns = readColumns(m.get('columns'))

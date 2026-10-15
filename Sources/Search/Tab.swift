@@ -19,13 +19,15 @@ enum Web {
     /// — web tabs and extension views alike (see Extensions.init).
     static let userAgentName = "Version/26.5 Safari/605.1.15"
 
-    static func configuration(shy: Bool = false) -> WKWebViewConfiguration {
+    static func configuration(shy: Bool = false, store: WKWebsiteDataStore? = nil) -> WKWebViewConfiguration {
         let config = WKWebViewConfiguration()
         // The real store, not the ephemeral one: staying signed in between
         // launches is the difference between a browser and a preview pane. A
         // shy tab gets its own store, which exists only while it does — its own
         // cookies, its own sign-ins, and nothing left behind when it closes.
-        config.websiteDataStore = shy ? .nonPersistent() : Store.websites
+        // (Fork (perf): `store` is the one the tab was made for — its space's
+        // profile — when the configuration is built later than the tab.)
+        config.websiteDataStore = shy ? .nonPersistent() : store ?? Store.websites
         // Chrome extensions see every page but a private one. The controller
         // has to be there when the view is made; it can't be added after.
         if #available(macOS 15.4, *), !shy { MainActor.assumeIsolated { Extensions.attach(config) } }
@@ -77,7 +79,13 @@ final class Tab: ObservableObject, Identifiable {
     /// The web view if there is one yet, for the callers that must not be
     /// the reason there is.
     private(set) var built: PageView?
-    private let configuration: WKWebViewConfiguration
+    /// Fork (perf): built with the view, not the tab. A launch restores every
+    /// tab of every space (264 in one real session) and builds one view; the
+    /// others needn't each carry a WebKit configuration until they wake. The
+    /// store is chosen now, while the space the tab is made for is known.
+    private let given: WKWebViewConfiguration?
+    private let store: WKWebsiteDataStore?
+    private lazy var configuration: WKWebViewConfiguration = given ?? Web.configuration(shy: shy, store: store)
     /// Whoever handles navigation and windows for this page; applied when
     /// the page is built, whenever that is.
     weak var delegate: (WKNavigationDelegate & WKUIDelegate)? {
@@ -91,7 +99,10 @@ final class Tab: ObservableObject, Identifiable {
 
     @Published private(set) var title = ""
     @Published private(set) var address: URL?
-    @Published private(set) var progress: Double = 0
+    /// Fork (perf): not published. Nothing draws it, and as a published
+    /// value every tick of a load redrew every view watching the tab — its
+    /// row, the stage, the address — a dozen times a page.
+    private(set) var progress: Double = 0
     @Published private(set) var loading = false
     @Published private(set) var canGoBack = false
     @Published private(set) var canGoForward = false
@@ -312,7 +323,8 @@ final class Tab: ObservableObject, Identifiable {
     init(shy: Bool = false, bench: Bool = false, configuration: WKWebViewConfiguration? = nil) {
         self.shy = shy
         self.bench = bench
-        self.configuration = configuration ?? Web.configuration(shy: shy)
+        given = configuration
+        store = configuration == nil && !shy ? Store.websites : nil
     }
 
     private func build() -> PageView {
@@ -721,6 +733,7 @@ final class Tab: ObservableObject, Identifiable {
         address = url
         title = ""
         failure = nil
+        fromCache = false
         reading = 0
         lastY = 0
         reader = false
@@ -760,8 +773,18 @@ final class Tab: ObservableObject, Identifiable {
         address = url
         self.title = title
         pending = url
+        fromCache = true
         adoptIcon()
     }
+
+    /// Fork (perf): a tab brought back (a session, a move-in, the cloud) loads
+    /// its document the way Safari and Chrome bring a session back — from the
+    /// disk cache when it is there, without asking the server first, and from
+    /// the network when it isn't. The files the page loads with it follow their
+    /// own cache rules, as on any load, and ⌘R asks the server as ever. A
+    /// restored lightspeed.exowatt.com tab had its document in 5 ms instead of
+    /// 450–690 ms and drew at ~150 ms instead of ~900 (perf/README.md).
+    private var fromCache = false
 
     /// True for a tab that has a place and an address but is holding no page —
     /// brought back from the last session, or put down with ⌘W while pinned.
@@ -963,13 +986,15 @@ final class Tab: ObservableObject, Identifiable {
         cancelRecovery()
         let generation = recoveryGeneration
         let view = web
+        let policy: URLRequest.CachePolicy = fromCache ? .returnCacheDataElseLoad : .useProtocolCachePolicy
+        fromCache = false
         let load = { [weak self, weak view] in
             guard let self, let view, self.built === view,
                   self.recoveryGeneration == generation, self.pending == nil else { return }
             self.attachmentWait?.cancel()
             self.attachmentWait = nil
             view.onStage = nil
-            if let state { view.interactionState = state } else { view.load(URLRequest(url: url)) }
+            if let state { view.interactionState = state } else { view.load(URLRequest(url: url, cachePolicy: policy)) }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self, weak view] in
                 guard let self, let view, self.built === view,
                       self.recoveryGeneration == generation, self.address == url, self.pending == nil else { return }
@@ -1090,8 +1115,12 @@ final class Tab: ObservableObject, Identifiable {
         return there.absoluteString == "about:blank" && pending == nil && address != nil
     }
 
-    /// Again from the network. A view that has lost its document is given
-    /// the address back instead: there is nothing else for it to reload.
+    /// Again, the way Safari's ⌘R does it: the page and everything on it are
+    /// checked with the server, and whatever hasn't changed comes from the
+    /// cache instead of the network. (Fork: was `reloadFromOrigin()`, every
+    /// file fetched again on every ⌘R; that is ⇧⌘R, Hard Reload, now.) A
+    /// view that has lost its document is given the address back instead:
+    /// there is nothing else for it to reload.
     func reload() {
         cancelRecovery()
         failure = nil
@@ -1101,7 +1130,7 @@ final class Tab: ObservableObject, Identifiable {
         if hollow || crashRecovery.halted, let address {
             web.load(URLRequest(url: address))
         } else {
-            web.reloadFromOrigin()
+            web.reload()
         }
     }
 
@@ -1304,6 +1333,7 @@ final class PageView: WKWebView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        Room.moved(self) // Fork (launch, space-warm): out of the room, WebKit judges visibility again
         guard window != nil else { return }
         // The representable finishes sizing the view in this turn.
         DispatchQueue.main.async { [weak self] in

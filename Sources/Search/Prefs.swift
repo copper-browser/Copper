@@ -73,7 +73,7 @@ final class Preferences: ObservableObject {
     @Published var swipeDirection: SwipeDirection {
         didSet { store.set(swipeDirection.rawValue, forKey: "spaces.swipe") }
     }
-    /// Tabs nobody has looked at for half an hour give their page back and
+    /// Tabs nobody has looked at for a while give their page back (Sleep.swift) and
     /// keep where they were. On unless turned off.
     @Published var sleepsTabs: Bool {
         didSet { store.set(sleepsTabs, forKey: "tabs.sleep") }

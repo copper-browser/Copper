@@ -365,7 +365,7 @@ struct SettingsPanel: View {
                 .settingsAnchor("tabs.swipe")
             }
             SettingsSection("Tabs you leave") {
-                Line("Sleep tabs you aren't using",  "After half an hour away they come back where you left them. Pinned tabs, sound, calls and anything typed stay awake.") {
+                Line("Sleep tabs you aren't using",  "Only when more pages are open than this Mac keeps easily, or memory runs short: the ones you left longest go first, and come back where you left them. Pinned tabs, sound, calls and anything typed stay awake.") {
                     Switch(on: $prefs.sleepsTabs)
                 }
                 .settingsAnchor("tabs.sleep")

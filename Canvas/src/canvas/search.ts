@@ -15,7 +15,7 @@ import { parseMarkdownLite, type Inline } from './markdown-lite'
 import { isShown, type CommentThread } from './comments'
 import type { Shape } from './types'
 
-export type SearchKind = 'frame' | 'sticky' | 'text' | 'arrow' | 'link' | 'checklist' | 'comment'
+export type SearchKind = 'frame' | 'sticky' | 'text' | 'arrow' | 'link' | 'checklist' | 'timeline' | 'comment'
 
 /** A comment thread's search ref: `comment:<threadId>` (never a shape id). */
 export const COMMENT_REF = 'comment:'
@@ -328,6 +328,7 @@ const KIND_ORDER: Record<SearchKind, number> = {
   link: 1,
   sticky: 2,
   checklist: 2,
+  timeline: 2,
   text: 3,
   arrow: 4,
   comment: 5,
@@ -407,8 +408,8 @@ export const searchItems = (items: readonly SearchItem[], query: string) =>
 
 /**
  * The board's searchable things: stickies, text and frames with text, links,
- * checklists (title and row labels), and arrows with a label whose two ends
- * are still on the board.
+ * checklists (title and row labels), timelines (title, item labels and
+ * bubbles), and arrows with a label whose two ends are still on the board.
  */
 export function boardSearchItems(shapes: Iterable<Shape>): SearchItem[] {
   const all = [...shapes]
@@ -416,7 +417,10 @@ export function boardSearchItems(shapes: Iterable<Shape>): SearchItem[] {
   const out: SearchItem[] = []
   for (const s of all) {
     let text = ''
-    if (s.type === 'sticky' || s.type === 'text') text = s.text
+    // A timeline answers to its title and its items' words, not its dates' markup.
+    if (s.type === 'sticky' && s.timeline)
+      text = [s.title, ...s.timeline.items.flatMap(it => [it.label, it.body ?? ''])].filter(t => t.trim()).join('\n')
+    else if (s.type === 'sticky' || s.type === 'text') text = s.text
     else if (s.type === 'frame' || s.type === 'link') text = s.title
     else if (s.type === 'arrow') text = s.label ?? ''
     // A checklist answers to its title, every row's label and every row's comment.
@@ -426,7 +430,7 @@ export function boardSearchItems(shapes: Iterable<Shape>): SearchItem[] {
     if (!text.trim() && !(s.type === 'link' && s.url)) continue
     if (s.type === 'arrow' && !arrowPath(s, id => boxes.get(id) ?? null)) continue
     // A note in the checklist view is found by its text, and shown as a checklist.
-    const item: SearchItem = { ref: s.id, kind: s.view === 'checklist' ? 'checklist' : s.type, text }
+    const item: SearchItem = { ref: s.id, kind: s.view === 'checklist' ? 'checklist' : s.view === 'timeline' ? 'timeline' : s.type, text }
     if (s.type === 'link' && s.url) item.url = s.url
     if (s.type !== 'arrow') item.at = { x: s.x, y: s.y }
     if (s.by) item.by = s.by

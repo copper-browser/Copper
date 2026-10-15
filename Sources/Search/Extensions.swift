@@ -181,25 +181,45 @@ final class Extensions: NSObject, ObservableObject {
     }
 
     private func follow() {
+        // Fork (perf): nothing to tell until an extension is loading. With
+        // none installed this ran over every tab of every space — 264 adapters
+        // made at launch, then a quadratic walk on every tab change and space
+        // switch — for a controller with no extension to hear it. The first
+        // load catches up (`track()`), before that extension starts.
+        guard tracking else { return }
         let now = visibleTabs
         let ids = now.map(\.id)
-        let gone = order.filter { !ids.contains($0) }
+        let present = Set(ids)
+        let known = Set(order)
+        let gone = order.filter { !present.contains($0) }
         for id in gone {
             if let adapter = adapters[id] { controller.didCloseTab(adapter, windowIsClosing: false) }
             adapters[id] = nil
             watching[id] = nil
         }
-        for tab in now where !order.contains(tab.id) {
+        for tab in now where !known.contains(tab.id) {
             controller.didOpenTab(adapter(for: tab))
             watch(tab)
         }
         // Moves: anything whose position changed among the ones that stayed.
-        let stayed = order.filter { ids.contains($0) }
-        let newOrder = ids.filter { stayed.contains($0) }
-        for (index, id) in stayed.enumerated() where newOrder.firstIndex(of: id) != index {
+        let stayed = order.filter { present.contains($0) }
+        let staying = Set(stayed)
+        let newOrder = ids.filter { staying.contains($0) }
+        for (index, id) in stayed.enumerated() where newOrder[index] != id {
             if let adapter = adapters[id] { controller.didMoveTab(adapter, from: index, in: window) }
         }
         order = ids
+    }
+
+    /// Fork (perf): the tabs and the one in front, told to the controller the
+    /// first time an extension is about to load — what `start` used to do for
+    /// every launch, extensions or none.
+    private var tracking = false
+    private func track() {
+        guard !tracking else { return }
+        tracking = true
+        follow()
+        activated(from: nil, to: browser?.activeID)
     }
 
     private func watch(_ tab: Tab) {
@@ -217,6 +237,7 @@ final class Extensions: NSObject, ObservableObject {
     }
 
     private func activated(from old: Tab.ID?, to new: Tab.ID?) {
+        guard tracking else { return } // Fork (perf): see `track()`
         guard let new, let tab = browser?.tabs.first(where: { $0.id == new }), !tab.shy else { return }
         let previous = old.flatMap { id in browser?.tabs.first(where: { $0.id == id }) }.map(adapter(for:))
         controller.didActivateTab(adapter(for: tab), previousActiveTab: previous)
@@ -268,6 +289,7 @@ final class Extensions: NSObject, ObservableObject {
             // WKWebExtension construction suspends. A switch turned off or
             // an extension removed during that await must not load afterward.
             guard enforceCompatibility(item), installed.contains(where: { $0.id == item.id && $0.enabled }) else { return false }
+            track() // Fork (perf): the tabs, before the first extension hears anything
             try controller.load(context)
             watch(context)
             if contexts[item.id] == nil, loadsThisRun.contains(item.id) { loadedBefore.insert(item.id) }

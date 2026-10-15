@@ -12,6 +12,7 @@
     ./bench go ID URL                  send a bench tab somewhere else
     ./bench wait ID [SECONDS]          until the page has loaded
     ./bench sleep ID                   put a tab to sleep now, or say what keeps it awake
+    ./bench sleep sweep                the idle sweep now: the budget, the pages loaded, the tabs it chose
     ./bench select ID                  bring a tab to the front — --test runs only
     ./bench resize W H [STEPS]         take the window to W×H in steps, like a drag — --test runs only
     ./bench key ID TEXT [--app] [--hold] press keys on a tab as real key events — --test runs only;
@@ -28,6 +29,8 @@
     ./bench shot ID [PATH] [WIDTH]     a PNG of the page → its path
     ./bench close ID | all             only tabs the bench opened
     ./bench probe                      the window's own state: panels, modal, windows
+    ./bench pace [reset]               launch milestones (ms since the process started) and the main
+                                       thread since the last reset: busy, longest pass, passes over 16 ms
     ./bench extensions                 installed extensions, loaded or not, with their warnings
     ./bench ext-add ID|LINK [--yes]    install from the Chrome Web Store (--yes only in a --test run)
     ./bench ext-folder PATH [--yes]    install an unpacked extension
@@ -555,8 +558,8 @@ def main(argv):
         words = [a for a in args if a != "--table"]
         request["op"] = words[0] if words else "state"
         request["arg"] = " ".join(words[1:]) if len(words) > 1 else ""
-    elif verb in ("spaces", "groups", "sections", "agent", "ai", "updates", "bw", "op", "downloads", "drive", "ext-manager", "windows", "flight", "trails"):
-        request["op"] = args[0] if args else ("status" if verb in ("updates", "bw", "op", "drive") else "list")
+    elif verb in ("spaces", "groups", "sections", "agent", "ai", "updates", "bw", "op", "downloads", "drive", "ext-manager", "windows", "flight", "trails", "pace"):
+        request["op"] = args[0] if args else ("status" if verb in ("updates", "bw", "op", "drive", "pace") else "list")
         request["arg"] = " ".join(args[1:]) if len(args) > 1 else ""
     elif verb == "history":
         if not args or args[0] != "import" or len(args) < 2:

@@ -187,6 +187,81 @@ copper-cloud 0.6.0's REST `/ops` still makes those, and this page still draws, c
 updates them; their row comments sit under `note:<rowId>` (`{text, by, byId, at}`), and a row that
 goes takes its comment. Older Coppers don't draw that type at all.
 
+## Timelines
+
+A timeline card (the toolbar's calendar tool or `G`, or an agent's `{type:'timeline'}`) is a
+title, a date range with a step — day, week, month, quarter or year — and the things along it. A
+new one runs from today to three months out, weekly, at 880 × 300, with its title ready to type.
+The card is one level axis with a small dot at every step and a muted label under it (labels thin
+out before they would touch; a year, or a month on a daily card, reads a little stronger where it
+changes), a thin *Today* line when today is in range, and three kinds of item:
+
+- **Notes**: a dot on the axis, a short stem, and a label chip above the line.
+- **Bubbles**: a note with a markdown body — a small card (up to 240 wide) with its label in bold
+  and the body drawn as a note draws it; a long body is cut with a fade, and opening the item shows
+  it whole.
+- **Sections**: a span of days, a rounded band in a colour under the axis with its name inside
+  (cut with an ellipsis when tight). Sections that overlap stack in lanes; one that runs past the
+  range shows a square edge on that side.
+
+Notes and bubbles stack in tiers above the axis — packed left to right so no two boxes touch, and
+a box steps aside rather than sit in another item's stem where it can; what doesn't fit in about
+200 board units goes below the sections. The card is never shorter than that needs (it grows as
+items arrive, and a resize stops there); which tiers go above depends only on the content and the
+width, so a taller card only adds room.
+
+**Working it** — anyone who can edit, selected or not, no edit mode. Hovering the axis shows a
+ghost dot on the day under the pointer with its date (*Tue, Oct 14*); a click there opens a small
+popover for a **Note** (a label) or a **Bubble** (a label and a body), or *Section from here*;
+Return adds it (⌘Return in the body), Escape cancels, and a click elsewhere keeps what was typed.
+Dragging along the axis selects a span with a live readout (*Oct 20 – Nov 3 · 15 days*); on
+release a name, an end date and the palette make it a section. A click on an item opens its
+editor: label, body, date (or start and end), colour, Note ⇄ Bubble, Delete; only what was
+changed is written, on Done or Return. Drag a dot or its chip to move it (snapped to a day, its
+date shown under it); drag a section's body to shift it or its ends to stretch it. A focused item
+takes ←/→ (a day; ⇧ a step), Return (open) and Delete. While the card is selected its header
+shows **Start**, **End** (native date fields; a half-typed year is never written) and the
+**Step** menu. Items outside the range are kept and counted (*+2 outside range*), never deleted.
+Every edit is one ⌘Z step; a read-only board shows everything, and a click on an item shows all
+of it. ⌘F finds a timeline by its title, labels and bubbles.
+
+**Stored as a note**, so every Copper shows it: a `sticky` with `view: "timeline"` whose text is
+the timeline —
+
+```
+### Q4 launch
+2026-10-01 → 2026-12-31 · weekly
+
+- 2026-10-14 · Kickoff
+- 2026-10-20 → 2026-11-03 · Build sprint · blue
+- 2026-11-18 · Launch review · purple
+  > Bring the **numbers**,
+  > and the pricing deck.
+```
+
+The first heading is the title; the first `start → end · step` line (`daily` … `yearly`; `->`
+works too, and without a step word it is weekly) is the range; each `- date` line an item — one
+date a pin, `date → end` a section — with ` · label` and, last, an optional ` · colour` from the
+palette (yellow, pink, blue, green, purple, gray). A pin with indented `>` lines under it is a
+bubble, their text its body (a blank line is a bare `  >`); without, a note. Dates are ISO days,
+so nobody misreads 03/04. Items are written in date order. Any other line — prose, a half-typed
+date — is kept as it is and drawn by nobody. Every write changes only the characters of its own
+lines (the title's, the range's, or one item's), so edits to different items from two Coppers at
+once both land, and an item moved past its neighbours is lifted out and put back in its place. An
+older Copper shows a readable note: the heading, the range, a list, bubbles as quotes. Model and
+rules: `Canvas/src/canvas/timeline-text.ts`, `timeline.ts`; layout: `timeline-layout.ts`.
+
+Agents add one with `{type:'timeline', title?, start, end, step?, items?:[{date, end?, label,
+text?, color?}]}` (`text` makes a bubble, `end` a section; without `start`/`end` the items' span
+is the range, and without `step` one suits the span). `update` takes the same fields — `items`
+replaces the list — plus `addItems:[…]` and `editItems:{ref: patch | null}` to change or remove
+(`null`) single items, where `ref` is `"YYYY-MM-DD · label"`, a label (any case), a date (its first
+item) or an index, and a patch is `{date?, end?, label?, text?, color?}` (`end:null` makes a pin,
+`text:null` a note). An update whose refs miss writes none of its edits. `{view:'timeline'}` /
+`view:null` convert a note in place, its text untouched. `canvas_read` gives `view`, `title`,
+`start`, `end`, `step` and `items:[{date, end?, label, text?, color?, kind:'note'|'bubble'|
+'section'}]`, with the `text`.
+
 ## Comments on shapes
 
 *Page: `Canvas/src/canvas/comments.ts` (model and writes), `components/Comments.tsx` (pins, thread

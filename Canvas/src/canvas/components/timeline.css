@@ -1,0 +1,767 @@
+/*
+ * The timeline card (Timeline.tsx). World px, like every card: the board's
+ * layer scales it. Tips, readouts and popovers keep their size on screen at
+ * any zoom (--z is the board's zoom, set on its layer). Geometry comes from
+ * `timeline-layout.ts`; the numbers here that it relies on say so.
+ */
+.tl-card {
+  --tl-line: color-mix(in srgb, var(--ink) 26%, transparent);
+  --tl-tick: var(--ink-4);
+  --tl-tick-strong: var(--ink-3);
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-note);
+  font-size: 14px;
+  line-height: 1.35;
+  box-sizing: border-box;
+}
+.dark .tl-card {
+  --tl-line: color-mix(in srgb, var(--ink) 30%, transparent);
+}
+
+/* ---- header (62px: TL.head) ---- */
+.tl-head {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 62px;
+  box-sizing: border-box;
+  padding: 11px 16px 0;
+  background: color-mix(in srgb, var(--tl-band) 78%, var(--surface));
+  color: var(--tl-band-ink);
+  border-radius: 11px 11px 0 0;
+  border-bottom: 1px solid var(--line);
+}
+.tl-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 22px;
+}
+.tl-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tl-muted {
+  opacity: 0.45;
+}
+.tl-title-field {
+  flex: 1;
+  min-width: 0;
+  margin: -3px -6px;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line));
+  border-radius: 6px;
+  outline: none;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.005em;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.tl-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+  margin-top: 3px;
+  min-width: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.tl-summary {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0.62;
+}
+.tl-outside {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+/* Start, end and step while the card is selected: in the summary's place. */
+.tl-settings {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.tl-date {
+  height: 22px;
+  box-sizing: border-box;
+  padding: 0 6px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+  transition: border-color 0.12s ease;
+}
+.tl-date:hover {
+  border-color: color-mix(in srgb, var(--ink) 30%, transparent);
+}
+.tl-date:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.dark .tl-date {
+  color-scheme: dark;
+}
+.tl-arrow {
+  opacity: 0.45;
+  font-size: 12px;
+}
+.tl-step-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 22px;
+  padding: 0 6px 0 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.12s ease;
+}
+.tl-step-btn:hover {
+  border-color: color-mix(in srgb, var(--ink) 30%, transparent);
+}
+.tl-step-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.tl-step-btn svg {
+  opacity: 0.55;
+}
+
+/* ---- the body ---- */
+.tl-lines {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.tl-axis {
+  stroke: var(--tl-line);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+.tl-tick-dot {
+  fill: var(--tl-tick);
+  transition: r 0.12s ease;
+}
+.tl-tick-dot[data-major] {
+  fill: var(--tl-tick-strong);
+}
+.tl-tick-dot[data-hot] {
+  fill: var(--ink-2);
+}
+.tl-stem {
+  stroke: var(--tl-stem);
+  stroke-width: 1.25;
+  transition: stroke 0.12s ease;
+}
+.tl-stem[data-hot] {
+  stroke: var(--tl-stem-hot);
+}
+.tl-today-line {
+  stroke: var(--accent);
+  stroke-width: 1;
+  opacity: 0.55;
+}
+.tl-today {
+  position: absolute;
+  transform: translateX(-50%);
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--accent-strong);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 14px;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.dark .tl-today {
+  color: var(--accent);
+}
+
+/* Tick labels: 14px rows (TL.labelH), the context row (month / year) under them. */
+.tl-tick {
+  position: absolute;
+  transform: translateX(-50%);
+  /* Knocked out of the stems that pass down behind it to the tiers below. */
+  padding: 0 2px;
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--tl-tick-strong);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 14px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.tl-tick-sub {
+  color: var(--ink-2);
+  font-weight: 600;
+  line-height: 13px;
+}
+
+/* The hit strip over the axis and its labels: hover for a date, click or drag to add. */
+.tl-axis-hit {
+  position: absolute;
+  cursor: crosshair;
+}
+.tl-axis-hit[data-readonly] {
+  cursor: default;
+}
+.tl-ghost {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 1.5px solid var(--accent);
+  background: var(--surface);
+  pointer-events: none;
+}
+.tl-span {
+  position: absolute;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+  pointer-events: none;
+}
+
+/* A tip under a point on the axis (over its labels, never over the items): the same size on screen at any zoom. */
+.tl-tip {
+  position: absolute;
+  z-index: 6;
+  transform-origin: 50% 0;
+  transform: translate(-50%, 0) scale(calc(1 / var(--z, 1)));
+  padding: 3px 8px;
+  border-radius: 7px;
+  background: #1d1d1f;
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 550;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: var(--shadow-2);
+}
+/* Over the axis instead: a section's readout, the band itself being under it. */
+.tl-tip-up {
+  transform-origin: 50% 100%;
+  transform: translate(-50%, -100%) scale(calc(1 / var(--z, 1)));
+}
+.dark .tl-tip {
+  background: #f2f2ef;
+  color: #1d1d1f;
+}
+
+/* ---- sections (24px lanes: TL.lane) ---- */
+.tl-sec {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--tl-c-paper) 82%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tl-c-stroke) 34%, transparent);
+  color: var(--tl-c-ink);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 24px;
+  cursor: grab;
+  outline: none;
+  transition: box-shadow 0.12s ease;
+}
+.tl-sec[data-open-left] {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+.tl-sec[data-open-right] {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.tl-sec:hover,
+.tl-sec[data-hot] {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tl-c-stroke) 70%, transparent);
+}
+.tl-sec:focus-visible {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--tl-c-stroke) 70%, transparent),
+    0 0 0 2px var(--accent);
+}
+.tl-sec[data-readonly] {
+  cursor: pointer;
+}
+.tl-sec-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.tl-sec-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: ew-resize;
+}
+.tl-sec-edge[data-side='start'] {
+  left: -2px;
+}
+.tl-sec-edge[data-side='end'] {
+  right: -2px;
+}
+
+/* ---- pins: a dot on the axis, a stem, a chip (note) or a bubble ---- */
+.tl-dot {
+  position: absolute;
+  z-index: 3;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: grab;
+  outline: none;
+}
+.tl-dot::after {
+  content: '';
+  position: absolute;
+  left: 3.5px;
+  top: 3.5px;
+  width: 9px;
+  height: 9px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--tl-c-stroke);
+  box-shadow: 0 0 0 2px var(--surface);
+  transition: transform 0.12s ease;
+}
+.tl-dot:hover::after,
+.tl-dot[data-hot]::after {
+  transform: scale(1.22);
+}
+.tl-dot:focus-visible::after {
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 4px var(--accent);
+}
+.tl-dot[data-readonly] {
+  cursor: pointer;
+}
+
+.tl-chip,
+.tl-bubble {
+  position: absolute;
+  z-index: 2;
+  box-sizing: border-box;
+  cursor: pointer;
+  outline: none;
+  transition:
+    box-shadow 0.12s ease,
+    border-color 0.12s ease;
+}
+.tl-chip {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1px solid var(--tl-c-border);
+  background: var(--tl-c-fill);
+  color: var(--tl-c-text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 22px;
+  box-shadow: var(--shadow-1);
+}
+.tl-chip-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.tl-bubble {
+  padding: 8px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--tl-c-border);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 17px;
+  box-shadow: var(--shadow-1);
+}
+.tl-bubble-title {
+  height: 18px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  color: var(--tl-c-title);
+}
+.tl-bubble-body {
+  overflow: hidden;
+  color: var(--ink-2);
+}
+.tl-bubble-body[data-cut] {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 17px), transparent);
+}
+.tl-bubble-body .sticky-md {
+  font-size: 12.5px;
+  line-height: 17px;
+}
+/* Drawn without gaps between blocks: the layout counts one row per line. */
+.tl-bubble-body .sticky-md > * {
+  margin: 0 !important;
+}
+/* The tail: the bubble points at its stem. */
+.tl-tail {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  background: inherit;
+  border: inherit;
+  border-top-color: transparent;
+  border-left-color: transparent;
+  rotate: 45deg;
+  pointer-events: none;
+}
+.tl-bubble[data-side='above'] .tl-tail {
+  bottom: -4.5px;
+}
+.tl-bubble[data-side='below'] .tl-tail {
+  top: -4.5px;
+  rotate: 225deg;
+}
+.tl-chip:hover,
+.tl-chip[data-hot],
+.tl-bubble:hover,
+.tl-bubble[data-hot] {
+  border-color: color-mix(in srgb, var(--tl-c-stroke) 55%, var(--line-2));
+  box-shadow: var(--shadow-1), 0 0 0 1px color-mix(in srgb, var(--tl-c-stroke) 22%, transparent);
+}
+.tl-chip:focus-visible,
+.tl-bubble:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.tl-empty {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: center;
+  color: var(--ink-4);
+  font-size: 12.5px;
+  pointer-events: none;
+}
+
+/* ---- popovers: anchored to a day, the same size on screen at any zoom ---- */
+.tl-pop {
+  position: absolute;
+  z-index: 8;
+  width: 264px;
+  box-sizing: border-box;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-2);
+  font-size: 13px;
+  line-height: 1.35;
+  cursor: default;
+  animation: canvas-pop 0.12s ease-out;
+}
+.tl-pop-narrow {
+  width: 168px;
+  padding: 4px;
+}
+.tl-pop-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  margin-bottom: 8px;
+}
+.tl-pop-when {
+  margin-left: auto;
+  color: var(--ink-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tl-pop-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.tl-seg {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.tl-seg button {
+  height: 22px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 550;
+  cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+}
+.tl-seg button:hover {
+  color: var(--ink);
+}
+.tl-seg button[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-1);
+}
+.tl-seg button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+.tl-field,
+.tl-area {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  outline: none;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  transition: border-color 0.12s ease;
+}
+.tl-field {
+  height: 30px;
+  padding: 0 9px;
+}
+.tl-area {
+  min-height: calc(1.45em * 3 + 14px);
+  max-height: calc(1.45em * 9 + 14px);
+  margin-top: 6px;
+  padding: 6px 9px;
+  line-height: 1.45;
+  resize: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.tl-field::placeholder,
+.tl-area::placeholder {
+  color: var(--ink-4);
+}
+.tl-field:focus,
+.tl-area:focus {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.dark .tl-field,
+.dark .tl-area {
+  color-scheme: dark;
+}
+.tl-pop-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  min-width: 0;
+}
+.tl-pop-row .tl-date {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+}
+.tl-label {
+  flex-shrink: 0;
+  width: 42px;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.tl-swatches {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.tl-swatch {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+.tl-swatch::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--sw);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.12);
+}
+.dark .tl-swatch::after {
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.16);
+}
+.tl-swatch[data-none]::after {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+.tl-swatch[data-none]::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  bottom: 4px;
+  width: 1.25px;
+  z-index: 1;
+  background: var(--ink-4);
+  rotate: 45deg;
+}
+.tl-swatch[aria-pressed='true'] {
+  box-shadow: 0 0 0 1.5px var(--ink-2);
+}
+.tl-swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.tl-pop-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.tl-btn {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 550;
+  cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+}
+.tl-btn:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.tl-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.tl-btn-primary {
+  margin-left: auto;
+  background: var(--ink);
+  color: var(--surface);
+}
+.tl-btn-primary:hover {
+  background: color-mix(in srgb, var(--ink) 86%, var(--surface));
+  color: var(--surface);
+}
+.tl-btn-primary:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.tl-btn-danger {
+  color: var(--danger);
+}
+.tl-btn-danger:hover {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
+}
+.tl-hint {
+  color: var(--ink-4);
+  font-size: 11.5px;
+}
+.tl-view-body {
+  margin-top: 6px;
+  color: var(--ink-2);
+  font-size: 13px;
+  max-height: 320px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.tl-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.tl-menu-item:hover,
+.tl-menu-item:focus-visible {
+  background: var(--surface-2);
+  outline: none;
+}
+.tl-menu-item svg {
+  color: var(--accent);
+}

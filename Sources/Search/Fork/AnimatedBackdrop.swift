@@ -185,9 +185,14 @@ final class BackdropWeb: WKWebView, WKNavigationDelegate {
     private static func configuration() -> WKWebViewConfiguration {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = store
-        // scene.js is an ES module loaded from a file URL, and WebKit treats
-        // each file as its own origin unless told the folder is one page.
-        config.preferences.setValue(true, forKey: "allowFileAccessFromFileURLs")
+        // Fork (perf): the page comes from `SceneFiles`, not a file URL. A file
+        // URL has WebKit issue its content process a sandbox extension for the
+        // folder, on the main thread, as that process finishes launching — and
+        // on some days that one call took five to six seconds (MBX2, October
+        // 2026: every launch of a session with an animated space froze that
+        // long, the installed Copper included). Served from the app, the page
+        // needs no extension, and its three files are one origin.
+        config.setURLSchemeHandler(SceneFiles.shared, forURLScheme: SceneFiles.scheme)
         if BackdropScene.forced {
             // Under test the window is never visible, so WebKit would nap the
             // process and stretch its timers; the bench needs it at pace.
@@ -210,8 +215,8 @@ final class BackdropWeb: WKWebView, WKNavigationDelegate {
         allowsBackForwardNavigationGestures = false
         if #available(macOS 13.3, *) { isInspectable = Store.testing }
         BackdropWeb.alive.add(self)
-        guard let folder = BackdropScene.folder else { return }
-        loadFileURL(folder.appendingPathComponent("scene.html"), allowingReadAccessTo: folder)
+        guard BackdropScene.folder != nil, let page = URL(string: "\(SceneFiles.scheme)://scene/scene.html") else { return }
+        load(URLRequest(url: page))
         let center = NotificationCenter.default
         for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification,
                      NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, .NSProcessInfoPowerStateDidChange] {
@@ -352,4 +357,33 @@ final class BackdropWeb: WKWebView, WKNavigationDelegate {
             }
         }
     }
+}
+
+/// The backdrop's page — scene.html, scene.js, three.js — handed to its web
+/// view from the app's own bundle at `copper-scene://scene/…` (see
+/// `BackdropWeb.configuration`). Nothing outside the Backdrop folder is served.
+final class SceneFiles: NSObject, WKURLSchemeHandler {
+    static let shared = SceneFiles()
+    static let scheme = "copper-scene"
+
+    private static let types = ["html": "text/html", "js": "text/javascript", "jpg": "image/jpeg",
+                                "jpeg": "image/jpeg", "png": "image/png", "json": "application/json"]
+
+    func webView(_ webView: WKWebView, start task: any WKURLSchemeTask) {
+        guard let url = task.request.url, let folder = BackdropScene.folder?.standardizedFileURL else {
+            return task.didFailWithError(URLError(.fileDoesNotExist))
+        }
+        let file = folder.appendingPathComponent(url.path).standardizedFileURL
+        guard file.path.hasPrefix(folder.path + "/"), let data = try? Data(contentsOf: file) else {
+            return task.didFailWithError(URLError(.fileDoesNotExist))
+        }
+        let type = SceneFiles.types[file.pathExtension.lowercased()] ?? "application/octet-stream"
+        let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1",
+                                       headerFields: ["Content-Type": type, "Content-Length": String(data.count)])!
+        task.didReceive(response)
+        task.didReceive(data)
+        task.didFinish()
+    }
+
+    func webView(_ webView: WKWebView, stop task: any WKURLSchemeTask) {}
 }

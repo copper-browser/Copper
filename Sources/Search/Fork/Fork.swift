@@ -56,6 +56,7 @@ enum Fork {
     @MainActor static func bench(_ verb: String, _ request: [String: Any], in browser: Browser) -> [String: Any] {
         switch verb {
         case "flow": return Flow.shared.bench(request, in: browser)
+        case "pace": return Pace.bench(request) // Fork/Pace.swift
         case "history": return Flow.shared.bench(request, in: browser)
         case "spaces": return Spaces.shared.bench(request, in: browser)
         case "ext-manager": return ExtensionManager.shared.bench(request, in: browser)

@@ -11,6 +11,7 @@ struct SearchApp: App {
     @NSApplicationDelegateAdaptor(Links.self) private var links
 
     init() {
+        Pace.start() // Fork (pace): the launch clock and the main-thread watch, first (Fork/Pace.swift)
         Instance.acquireIfNeeded() // Fork: one process per world, before anything is restored (Fork/Instance.swift)
         Fork.migratePasskeysPreference()
         Bridge.runIfAsked()
@@ -42,7 +43,15 @@ struct SearchApp: App {
 struct AppCommands: Commands {
     @ObservedObject var main: Browser
     @FocusedObject private var focused: Browser?
+    /// Fork (perf): the History menu's own source, watched here rather than
+    /// through every change of the browser (Browser.init).
+    @ObservedObject private var history: History
     private var browser: Browser { focused ?? main }
+
+    init(main: Browser) {
+        _main = ObservedObject(wrappedValue: main)
+        _history = ObservedObject(wrappedValue: main.history)
+    }
 
     var body: some Commands {
         ForkCommands(browser: browser)
@@ -465,6 +474,7 @@ struct ContentView: View {
             .animation(Motion.settle, value: browser.managing)
             .animation(Motion.settle, value: browser.reviewing)
         .onAppear {
+            Pace.mark("window") // Fork (pace)
             watchKeys()
             browser.askFocus()
             // Addresses from other apps have somewhere to go from here on —

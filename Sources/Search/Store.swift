@@ -14,14 +14,17 @@ enum Store {
     /// is not belt and braces: a development build launched from a terminal
     /// once wrote over somebody's real session, and asking a person to
     /// remember a flag is not a safeguard.
-    static var testing: Bool {
+    /// Fork (perf): worked out once — the environment, the bundle and the
+    /// path don't change while the app runs, and reading the environment
+    /// builds a fresh dictionary of it each time (twice per tab restored).
+    static let testing: Bool = {
         if ProcessInfo.processInfo.environment["SEARCH_PROBE"] != nil { return true }
         // Fork: only a release is the browser somebody uses. A development
         // build (Fork.devBundle) or any other copy is a test run however it
         // was started, so it never opens the installed Copper's folder.
         if Bundle.main.bundleIdentifier != Fork.bundle { return true }
         return Bundle.main.executablePath?.contains("/.build/") == true
-    }
+    }()
 
     /// Which test world a test run lives in. SEARCH_PROBE=1, or a run from
     /// the build folder, is the test world, "Search (test)". SEARCH_PROBE=
@@ -44,9 +47,7 @@ enum Store {
     /// browser does where test runs otherwise differ — hidden pages slowed
     /// the way WebKit slows them, App Nap left to macOS — so what gets
     /// measured is what people get.
-    static var measuring: Bool {
-        testing && ProcessInfo.processInfo.environment["SEARCH_MEASURE"] != nil
-    }
+    static let measuring: Bool = testing && ProcessInfo.processInfo.environment["SEARCH_MEASURE"] != nil
 
     /// Cookies, sign-ins, caches. WebKit keeps its default store per bundle,
     /// not per folder, so a test run got every site already signed in — and

@@ -75,9 +75,13 @@ struct SpaceGround: View, Animatable {
         let x: Double
         let dark: Bool
         @ObservedObject private var spaces = Spaces.shared
+        /// The scene is a second content process running WebGL: at launch it
+        /// waits for the restored page to draw first (Fork/Launch.swift); the
+        /// still ground under it shows until then.
+        @ObservedObject private var launch = Launch.shared
 
         var body: some View {
-            if BackdropScene.folder != nil, spaces.all.contains(where: { $0.look.motion != nil }) {
+            if launch.settled, BackdropScene.folder != nil, spaces.all.contains(where: { $0.look.motion != nil }) {
                 let a = BackdropScene.Look(theme: from, dark: dark, key: fromKey)
                 let b = BackdropScene.Look(theme: to, dark: dark, key: toKey)
                 BackdropWeb.Host(drive: drive(a, b))

@@ -108,6 +108,36 @@ const FRAME_OPS = [
   { op: 'add', shape: { type: 'web', id: 'web1', x: 760, y: -280, w: 900, h: 620, url: 'https://en.wikipedia.org/wiki/Monkey', title: 'Monkey - Wikipedia' } },
 ]
 
+/** `&timeline=1`: a timeline card, as an agent would add one (with `&empty=1`, alone). */
+const TIMELINE_OPS = (alone: boolean) => [
+  {
+    op: 'add',
+    shape: {
+      type: 'timeline',
+      id: 'tl1',
+      x: -440,
+      y: alone ? -190 : 380,
+      w: 880,
+      title: 'Q4 launch',
+      start: '2026-10-01',
+      end: '2026-12-31',
+      step: 'week',
+      items: [
+        { date: '2026-10-05', end: '2026-10-23', label: 'Discovery', color: 'yellow' },
+        { date: '2026-10-06', label: 'Kickoff' },
+        { date: '2026-10-19', end: '2026-11-13', label: 'Build sprint', color: 'blue' },
+        { date: '2026-10-28', label: 'Design review', color: 'purple', text: 'Walk through the **new onboarding** with Ann and the support team.' },
+        { date: '2026-11-09', end: '2026-11-27', label: 'Beta', color: 'green' },
+        { date: '2026-11-12', label: 'API freeze', color: 'pink' },
+        { date: '2026-11-24', label: 'Pricing call' },
+        { date: '2026-12-01', end: '2026-12-18', label: 'Launch prep', color: 'purple' },
+        { date: '2026-12-08', label: 'Launch', color: 'green', text: 'Press embargo lifts 9:00 PT.\n- blog post\n- changelog' },
+        { date: '2026-12-17', label: 'Retro' },
+      ],
+    },
+  },
+]
+
 export function startDev(params: URLSearchParams) {
   const host = hostDouble()
   const theme = params.get('theme')
@@ -132,9 +162,10 @@ export function startDev(params: URLSearchParams) {
   // The demo arrives the way a stored canvas does: as init.state, built
   // with the same ops an agent would send.
   let state: string | null = null
-  if (params.get('empty') !== '1') {
+  if (params.get('empty') !== '1' || params.get('timeline') === '1') {
     const store = new CanvasStore(new Y.Doc())
-    const ops = params.get('frames') ? [...DEMO_OPS(dark), ...FRAME_OPS] : DEMO_OPS(dark)
+    const demo = params.get('empty') === '1' ? [] : params.get('frames') ? [...DEMO_OPS(dark), ...FRAME_OPS] : DEMO_OPS(dark)
+    const ops = params.get('timeline') === '1' ? [...demo, ...TIMELINE_OPS(!demo.length)] : demo
     const seeded = applyOps({ store, viewportCenter: () => ({ x: 0, y: 0 }) }, { ops, as: { id: 'seed', name: 'Demo' } })
     if (seeded.errors.length) console.warn('[dev] seed errors', JSON.stringify(seeded.errors))
     state = toBase64(Y.encodeStateAsUpdate(store.doc))

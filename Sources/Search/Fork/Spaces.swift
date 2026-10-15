@@ -452,6 +452,12 @@ final class Spaces: ObservableObject {
         let key = ObjectIdentifier(browser)
         let old = current(in: browser)
         if let active = browser.activeID { activeByBrowserSpace[key, default: [:]][old] = active }
+        // The tab being left is the tab just looked at. `activeID`'s own
+        // didSet touches it, but only by finding it in `tabs` — which by then
+        // is the next space's row — so its sleep clock kept counting from
+        // when it was picked, and a tab read for half an hour slept a minute
+        // after you switched away, then reloaded when you came back.
+        browser.active?.touch()
         objectWillChange.send() // `current(in:)` is read by views, and is not @Published
         currentByBrowser[key] = id
         if browser.primary { current = id }
@@ -480,6 +486,23 @@ final class Spaces: ObservableObject {
         Sections.shared.sweep(in: browser)
         Windows.keep(browser)
         keep()
+    }
+
+    /// The tab some window will land on when it comes back to one of its
+    /// spaces. Idle sleep leaves these alone (Sleep.swift): switching back to
+    /// a space shows its page as you left it instead of reloading it. Memory
+    /// pressure still takes them.
+    func remembered(_ tab: Tab.ID) -> Bool {
+        activeByBrowserSpace.values.contains { $0.values.contains(tab) }
+    }
+
+    /// The tab a window lands on in a space it hasn't been to this launch,
+    /// named ahead of time (Fork/SpaceWarm.swift warms it). Never over one it
+    /// already remembers.
+    func remember(_ tab: Tab.ID, in space: UUID, for browser: Browser) {
+        let key = ObjectIdentifier(browser)
+        guard activeByBrowserSpace[key]?[space] == nil else { return }
+        activeByBrowserSpace[key, default: [:]][space] = tab
     }
 
     func step(_ by: Int, in browser: Browser) {
@@ -1090,6 +1113,12 @@ final class Spaces: ObservableObject {
             restored[id] = row
         }
         for space in all { rows[space.id] = restored[space.id]?.tabs ?? [] }
+        // Fork (space-warm): the tab each space was on when the session was
+        // written is the one a switch there lands on — not whichever was
+        // touched last, which right after a restore is anyone's.
+        for (space, row) in restored where space != current {
+            if let active = row.active { activeByBrowserSpace[ObjectIdentifier(browser), default: [:]][space] = active }
+        }
         Split.shared.restore(splits)
         let mine = projection(current)
         setProjection(mine, in: browser)
@@ -1107,6 +1136,16 @@ final class Spaces: ObservableObject {
         browser.activeID = active.id
         Recent.shared.rebuild(from: browser.tabs)
         Sections.shared.note(active.id)
+        // Fork (launch): the page starts now, in the room, rather than once
+        // the window is up and the stage has taken it (~170 ms later); the
+        // stage takes it from the room as it would from anywhere.
+        if active.pending != nil, !Headless.on {
+            let view = active.web
+            Room.park(view)
+            // A window that never came up (opened hidden, say) doesn't keep
+            // the page running out of sight.
+            Launch.shared.whenSettled { DispatchQueue.main.asyncAfter(deadline: .now() + 2) { Room.leave(view) } }
+        }
         _ = active.wake()
         Split.shared.resume(in: browser)
     }

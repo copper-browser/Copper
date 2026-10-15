@@ -10,6 +10,7 @@ import {
   AlignRight,
   ArrowUpRight,
   BringToFront,
+  CalendarRange,
   ChevronUp,
   Copy,
   ExternalLink,
@@ -51,7 +52,7 @@ import { AgentDot } from './Overlays'
 import { COMMENT_KEYS, CommentsButton } from './Comments'
 import { Divider, EDIT_HINT_ID, IconButton, Kbd, MOD, Panel, Tip, cn } from './ui'
 
-export type Tool = 'select' | 'hand' | 'sticky' | 'text' | 'frame' | 'arrow' | 'image' | 'link' | 'checklist' | 'laser'
+export type Tool = 'select' | 'hand' | 'sticky' | 'text' | 'frame' | 'arrow' | 'image' | 'link' | 'checklist' | 'timeline' | 'laser'
 
 export const TOOL_KEYS: Record<string, Tool> = {
   v: 'select',
@@ -65,6 +66,7 @@ export const TOOL_KEYS: Record<string, Tool> = {
   i: 'image',
   l: 'link',
   r: 'checklist',
+  g: 'timeline',
   k: 'laser',
 }
 
@@ -87,6 +89,7 @@ const TOOLS: { tool: Tool; label: string; key: string; icon: ReactNode; edit?: b
   { tool: 'image', label: 'Image', key: 'I', icon: <ImageIcon className="h-[18px] w-[18px]" />, edit: true },
   { tool: 'link', label: 'Link', key: 'L', icon: <Link2 className="h-[18px] w-[18px]" />, edit: true },
   { tool: 'checklist', label: 'Checklist', key: 'R', icon: <ListChecks className="h-[18px] w-[18px]" />, edit: true },
+  { tool: 'timeline', label: 'Timeline', key: 'G', icon: <CalendarRange className="h-[18px] w-[18px]" />, edit: true },
   { tool: 'laser', label: 'Laser pointer', key: 'K', icon: <LaserIcon className="h-[18px] w-[18px]" /> },
 ]
 
@@ -626,7 +629,7 @@ export function SelectionBar({
   const single = shapes.length === 1 ? shapes[0]! : null
   const colorable = shapes.some(s => s.type !== 'image')
   const current = single?.color
-  const texty = shapes.length > 0 && shapes.every(s => (s.type === 'sticky' && s.view !== 'checklist') || s.type === 'text')
+  const texty = shapes.length > 0 && shapes.every(s => (s.type === 'sticky' && !s.view) || s.type === 'text')
   const font = single?.fontSize ?? (single?.type === 'text' ? 20 : 16)
   const sizes = single?.type === 'text' ? [16, 20, 28, 40] : [12, 16, 22, 30]
   return (
@@ -834,6 +837,7 @@ const SHORTCUTS: [string, string[]][] = [
   ['Image', ['I']],
   ['Link', ['L']],
   ['Checklist (RSVP)', ['R']],
+  ['Timeline', ['G']],
   ['Laser pointer (everyone sees it)', ['K']],
   ['Edit the selected note', ['↵']],
   ['New note beside / below', [`${MOD}↵`, `⇧${MOD}↵`]],

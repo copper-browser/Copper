@@ -94,6 +94,8 @@ copperCanvas.apply(JSON.stringify({
     { op: "add", shape: { type: "frame", x: 0, y: 0, w: 640, h: 400, title: "Ideas" } },
     { op: "add", shape: { type: "link", url: "https://example.com", title: "Example" } },
     { op: "add", shape: { type: "image", src: "https://…/a.png", naturalW: 800, naturalH: 600 } },
+    { op: "add", shape: { type: "timeline", id: "t1", title: "Q4", start: "2026-10-01", end: "2026-12-31",
+                          items: [{ date: "2026-10-14", label: "Kickoff" }] } },
     { op: "update", id: "n1", patch: { color: "pink", text: "Shipped" } },
     { op: "move", id: "n1", dx: 40, dy: 0 },
     { op: "resize", id: "n1", w: 260, h: 220 },
@@ -220,6 +222,14 @@ from `init.me`, which is also published in awareness.
   copper. `color`: yellow, pink, blue, green, purple, gray, white or `#hex`.
 - A call with `as` marks that agent `writing` (cursor at the last thing it touched), then `idle`
   1.5 s later.
+- A timeline (`src/canvas/timeline.ts`) is a sticky with `view:"timeline"` whose text is the
+  timeline (`timeline-text.ts`). `add` takes `title`, `start`/`end` (YYYY-MM-DD), `step`
+  (day|week|month|quarter|year; by the span when omitted) and `items:[{date, end?, label, text?,
+  color?}]` — `text` makes a bubble, `end` a section. `update` takes the same (`items` replaces the
+  list) plus `addItems` and `editItems:{ref: patch | null}`, a ref being `"YYYY-MM-DD · label"`, a
+  label, a date or an index; refs that miss fail the op before it writes. `view:"timeline"` /
+  `view:null` convert in place. `read` adds `view, title, start, end, step, items:[{date, end?,
+  label, text?, color?, kind}]`.
 
 ## Page → host messages
 
@@ -246,7 +256,8 @@ One Y.Doc per canvas (see `src/canvas/types.ts`):
   align?}` — `text` is a **Y.Text** (plain strings written by other writers are read too and
   upgraded on the next edit); `frame {title, image?:{src, naturalW, naturalH}}`; `arrow {from, to,
   label?}`; `image {src, naturalW, naturalH}`; `link {url, title, favicon?}`. Titles, labels and
-  urls are plain strings.
+  urls are plain strings. A sticky's `view` (`"checklist"`, `"timeline"`) draws its text as a card;
+  everything such a card shows is read from that text (an older page shows the note).
 - `agents: Y.Map<agentId, {name, color, cursor:{x,y}|null, status:'idle'|'thinking'|'writing',
   updatedAt}>` — whole values. Each entry is a two-second lease: every op renews it, the cursor fades
   over its last 200 ms, and the page that wrote it deletes it when it runs out (only if nobody has

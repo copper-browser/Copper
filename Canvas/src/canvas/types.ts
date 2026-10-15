@@ -13,6 +13,7 @@
  * - `chat: Y.Array` — a shared canvas's chat (`chat/model.ts`).
  */
 import type { Point, Side } from './geometry'
+import type { TimelineData } from './timeline'
 
 export const SHAPE_TYPES = ['sticky', 'text', 'frame', 'arrow', 'image', 'link', 'checklist'] as const
 export type ShapeType = (typeof SHAPE_TYPES)[number]
@@ -120,7 +121,7 @@ export interface Shape {
    * text (`checklist-text.ts`); an older client ignores the key and shows the
    * note, task boxes and all.
    */
-  view?: 'checklist'
+  view?: 'checklist' | 'timeline'
   /**
    * checklist (and a sticky in the checklist view): 1–4 column labels, its rows,
    * and each row's pick by row id. On a note, `title`, `rows`, `picks` and
@@ -131,6 +132,11 @@ export interface Shape {
   picks?: Readonly<Record<string, ChecklistPick>>
   /** checklist: each row's comment by row id, for rows that have one (read-side only). */
   notes?: Readonly<Record<string, ChecklistNote>>
+  /**
+   * A sticky in the timeline view (`timeline.ts`): its range, step and items,
+   * read from its text like its `title` (read-side only; never stored).
+   */
+  timeline?: TimelineData
 }
 
 /** Default size per type; arrows and images size themselves. */

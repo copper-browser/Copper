@@ -862,11 +862,11 @@ final class Browser: NSObject, ObservableObject {
         Updater.shared.checkIfDue { [weak self] line in self?.announce(line) }
         FormRelay.passkeysOffered = prefs.passkeys
 
-        // The History menu lists what the history holds, and the menu is drawn
-        // from this object's changes — so the history's are passed on.
-        history.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &bag)
+        // Fork (perf): the history's changes are not passed on. A page that
+        // finished, or retitled itself (an app's title changes as it loads),
+        // redrew the whole window — sidebar, stage, menus — for the History
+        // menu's eight lines; the menu watches the history itself now
+        // (AppCommands).
         bookmarks.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &bag)
@@ -891,6 +891,7 @@ final class Browser: NSObject, ObservableObject {
             SpaceSwipe.watch(self)
             MouseButtons.watch(self) // Fork: thumb buttons back/forward, wheel click on the column
             Heat.shared.start(for: self)
+            SpaceWarm.start(for: self) // Fork (space-warm): every space's page ready before you switch to it
         }
 
         CanvasImport.prepare() // Fork (canvas-hooks): every easel has a canvas before the session names one
@@ -1106,9 +1107,6 @@ final class Browser: NSObject, ObservableObject {
     /// current space and active tab are private view state; settings and the
     /// stores remain borrowed from the main browser.
     private func joinAsWindow() {
-        history.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
-            .store(in: &bag)
         bookmarks.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &bag)
@@ -2253,6 +2251,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
         // The next document gets this site's stylesheet of hidden things,
         // decided here because here is the last moment before it loads.
         if action.targetFrame?.isMainFrame ?? true, let tab = tab(for: webView) {
+            Pace.page("ask", bench: tab.bench) // Fork (pace)
             let host = curtain.host(of: url)
             tab.arm(hiding: curtain.css(on: host))
             // And the blocker, on or off for where it is going.
@@ -2432,6 +2431,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         guard let tab = tab(for: webView) else { return }
+        Pace.page("commit", bench: tab.bench) // Fork (pace)
         tab.failure = nil
         tab.typing = false
         // Whatever you last set this site to, before it draws a single frame
@@ -2452,6 +2452,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
     @objc(_webView:renderingProgressDidChange:)
     func webView(_ webView: WKWebView, renderingProgressDidChange events: UInt) {
         guard events & PageView.firstFrame != 0 else { return }
+        if let tab = tab(for: webView), !tab.bench { Pace.page("paint", bench: false); Launch.shared.pageShown() } // Fork (pace, launch)
         (webView as? PageView)?.showFirstFrame()
         // Fork (wake-cover): the page is painted, so the picture of its old
         // self can go — the moment Safari takes its own down. A beat after
@@ -2464,6 +2465,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
         // done, and it is shown.
         (webView as? PageView)?.showFirstFrame()
         guard let tab = tab(for: webView), let url = tab.address else { return }
+        if !tab.bench { Pace.page("finish", bench: false); Launch.shared.pageShown() } // Fork (pace, launch)
         tab.uncover()
         tellStore(tab)
         // A page that arrived after a password went out: did the sign-in take?

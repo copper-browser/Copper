@@ -169,6 +169,7 @@ export function shapeLabel(s: Pick<Shape, 'type' | 'text' | 'title' | 'label' | 
       return clip(s.title.trim()) || 'Frame'
     case 'sticky':
       if (s.view === 'checklist') return clip(s.title.trim()) || 'Checklist'
+      if (s.view === 'timeline') return clip(s.title.trim()) || 'Timeline'
       return clip(firstLine(s.text)) || 'Note'
     case 'text':
       return clip(firstLine(s.text)) || 'Text'

@@ -21,6 +21,15 @@
  * heading and a task list into a card in place, its text (and ticks) untouched;
  * `view:null` makes it a plain note again. A legacy `type:"checklist"` shape
  * still updates as before.
+ *
+ * A timeline (`canvas/timeline.ts`) is a note in the timeline view too, its
+ * text the timeline (`canvas/timeline-text.ts`). Add takes `title`, `start`,
+ * `end` (YYYY-MM-DD), `step` (day|week|month|quarter|year; by the span when
+ * omitted) and `items` ([{date, end?, label, text?, color?}]: a date alone is
+ * a note, `text` makes it a bubble, `end` a section). Update takes the same,
+ * `items` replacing the list, plus `addItems` and `editItems`
+ * ({ref: patch | null}, null removes; a ref is "YYYY-MM-DD · label", a label,
+ * a date, or an index). `view:"timeline"` / `view:null` convert in place.
  *   {op:"move", id, dx, dy}                                    // a frame carries what sits inside it
  *   {op:"resize", id, w, h}
  *   {op:"delete", id}                                          // arrows ending on it go too
@@ -74,6 +83,21 @@ import { liveAgents, readAgents } from './canvas/agents'
 import { cleanCommentText, isShown, shapeLabel, type CommentAuthor } from './canvas/comments'
 import { center, containsBox, boxesOverlap, SIDES, type Box, type Point, type Side } from './canvas/geometry'
 import { MIN_SIZE, isResizable, minSizeOf } from './canvas/resize'
+import {
+  TIMELINE_MIN,
+  TIMELINE_SIZE,
+  VIEW_TIMELINE,
+  neededHeight,
+  readItemPatch,
+  readItemsInput,
+  readStepInput,
+  summarizeItems,
+  unresolvedRefs,
+  writeTimeline,
+  type ItemPatch,
+  type TimelineEdits,
+} from './canvas/timeline'
+import { addMonths, cleanIso, dayOf, timelineMarkdown, todayIso, type ItemFields, type Step } from './canvas/timeline-text'
 import { LIVE_SIZE, frameUrl } from './canvas/frames'
 import { frameSizeFor, imageSizeFor, MAX_DATA_URL } from './canvas/images'
 import { findFreeSpot, occupied } from './placement'
@@ -571,6 +595,152 @@ function updateChecklistNote(ctx: OpsContext, shape: Shape, raw: Record<string, 
   return shape.id
 }
 
+// ---- timelines ----------------------------------------------------------------
+
+const TIMELINE_KEYS = ['view', 'type', 'title', 'start', 'end', 'step', 'items', 'addItems', 'editItems'] as const
+/** Keys only a timeline takes (a plain note told them is told to set the view). */
+const TIMELINE_ONLY = ['start', 'end', 'step', 'items', 'addItems', 'editItems'] as const
+
+interface TimelineInput {
+  props: ShapeProps
+  view?: typeof VIEW_TIMELINE | null
+  edits: TimelineEdits
+}
+
+function cleanDate(v: unknown, key: string): string {
+  const d = cleanIso(v)
+  return d ?? fail(`\`${key}\` must be a YYYY-MM-DD date`)
+}
+
+/** Wrap the model's own messages as op failures. */
+function checked<T>(fn: () => T): T {
+  try {
+    return fn()
+  } catch (e) {
+    return fail(messageOf(e))
+  }
+}
+
+/** A timeline's fields and the rest (a note's box, colour, text), checked. */
+function cleanTimeline(raw: Record<string, unknown>, store: CanvasStore, selfId?: string): TimelineInput {
+  const rest: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(raw)) if (!(TIMELINE_KEYS as readonly string[]).includes(k)) rest[k] = v
+  const out: TimelineInput = { props: cleanProps('sticky', rest, store, selfId), edits: {} }
+  const e = out.edits
+  if (raw.view !== undefined) {
+    if (raw.view === VIEW_TIMELINE) out.view = VIEW_TIMELINE
+    else if (raw.view === null || raw.view === false || raw.view === '' || raw.view === 'note') out.view = null
+    else fail('`view` must be "timeline", "checklist" or null')
+  }
+  if (raw.title !== undefined) {
+    if (typeof raw.title !== 'string') fail('`title` must be a string')
+    e.title = (raw.title as string).slice(0, MAX_TITLE)
+  }
+  if (raw.start !== undefined) e.start = cleanDate(raw.start, 'start')
+  if (raw.end !== undefined) e.end = cleanDate(raw.end, 'end')
+  if (raw.step !== undefined) e.step = checked(() => readStepInput(raw.step))
+  if (raw.items !== undefined) e.items = checked(() => readItemsInput(raw.items, 'items'))
+  if (raw.addItems !== undefined) e.add = checked(() => readItemsInput(raw.addItems, 'addItems'))
+  if (raw.editItems !== undefined) {
+    if (!isObject(raw.editItems)) fail('`editItems` must be {ref: patch | null}, a ref being "YYYY-MM-DD · label", a label, a date or an index')
+    e.edit = Object.entries(raw.editItems as Record<string, unknown>).map(([ref, patch]): [string, ItemPatch | null] => [
+      ref,
+      patch === null ? null : checked(() => readItemPatch(patch, `editItems[${JSON.stringify(ref)}]`)),
+    ])
+  }
+  return out
+}
+
+/** A step that suits a span of days, when none is given. */
+function stepFor(days: number): Step {
+  if (days <= 31) return 'day'
+  if (days <= 270) return 'week'
+  if (days <= 3 * 366) return 'month'
+  if (days <= 8 * 366) return 'quarter'
+  return 'year'
+}
+
+const hasEdits = (e: TimelineEdits) => Object.values(e).some(v => v !== undefined)
+
+/** Item refs are tried on a copy first: an op writes all of its edits or none. */
+function dryRun(text: string, edits: TimelineEdits) {
+  const missing = unresolvedRefs(text, edits)
+  if (missing.length) fail(`no item ${missing.map(m => JSON.stringify(m)).join(', ')} on this timeline (name one by "YYYY-MM-DD · label", its label, its date or its index)`)
+}
+
+/** A new timeline: a note in the timeline view whose text is the timeline. */
+function addTimelineNote(raw: Record<string, unknown>, ctx: OpsContext, as: Actor | null, id: string | undefined) {
+  const input = cleanTimeline(raw, ctx.store, id)
+  if (input.view === null) fail('a timeline note needs `view:"timeline"`')
+  const { props, edits } = input
+  if (edits.edit) fail('`editItems` is for an update; give a new timeline its `items`')
+  const listed = hasEdits(edits)
+  let text: string
+  if (props.text !== undefined && !listed) text = props.text
+  else {
+    if (props.text !== undefined) fail('give the timeline `text`, or `title`/`start`/`end`/`step`/`items`, not both')
+    const items: ItemFields[] = [...(edits.items ?? []), ...(edits.add ?? [])]
+    const days = items.flatMap(it => [it.date, it.end ?? it.date]).sort()
+    let start = edits.start ?? days[0] ?? todayIso()
+    let end = edits.end ?? (days.length ? days[days.length - 1]! : addMonths(start, 3))
+    if (end < start) [start, end] = [end, start]
+    if (end === start && !edits.end) end = addMonths(start, 1)
+    const step = edits.step ?? stepFor((dayOf(end) ?? 0) - (dayOf(start) ?? 0) + 1)
+    text = timelineMarkdown(edits.title ?? 'Timeline', { start, end, step }, items)
+  }
+  const shape: ShapeInput = { ...props, type: 'sticky', view: VIEW_TIMELINE, text, color: props.color ?? 'white', by: as?.name ?? 'Agent' }
+  if (id) shape.id = id
+  const w = Math.max(props.w ?? TIMELINE_SIZE.w, TIMELINE_MIN.w)
+  const h = Math.max(props.h ?? TIMELINE_SIZE.h, TIMELINE_MIN.h, Math.ceil(neededHeight(text, w)))
+  shape.w = w
+  shape.h = h
+  if (props.x === undefined || props.y === undefined) {
+    const spot = findFreeSpot(boxesOf(ctx.store), { w, h }, ctx.viewportCenter(), { gap: 24, step: 32 })
+    if (props.x === undefined) shape.x = spot.x
+    if (props.y === undefined) shape.y = spot.y
+  }
+  const newId = ctx.store.create(shape, AGENT)
+  return { id: newId, anchor: center({ x: shape.x!, y: shape.y!, w, h }) }
+}
+
+/**
+ * An update to a note that is (or is becoming) a timeline: box props and
+ * `text` as for any note, then `view` and the timeline's fields — each an
+ * edit of the note's own lines. Turning the view on leaves the text alone.
+ */
+function updateTimelineNote(ctx: OpsContext, shape: Shape, raw: Record<string, unknown>): string {
+  const m = ctx.store.shapes.get(shape.id)!
+  const was = shape.view === VIEW_TIMELINE
+  const input = cleanTimeline(raw, ctx.store, shape.id)
+  const { props, edits } = input
+  const on = input.view === VIEW_TIMELINE || (input.view === undefined && was)
+  if (!on) {
+    // Back to a plain note: what is left is a plain note's update.
+    for (const k of TIMELINE_ONLY)
+      if (raw[k] !== undefined) fail(`\`${k}\` is for a timeline: set \`view:"timeline"\``)
+    if (edits.title !== undefined) props.text = edits.title
+    if (props.w !== undefined) props.w = Math.max(props.w, MIN_SIZE.sticky.w)
+    if (props.h !== undefined) props.h = Math.max(props.h, MIN_SIZE.sticky.h)
+    ctx.store.update(shape.id, props, AGENT)
+    if (input.view === null && m.has('view')) m.delete('view')
+    return shape.id
+  }
+  if (props.text !== undefined && hasEdits(edits)) fail('give the timeline `text`, or its fields, not both')
+  dryRun(props.text ?? shape.text, edits)
+  if (props.w !== undefined) props.w = Math.max(props.w, TIMELINE_MIN.w)
+  if (props.h !== undefined) props.h = Math.max(props.h, TIMELINE_MIN.h)
+  ctx.store.update(shape.id, props, AGENT)
+  ctx.store.transact(() => {
+    if (!was) {
+      m.set('view', VIEW_TIMELINE)
+      if (props.w === undefined && shape.w < TIMELINE_SIZE.w) m.set('w', TIMELINE_SIZE.w)
+    }
+  }, AGENT)
+  // The text alone (a conversion, a new body) still sizes the card to fit.
+  writeTimeline(ctx.store, shape.id, edits, AGENT)
+  return shape.id
+}
+
 function checkEnd(end: Endpoint, store: CanvasStore, key: string, selfId?: string) {
   if (!isRefEndpoint(end)) return
   if (end.ref === selfId) fail(`\`${key}\` cannot be the arrow itself`)
@@ -597,13 +767,16 @@ function opAdd(op: Record<string, unknown>, ctx: OpsContext, as: Actor | null): 
   // `web` (or `iframe`): a live web frame, which is a link with `live` — one shape type, so older clients still show it.
   if (raw.type === 'web' || raw.type === 'iframe') raw = { ...raw, type: 'link', live: raw.live ?? raw.embed ?? true, embed: undefined }
   const type = raw.type
-  if (!isShapeType(type)) return fail('`shape.type` must be sticky, text, frame, arrow, image, link, checklist or web')
+  if (!isShapeType(type) && type !== 'timeline') return fail('`shape.type` must be sticky, text, frame, arrow, image, link, checklist, timeline or web')
   let id: string | undefined
   if (raw.id !== undefined) {
     if (typeof raw.id !== 'string' || !ID.test(raw.id)) fail('`shape.id` must be 1–64 of A–Z a–z 0–9 _ - : .')
     if (ctx.store.shapes.has(raw.id as string)) fail(`a shape with id ${raw.id as string} already exists`)
     id = raw.id as string
   }
+  // A timeline is a note in the timeline view: every Copper shows its text.
+  if (type === 'timeline' || (type === 'sticky' && raw.view === VIEW_TIMELINE)) return addTimelineNote(raw, ctx, as, id)
+  if (!isShapeType(type)) return fail('`shape.type` must be sticky, text, frame, arrow, image, link, checklist, timeline or web')
   // A checklist is a note in the checklist view: every Copper shows its text.
   if (type === 'sticky' && (raw.view === null || raw.view === false)) raw = { ...raw, view: undefined }
   if (type === 'checklist' || (type === 'sticky' && raw.view !== undefined)) return addChecklistNote(type, raw, ctx, as, id)
@@ -685,6 +858,13 @@ function anchorOf(ctx: OpsContext, id: string): Point {
 function opUpdate(op: Record<string, unknown>, ctx: OpsContext, as: Actor | null = null): string {
   const shape = needShape(ctx, op.id)
   const raw = isObject(op.patch) ? op.patch : isObject(op.props) ? op.props : fail('`update` needs `patch:{…}`')
+  if (
+    shape.type === 'sticky' &&
+    (raw.view === VIEW_TIMELINE ||
+      (shape.view === VIEW_TIMELINE && raw.view !== VIEW_CHECKLIST) ||
+      (shape.view === undefined && TIMELINE_ONLY.some(k => raw[k] !== undefined)))
+  )
+    return updateTimelineNote(ctx, shape, raw)
   if (shape.type === 'sticky' && (shape.view === VIEW_CHECKLIST || raw.view !== undefined)) return updateChecklistNote(ctx, shape, raw, as)
   const props = cleanProps(shape.type, raw, ctx.store, shape.id)
   if (shape.type === 'checklist') {
@@ -752,7 +932,10 @@ function opResize(op: Record<string, unknown>, ctx: OpsContext): string {
   const h = op.h ?? shape.h
   if (!finite(w) || !finite(h) || w <= 0 || h <= 0) fail('`w` and `h` must be positive numbers')
   const min = minSizeOf(shape as Shape & { type: keyof typeof MIN_SIZE })
-  ctx.store.update(shape.id, { w: Math.max(w as number, min.w), h: Math.max(h as number, min.h) }, AGENT)
+  const nw = Math.max(w as number, min.w)
+  // A timeline is never shorter than its content needs at its new width.
+  const nh = Math.max(h as number, min.h, shape.view === VIEW_TIMELINE ? Math.ceil(neededHeight(shape.text, nw)) : 0)
+  ctx.store.update(shape.id, { w: nw, h: nh }, AGENT)
   return shape.id
 }
 
@@ -992,8 +1175,13 @@ export interface ShapeSummary {
   naturalW?: number
   naturalH?: number
   image?: { src: string; naturalW: number; naturalH: number }
-  /** sticky: shown as a checklist card (its text is the list). */
-  view?: 'checklist'
+  /** sticky: shown as a checklist card (its text is the list) or a timeline (its text is the timeline). */
+  view?: 'checklist' | 'timeline'
+  /** timeline: its range (YYYY-MM-DD), step and items in date order. */
+  start?: string
+  end?: string
+  step?: string
+  items?: Record<string, unknown>[]
   /** checklist (and a note in that view): its columns, rows with each one's pick (and who made it, when, when known), and the count per column. */
   columns?: string[]
   /** A checklist's rows: the pick (who and when, when known) and the row's comment (who and when, when known). */
@@ -1084,7 +1272,7 @@ export function readCanvas(ctx: ReadContext, rawOpts: unknown = {}): CanvasRead 
   const out: ShapeSummary[] = []
   for (const s of all) {
     if (ids && !ids.has(s.id)) continue
-    if (types && !types.has(s.type) && !(s.view === VIEW_CHECKLIST && types.has('checklist'))) continue
+    if (types && !types.has(s.type) && !(s.view === VIEW_CHECKLIST && types.has('checklist')) && !(s.view === VIEW_TIMELINE && types.has('timeline'))) continue
     let box: Box = { x: s.x, y: s.y, w: s.w, h: s.h }
     if (s.type === 'arrow') {
       const path = arrowPath(s, boxOf)
@@ -1112,6 +1300,14 @@ export function readCanvas(ctx: ReadContext, rawOpts: unknown = {}): CanvasRead 
           sum.view = VIEW_CHECKLIST
           sum.title = clip(s.title, full)
           Object.assign(sum, summarizeNoteChecklist(s.columns ?? [], s.rows ?? [], s.picks ?? {}, s.notes ?? {}, t => clip(t, full)))
+        }
+        if (s.view === VIEW_TIMELINE && s.timeline) {
+          sum.view = VIEW_TIMELINE
+          sum.title = clip(s.title, full)
+          sum.start = s.timeline.start
+          sum.end = s.timeline.end
+          sum.step = s.timeline.step
+          sum.items = summarizeItems(s.timeline.items).map(it => (typeof it.text === 'string' ? { ...it, text: clip(it.text, full) } : it))
         }
         break
       case 'frame':
