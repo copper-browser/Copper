@@ -65,6 +65,23 @@ export interface ChecklistNote {
   at: number
 }
 
+/**
+ * checklist: someone a row is assigned to. On a note, the name is an `@` line
+ * under the row (`checklist-text.ts`) and the rest sits beside it
+ * (`assignees:<label>`); on a legacy card, all of it under `assignees:<rowId>`.
+ */
+export interface ChecklistAssignee {
+  /** As the row shows it. */
+  name: string
+  /** Their Copper Cloud user id, when they were picked from the canvas's people. */
+  id?: string
+  email?: string
+  /** Who assigned them and when (name, id, epoch ms), when known. */
+  by?: string
+  byId?: string
+  at?: number
+}
+
 /** checklist: a row's pick, stored under its own `pick:<rowId>` key (`checklist.ts`). */
 export interface ChecklistPick {
   /** The column's label. */
@@ -132,6 +149,8 @@ export interface Shape {
   picks?: Readonly<Record<string, ChecklistPick>>
   /** checklist: each row's comment by row id, for rows that have one (read-side only). */
   notes?: Readonly<Record<string, ChecklistNote>>
+  /** checklist: who each row is assigned to, by row id, for rows that have someone (read-side only). */
+  assignees?: Readonly<Record<string, readonly ChecklistAssignee[]>>
   /**
    * A sticky in the timeline view (`timeline.ts`): its range, step and items,
    * read from its text like its `title` (read-side only; never stored).

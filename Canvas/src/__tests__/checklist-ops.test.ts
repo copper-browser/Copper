@@ -253,7 +253,7 @@ describe('checklist ops: row comments (`notes`)', () => {
       { op: 'update', id: 'p', patch: { notes: { a: 'x' } } },
       { op: 'add', shape: { type: 'sticky', view: 'checklist', text: '- [ ] a', notes: { a: 'x' } } },
     ])
-    expect(plain.errors.map(e => e.error)).toEqual([expect.stringMatching(/unknown prop `notes` for sticky/), 'give the note `text`, or `title`/`rows`/`picks`/`notes`, not both'])
+    expect(plain.errors.map(e => e.error)).toEqual([expect.stringMatching(/unknown prop `notes` for sticky/), 'give the note `text`, or `title`/`rows`/`picks`/`notes`/`assignees`, not both'])
   })
 
   it('clips a long comment in a read unless full', () => {

@@ -13,8 +13,12 @@
  *
  * A checklist (`checklist.ts`) takes `title`, `columns` (1–4, default Yes/No),
  * `rows` (labels or {label, id?}, ≤ 60), `picks` ({rowIdOrLabel: column |
- * true | null}) and `notes` ({rowIdOrLabel: text | null}, a row's comment;
- * null clears it) on add and update; `rows` and `columns` replace the lists.
+ * true | null}), `notes` ({rowIdOrLabel: text | null}, a row's comment;
+ * null clears it) and `assignees` ({rowIdOrLabel: [name | email | id, …] |
+ * null}, who the row is assigned to — people on the canvas by name, email or
+ * id, anyone else by a name of their own; null clears it) on add and update;
+ * `rows` and `columns` replace the lists, rows keeping their picks, comments
+ * and assignees by label.
  * An add makes a note in the checklist view (`type:"sticky"`, `view:"checklist"`,
  * the list in its text — `checklist-text.ts`), which older Coppers show and tick
  * as a note. `update {view:"checklist", columns?}` turns a note that holds a
@@ -44,27 +48,37 @@
 import { arrowBox, arrowPath } from './canvas/arrows'
 import { AGENT, bareId, readEndpoint, type CanvasStore, type ShapeInput, type ShapeProps } from './canvas/doc'
 import {
+  ASSIGNEES_PREFIX,
   CHECKLIST_LAYOUT,
   DEFAULT_COLUMNS,
   NOTE_BY_PREFIX,
+  assigneesKey,
   checklistHeight,
   checklistWidth,
+  cleanAssignees,
   cleanColumns,
   cleanNotes,
   cleanPicks,
   cleanRows,
   noteByKey,
   noteRowId,
+  legacyAssigneesKey,
+  mergeAssignees,
+  noteAssignees,
+  readAssigneeList,
+  storedAssignee,
   readNoteColumns,
   summarizeChecklist,
   summarizeNoteChecklist,
   writeColumns,
   writeLegacyNote,
+  writeNoteAssignees,
   writeNoteColumns,
   writeNoteNote,
   writeNotePick,
   writePick,
   writeRows,
+  type Person,
   type Picker,
 } from './canvas/checklist'
 import {
@@ -107,6 +121,7 @@ import {
   isShapeColor,
   isShapeType,
   type CanvasAgent,
+  type ChecklistAssignee,
   type ChecklistRow,
   type Endpoint,
   type Shape,
@@ -136,11 +151,23 @@ export interface ApplyResult {
   errors: OpError[]
 }
 
+/** People an op assigned to a checklist row (only those new to it): the page tells them, as a chat mention would. */
+export interface Assigned {
+  shapeId: string
+  title: string
+  row: string
+  people: ChecklistAssignee[]
+}
+
 export interface OpsContext {
   store: CanvasStore
   /** Where unplaced shapes go: the middle of what the user is looking at. */
   viewportCenter: () => Point
   readOnly?: boolean
+  /** The people on the canvas, whom checklist `assignees` resolve against by name, email or id. */
+  people?: () => readonly Person[]
+  /** Someone was assigned to a checklist row. */
+  onAssigned?: (event: Assigned) => void
 }
 
 export interface ParsedInput {
@@ -194,7 +221,7 @@ const BY_TYPE: Record<ShapeType, readonly string[]> = {
   arrow: ['color', 'z', 'from', 'to', 'label'],
   image: [...COMMON, 'src', 'naturalW', 'naturalH'],
   link: [...COMMON, 'url', 'title', 'favicon', 'live'],
-  checklist: [...COMMON, 'title', 'columns', 'rows', 'picks', 'notes'],
+  checklist: [...COMMON, 'title', 'columns', 'rows', 'picks', 'notes', 'assignees'],
 }
 /** Friendly spellings: `text` on a frame or link is its title, on an arrow its label. */
 const ALIAS: Partial<Record<ShapeType, Record<string, string>>> = {
@@ -342,6 +369,7 @@ function cleanProps(type: ShapeType, raw: Record<string, unknown>, store: Canvas
         break
       case 'picks':
       case 'notes':
+      case 'assignees':
         // Resolved against the final rows and columns by the op (`writeChecklist`, `updateChecklistNote`).
         break
       case 'from':
@@ -373,6 +401,7 @@ function writeChecklist(
   props: ShapeProps,
   picks: unknown,
   notes: unknown,
+  assignees: unknown,
   as: Actor | null,
   sized: { w: boolean; h: boolean }
 ) {
@@ -383,19 +412,27 @@ function writeChecklist(
   const columns: string[] = props.columns ?? live?.columns ?? [...DEFAULT_COLUMNS]
   const resolved = picks === undefined ? [] : cleanPicks(picks, rows, columns)
   const said = notes === undefined ? [] : cleanNotes(notes, rows)
+  const people = assignees === undefined ? [] : cleanAssignees(assignees, rows, ctx.people?.() ?? [])
   if (props.columns) writeColumns(m, columns)
   if (props.rows) writeRows(m, rows)
   const by: Picker = { name: as?.name ?? 'Agent', id: as?.id ?? 'agent' }
   const now = Date.now()
   for (const [rowId, col] of resolved) writePick(m, rowId, col, by, now)
   for (const [rowId, text] of said) writeLegacyNote(m, rowId, text, by, now)
+  for (const [rowId, next] of people) {
+    const merged = mergeAssignees(readAssigneeList(m.get(legacyAssigneesKey(rowId))), next, by, now)
+    if (merged.people.length) m.set(legacyAssigneesKey(rowId), merged.people.map(storedAssignee))
+    else m.delete(legacyAssigneesKey(rowId))
+    const label = rows.find(r => r.id === rowId)?.label ?? ''
+    if (merged.added.length) ctx.onAssigned?.({ shapeId: id, title: (m.get('title') as string) ?? '', row: label, people: merged.added })
+  }
   if (props.columns && !sized.w) m.set('w', Math.max(live?.w ?? 0, checklistWidth(columns.length)))
   if ((props.rows || props.columns) && !sized.h) m.set('h', checklistHeight(columns.length, rows.length))
 }
 
 // ---- a checklist kept as a note (checklist-text.ts) --------------------------------
 
-const NOTE_LIST_KEYS = ['view', 'title', 'columns', 'rows', 'picks', 'notes'] as const
+const NOTE_LIST_KEYS = ['view', 'title', 'columns', 'rows', 'picks', 'notes', 'assignees'] as const
 
 /** What an add or update said about a checklist note, checked; box props and text go through `cleanProps`. */
 interface NoteListInput {
@@ -406,6 +443,7 @@ interface NoteListInput {
   rows?: string[]
   picks?: unknown
   notes?: unknown
+  assignees?: unknown
 }
 
 function cleanNoteList(type: 'sticky' | 'checklist', raw: Record<string, unknown>, store: CanvasStore, selfId?: string): NoteListInput {
@@ -413,7 +451,7 @@ function cleanNoteList(type: 'sticky' | 'checklist', raw: Record<string, unknown
     // The checklist type's own names and spellings (`text` is its title).
     const props = cleanProps('checklist', raw, store, selfId)
     const { title, columns, rows, ...box } = props
-    return { props: box, title, columns, rows: rows?.map(r => r.label), picks: raw.picks, notes: raw.notes }
+    return { props: box, title, columns, rows: rows?.map(r => r.label), picks: raw.picks, notes: raw.notes, assignees: raw.assignees }
   }
   const rest: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(raw)) if (!(NOTE_LIST_KEYS as readonly string[]).includes(k)) rest[k] = v
@@ -431,6 +469,7 @@ function cleanNoteList(type: 'sticky' | 'checklist', raw: Record<string, unknown
   if (raw.rows !== undefined) out.rows = cleanRows(raw.rows).map(r => r.label)
   if (raw.picks !== undefined) out.picks = raw.picks
   if (raw.notes !== undefined) out.notes = raw.notes
+  if (raw.assignees !== undefined) out.assignees = raw.assignees
   return out
 }
 
@@ -443,8 +482,13 @@ function addChecklistNote(type: 'sticky' | 'checklist', raw: Record<string, unkn
   if (input.view === null) fail('a checklist note needs `view:"checklist"`')
   const { props } = input
   const listed =
-    type === 'checklist' || input.rows !== undefined || input.title !== undefined || input.picks !== undefined || input.notes !== undefined
-  if (listed && props.text !== undefined && type === 'sticky') fail('give the note `text`, or `title`/`rows`/`picks`/`notes`, not both')
+    type === 'checklist' ||
+    input.rows !== undefined ||
+    input.title !== undefined ||
+    input.picks !== undefined ||
+    input.notes !== undefined ||
+    input.assignees !== undefined
+  if (listed && props.text !== undefined && type === 'sticky') fail('give the note `text`, or `title`/`rows`/`picks`/`notes`/`assignees`, not both')
   const columns = input.columns ?? (type === 'checklist' ? [...DEFAULT_COLUMNS] : undefined)
   const cols = columns ?? readNoteColumns(undefined)
   let text = props.text ?? ''
@@ -453,14 +497,28 @@ function addChecklistNote(type: 'sticky' | 'checklist', raw: Record<string, unkn
   let noteCount = parsedText.rows.filter(r => r.note).length
   const picked: [string, string][] = []
   const noted: string[] = []
+  const assigned: [string, ChecklistAssignee[]][] = []
+  const by = pickerOf(as)
+  const now = Date.now()
   if (listed) {
     const rows = listRows(input.rows ?? [])
-    // Checked before anything is written: a bad pick or comment fails the whole add.
+    // Checked before anything is written: a bad pick, comment or assignee fails the whole add.
     const resolved = new Map(input.picks === undefined ? [] : cleanPicks(input.picks, rows, cols))
     const said = new Map(input.notes === undefined ? [] : cleanNotes(input.notes, rows))
+    const people = new Map(input.assignees === undefined ? [] : cleanAssignees(input.assignees, rows, ctx.people?.() ?? []))
+    for (const r of rows) {
+      const list = mergeAssignees([], people.get(r.id) ?? [], by, now).people
+      if (list.length) assigned.push([r.label, list])
+    }
+    const named = new Map(assigned)
     text = checklistMarkdown(
       input.title ?? '',
-      rows.map(r => ({ label: r.label, pick: resolved.get(r.id) ?? null, note: said.get(r.id) ?? '' })),
+      rows.map(r => ({
+        label: r.label,
+        pick: resolved.get(r.id) ?? null,
+        note: said.get(r.id) ?? '',
+        assignees: (named.get(r.label) ?? []).map(p => p.name),
+      })),
       cols
     )
     for (const r of rows) {
@@ -495,14 +553,14 @@ function addChecklistNote(type: 'sticky' | 'checklist', raw: Record<string, unkn
   }
   const newId = ctx.store.create(shape, AGENT)
   const m = ctx.store.shapes.get(newId)
-  if (m && (picked.length || noted.length)) {
-    const by = pickerOf(as)
-    const now = Date.now()
+  if (m && (picked.length || noted.length || assigned.length)) {
     ctx.store.transact(() => {
       for (const [label, col] of picked) m.set(whoKey(label), { col, by: by.name, byId: by.id, at: now })
       for (const label of noted) m.set(noteByKey(label), { by: by.name, byId: by.id, at: now })
+      for (const [label, list] of assigned) m.set(assigneesKey(label), list.map(storedAssignee))
     }, AGENT)
   }
+  for (const [label, list] of assigned) ctx.onAssigned?.({ shapeId: newId, title: input.title ?? '', row: label, people: list })
   return { id: newId, anchor: center({ x: shape.x!, y: shape.y!, w: size.w, h: size.h }) }
 }
 
@@ -519,7 +577,7 @@ function updateChecklistNote(ctx: OpsContext, shape: Shape, raw: Record<string, 
   const listed = input.view === VIEW_CHECKLIST || (input.view === undefined && was)
   if (!listed) {
     // Back to (or still) a plain note: what is left is a plain note's update.
-    for (const k of ['columns', 'rows', 'picks', 'notes'] as const) if (input[k] !== undefined) fail(`\`${k}\` is for a checklist: set \`view:"checklist"\``)
+    for (const k of ['columns', 'rows', 'picks', 'notes', 'assignees'] as const) if (input[k] !== undefined) fail(`\`${k}\` is for a checklist: set \`view:"checklist"\``)
     if (input.title !== undefined) props.text = input.title
     if (props.w !== undefined) props.w = Math.max(props.w, MIN_SIZE.sticky.w)
     if (props.h !== undefined) props.h = Math.max(props.h, MIN_SIZE.sticky.h)
@@ -533,6 +591,7 @@ function updateChecklistNote(ctx: OpsContext, shape: Shape, raw: Record<string, 
   const rows = input.rows ? listRows(input.rows) : listRows(parseChecklistText(text, columns).rows.map(r => r.label))
   if (input.picks !== undefined) cleanPicks(input.picks, rows, columns)
   if (input.notes !== undefined) cleanNotes(input.notes, rows)
+  if (input.assignees !== undefined) cleanAssignees(input.assignees, rows, ctx.people?.() ?? [])
   const min = MIN_SIZE.checklist
   if (props.w !== undefined) props.w = Math.max(props.w, min.w)
   if (props.h !== undefined) props.h = Math.max(props.h, min.h)
@@ -547,7 +606,7 @@ function updateChecklistNote(ctx: OpsContext, shape: Shape, raw: Record<string, 
     if (input.rows) {
       const now = parseChecklistText(t.toString(), columns)
       const left = [...now.rows]
-      // A row keeps its pick and its comment by label.
+      // A row keeps its pick, its comment and its assignees by label.
       const carry = (label: string) => {
         const i = left.findIndex(r => r.label === label) >= 0 ? left.findIndex(r => r.label === label) : left.findIndex(r => rowKey(r.label) === rowKey(label))
         return i >= 0 ? left.splice(i, 1)[0]! : null
@@ -557,11 +616,12 @@ function updateChecklistNote(ctx: OpsContext, shape: Shape, raw: Record<string, 
         now,
         input.rows.map(label => {
           const was = carry(label)
-          return rowBlock(label, was?.pick ?? null, columns, was?.note ?? '')
+          return rowBlock(label, was?.pick ?? null, columns, was?.note ?? '', was?.assignees ?? [])
         })
       )
-      const keep = new Set(input.rows.flatMap(label => [whoKey(label), noteByKey(label)]))
-      for (const key of [...m.keys()]) if ((key.startsWith(WHO_PREFIX) || key.startsWith(NOTE_BY_PREFIX)) && !keep.has(key)) m.delete(key)
+      const keep = new Set(input.rows.flatMap(label => [whoKey(label), noteByKey(label), assigneesKey(label)]))
+      for (const key of [...m.keys()])
+        if ((key.startsWith(WHO_PREFIX) || key.startsWith(NOTE_BY_PREFIX) || key.startsWith(ASSIGNEES_PREFIX)) && !keep.has(key)) m.delete(key)
     }
     if (input.title !== undefined) writeTitle(t, parseChecklistText(t.toString(), columns), input.title)
     if (input.picks !== undefined) {
@@ -582,6 +642,20 @@ function updateChecklistNote(ctx: OpsContext, shape: Shape, raw: Record<string, 
       // Last row first: each write stays inside its own row's lines.
       const byIndex = said.map(([id, text]) => [now.rows[Number(id.slice(1))]!, text] as const).sort((a, b) => b[0].index - a[0].index)
       for (const [row, text] of byIndex) if (row.note !== text) writeNoteNote(m, t, row, text, by, at)
+    }
+    if (input.assignees !== undefined) {
+      const now = parseChecklistText(t.toString(), columns)
+      const said = cleanAssignees(input.assignees, listRows(now.rows.map(r => r.label)), ctx.people?.() ?? [])
+      const by = pickerOf(as)
+      const at = Date.now()
+      const title = now.title
+      // Last row first: each write stays inside its own row's lines.
+      const byIndex = said.map(([id, list]) => [now.rows[Number(id.slice(1))]!, list] as const).sort((a, b) => b[0].index - a[0].index)
+      for (const [row, list] of byIndex) {
+        const merged = mergeAssignees(noteAssignees(m, row), list, by, at)
+        writeNoteAssignees(m, t, row, merged.people)
+        if (merged.added.length) ctx.onAssigned?.({ shapeId: shape.id, title, row: row.label, people: merged.added })
+      }
     }
     const after = parseChecklistText(t.toString(), columns)
     const notedAfter = after.rows.filter(r => r.note).length
@@ -872,10 +946,11 @@ function opUpdate(op: Record<string, unknown>, ctx: OpsContext, as: Actor | null
     const picks = rawPicks(raw)
     if (picks !== undefined) cleanPicks(picks, rows ?? shape.rows ?? [], columns ?? shape.columns ?? [...DEFAULT_COLUMNS])
     if (raw.notes !== undefined) cleanNotes(raw.notes, rows ?? shape.rows ?? [])
+    if (raw.assignees !== undefined) cleanAssignees(raw.assignees, rows ?? shape.rows ?? [], ctx.people?.() ?? [])
     if (rest.w !== undefined) rest.w = Math.max(rest.w, MIN_SIZE.checklist.w)
     if (rest.h !== undefined) rest.h = Math.max(rest.h, MIN_SIZE.checklist.h)
     ctx.store.update(shape.id, rest, AGENT)
-    writeChecklist(ctx, shape.id, { columns, rows }, picks, raw.notes, as, { w: rest.w !== undefined, h: rest.h !== undefined })
+    writeChecklist(ctx, shape.id, { columns, rows }, picks, raw.notes, raw.assignees, as, { w: rest.w !== undefined, h: rest.h !== undefined })
     return shape.id
   }
   if (shape.type === 'link' && props.live && !frameUrl(props.url ?? shape.url)) fail('a live frame needs an http(s) `url`')
@@ -1184,8 +1259,18 @@ export interface ShapeSummary {
   items?: Record<string, unknown>[]
   /** checklist (and a note in that view): its columns, rows with each one's pick (and who made it, when, when known), and the count per column. */
   columns?: string[]
-  /** A checklist's rows: the pick (who and when, when known) and the row's comment (who and when, when known). */
-  rows?: { id?: string; label: string; pick: string | null; by?: string; at?: number; note?: string; noteBy?: string; noteAt?: number }[]
+  /** A checklist's rows: the pick (who and when, when known), the row's comment (who and when, when known) and who it is assigned to. */
+  rows?: {
+    id?: string
+    label: string
+    pick: string | null
+    by?: string
+    at?: number
+    note?: string
+    noteBy?: string
+    noteAt?: number
+    assignees?: { name: string; id?: string; email?: string }[]
+  }[]
   tally?: Record<string, number>
   /** The innermost frame this shape sits in. */
   frame?: string
@@ -1299,7 +1384,7 @@ export function readCanvas(ctx: ReadContext, rawOpts: unknown = {}): CanvasRead 
         if (s.view === VIEW_CHECKLIST) {
           sum.view = VIEW_CHECKLIST
           sum.title = clip(s.title, full)
-          Object.assign(sum, summarizeNoteChecklist(s.columns ?? [], s.rows ?? [], s.picks ?? {}, s.notes ?? {}, t => clip(t, full)))
+          Object.assign(sum, summarizeNoteChecklist(s.columns ?? [], s.rows ?? [], s.picks ?? {}, s.notes ?? {}, t => clip(t, full), s.assignees ?? {}))
         }
         if (s.view === VIEW_TIMELINE && s.timeline) {
           sum.view = VIEW_TIMELINE
@@ -1331,7 +1416,7 @@ export function readCanvas(ctx: ReadContext, rawOpts: unknown = {}): CanvasRead 
         break
       case 'checklist':
         sum.title = clip(s.title, full)
-        Object.assign(sum, summarizeChecklist(s.columns ?? [], s.rows ?? [], s.picks ?? {}, s.notes ?? {}, t => clip(t, full)))
+        Object.assign(sum, summarizeChecklist(s.columns ?? [], s.rows ?? [], s.picks ?? {}, s.notes ?? {}, t => clip(t, full), s.assignees ?? {}))
         break
     }
     if (s.type !== 'arrow') {

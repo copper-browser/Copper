@@ -16,6 +16,7 @@
  *   rows     {id, label}[]              whole value, last writer wins
  *   pick:<rowId>  {col, by, byId, at}   one key per row
  *   note:<rowId>  {text, by, byId, at}  a row's comment, one key per row
+ *   assignees:<rowId>  [{name, id?, email?, by?, byId?, at?}]  who the row is assigned to
  *
  * A pick lives under its row's own key, so two people clicking different rows
  * at the same moment both stick: neither rewrites the other's. `col` is the
@@ -31,6 +32,8 @@ import {
   TICK_COLUMN,
   VIEW_CHECKLIST,
   WHO_PREFIX,
+  assigneeBlock,
+  assigneeName,
   insertRowLine,
   noteBlock,
   noteLines,
@@ -41,6 +44,7 @@ import {
   rowKey,
   rowLine,
   whoKey,
+  writeRowAssignees,
   writeRowLabel,
   writeRowNote,
   writeRowPick,
@@ -49,13 +53,21 @@ import {
   type TextRow,
 } from './checklist-text'
 import type { CanvasStore, Origin } from './doc'
-import type { ChecklistNote, ChecklistPick, ChecklistRow } from './types'
+import type { ChecklistAssignee, ChecklistNote, ChecklistPick, ChecklistRow } from './types'
 
 export const PICK_PREFIX = 'pick:'
 /** A legacy card's comment on a row: `note:<rowId>` → `{text, by, byId, at}`. */
 export const NOTE_PREFIX = 'note:'
 /** Who last wrote a note's row comment, and when: `noteBy:<label key>` → `{by, byId, at}` (the words are the text's). */
 export const NOTE_BY_PREFIX = 'noteBy:'
+/**
+ * Who a row's assignees are: `assignees:<label key>` on a note (the names are
+ * the text's), `assignees:<rowId>` on a legacy card → `[{name, id?, email?,
+ * by?, byId?, at?}]` (`id`: a cloud user id; `by`/`at`: who assigned them, when).
+ */
+export const ASSIGNEES_PREFIX = 'assignees:'
+/** People on one row. */
+export const MAX_ASSIGNEES = 12
 export const MAX_COLUMNS = 4
 export const MAX_ROWS = 60
 /** Labels are cut to these many characters (UTF-16 units, as JavaScript counts). */
@@ -70,6 +82,9 @@ export const ROW_ID = /^[A-Za-z0-9_-]{1,32}$/
 export const pickKey = (rowId: string) => PICK_PREFIX + rowId
 export const noteKey = (rowId: string) => NOTE_PREFIX + rowId
 export const noteByKey = (label: string) => NOTE_BY_PREFIX + rowKey(label)
+/** A note row's assignees' ids, by its label; a legacy row's assignees, by its id. */
+export const assigneesKey = (label: string) => ASSIGNEES_PREFIX + rowKey(label)
+export const legacyAssigneesKey = (rowId: string) => ASSIGNEES_PREFIX + rowId
 
 /** A comment as it is kept: `\n` line breaks, at most `MAX_NOTE` characters. */
 export const cleanNote = (text: string) => noteLines(text).slice(0, MAX_NOTE)
@@ -161,6 +176,67 @@ export function readNotes(m: Y.Map<unknown>, rows: readonly ChecklistRow[]): Rec
   return out
 }
 
+/** One stored assignee (tolerant: a bare string is a name). */
+export function readAssignee(v: unknown): ChecklistAssignee | null {
+  if (typeof v === 'string') {
+    const name = assigneeName(v)
+    return name ? { name } : null
+  }
+  const o = plain(v)
+  if (!o || typeof o.name !== 'string') return null
+  const name = assigneeName(o.name)
+  if (!name) return null
+  const out: ChecklistAssignee = { name }
+  if (typeof o.id === 'string' && o.id.trim()) out.id = o.id.trim().toLowerCase().slice(0, 80)
+  if (typeof o.email === 'string' && o.email.includes('@')) out.email = o.email.trim().slice(0, 200)
+  if (typeof o.by === 'string' && o.by) out.by = o.by
+  if (typeof o.byId === 'string' && o.byId) out.byId = o.byId
+  if (finite(o.at) && o.at > 0) out.at = o.at
+  return out
+}
+
+/** A stored list of assignees, each person once (by id, else name), at most twelve. */
+export function readAssigneeList(v: unknown): ChecklistAssignee[] {
+  const out: ChecklistAssignee[] = []
+  for (const raw of list(v) ?? []) {
+    const a = readAssignee(raw)
+    if (!a || out.some(o => samePerson(o, a))) continue
+    out.push(a)
+    if (out.length === MAX_ASSIGNEES) break
+  }
+  return out
+}
+
+/** The same person: the same id when both have one, else the same name (any case), else the same email. */
+export function samePerson(a: { name: string; id?: string; email?: string }, b: { name: string; id?: string; email?: string }): boolean {
+  if (a.id && b.id) return a.id === b.id
+  if (fold(a.name) === fold(b.name)) return true
+  return !!a.email && !!b.email && fold(a.email) === fold(b.email)
+}
+
+/** A legacy card's assignees, by row id, for rows that have some. */
+export function readLegacyAssignees(m: Y.Map<unknown>, rows: readonly ChecklistRow[]): Record<string, ChecklistAssignee[]> {
+  const out: Record<string, ChecklistAssignee[]> = {}
+  for (const row of rows) {
+    const people = readAssigneeList(m.get(legacyAssigneesKey(row.id)))
+    if (people.length) out[row.id] = people
+  }
+  return out
+}
+
+/**
+ * A note row's assignees: the names its `@` lines hold, each with whatever
+ * is known beside the note about that name (its id, email, who assigned them).
+ */
+export function noteAssignees(m: Y.Map<unknown>, row: TextRow): ChecklistAssignee[] {
+  if (!row.assignees.length) return []
+  const known = readAssigneeList(m.get(assigneesKey(row.label)))
+  return row.assignees.map(name => {
+    const k = known.find(p => fold(p.name) === fold(name))
+    return k ? { ...k, name } : { name }
+  })
+}
+
 /** How many rows picked each column, in column order. */
 export function tally(columns: readonly string[], rows: readonly ChecklistRow[], picks: Readonly<Record<string, ChecklistPick>>) {
   const out: Record<string, number> = {}
@@ -250,8 +326,9 @@ export function writeRows(m: Y.Map<unknown>, next: readonly ChecklistRow[]) {
     'rows',
     next.map(r => ({ id: r.id, label: r.label }))
   )
-  const keep = new Set(next.flatMap(r => [pickKey(r.id), noteKey(r.id)]))
-  for (const key of [...m.keys()]) if ((key.startsWith(PICK_PREFIX) || key.startsWith(NOTE_PREFIX)) && !keep.has(key)) m.delete(key)
+  const keep = new Set(next.flatMap(r => [pickKey(r.id), noteKey(r.id), legacyAssigneesKey(r.id)]))
+  for (const key of [...m.keys()])
+    if ((key.startsWith(PICK_PREFIX) || key.startsWith(NOTE_PREFIX) || key.startsWith(ASSIGNEES_PREFIX)) && !keep.has(key)) m.delete(key)
 }
 
 /** Set (or with '' clear) a legacy card's comment on one row. Touches no other row. */
@@ -291,12 +368,14 @@ export function readNoteChecklist(m: Y.Map<unknown>, text: string) {
   const rows: ChecklistRow[] = parsed.rows.map(r => ({ id: noteRowId(r.index), label: r.label }))
   const picks: Record<string, ChecklistPick> = {}
   const notes: Record<string, ChecklistNote> = {}
+  const assignees: Record<string, ChecklistAssignee[]> = {}
   for (const r of parsed.rows) {
     if (r.note) notes[noteRowId(r.index)] = { text: r.note, ...(readNoteBy(m.get(noteByKey(r.label))) ?? { by: '', byId: '', at: 0 }) }
+    if (r.assignees.length) assignees[noteRowId(r.index)] = noteAssignees(m, r)
     if (!r.pick) continue
     picks[noteRowId(r.index)] = noteWho(m, r) ?? { col: r.pick, by: '', byId: '', at: 0 }
   }
-  return { title: parsed.title, columns, rows, picks, notes }
+  return { title: parsed.title, columns, rows, picks, notes, assignees }
 }
 
 /** The note's row `id` (or, when the text moved under it, the row with that label). */
@@ -312,6 +391,50 @@ export function writeNoteNote(m: Y.Map<unknown>, t: Y.Text, row: TextRow, text: 
   writeRowNote(t, row, text)
   const key = noteByKey(row.label)
   if (text) m.set(key, { by: by.name, byId: by.id, at })
+  else if (m.has(key)) m.delete(key)
+}
+
+/** What an assignee keeps beside the note: who they are and who assigned them (the name is the text's). */
+export const storedAssignee = (p: ChecklistAssignee) => {
+  const out: Record<string, unknown> = { name: p.name }
+  for (const k of ['id', 'email', 'by', 'byId', 'at'] as const) if (p[k] !== undefined && p[k] !== '') out[k] = p[k]
+  return out
+}
+
+/**
+ * The people on a row as they will be, from `next` (names, or people with
+ * ids): who stays keeps who assigned them and when; who is new is assigned
+ * by `by`, now. Also who is new, for the notification.
+ */
+export function mergeAssignees(now: readonly ChecklistAssignee[], next: readonly ChecklistAssignee[], by: Picker, at = Date.now()) {
+  const out: ChecklistAssignee[] = []
+  const added: ChecklistAssignee[] = []
+  for (const raw of next) {
+    const name = assigneeName(raw.name)
+    if (!name) continue
+    const p: ChecklistAssignee = { ...raw, name }
+    if (out.some(o => samePerson(o, p))) continue
+    const was = now.find(o => samePerson(o, p))
+    if (was) out.push({ ...was, ...p, ...(was.by ? { by: was.by, byId: was.byId } : {}), ...(was.at ? { at: was.at } : {}) })
+    else {
+      const fresh: ChecklistAssignee = { ...p, by: by.name, byId: by.id, at }
+      out.push(fresh)
+      added.push(fresh)
+    }
+    if (out.length === MAX_ASSIGNEES) break
+  }
+  return { people: out, added }
+}
+
+/** Set a note row's assignees: their `@` lines, and who they are beside the note. */
+export function writeNoteAssignees(m: Y.Map<unknown>, t: Y.Text, row: TextRow, people: readonly ChecklistAssignee[]) {
+  writeRowAssignees(
+    t,
+    row,
+    people.map(p => p.name)
+  )
+  const key = assigneesKey(row.label)
+  if (people.length) m.set(key, people.map(storedAssignee))
   else if (m.has(key)) m.delete(key)
 }
 
@@ -428,9 +551,9 @@ export function setRowLabel(store: CanvasStore, id: string, rowId: string, label
       const row = noteRow(c.parsed, rowId)
       const next = oneLine(clean)
       if (!row || row.label === next) return
-      // Who picked it, and who wrote its comment, follow the row to its new name.
+      // Who picked it, who wrote its comment and who its assignees are follow the row to its new name.
       const alone = !c.parsed.rows.some(r => r !== row && rowKey(r.label) === rowKey(row.label))
-      for (const key of [whoKey, noteByKey]) {
+      for (const key of [whoKey, noteByKey, assigneesKey]) {
         const from = key(row.label)
         const to = key(next)
         const value = c.m.get(from)
@@ -487,6 +610,7 @@ export function removeRow(store: CanvasStore, id: string, rowId: string, origin:
       if (!c.parsed.rows.some(r => r !== row && rowKey(r.label) === rowKey(row.label))) {
         c.m.delete(whoKey(row.label))
         c.m.delete(noteByKey(row.label))
+        c.m.delete(assigneesKey(row.label))
       }
       touch(c.m)
       return
@@ -523,6 +647,68 @@ export function setRowNote(store: CanvasStore, id: string, rowId: string, text: 
     writeLegacyNote(c.m, rowId, clean, by)
     touch(c.m)
   }, origin)
+}
+
+/** A row's assignees as they are now, on either form. */
+function currentAssignees(c: Current, row: TextRow | ChecklistRow): ChecklistAssignee[] {
+  if (c.kind === 'note') return noteAssignees(c.m, row as TextRow)
+  return readAssigneeList(c.m.get(legacyAssigneesKey((row as ChecklistRow).id)))
+}
+
+/**
+ * Set the people a row is assigned to (none clears it). Who stays keeps who
+ * assigned them; who is new is assigned by `by`. Returns who is new (for the
+ * notification), or null when the row is not there. `label` is as for
+ * `togglePick`.
+ */
+export function setRowAssignees(
+  store: CanvasStore,
+  id: string,
+  rowId: string,
+  next: readonly ChecklistAssignee[],
+  by: Picker,
+  origin: Origin = 'local',
+  label?: string
+): ChecklistAssignee[] | null {
+  let added: ChecklistAssignee[] | null = null
+  store.transact(() => {
+    const c = current(store, id)
+    if (!c) return
+    const row = c.kind === 'note' ? noteRow(c.parsed, rowId, label) : c.rows.find(r => r.id === rowId)
+    if (!row) return
+    const now = currentAssignees(c, row)
+    const merged = mergeAssignees(now, next, by)
+    added = merged.added
+    const same = merged.people.length === now.length && merged.people.every((p, i) => p.name === now[i]!.name && p.id === now[i]!.id)
+    if (same) return
+    if (c.kind === 'note') writeNoteAssignees(c.m, c.t, row as TextRow, merged.people)
+    else {
+      const key = legacyAssigneesKey(rowId)
+      if (merged.people.length) c.m.set(key, merged.people.map(storedAssignee))
+      else if (c.m.has(key)) c.m.delete(key)
+    }
+    touch(c.m)
+  }, origin)
+  return added
+}
+
+/** Add someone to a row, or take them off it when they are on it already. True: they are on it now. */
+export function toggleAssignee(
+  store: CanvasStore,
+  id: string,
+  rowId: string,
+  person: ChecklistAssignee,
+  by: Picker,
+  origin: Origin = 'local',
+  label?: string
+): { on: boolean; added: ChecklistAssignee[] } {
+  const shape = store.live(id)
+  const row = shape?.rows?.find(r => r.id === rowId && (label === undefined || r.label === label)) ?? shape?.rows?.find(r => r.label === label)
+  const now = (row && shape?.assignees?.[row.id]) ?? []
+  const on = now.some(p => samePerson(p, person))
+  const next = on ? now.filter(p => !samePerson(p, person)) : [...now, person]
+  const added = setRowAssignees(store, id, row?.id ?? rowId, next, by, origin, row?.label ?? label) ?? []
+  return { on: !on, added }
 }
 
 /** A label for a new column: Maybe after Yes / No, else Option N. */
@@ -704,13 +890,80 @@ export function cleanNotes(v: unknown, rows: readonly ChecklistRow[]): [string, 
   return [...out]
 }
 
+/** Someone an agent or the picker can name: a person on the canvas. */
+export interface Person {
+  id: string
+  name: string
+  email?: string
+}
+
+/**
+ * One assignee as an agent names them — a name, an email or a user id (or
+ * `{name, id?, email?}`) — resolved against the people on the canvas: their
+ * id, email, name, or the start of their name; else a name of its own (an
+ * email that is nobody's is kept as both).
+ */
+export function resolveAssignee(v: unknown, people: readonly Person[] = []): ChecklistAssignee {
+  const o = typeof v === 'string' ? { name: v } : plain(v)
+  if (!o) return bad('`assignees` names must be strings like "Ann" or "ann@example.com"')
+  const said = [o.id, o.email, o.name].find((x): x is string => typeof x === 'string' && !!x.trim())
+  if (!said) return bad('`assignees`: each needs a name, an email or an id')
+  const key = said.trim().replace(/^@+/, '').toLowerCase()
+  // The start of a name only when it is one person's.
+  const starts = key.length >= 2 ? people.filter(p => p.name.toLowerCase().startsWith(key)) : []
+  const hit =
+    people.find(p => p.id.toLowerCase() === key) ??
+    people.find(p => !!p.email && p.email.toLowerCase() === key) ??
+    people.find(p => p.name.toLowerCase() === key) ??
+    (starts.length === 1 ? starts[0] : undefined)
+  if (hit) return { name: assigneeName(hit.name) || assigneeName(hit.email ?? '') || 'Someone', id: hit.id.toLowerCase(), ...(hit.email ? { email: hit.email } : {}) }
+  const name = assigneeName(typeof o.name === 'string' && o.name.trim() ? o.name : said)
+  if (!name) return bad('`assignees`: a name must have letters in it')
+  const email = typeof o.email === 'string' && o.email.includes('@') ? o.email.trim() : said.includes('@') && !/\s/.test(said.trim()) ? said.trim() : ''
+  return { name, ...(email ? { email } : {}) }
+}
+
+/**
+ * `assignees`: `{rowIdOrLabel: [who, …] | null}` → `[rowId, people]`, an
+ * empty list (null, false or []) clearing the row. Each `who` is resolved by
+ * `resolveAssignee`; at most twelve to a row.
+ */
+export function cleanAssignees(v: unknown, rows: readonly ChecklistRow[], people: readonly Person[] = []): [string, ChecklistAssignee[]][] {
+  const o = plain(v)
+  if (!o) return bad('`assignees` must be an object like {"Ann": ["Grace Hopper"]}')
+  const out = new Map<string, ChecklistAssignee[]>()
+  for (const [ref, value] of Object.entries(o)) {
+    const row = findRow(rows, ref, 'assignees')
+    if (value === null || value === false) {
+      out.set(row.id, [])
+      continue
+    }
+    const given = typeof value === 'string' ? [value] : Array.isArray(value) ? value : bad('`assignees` values must be a list of names or null')
+    if (given.length > MAX_ASSIGNEES) bad(`\`assignees\`: at most ${MAX_ASSIGNEES} people on a row`)
+    const list: ChecklistAssignee[] = []
+    for (const g of given) {
+      const p = resolveAssignee(g, people)
+      if (!list.some(x => samePerson(x, p))) list.push(p)
+    }
+    out.set(row.id, list)
+  }
+  return [...out]
+}
+
 /** A row's comment as an agent reads it: `note`, and who wrote it and when when known. */
 function noteSummary(n: ChecklistNote | undefined, clip: (s: string) => string) {
   if (!n) return {}
   return { note: clip(n.text), ...(n.by ? { noteBy: n.by } : {}), ...(n.at ? { noteAt: n.at } : {}) }
 }
 
+/** A row's assignees as an agent reads them: `[{name, id?, email?}]`, only when it has some. */
+function assigneeSummary(list: readonly ChecklistAssignee[] | undefined) {
+  if (!list?.length) return {}
+  return { assignees: list.map(p => ({ name: p.name, ...(p.id ? { id: p.id } : {}), ...(p.email ? { email: p.email } : {}) })) }
+}
+
 type Notes = Readonly<Record<string, ChecklistNote>>
+type Assignees = Readonly<Record<string, readonly ChecklistAssignee[]>>
 const asIs = (s: string) => s
 
 /** The checklist as an agent reads it (`canvas_read`). `clip` shortens a long comment. */
@@ -719,13 +972,14 @@ export function summarizeChecklist(
   rows: readonly ChecklistRow[],
   picks: Readonly<Record<string, ChecklistPick>>,
   notes: Notes = {},
-  clip: (s: string) => string = asIs
+  clip: (s: string) => string = asIs,
+  assignees: Assignees = {}
 ) {
   return {
     columns: [...columns],
     rows: rows.map(r => {
       const p = picks[r.id]
-      const n = noteSummary(notes[r.id], clip)
+      const n = { ...noteSummary(notes[r.id], clip), ...assigneeSummary(assignees[r.id]) }
       return p ? { id: r.id, label: r.label, pick: p.col, by: p.by, at: p.at, ...n } : { id: r.id, label: r.label, pick: null, ...n }
     }),
     tally: tally(columns, rows, picks),
@@ -738,13 +992,14 @@ export function summarizeNoteChecklist(
   rows: readonly ChecklistRow[],
   picks: Readonly<Record<string, ChecklistPick>>,
   notes: Notes = {},
-  clip: (s: string) => string = asIs
+  clip: (s: string) => string = asIs,
+  assignees: Assignees = {}
 ) {
   return {
     columns: [...columns],
     rows: rows.map(r => {
       const p = picks[r.id]
-      const n = noteSummary(notes[r.id], clip)
+      const n = { ...noteSummary(notes[r.id], clip), ...assigneeSummary(assignees[r.id]) }
       if (!p) return { label: r.label, pick: null, ...n }
       return { label: r.label, pick: p.col, ...(p.by ? { by: p.by } : {}), ...(p.at ? { at: p.at } : {}), ...n }
     }),
@@ -770,19 +1025,20 @@ export function ago(at: number, now = Date.now()): string {
 /** Who made a pick and when: "Ann · 4 min ago". */
 export const pickedBy = (p: ChecklistPick, now = Date.now()) => [p.by, ago(p.at, now)].filter(Boolean).join(' · ')
 
-/** Plain text for copy and search: the title, then one line per row (its comment quoted under it). */
+/** Plain text for copy and search: the title, then one line per row (its comment quoted under it, then its assignees). */
 export function checklistText(
   title: string,
   rows: readonly ChecklistRow[],
   picks: Readonly<Record<string, ChecklistPick>> = {},
   columns: readonly string[] = [],
-  notes: Notes = {}
+  notes: Notes = {},
+  assignees: Assignees = {}
 ) {
   const one = columns.length === 1
   const lines = rows.map(r => {
     const p = picks[r.id]
     const line = one ? `- [${p ? 'x' : ' '}] ${r.label}` : p ? `- ${r.label}: ${p.col}` : `- ${r.label}`
-    return line + noteBlock(notes[r.id]?.text ?? '')
+    return line + noteBlock(notes[r.id]?.text ?? '') + assigneeBlock((assignees[r.id] ?? []).map(a => a.name))
   })
   return [title.trim(), ...lines].filter(Boolean).join('\n')
 }

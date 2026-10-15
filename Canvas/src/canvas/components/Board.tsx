@@ -158,7 +158,7 @@ const isTextField = (el: EventTarget | null) =>
 const NO_USERS: readonly FrameUser[] = []
 
 /** A checklist as plain text for the clipboard: its title, then each row, its pick and its comment. */
-const copyChecklist = (s: Shape | undefined) => (s ? checklistText(s.title, s.rows ?? [], s.picks ?? {}, s.columns ?? [], s.notes ?? {}) : '')
+const copyChecklist = (s: Shape | undefined) => (s ? checklistText(s.title, s.rows ?? [], s.picks ?? {}, s.columns ?? [], s.notes ?? {}, s.assignees ?? {}) : '')
 
 const sortZ = (a: Shape, b: Shape) => a.z - b.z || a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 

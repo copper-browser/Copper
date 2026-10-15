@@ -423,9 +423,11 @@ export function boardSearchItems(shapes: Iterable<Shape>): SearchItem[] {
     else if (s.type === 'sticky' || s.type === 'text') text = s.text
     else if (s.type === 'frame' || s.type === 'link') text = s.title
     else if (s.type === 'arrow') text = s.label ?? ''
-    // A checklist answers to its title, every row's label and every row's comment.
+    // A checklist answers to its title, every row's label and comment, and who each row is assigned to.
     else if (s.type === 'checklist')
-      text = [s.title, ...(s.rows ?? []).flatMap(r => [r.label, s.notes?.[r.id]?.text ?? ''])].filter(t => t.trim()).join('\n')
+      text = [s.title, ...(s.rows ?? []).flatMap(r => [r.label, s.notes?.[r.id]?.text ?? '', ...(s.assignees?.[r.id] ?? []).map(a => `@${a.name}`)])]
+        .filter(t => t.trim())
+        .join('\n')
     if (s.type === 'image') continue
     if (!text.trim() && !(s.type === 'link' && s.url)) continue
     if (s.type === 'arrow' && !arrowPath(s, id => boxes.get(id) ?? null)) continue

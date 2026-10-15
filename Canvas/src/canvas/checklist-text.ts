@@ -27,6 +27,25 @@
  * goes when the row goes, and an older Copper shows it as a quote under the
  * item. A comment line is never a row or a title. Writing one changes only
  * the characters of its own lines; no comment is no lines.
+ *
+ * The people a row is assigned to follow its comment, one indented `@` line
+ * each —
+ *
+ *   - [ ] Fix the login page · In progress
+ *     > Blocked on the new certificate.
+ *     @Collin Rijock
+ *     @Ada Lovelace
+ *
+ * — names only: who they are (a cloud user id, an email) sits beside the
+ * note, keyed by the row (`assignees:<label key>`, checklist.ts) and counts
+ * only for a name the text still has. After the comment, not before it, so
+ * a Copper that knows comments but not assignees still reads the comment as
+ * the row's (its rows end at the first line that is not a `>` line) and only
+ * skips the names; a Copper that knows neither shows "Fix the login page
+ * @Collin Rijock" — an indented line continues its list item. `@ Name` (a
+ * space after the @) reads the same. Adding or removing someone changes only
+ * the characters of their own line, so two people assigning at once both
+ * stick; a name written twice is one assignee.
  */
 import * as Y from 'yjs'
 import { textSplice } from './text-diff'
@@ -44,6 +63,12 @@ const SUFFIX = /\s+·\s+([^·]+?)\s*$/
 const NOTE_LINE = /^[ \t]+> ?(.*)$/
 /** How this page writes a comment line (before its words). */
 const NOTE_LEAD = '  >'
+/** An assignee line under a task line: indented, `@`, then the name (a space after the @ is allowed). */
+const ASSIGNEE_LINE = /^[ \t]+@[ \t]*(\S.*?)[ \t]*$/
+/** How this page writes an assignee line (before the name). */
+const ASSIGNEE_LEAD = '  @'
+/** Characters in an assignee's name. */
+export const MAX_ASSIGNEE_NAME = 80
 
 const fold = (s: string) => s.trim().toLowerCase()
 
@@ -64,6 +89,32 @@ export function noteBlock(note: string): string {
   return clean
     .split('\n')
     .map(l => `\n${NOTE_LEAD}${l ? ` ${l}` : ''}`)
+    .join('')
+}
+
+/** A name as an assignee line keeps it: one line, single spaces, no leading @, at most 80 characters ('' for none). */
+export const assigneeName = (s: string) =>
+  oneLine(s)
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^@+\s*/, '')
+    .slice(0, MAX_ASSIGNEE_NAME)
+    .trim()
+
+/** Names as a row keeps them: cleaned, none empty, each person once (any case). */
+export function assigneeNames(names: readonly string[]): string[] {
+  const out: string[] = []
+  for (const raw of names) {
+    const name = assigneeName(raw)
+    if (name && !out.some(o => fold(o) === fold(name))) out.push(name)
+  }
+  return out
+}
+
+/** Assignees' lines as they follow a row's comment (each with the line break before it); none when empty. */
+export function assigneeBlock(names: readonly string[]): string {
+  return assigneeNames(names)
+    .map(n => `\n${ASSIGNEE_LEAD}${n}`)
     .join('')
 }
 
@@ -90,7 +141,13 @@ export interface TextRow {
   hasBody: boolean
   /** The row's comment ('' for none): its quote lines under the task line, joined by `\n`. */
   note: string
-  /** Where the row's last line ends: its last comment line, else `lineEnd`. */
+  /** The names of its `@` lines, in order, each once. */
+  assignees: string[]
+  /** Where its first `@` line starts, counting the line break before it; -1 for none. */
+  assignStart: number
+  /** Comment lines first, then `@` lines, as this page writes them (else a write tidies the block). */
+  tidy: boolean
+  /** Where the row's last line ends: its last comment or `@` line, else `lineEnd`. */
   blockEnd: number
 }
 
@@ -118,6 +175,18 @@ export function parseChecklistText(text: string, columns: readonly string[]): Pa
         open.lines.push(note[1] ?? '')
         open.row.note = open.lines.join('\n')
         open.row.blockEnd = end
+        // A comment line under an `@` line: kept, and put back in order by the next write.
+        if (open.row.assignStart >= 0) open.row.tidy = false
+        continue
+      }
+      const who = ASSIGNEE_LINE.exec(line)
+      if (who) {
+        const row = open.row
+        if (row.assignStart < 0) row.assignStart = start - 1
+        const name = assigneeName(who[1] ?? '')
+        if (name && !row.assignees.some(n => fold(n) === fold(name))) row.assignees.push(name)
+        else row.tidy = false
+        row.blockEnd = end
         continue
       }
       open = null
@@ -154,6 +223,9 @@ export function parseChecklistText(text: string, columns: readonly string[]): Pa
         labelEnd: labelStart + label.length,
         hasBody: task[3] !== undefined,
         note: '',
+        assignees: [],
+        assignStart: -1,
+        tidy: true,
         blockEnd: end,
       }
       out.rows.push(row)
@@ -178,18 +250,18 @@ export function rowLine(label: string, pick: string | null, columns: readonly st
   return `- [${pick ? 'x' : ' '}] ${oneLine(label)}${tail}`
 }
 
-/** A row's line and, under it, its comment's lines. */
-export function rowBlock(label: string, pick: string | null, columns: readonly string[], note = ''): string {
-  return rowLine(label, pick, columns) + noteBlock(note)
+/** A row's line and, under it, its comment's lines, then its assignees'. */
+export function rowBlock(label: string, pick: string | null, columns: readonly string[], note = '', assignees: readonly string[] = []): string {
+  return rowLine(label, pick, columns) + noteBlock(note) + assigneeBlock(assignees)
 }
 
-/** A whole checklist note: the title as a heading, then one line per row (and its comment's lines). */
+/** A whole checklist note: the title as a heading, then one line per row (and its comment's and assignees' lines). */
 export function checklistMarkdown(
   title: string,
-  rows: readonly { label: string; pick: string | null; note?: string }[],
+  rows: readonly { label: string; pick: string | null; note?: string; assignees?: readonly string[] }[],
   columns: readonly string[]
 ): string {
-  const lines = rows.map(r => rowBlock(r.label, r.pick, columns, r.note))
+  const lines = rows.map(r => rowBlock(r.label, r.pick, columns, r.note, r.assignees))
   if (title.trim()) lines.unshift(`### ${oneLine(title).trim()}`)
   return lines.join('\n')
 }
@@ -249,7 +321,9 @@ export function writeRowLabel(t: Y.Text, row: TextRow, label: string) {
  */
 export function writeRowNote(t: Y.Text, row: TextRow, note: string) {
   const text = t.toString()
-  const prev = text.slice(row.lineEnd, row.blockEnd)
+  if (!row.tidy) return writeRowTail(t, text, row, note, row.assignees)
+  // The comment's lines: everything under the row's line up to its first `@` line.
+  const prev = text.slice(row.lineEnd, row.assignStart >= 0 ? row.assignStart : row.blockEnd)
   const next = noteBlock(note)
   if (prev === next) return
   // A first comment goes in just after the line break that ends the row's
@@ -260,6 +334,33 @@ export function writeRowNote(t: Y.Text, row: TextRow, note: string) {
     return
   }
   spliceWithin(t, row.lineEnd, prev, next)
+}
+
+/**
+ * Set the people a row is assigned to (names; none clears them): only its
+ * `@` lines change, and of those only the characters that differ, so two
+ * people assigning different people to one row at once both stick.
+ */
+export function writeRowAssignees(t: Y.Text, row: TextRow, names: readonly string[]) {
+  const text = t.toString()
+  if (!row.tidy) return writeRowTail(t, text, row, row.note, names)
+  const next = assigneeBlock(names)
+  if (row.assignStart < 0) {
+    if (!next) return
+    // The first one under a row that has only its line goes in just after
+    // that line's break, as a first comment does, so a pick or a label edit
+    // at the line's end at the same moment stays on the line. Under a
+    // comment it goes at the comment's end, inside the row's block.
+    if (row.blockEnd === row.lineEnd && row.lineEnd < text.length) t.insert(row.lineEnd + 1, `${next.slice(1)}\n`)
+    else t.insert(row.blockEnd, next)
+    return
+  }
+  spliceWithin(t, row.assignStart, text.slice(row.assignStart, row.blockEnd), next)
+}
+
+/** A block whose lines are out of order (a hand edit, two writers): all its lines under the row, as this page writes them. */
+function writeRowTail(t: Y.Text, text: string, row: TextRow, note: string, names: readonly string[]) {
+  spliceWithin(t, row.lineEnd, text.slice(row.lineEnd, row.blockEnd), noteBlock(note) + assigneeBlock(names))
 }
 
 /**
@@ -307,8 +408,8 @@ export function writeTitle(t: Y.Text, parsed: ParsedChecklist, title: string) {
 }
 
 /**
- * Replace every row (with its comment's lines) by `next` — one row's block
- * each (`rowBlock`) — where the rows were (or under the title).
+ * Replace every row (with its comment's and assignees' lines) by `next` —
+ * one row's block each (`rowBlock`) — where the rows were (or under the title).
  */
 export function replaceRows(t: Y.Text, parsed: ParsedChecklist, next: readonly string[]) {
   const before = t.toString()

@@ -4,7 +4,7 @@
  * threads, `comments.ts`, live beside them and are never undone).
  */
 import * as Y from 'yjs'
-import { readColumns, readNoteChecklist, readNotes, readPicks, readRows } from './checklist'
+import { readColumns, readLegacyAssignees, readNoteChecklist, readNotes, readPicks, readRows } from './checklist'
 import { VIEW_CHECKLIST } from './checklist-text'
 import { CommentStore } from './comments'
 import { SIDES, type Point, type Side } from './geometry'
@@ -151,6 +151,7 @@ export function readShape(id: string, m: unknown): Shape | null {
     shape.rows = list.rows
     shape.picks = list.picks
     shape.notes = list.notes
+    shape.assignees = list.assignees
   }
   if (type === 'sticky' && m.get('view') === VIEW_TIMELINE) {
     const { title, timeline } = readNoteTimeline(shape.text)
@@ -165,6 +166,7 @@ export function readShape(id: string, m: unknown): Shape | null {
     shape.rows = rows
     shape.picks = readPicks(m, rows, columns)
     shape.notes = readNotes(m, rows)
+    shape.assignees = readLegacyAssignees(m, rows)
   }
   return shape
 }
