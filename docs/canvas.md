@@ -142,6 +142,26 @@ stored or shared). While one is open the card keeps the height it had and its ro
 it, so the stored size never changes and nothing spills past the card; it settles to its rows when
 the comment closes. Everyone sees the words as they are typed.
 
+**Assignees.** Any row can be assigned to one or more people (up to twelve). Their faces —
+initials on each person's Copper colour, overlapping past one, `+N` past three, yours ringed in
+the accent — sit at the end of the row; hovering one says who and who assigned them (*Collin
+Rijock · assigned by Ann, 4 min ago*). A row with nobody on it shows a person button beside the
+comment button, on hover or keyboard focus only. That button, a click on the faces, or `@` typed
+while the row has focus (a box, its buttons) opens the people picker under the row: a field that
+filters as you type (name start, word start, email), the arrow keys to move, Return or a click to
+put the person on the row — or take them off, since it ticks who is on it already — and the field
+clears for the next; Escape or a click elsewhere closes it. It lists the canvas's people — the same
+list chat's `@` picker shows, you first — then names already used on this board's checklists, then
+whatever name you typed (*Assign “Design team”*), so a canvas on this Mac works with names alone.
+In a row's comment, `@` at the start of a word opens the same list under the comment: picking
+someone writes *@Name* there and puts them on the row. On a shared canvas, someone newly put on a
+row is **told the way a chat @mention tells them** (copper-cloud 0.6.0+, see Chat): the pill reads
+*Ann assigned you in “Sprint”* with the row (and the card's title) as its line, the Canvas door
+gets its dot and the canvas its `@`, and a Mac notification comes when Copper isn't in front.
+**Open** shows the canvas at the card — not the chat — and the rows that are yours glow once; the
+card coming on screen in a visible tab reads it, on all your Macs. You, a name of its own, and
+someone who isn't on the canvas are told nothing; taking someone off tells no one.
+
 **Stored as a note**, so every Copper shows it: a `sticky` with `view: "checklist"` whose text is
 the list, in the markdown any note draws as task boxes —
 
@@ -152,6 +172,8 @@ the list, in the markdown any note draws as task boxes —
 - [x] Bob · No
   > Back from Lisbon on the 4th;
   > can do the week after.
+  @Collin Rijock
+  @Ada Lovelace
 ```
 
 The first `#`/`##`/`###` heading is the title and each `- [ ]` / `- [x]` line a row. `columns` is a
@@ -168,24 +190,46 @@ a title, and an older Copper shows it as a quote under the item. Writing it chan
 characters of its own lines, so comments on different rows — or different lines of one — from two
 Coppers at once both stick; a first comment goes in after the row's line break, so a pick or a
 rename of the same row at the same moment stays on the row's line. Who last wrote it and when sit
-beside it (`noteBy:<label>`) and follow a rename. Model and rules: `Canvas/src/canvas/checklist.ts`
-and `checklist-text.ts`.
+beside it (`noteBy:<label>`) and follow a rename. A row's assignees are one indented `@Name` line
+each, after its comment (`@ Name`, with a space, reads the same; a name written twice is one
+person). After the comment, not before it, because Copper 1.0.20261012.49 and older end a row's
+block at its first line that is not a `>` line: there the comment still reads as the row's and
+only the names are skipped (its comment, pick and rename writes leave them where they are). A
+Copper from before checklists continues the list item with the line, so it shows *Write the
+release notes @Grace Hopper*. Adding or removing someone changes only the characters of their own
+line; a first assignee under a row with only its line goes in after that line's break (as a first
+comment does), under a comment at the comment's end. Who they are — the cloud user id and email of
+someone picked from the canvas's people — and who assigned them, when, sit beside the note under
+`assignees:<label>` (`[{name, id?, email?, by?, byId?, at?}]`), follow a rename, go with the row,
+and count only for a name the text still has: rename *@Grace Hopper* by hand in an older Copper
+and she is a name of her own. A face shows the person's name on the canvas now when the id is
+theirs, so a renamed account reads right without touching the text. Model and rules:
+`Canvas/src/canvas/checklist.ts` and `checklist-text.ts`; the picker's list is
+`Canvas/src/canvas/assignees.ts`, the card's faces and picker `components/ChecklistPeople.tsx`.
 
 Agents add one with `{type:'checklist', title, columns?, rows:['Ann', …], picks?:{'Ann':'Yes'},
-notes?:{'Ann':'Back at 6'}}` and update `picks` and `notes` by row label (`null` clears), `rows`
-(each kept row keeps its pick and comment by label), `columns` and `title` (each an edit of the
-text). `{op:'update', id, patch:{view:'checklist', columns?:[…]}}` turns a note that already holds
+notes?:{'Ann':'Back at 6'}, assignees?:{'Fix login':['Grace Hopper', 'ann@example.com']}}` and
+update `picks`, `notes` and `assignees` by row label (`null` clears; an `assignees` list replaces
+the row's people, and who stays keeps who assigned them), `rows` (each kept row keeps its pick,
+comment and assignees by label), `columns` and `title` (each an edit of the text). An assignee is
+named by name, email or cloud user id and found among the canvas's people (exactly, or by the
+start of one person's name — Copper reads the member list first when the ops carry `assignees`);
+anyone else is a name of their own (an email kept as both). Someone newly assigned on a shared
+canvas is told as above. `{op:'update', id, patch:{view:'checklist', columns?:[…]}}` turns a note that already holds
 a heading and a task list into a card in place — the text, and so its ticks, untouched;
 `view: null` makes it a plain note again. `canvas_read` gives `view`, `title`, `columns`,
-`rows:[{label, pick, by?, at?, note?, noteBy?, noteAt?}]` (`note` only for a row with a comment, cut
-at 500 characters unless `full`), `tally` and the `text`. `./bench --world W canvas checklist
-[SHAPE]` reads them and `canvas check SHAPE COL ROW…` clicks a box with real mouse input
-(`CanvasChecklistBench.swift`).
+`rows:[{label, pick, by?, at?, note?, noteBy?, noteAt?, assignees?:[{name, id?, email?}]}]` (`note`
+only for a row with a comment, cut at 500 characters unless `full`; `assignees` only for a row with
+someone on it, `id` their cloud user id), `tally` and the `text`. `./bench --world W canvas
+checklist [SHAPE]` reads them, `canvas check SHAPE COL ROW…` clicks a box with real mouse input,
+`canvas assign SHAPE ROW…` moves the pointer onto a row and clicks its person button (or faces), and
+`canvas picker` says what the open picker lists and who it ticks (`CanvasChecklistBench.swift`).
 
 The first cut stored a checklist as its own `type: "checklist"` (picks under `pick:<rowId>`);
 copper-cloud 0.6.0's REST `/ops` still makes those, and this page still draws, clicks and
-updates them; their row comments sit under `note:<rowId>` (`{text, by, byId, at}`), and a row that
-goes takes its comment. Older Coppers don't draw that type at all.
+updates them; their row comments sit under `note:<rowId>` (`{text, by, byId, at}`) and their
+assignees under `assignees:<rowId>` (the same list as a note's, names and all), and a row that goes
+takes both. Older Coppers don't draw that type at all.
 
 ## Timelines
 
@@ -829,6 +873,16 @@ the mention read (`POST /v1/mentions/read {ids}`); the server tells your other M
 (`mention_read`) and their pill, dot and badge go. Reading the message in the panel does the same.
 On an older cloud chat works the same (it is in the document); a mention is a chip and a badge in
 the canvas only — Copper never calls the API.
+
+**Assignments ride the same path** (Checklists, *Assignees*). Putting someone on a checklist row
+posts `{type:"mention", messageId:"assign.<shapeId>.<uuid>", userIds, excerpt:"<row> · <card
+title>"}` — no cloud change: the mentions API takes any message id, and each assignment gets its own.
+A mention whose id starts `assign.` is an assignment (`Mention.isAssignment`): the pill and the
+notification say *assigned you*, a canvas whose chat you are watching still raises it (the card
+may be elsewhere on the board), and **Open** leaves the chat as it was and calls `revealChat({id})`,
+which the page answers by flying to the card (`controller.zoomTo`) and making your rows on it glow
+once. The page never counts it in the chat's unread badge; it reads it (`chatRead` with its id)
+once the card is on screen in a visible tab.
 
 **Page ↔ host.** Page → host: `{type:"chat", open}` (remember it; other tabs follow),
 `{type:"chatRead", id, at, mentionIds}` (the read mark; mentions of you among `mentionIds` are read

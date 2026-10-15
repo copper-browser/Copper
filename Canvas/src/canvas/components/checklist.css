@@ -141,44 +141,233 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.cl-row-remove {
+/* The row's end: its people, and just before them its buttons — on hover or
+   keyboard focus (always while open), over the label's end like before, so
+   showing them moves nothing. */
+.cl-end {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  margin-left: auto;
+}
+.cl-tools {
   position: absolute;
-  right: 2px;
+  right: 100%;
   top: 50%;
   translate: 0 -50%;
-  opacity: 0;
-  background: var(--surface);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
 }
-.cl-row:hover .cl-row-remove,
-.cl-row-remove:focus-visible {
-  opacity: 1;
+.cl-end:has(.cl-people) .cl-tools {
+  right: calc(100% + 4px);
 }
-
-/* A row's comment toggle: on hover or keyboard focus (always while open), at
-   the label's end, over it like the remove button — so showing it moves nothing. */
-.cl-note-toggle {
-  position: absolute;
-  right: 2px;
-  top: 50%;
-  translate: 0 -50%;
+.cl-row:hover .cl-tools,
+.cl-row:focus-within .cl-tools {
+  pointer-events: auto;
+}
+.cl-tools .cl-icon-btn {
   opacity: 0;
   background: var(--surface);
   transition: opacity 0.12s ease;
 }
-.cl-note-toggle-shift {
-  right: 26px;
-}
-.cl-row:hover .cl-note-toggle,
-.cl-note-toggle:focus-visible,
-.cl-note-toggle[aria-expanded='true'] {
+.cl-row:hover .cl-tools .cl-icon-btn,
+.cl-tools .cl-icon-btn:focus-visible,
+.cl-tools .cl-icon-btn[aria-expanded='true'] {
   opacity: 1;
+  pointer-events: auto;
 }
-.cl-note-toggle[aria-expanded='true'] {
+.cl-tools .cl-icon-btn[aria-expanded='true'] {
   color: var(--cl-accent);
 }
-.cl-note-toggle:focus-visible {
+.cl-tools .cl-icon-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 0;
+}
+
+/* Who the row is assigned to: small faces, overlapping past one. */
+.cl-people {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  padding: 2px 0 2px 2px;
+  margin: -2px 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  font: inherit;
+}
+.cl-people-btn {
+  cursor: pointer;
+}
+.cl-people-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.cl-face-slot {
+  display: inline-flex;
+}
+.cl-face-slot + .cl-face-slot {
+  margin-left: -5px;
+}
+.cl-face {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  box-shadow: 0 0 0 1.5px var(--surface);
+}
+/* Yours: a ring in the accent, as a mention of you is stronger in chat. */
+.cl-face-me {
+  box-shadow:
+    0 0 0 1.5px var(--surface),
+    0 0 0 3px color-mix(in srgb, var(--accent) 80%, transparent);
+}
+.cl-face-more {
+  width: 20px;
+  height: 20px;
+  font-size: 9px;
+  background: var(--surface-3);
+  color: var(--ink-2);
+}
+.cl-face-new {
+  width: 22px;
+  height: 22px;
+  background: var(--surface-2);
+  color: var(--ink-3);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+.cl-people-tip {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+.cl-people-btn:hover .cl-face-slot .cl-face {
+  filter: brightness(1.06);
+}
+
+/* Opened from a notification: the rows that are yours glow once. */
+.cl-row-flash {
+  animation: cl-flash 2.4s ease-out;
+}
+@keyframes cl-flash {
+  0%,
+  35% {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+/* The people picker: in the card, the same size on screen at any zoom. */
+.cl-pick {
+  position: absolute;
+  z-index: 9;
+  width: 272px;
+  box-sizing: border-box;
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-2);
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: default;
+  animation: canvas-pop 0.12s ease-out;
+}
+.cl-pick-field {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 30px;
+  margin: 0 0 4px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: none;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+.dark .cl-pick-field {
+  color-scheme: dark;
+}
+.cl-pick-field::placeholder {
+  color: var(--ink-4);
+}
+.cl-pick-field:focus {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.cl-pick-list {
+  max-height: 264px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.cl-pick-head {
+  margin: 0;
+  padding: 5px 8px 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+.cl-pick-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 8px;
+  border-radius: 8px;
+}
+.cl-pick-active {
+  background: var(--accent-soft);
+}
+.cl-pick-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+.cl-pick-name,
+.cl-pick-email {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cl-pick-name {
+  color: var(--ink-2);
+}
+.cl-pick-active .cl-pick-name {
+  color: var(--ink);
+}
+.cl-pick-you {
+  color: var(--ink-3);
+}
+.cl-pick-email {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.cl-pick-check {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: var(--accent);
+  stroke-width: 2.4;
 }
 
 /* The comment under its row, across the whole row. */

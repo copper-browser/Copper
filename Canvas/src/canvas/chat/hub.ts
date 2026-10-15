@@ -15,6 +15,7 @@ import { hostLog, postToHost } from '../../host-bridge'
 import type { Session } from '../../controller'
 import {
   CHAT_KEY,
+  EXCERPT_MAX,
   MAX_TEXT,
   appendMessage,
   composeText,
@@ -36,6 +37,28 @@ import {
 
 /** Transaction origin for chat writes: stored and synced, never on the board's undo stack. */
 export const CHAT_ORIGIN = 'chat'
+
+/**
+ * A mention that is an assignment, not a message: someone was put on a
+ * checklist row. Its id names the card — `assign.<shapeId>.<nonce>` — so Open
+ * shows the card rather than the chat.
+ */
+export const ASSIGN_PREFIX = 'assign.'
+export const assignMentionId = (shapeId: string) => `${ASSIGN_PREFIX}${shapeId}.${newId()}`
+/** The card an assignment's mention id names; null for a chat message's id. */
+export function assignedCard(id: string): string | null {
+  if (!id.startsWith(ASSIGN_PREFIX)) return null
+  const rest = id.slice(ASSIGN_PREFIX.length)
+  const dot = rest.lastIndexOf('.')
+  return dot > 0 ? rest.slice(0, dot) : null
+}
+
+/** What an assignment tells: the row, then the card's title. */
+export function assignExcerpt(row: string, title: string): string {
+  const flat = [row, title].map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean)
+  const line = flat.length > 1 ? `${flat[0]} · ${flat[1]}` : (flat[0] ?? 'A checklist row')
+  return line.length <= EXCERPT_MAX ? line : `${line.slice(0, EXCERPT_MAX - 1).trimEnd()}…`
+}
 
 export interface ChatConfig {
   /** A shared canvas on a cloud: chat is offered. */
@@ -153,6 +176,10 @@ export class ChatHub {
   focus: { id: string; at: number } | null = null
   /** The board asks the composer for the keyboard (the C shortcut, a reveal). */
   focusComposer = 0
+  /** A card an assignment's Open asked to show, with a stamp so a repeat flashes again. */
+  assignFocus: { shapeId: string; at: number } | null = null
+  /** The board, for an assignment's Open: show a card (chat/index.ts wires the controller in). */
+  showCard: (shapeId: string) => boolean = () => false
   private session: Session | null = null
   private arr: Y.Array<unknown> | null = null
   private observer: (() => void) | null = null
@@ -315,6 +342,15 @@ export class ChatHub {
       v = t.startsWith('{') ? JSON.parse(t) : { id: t }
     }
     const id = isObject(v) && typeof v.id === 'string' ? v.id : isObject(v) && typeof v.messageId === 'string' ? v.messageId : ''
+    // An assignment shows its card, flashes the rows that are yours and reads it; the chat stays as it was.
+    const card = assignedCard(id)
+    if (card !== null) {
+      this.assignFocus = { shapeId: card, at: Date.now() }
+      const shown = this.showCard(card)
+      this.markSeen(id)
+      this.emit()
+      return shown
+    }
     if (!this.config.enabled) return false
     this.setOpen(true)
     if (!id) return true
@@ -342,7 +378,7 @@ export class ChatHub {
     this.emit()
   }
 
-  /** One message read (scrolled into view while older ones are unread): only its mention clears. */
+  /** One message read (scrolled into view while older ones are unread), or an assignment seen: only its mention clears. */
   markSeen(id: string) {
     if (!this.unread.mentionIds.includes(id) && !this.config.mentioned.includes(id)) return
     if (this.config.mentioned.includes(id)) this.config = { ...this.config, mentioned: this.config.mentioned.filter(x => x !== id) }
@@ -364,6 +400,42 @@ export class ChatHub {
     if (now - this.askedMembers < 20_000) return
     this.askedMembers = now
     postToHost({ type: 'chatMembers' })
+  }
+
+  // ---- checklist assignees ----------------------------------------------------------
+
+  /**
+   * Whom a checklist row can be assigned to: the people chat's @ picker
+   * lists (the canvas's members), you among them — first, if the list doesn't
+   * have you yet. A canvas on this Mac has only you.
+   */
+  people(): ChatMember[] {
+    const me = this.me
+    const list = this.config.enabled ? [...this.config.members] : []
+    if (this.session && !list.some(m => m.id === me)) list.unshift({ id: me, name: this.meName, email: '', color: stableColor(me) })
+    return list
+  }
+
+  /** My unread assignments on one card: their mention ids, joined (stable for React). */
+  assignedToMe(shapeId: string): string {
+    return this.config.mentioned.filter(id => assignedCard(id) === shapeId).join(' ')
+  }
+
+  /**
+   * Someone put people on a checklist row: those on the canvas (but you) get
+   * the notification a chat @mention gives, on a cloud that takes them. A
+   * name of its own, or someone not on the canvas, is told nothing.
+   */
+  notifyAssigned(e: { shapeId: string; title: string; row: string; people: readonly { id?: string }[] }): string[] {
+    if (!this.config.enabled || !this.config.mentionsApi || !this.session || this.session.cfg.readOnly) return []
+    const members = new Set(this.config.members.map(m => m.id))
+    const me = this.me
+    const ids = [...new Set(e.people.flatMap(p => (p.id ? [normId(p.id)] : [])))].filter(id => id !== me && members.has(id))
+    if (!ids.length) return []
+    const messageId = assignMentionId(e.shapeId)
+    postToHost({ type: 'mention', messageId, userIds: ids, excerpt: assignExcerpt(e.row, e.title) })
+    hostLog('debug', `chat: assigned ${ids.length} on ${e.shapeId}`)
+    return ids
   }
 
   // ---- writing -------------------------------------------------------------------------

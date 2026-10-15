@@ -30,7 +30,7 @@ import { createPresenceReporter, hostPresence, readPresence } from './canvas/pre
 import type { Me } from './canvas/types'
 import { FrameBus, parseFrameEvent } from './canvas/frames'
 import { hostLog, postToHost } from './host-bridge'
-import { applyOps, readCanvas, type ApplyResult, type CanvasRead } from './ops'
+import { applyOps, readCanvas, type ApplyResult, type CanvasRead, type OpsContext } from './ops'
 
 export const VERSION = '1.0.0'
 
@@ -284,6 +284,8 @@ export class Controller {
   private share: ShareConfig | null = null
   /** Live frames' reports from the host, to the view that owns each frame. */
   readonly frames = new FrameBus()
+  /** Who checklist `assignees` resolve against, and whom to tell (chat/index.ts wires the chat hub in). */
+  opsHooks: Pick<OpsContext, 'people' | 'onAssigned'> = {}
 
   subscribe = (fn: Listener) => {
     this.listeners.add(fn)
@@ -476,7 +478,7 @@ export class Controller {
     const s = this.session
     if (!s) return { applied: 0, ids: [], errors: [{ index: -1, op: '', error: 'copperCanvas.init has not been called' }] }
     s.store.undo.stopCapturing()
-    const out = applyOps({ store: s.store, viewportCenter: this.viewportCenter, readOnly: s.cfg.readOnly }, raw)
+    const out = applyOps({ store: s.store, viewportCenter: this.viewportCenter, readOnly: s.cfg.readOnly, ...this.opsHooks }, raw)
     s.store.undo.stopCapturing()
     if (out.applied > 0 || out.actor) {
       const actor = out.actor ?? { id: 'agent', name: 'Agent' }

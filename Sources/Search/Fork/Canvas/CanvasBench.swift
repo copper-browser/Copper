@@ -139,14 +139,14 @@ extension CanvasTools {
             answer(["path": CanvasBench.write(image, to: path) ? path : "", "size": [image.width, image.height], "extras": extras.map(\.className)])
         case "import":
             CanvasImport.bench(words.first ?? "status", answer: answer)
-        case "checklist", "check":
+        case "checklist", "check", "assign", "picker":
             CanvasChecklistBench.run(op, words, in: browser, answer: answer)
         default:
             answer(["error": "canvas list|open ID|read [ID]|apply JSON|create NAME|invites|accept|decline INVITE|rename ID NAME|delete ID|leave ID"
                 + "|members ID|hosts|ui open|close|mode …|picture PATH [dark]|new|tabs [ID]|menu [press]|flush ID|click X Y [N]|draw X,Y …"
                 + "|scroll DX DY [STEPS] [--zoom] [--app]|scroll stats|perf start|stop|lean|ask-rename ID|ask-delete ID"
                 + "|answer delete|leave|cancel|sheet|rowmenu ID PATH|picture PATH|import [status|run]"
-                + "|checklist [SHAPE]|check SHAPE COL ROW…"])
+                + "|checklist [SHAPE]|check SHAPE COL ROW…|assign SHAPE ROW…|picker"])
         }
     }
 }

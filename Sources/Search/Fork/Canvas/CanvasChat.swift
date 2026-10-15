@@ -22,6 +22,10 @@ import Foundation
 //   notification. Open shows the canvas, its chat, the message; that marks it
 //   read (`POST /v1/mentions/read`), which the server tells your other Macs.
 // - after a message that mentions someone, `POST /v1/canvases/:id/mentions`.
+//   Putting someone on a checklist row is told the same way: the page posts
+//   a mention whose id names the card (`assign.<shapeId>.<nonce>`), so the
+//   pill and the notification say "assigned you", and Open shows the card
+//   (its rows that are yours glow once) instead of the chat.
 //
 // On an older cloud chat works the same (it is in the document) and a
 // mention is a highlighted chip and a badge inside the canvas only.
@@ -44,6 +48,10 @@ final class CanvasChat: ObservableObject {
         let createdAt: Date?
 
         var who: String { fromName.isEmpty ? (fromEmail.isEmpty ? "Someone" : fromEmail) : fromName }
+        /// Someone put you on a checklist row (the page's `assign.<shapeId>.<nonce>` id), not a chat message.
+        var isAssignment: Bool { messageId.hasPrefix("assign.") }
+        /// "mentioned you" / "assigned you", for the pill and the notification.
+        var verb: String { isAssignment ? "assigned you" : "mentioned you" }
     }
 
     /// One canvas, for one account: the panel and the read mark.
@@ -386,7 +394,8 @@ final class CanvasChat: ObservableObject {
         if !readAlready.isEmpty { markRead(readAlready.map(\.id)) }
         let unseen = fresh.filter { !raised.contains($0.id) && !before.contains($0.id) && !readAlready.contains($0) }
         for mention in unseen { raised.insert(mention.id) }
-        if let newest = unseen.first(where: { !watching($0.canvasId) }) {
+        // Watching a canvas's chat covers its messages, not a checklist card somewhere on it.
+        if let newest = unseen.first(where: { $0.isAssignment || !watching($0.canvasId) }) {
             newMention = newest
             // A notification only for one that just came — not for every unread one at launch.
             let recent = newest.createdAt.map { Date().timeIntervalSince($0) < 15 * 60 } ?? true
@@ -455,7 +464,8 @@ final class CanvasChat: ObservableObject {
             return "That canvas isn't yours to open any more."
         }
         if !NSApp.isActive, !Store.testing { NSApp.activate(ignoringOtherApps: true) }
-        setPref(entry.id) { $0.open = true }
+        // An assignment shows its card; the chat stays as the person left it.
+        if !mention.isAssignment { setPref(entry.id) { $0.open = true } }
         let tab = CanvasHost.show(entry.id, in: browser, foreground: true)
         var host: CanvasHost?
         let deadline = Date().addingTimeInterval(15)

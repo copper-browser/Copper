@@ -13,7 +13,10 @@ export interface CopperChatApi {
    * mentionsApi?, lastReadId?, lastReadAt?, mentioned?}` (a patch; `null` turns it off).
    */
   setChat(cfg: unknown): void
-  /** Show the panel at a message and flash it: `{id}` or the id. False when chat is off here. */
+  /**
+   * Show the panel at a message and flash it: `{id}` or the id. False when chat
+   * is off here. An assignment's id (`assign.<shapeId>.<nonce>`) shows its card instead.
+   */
   revealChat(target: unknown): boolean
   /** Show (`true`) or hide (`false`) the panel, as the host remembers it. */
   showChat(open: unknown): void

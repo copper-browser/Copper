@@ -15,9 +15,17 @@
  * had — the rows scroll inside it — so the stored size never changes and
  * nothing spills past the card. The toggle, Escape or a click elsewhere close
  * it.
+ *
+ * A row can be assigned to people: their faces sit at the row's end, and a
+ * person button on hover (or keyboard focus) — or the faces, or `@` typed
+ * while the row has focus — opens the picker (`ChecklistPeople.tsx`). `@` at
+ * the start of a word in a comment opens it too, under the comment: picking
+ * someone writes "@Name" there and puts them on the row. Someone new on a
+ * shared canvas is told, as a chat @mention tells them.
  */
-import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react'
-import { MessageSquarePlus, MessageSquareText, Plus, Trash2, X } from 'lucide-react'
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react'
+import { createPortal } from 'react-dom'
+import { MessageSquarePlus, MessageSquareText, Plus, Trash2, UserPlus, X } from 'lucide-react'
 import {
   CHECKLIST_MIN,
   MAX_COLUMNS,
@@ -33,15 +41,21 @@ import {
   setRowLabel,
   setRowNote,
   setTitle,
+  samePerson,
   tally,
+  toggleAssignee,
   togglePick,
 } from '../checklist'
 import { oneLine } from '../checklist-text'
+import { assignOptions, boardAssignees, type AssignOption } from '../assignees'
+import { chat } from '../chat'
+import { mentionQuery, normId } from '../chat/model'
+import { AssignSearch, PeopleChips, PeopleList, PeoplePop, anchorUnder, listKeys, pickerHeading, type PopAnchor } from './ChecklistPeople'
 import { contrastInk, inkOn, paperOf, strokeOf } from '../colors'
 import { countRender } from '../debug'
 import { INIT } from '../doc'
 import { textSplice } from '../text-diff'
-import { isNamedColor, type ChecklistNote, type ChecklistPick, type ChecklistRow, type Shape } from '../types'
+import { isNamedColor, type ChecklistAssignee, type ChecklistNote, type ChecklistPick, type ChecklistRow, type Shape } from '../types'
 import { useBoard } from './context'
 import { cn, useMountFocus } from './ui'
 import './checklist.css'
@@ -227,6 +241,7 @@ function NoteEditor({
   readOnly,
   onChange,
   onClose,
+  people,
 }: {
   row: string
   name: string
@@ -236,9 +251,43 @@ function NoteEditor({
   onChange: (next: string) => void
   /** `key`: Escape, which leaves focus on the row's toggle. */
   onClose: (how: 'key' | 'away') => void
+  /** `@` in the comment: the card to draw the picker in, who is on the row, and how to put someone on it. */
+  people?: { card: HTMLElement | null; cardW: number; assigned: readonly ChecklistAssignee[]; board: () => readonly ChecklistAssignee[]; me: string; onPick: (o: AssignOption) => void }
 }) {
   const ref = useRef<HTMLTextAreaElement>(null)
   const composing = useRef(false)
+  // ---- "@Name" as it is typed: the people picker under the comment -------------
+  const [caret, setCaret] = useState(-1)
+  const [dismissed, setDismissed] = useState<number | null>(null)
+  const [active, setActive] = useState(0)
+  const query = people && !readOnly && caret >= 0 ? mentionQuery(value, caret) : null
+  const asking = !!query && dismissed !== query.start
+  const options = asking && people ? assignOptions(chat.people(), people.board(), query.query, people.me, 8) : []
+  const at0 = Math.min(active, Math.max(0, options.length - 1))
+  const [anchor, setAnchor] = useState<PopAnchor | null>(null)
+  useLayoutEffect(() => {
+    if (!asking || !people?.card || !ref.current) return
+    const next = anchorUnder(ref.current, people.card, people.cardW, true)
+    setAnchor(a => (a && a.x === next.x && a.y === next.y && a.up === next.up ? a : next))
+  }, [asking, people, value])
+  useEffect(() => {
+    if (asking) chat.wantMembers()
+  }, [asking])
+  const pickInline = (o: AssignOption) => {
+    const el = ref.current
+    if (!el || !query || !people) return
+    const before = el.value.slice(0, query.start)
+    const after = el.value.slice(caret).replace(/^[^\s]*/u, '').replace(/^\s/u, '')
+    const inserted = `@${o.name} `
+    el.value = before + inserted + after
+    const at = before.length + inserted.length
+    el.setSelectionRange(at, at)
+    setCaret(at)
+    setActive(0)
+    onChange(el.value)
+    grow()
+    people.onPick(o)
+  }
   const grow = () => {
     const el = ref.current
     if (!el) return
@@ -296,8 +345,12 @@ function NoteEditor({
         onChange={e => {
           if (readOnly) return
           onChange(e.currentTarget.value)
+          setCaret(e.currentTarget.selectionStart ?? e.currentTarget.value.length)
+          setActive(0)
+          if (dismissed !== null && !e.currentTarget.value.includes('@')) setDismissed(null)
           grow()
         }}
+        onSelect={e => setCaret(e.currentTarget.selectionStart ?? -1)}
         onCompositionStart={() => {
           composing.current = true
         }}
@@ -306,6 +359,19 @@ function NoteEditor({
         }}
         onKeyDown={e => {
           e.stopPropagation()
+          if (asking && !composing.current && !e.nativeEvent.isComposing) {
+            if (listKeys(e, options.length, setActive)) return
+            if ((e.key === 'Enter' || e.key === 'Tab') && options[at0]) {
+              e.preventDefault()
+              pickInline(options[at0])
+              return
+            }
+            if (e.key === 'Escape') {
+              e.preventDefault()
+              setDismissed(query!.start)
+              return
+            }
+          }
           if (e.key === 'Escape') {
             e.preventDefault()
             onClose('key')
@@ -314,8 +380,33 @@ function NoteEditor({
         onBlur={blurred}
         onPointerDown={stop}
         onDoubleClick={stop}
+        aria-autocomplete="list"
+        aria-expanded={asking}
+        aria-controls={asking ? `cl-mention-${row}` : undefined}
+        aria-activedescendant={asking && options.length ? `cl-mention-${row}-${at0}` : undefined}
       />
       {meta && <div className="cl-note-meta">{meta}</div>}
+      {asking &&
+        anchor &&
+        people?.card &&
+        options.length > 0 &&
+        createPortal(
+          <PeoplePop at={anchor} label={`Mention someone on ${name}`} onOutside={() => setDismissed(query!.start)} noteRow={row}>
+            <PeopleList
+              id={`cl-mention-${row}`}
+              options={options}
+              active={at0}
+              on={o => people.assigned.some(p => samePerson(p, o))}
+              heading={pickerHeading() ?? 'Assign'}
+              onHover={setActive}
+              onPick={o => {
+                pickInline(o)
+                ref.current?.focus({ preventScroll: true })
+              }}
+            />
+          </PeoplePop>,
+          people.card
+        )}
     </div>
   )
 }
@@ -347,6 +438,7 @@ export const ChecklistView = memo(function ChecklistView({
   const rows = shape.rows ?? []
   const picks = shape.picks ?? {}
   const notes = shape.notes ?? {}
+  const assignees = shape.assignees ?? {}
   const counts = tally(columns, rows, picks)
   const single = columns.length === 1
   const target = editTarget(editing)
@@ -401,8 +493,77 @@ export const ChecklistView = memo(function ChecklistView({
     return () => el.removeEventListener('wheel', onWheel)
   }, [locked])
 
+  // ---- who a row is assigned to: the picker (this viewer's own state) ---------------
+  const myId = normId(me.id)
+  /** The open picker's row (by id, else by label should the rows move) and where it hangs. */
+  const [assign, setAssign] = useState<{ id: string; label: string; at: PopAnchor } | null>(null)
+  const assignRow = assign
+    ? (rows.find(r => r.id === assign.id && r.label === assign.label) ?? rows.find(r => r.label === assign.label) ?? rows.find(r => r.id === assign.id))
+    : undefined
+  if (assign && (!assignRow || assignRow.id !== assign.id || assignRow.label !== assign.label))
+    setAssign(assignRow ? { ...assign, id: assignRow.id, label: assignRow.label } : null)
+  /** Names already used on this board's checklists, for the picker. */
+  const boardPeople = () => boardAssignees(store.getShapes().values())
+  /** Someone on the canvas by their name there now (a rename follows), else as the row has it. */
+  const nameOf = (p: ChecklistAssignee) => (p.id && chat.config.members.find(m => m.id === p.id)?.name) || p.name
+  const openAssign = (row: ChecklistRow) => {
+    const el = card.current?.querySelector<HTMLElement>(`[data-assign-row="${CSS.escape(row.id)}"]`)
+    if (!el || !card.current) return
+    setAssign({ id: row.id, label: row.label, at: anchorUnder(el, card.current, shape.w) })
+  }
+  const closeAssign = (how: 'key' | 'away', rowId?: string) => {
+    setAssign(null)
+    if (how === 'key' && rowId)
+      card.current
+        ?.querySelector<HTMLElement>(`[data-assign-row="${CSS.escape(rowId)}"]`)
+        ?.querySelector<HTMLElement>('.cl-assign-toggle, .cl-people-btn')
+        ?.focus({ preventScroll: true })
+  }
+  /** Put someone on a row (or take them off); someone new on a shared canvas is told. */
+  const toggleOn = (row: ChecklistRow, o: AssignOption, only?: 'add') => {
+    const person: ChecklistAssignee = { name: o.name, ...(o.id ? { id: o.id } : {}), ...(o.email ? { email: o.email } : {}) }
+    if (only === 'add' && (store.live(shape.id)?.assignees?.[row.id] ?? []).some(p => samePerson(p, person))) return
+    const { added } = toggleAssignee(store, shape.id, row.id, person, me, 'local', row.label)
+    if (added.length) chat.notifyAssigned({ shapeId: shape.id, title: shape.title, row: row.label, people: added })
+  }
+
+  // ---- an assignment opened from a notification: the card flashes your rows; on screen, it is read ----
+  const mine = useSyncExternalStore(chat.subscribe, () => chat.assignedToMe(shape.id))
+  useEffect(() => {
+    if (!mine) return
+    const seen = () => {
+      for (const id of mine.split(' ')) chat.markSeen(id)
+    }
+    if (document.visibilityState !== 'hidden') {
+      seen()
+      return
+    }
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') return
+      document.removeEventListener('visibilitychange', onVis)
+      seen()
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [mine])
+  const flashAt = useSyncExternalStore(chat.subscribe, () => (chat.assignFocus?.shapeId === shape.id ? chat.assignFocus.at : 0))
+  /** The last flash that has run its course. */
+  const [flashed, setFlashed] = useState(0)
+  const flash = flashAt !== flashed ? flashAt : 0
+  useEffect(() => {
+    if (!flashAt) return
+    const timer = setTimeout(() => setFlashed(flashAt), 2400)
+    return () => clearTimeout(timer)
+  }, [flashAt])
+
   // ---- height follows the content (written by editors, outside undo) ----------
   const card = useRef<HTMLDivElement>(null)
+  /** The card's element as state, for the comment's @ picker to draw itself in. */
+  const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null)
+  const cardRef = useCallback((el: HTMLDivElement | null) => {
+    card.current = el
+    setCardEl(el)
+  }, [])
   useLayoutEffect(() => {
     const el = card.current
     // An open comment holds the card's height: nothing to measure until it closes.
@@ -492,7 +653,7 @@ export const ChecklistView = memo(function ChecklistView({
   const titleText = shape.title.trim()
   return (
     <div
-      ref={card}
+      ref={cardRef}
       data-id={shape.id}
       data-kind="checklist"
       role="table"
@@ -608,6 +769,9 @@ export const ChecklistView = memo(function ChecklistView({
             const pick = picks[row.id]
             const note: ChecklistNote | undefined = notes[row.id]
             const noteOpen = openRow?.id === row.id
+            const people = assignees[row.id] ?? []
+            const assignOpen = assignRow?.id === row.id
+            const flashing = !!flash && people.some(p => !!p.id && p.id === myId)
             const name = row.label.trim() || 'this row'
             const editingRow = target?.kind === 'row' && target.id === row.id
             const label = (
@@ -660,42 +824,76 @@ export const ChecklistView = memo(function ChecklistView({
                 ) : (
                   <>
                     <span className={cn('cl-label-text', !row.label.trim() && 'cl-muted')}>{row.label.trim() || 'Untitled'}</span>
-                    {selected && !readOnly && (
-                      <button
-                        type="button"
-                        aria-label={`Remove ${row.label.trim() || 'this row'}`}
-                        className="cl-icon-btn cl-row-remove"
-                        onPointerDown={stop}
-                        onDoubleClick={stop}
-                        onClick={e => {
-                          e.stopPropagation()
-                          removeRow(store, shape.id, row.id)
-                        }}
-                      >
-                        <X className="h-3 w-3" aria-hidden="true" />
-                      </button>
-                    )}
-                    {(!readOnly || note) && (
-                      <button
-                        type="button"
-                        aria-label={noteOpen ? `Close the comment on ${name}` : note ? `Comment on ${name}` : `Add a comment on ${name}`}
-                        aria-expanded={noteOpen}
-                        data-note-row={row.id}
-                        className={cn('cl-icon-btn cl-note-toggle', selected && !readOnly && 'cl-note-toggle-shift')}
-                        onPointerDown={e => {
-                          e.stopPropagation()
-                          // An open comment keeps focus, so the click (not its blur) closes it.
-                          if (noteOpen) e.preventDefault()
-                        }}
-                        onDoubleClick={stop}
-                        onClick={e => {
-                          e.stopPropagation()
-                          toggleNote(row)
-                        }}
-                      >
-                        {note ? <MessageSquareText className="h-3.5 w-3.5" aria-hidden="true" /> : <MessageSquarePlus className="h-3.5 w-3.5" aria-hidden="true" />}
-                      </button>
-                    )}
+                    <span className="cl-end" data-assign-row={row.id}>
+                      <span className="cl-tools">
+                        {!readOnly && !people.length && (
+                          <button
+                            type="button"
+                            aria-label={`Assign ${name}`}
+                            aria-haspopup="listbox"
+                            aria-expanded={assignOpen}
+                            className="cl-icon-btn cl-assign-toggle"
+                            onPointerDown={e => {
+                              e.stopPropagation()
+                              if (assignOpen) e.preventDefault()
+                            }}
+                            onDoubleClick={stop}
+                            onClick={e => {
+                              e.stopPropagation()
+                              if (assignOpen) setAssign(null)
+                              else openAssign(row)
+                            }}
+                          >
+                            <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
+                          </button>
+                        )}
+                        {(!readOnly || note) && (
+                          <button
+                            type="button"
+                            aria-label={noteOpen ? `Close the comment on ${name}` : note ? `Comment on ${name}` : `Add a comment on ${name}`}
+                            aria-expanded={noteOpen}
+                            data-note-row={row.id}
+                            className="cl-icon-btn cl-note-toggle"
+                            onPointerDown={e => {
+                              e.stopPropagation()
+                              // An open comment keeps focus, so the click (not its blur) closes it.
+                              if (noteOpen) e.preventDefault()
+                            }}
+                            onDoubleClick={stop}
+                            onClick={e => {
+                              e.stopPropagation()
+                              toggleNote(row)
+                            }}
+                          >
+                            {note ? <MessageSquareText className="h-3.5 w-3.5" aria-hidden="true" /> : <MessageSquarePlus className="h-3.5 w-3.5" aria-hidden="true" />}
+                          </button>
+                        )}
+                        {selected && !readOnly && (
+                          <button
+                            type="button"
+                            aria-label={`Remove ${row.label.trim() || 'this row'}`}
+                            className="cl-icon-btn cl-row-remove"
+                            onPointerDown={stop}
+                            onDoubleClick={stop}
+                            onClick={e => {
+                              e.stopPropagation()
+                              removeRow(store, shape.id, row.id)
+                            }}
+                          >
+                            <X className="h-3 w-3" aria-hidden="true" />
+                          </button>
+                        )}
+                      </span>
+                      <PeopleChips
+                        people={people}
+                        nameOf={nameOf}
+                        me={myId}
+                        rowName={name}
+                        readOnly={readOnly}
+                        open={assignOpen}
+                        onOpen={() => (assignOpen ? setAssign(null) : openAssign(row))}
+                      />
+                    </span>
                   </>
                 )}
               </span>
@@ -727,6 +925,7 @@ export const ChecklistView = memo(function ChecklistView({
                     if (how === 'key') (document.querySelector(`[data-id="${CSS.escape(shape.id)}"] .cl-note-toggle[data-note-row="${CSS.escape(row.id)}"]`) as HTMLElement | null)?.focus({ preventScroll: true })
                     closeNote(row.id)
                   }}
+                  people={{ card: cardEl, cardW: shape.w, assigned: people, board: boardPeople, me: myId, onPick: o => toggleOn(row, o, 'add') }}
                 />
               </div>
             ) : note ? (
@@ -749,7 +948,18 @@ export const ChecklistView = memo(function ChecklistView({
               </div>
             ) : null
             return (
-              <div key={row.id} role="row" className={cn('cl-grid cl-row', pick && 'cl-row-picked', noteOpen && 'cl-row-open')}>
+              <div
+                key={row.id}
+                role="row"
+                className={cn('cl-grid cl-row', pick && 'cl-row-picked', noteOpen && 'cl-row-open', assignOpen && 'cl-row-assigning', flashing && 'cl-row-flash')}
+                onKeyDown={e => {
+                  // `@` with the row focused (a box, its buttons): the people picker.
+                  if (e.key !== '@' || readOnly || e.metaKey || e.ctrlKey || (e.target as Element).closest('input, textarea')) return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  openAssign(row)
+                }}
+              >
                 {single ? (
                   <>
                     {cells}
@@ -771,6 +981,19 @@ export const ChecklistView = memo(function ChecklistView({
             </p>
           )}
         </div>
+        {assign && assignRow && !readOnly && (
+          <AssignSearch
+            key={assignRow.id}
+            at={assign.at}
+            rowId={assignRow.id}
+            rowName={assignRow.label.trim() || 'this row'}
+            assigned={assignees[assignRow.id] ?? []}
+            board={boardPeople()}
+            me={myId}
+            onToggle={o => toggleOn(assignRow, o)}
+            onClose={how => closeAssign(how, assignRow.id)}
+          />
+        )}
         {!readOnly && (
           <div className="cl-foot" aria-label="Checklist actions">
             {rows.length < MAX_ROWS && (

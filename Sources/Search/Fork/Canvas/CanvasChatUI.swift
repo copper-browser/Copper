@@ -9,7 +9,7 @@ import UserNotifications
 
 // MARK: - the pill
 
-/// "<who> mentioned you in “<canvas>” — ‘<excerpt>’  Open  ×".
+/// "<who> mentioned you in “<canvas>” — ‘<excerpt>’  Open  ×" (or "assigned you", with the row as the excerpt).
 struct CanvasMentionPill: View {
     let mention: CanvasChat.Mention
     @ObservedObject var browser: Browser
@@ -26,7 +26,7 @@ struct CanvasMentionPill: View {
             .frame(width: 22, height: 22)
             .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
-                (Text(mention.who).fontWeight(.semibold) + Text(" mentioned you in “\(mention.canvasName)”"))
+                (Text(mention.who).fontWeight(.semibold) + Text(" \(mention.verb) in “\(mention.canvasName)”"))
                     .font(.system(size: 12.5))
                     .foregroundStyle(Palette.ink)
                     .lineLimit(1)
@@ -50,7 +50,7 @@ struct CanvasMentionPill: View {
                 .padding(.vertical, 5)
                 .background(Palette.ink, in: Capsule())
                 .disabled(opening)
-                .help("Open “\(mention.canvasName)” at the message")
+                .help("Open “\(mention.canvasName)” at \(mention.isAssignment ? "the checklist" : "the message")")
             Button {
                 CanvasChat.shared.dismissNewMention()
             } label: {
@@ -71,7 +71,7 @@ struct CanvasMentionPill: View {
         .overlay(Capsule().strokeBorder(Palette.hairline, lineWidth: 1))
         .shadow(color: .black.opacity(0.12), radius: 20, y: 6)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(mention.who) mentioned you in \(mention.canvasName)\(mention.excerpt.isEmpty ? "" : ": \(mention.excerpt)")")
+        .accessibilityLabel("\(mention.who) \(mention.verb) in \(mention.canvasName)\(mention.excerpt.isEmpty ? "" : ": \(mention.excerpt)")")
     }
 
     static func initials(_ name: String) -> String {
@@ -152,7 +152,7 @@ final class CanvasChatNotices: NSObject, UNUserNotificationCenterDelegate {
     }
 
     @MainActor static func post(_ mention: CanvasChat.Mention) {
-        let title = "\(mention.who) mentioned you"
+        let title = "\(mention.who) \(mention.verb)"
         let subtitle = mention.canvasName
         let body = mention.excerpt
         if Store.testing || Bundle.main.bundleIdentifier == nil {
@@ -380,6 +380,6 @@ extension CanvasChat {
 
     static func describe(_ mention: Mention) -> [String: Any] {
         ["id": mention.id, "canvas": mention.canvasName, "canvasId": mention.canvasId, "from": mention.who,
-         "message": mention.messageId, "excerpt": mention.excerpt]
+         "message": mention.messageId, "excerpt": mention.excerpt, "assignment": mention.isAssignment]
     }
 }

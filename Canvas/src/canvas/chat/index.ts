@@ -7,6 +7,14 @@ import { ChatHub } from './hub'
 
 export const chat = new ChatHub(fn => controller.subscribe(fn))
 
+// Checklist assignees: the people they are picked from, whom an agent's
+// `assignees` resolve against, and the notification a new one gets.
+chat.showCard = id => controller.zoomTo([id])
+controller.opsHooks = {
+  people: () => chat.people(),
+  onAssigned: e => void chat.notifyAssigned(e),
+}
+
 let attached: unknown = undefined
 controller.subscribe(() => {
   if (controller.session !== attached) {

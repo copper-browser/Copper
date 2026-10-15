@@ -112,6 +112,10 @@
                                        checklists on the board in front (title, columns, rows with
                                        picks, tally), or a real click on ROW's COL box (ROW: id or
                                        label, the rest of the line) and the checklist after it
+    ./bench canvas assign SHAPE ROW… · canvas picker
+                                       the pointer onto ROW and a real click on its person button
+                                       (or its faces): the people picker it opens; then `key` types
+                                       into it; picker says what an open one lists and who is ticked
                                        the Share sheet from the bench: link makes/reuses the invite
                                        link for ID (default: the front canvas), join opens an invite
                                        link the way clicking it would, presence prints who
