@@ -721,7 +721,8 @@ final class Bench {
         case "ext-enable":
             guard let id = request["id"] as? String else { answer(["error": "ext-enable needs an id"]); return }
             extensions.setEnabled(id, request["on"] as? Bool ?? true)
-            answer(["enabled": request["on"] as? Bool ?? true])
+            answer(["enabled": extensions.installed.first(where: { $0.id == id })?.enabled ?? false,
+                    "reported": extensions.errors[id] ?? []])
         case "ext-answer":
             // In a test run: answer every extension's question yes or no
             // without asking, or go back to asking.

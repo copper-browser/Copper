@@ -48,6 +48,56 @@ A launch line with no `quit` after it is a run that died. If macOS left no repor
 jetsam, `kill -9`, a force quit, power loss — it gets an entry of its own ("quit unexpectedly,
 no report"), which its report replaces if one turns up later.
 
+## Sign-in pages that keep refreshing
+
+A repeating `webcontent-gone` breadcrumb means the page's WebContent process is dying,
+not an ordinary site redirect. Before the recovery limit, Copper loaded the same address
+on every death, so a login page could appear to refresh forever.
+
+The **iCloud Passwords Chrome extension** (`pejdijmoenmkgeppbflobdenhhabjlaj`) is a known
+trigger on passkey-enabled pages. Its content script can cause WebKit to reject an invalid
+process message and terminate the page; Apple's `PasswordManagerBrowserExtensionHelper`
+is also killed with a code-signature failure when launched by Copper. Retrying the page or
+changing cookies cannot fix that integration.
+
+Copper therefore keeps it **Off**, before loading any of its scripts. Already-installed
+copies remain listed, their on/off state is saved, and their data is **not deleted**.
+Settings › Extensions › Details explains the incompatibility. Turning it on, reloading it,
+worker recovery or an extension update cannot bypass the check. A store install or Move in
+refuses it before downloading; an unpacked copy carrying Apple's public manifest `key` is
+identified even under a `local-…` id or a localized name and refused before admission.
+This is an identity-based compatibility rule, not a generic ban on password managers,
+native messaging, names or permissions. An unpacked copy with its identity key removed
+cannot be identified by this rule; the page recovery limit still applies.
+
+For Apple passwords, use Settings › Passwords to import a passwords CSV, or use a supported
+password manager. This does not add native iCloud Passwords or iCloud passkey support.
+On an older Copper, turn iCloud Passwords off in Settings › Extensions and reload the
+affected page once: previously injected scripts only leave when the document reloads.
+
+As a safety net for any page, each tab allows automatic recovery after its first two process
+deaths inside a rolling 60 seconds. The third death cancels queued recovery and shows
+*This page keeps crashing. Try turning off extensions in Settings › Extensions.* It stays
+halted when revisited, even after the minute expires. **Try again**, **Reload** and **Hard
+reload** explicitly fetch the address; if it crashes again, it immediately stops rather than
+starting a new recovery loop. Navigating explicitly to an address starts a new visit and
+budget. Ordinary process deaths more than a minute apart still recover, and a successful
+load is deliberately not a reset: a crashing page can finish loading before it dies.
+
+Regression checks:
+
+```sh
+swift test --jobs 4                              # includes LoginRecoveryTests
+./docs/fixtures/login-recovery-unit.sh            # same pure checks without the Testing module
+SEARCH_SIGN_IDENTITY=- ./build.sh                # isolated dev app, never replaces installed Copper
+COPPER_SKIP_BUILD=1 ./docs/fixtures/login-recovery-e2e.sh
+```
+
+The lifecycle fixture starts an isolated headless dev world with inert synthetic extensions.
+It verifies startup migration, saved Off state, preserved data, re-enable and reload refusal,
+store and keyed-folder install refusal, unaffected safe-extension loading, and persistence
+after restart. It never reads credentials, launches Apple's helper, or signs into a site.
+
 ## Reading it
 
 ```sh

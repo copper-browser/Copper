@@ -122,6 +122,9 @@ final class Extensions: NSObject, ObservableObject {
         super.init()
         controller.delegate = self
         installed = (try? JSONDecoder().decode([Installed].self, from: Data(contentsOf: Extensions.list))) ?? []
+        // Migrate before any page or extension worker can run. Keep the row
+        // and its data, but persist Off and explain it in the existing errors.
+        for item in installed { _ = enforceCompatibility(item) }
     }
 
     // MARK: - starting
@@ -243,8 +246,23 @@ final class Extensions: NSObject, ObservableObject {
 
     // MARK: - loading
 
+    /// Every loading path comes through here: startup, enable, reload,
+    /// worker revival and updates. A blocked extension must stay off even
+    /// when an older asynchronous task still holds an enabled snapshot.
+    private func enforceCompatibility(_ item: Installed) -> Bool {
+        guard let reason = ExtensionCompatibility.reason(id: item.id, folder: Extensions.folder(for: item.id)) else { return true }
+        unload(item.id)
+        if let index = installed.firstIndex(where: { $0.id == item.id }), installed[index].enabled {
+            installed[index].enabled = false
+            save()
+        }
+        if !(errors[item.id] ?? []).contains(reason) { noteError(reason, for: item.id) }
+        return false
+    }
+
     @discardableResult
     private func load(_ item: Installed) async -> Bool {
+        guard enforceCompatibility(item), installed.contains(where: { $0.id == item.id && $0.enabled }) else { return false }
         // The shim this build of Search carries, in place of whatever the
         // build that installed it carried.
         try? ExtensionShims.prepare(Extensions.folder(for: item.id))
@@ -268,6 +286,9 @@ final class Extensions: NSObject, ObservableObject {
                 context.setPermissionStatus(.grantedExplicitly, for: pattern)
             }
             applySiteChoices(context) // Fork: sites taken back on the Extensions page stay taken back
+            // WKWebExtension construction suspends. A switch turned off or
+            // an extension removed during that await must not load afterward.
+            guard enforceCompatibility(item), installed.contains(where: { $0.id == item.id && $0.enabled }) else { return false }
             track() // Fork (perf): the tabs, before the first extension hears anything
             try controller.load(context)
             watch(context)
@@ -305,6 +326,10 @@ final class Extensions: NSObject, ObservableObject {
             browser?.announce(Crx.Refused.notAnID.localizedDescription)
             return
         }
+        if let reason = ExtensionCompatibility.reason(id: id) {
+            browser?.announce(reason)
+            return
+        }
         if installed.contains(where: { $0.id == id }) {
             browser?.announce("Already installed")
             return
@@ -332,7 +357,11 @@ final class Extensions: NSObject, ObservableObject {
     /// of racing twenty downloads and twenty prompts. True when it landed.
     func installAgreed(id text: String, enabled: Bool = true) async -> Bool {
         guard let id = Crx.id(in: text) else { return false }
-        if installed.contains(where: { $0.id == id }) { return true }
+        if let reason = ExtensionCompatibility.reason(id: id) {
+            browser?.announce(reason)
+            return false
+        }
+        if let item = installed.first(where: { $0.id == id }) { return enforceCompatibility(item) }
         busy = id
         defer { busy = nil }
         do {
@@ -382,7 +411,13 @@ final class Extensions: NSObject, ObservableObject {
             browser?.announce("Couldn't copy the extension")
             return
         }
-        Task { try? await admit(staged, as: id, fromStore: false, finalFolder: Extensions.folder(for: id), confirm: confirm || !Store.testing, source: source) }
+        Task {
+            do {
+                try await admit(staged, as: id, fromStore: false, finalFolder: Extensions.folder(for: id), confirm: confirm || !Store.testing, source: source)
+            } catch {
+                browser?.announce(error.localizedDescription)
+            }
+        }
     }
 
     /// Takes the extension up again — the way Chrome's reload button does
@@ -390,6 +425,10 @@ final class Extensions: NSObject, ObservableObject {
     /// that folder first, so what its author just saved is what runs.
     func reload(_ id: String) {
         guard let index = installed.firstIndex(where: { $0.id == id }) else { return }
+        guard enforceCompatibility(installed[index]) else {
+            browser?.announce(ExtensionCompatibility.reason(id: id, folder: Extensions.folder(for: id)) ?? "This extension is incompatible with Copper.")
+            return
+        }
         let target = Extensions.folder(for: id)
         if let path = installed[index].source {
             let source = URL(fileURLWithPath: path, isDirectory: true)
@@ -486,6 +525,10 @@ final class Extensions: NSObject, ObservableObject {
     /// loads it. On no, nothing is left behind.
     private func admit(_ staged: URL, as id: String, fromStore: Bool, finalFolder: URL, confirm: Bool = true, source: URL? = nil, enabled: Bool = true) async throws {
         let files = FileManager.default
+        if let reason = ExtensionCompatibility.reason(id: id, folder: staged) {
+            try? files.removeItem(at: staged)
+            throw ExtensionCompatibility.Refused(reason: reason)
+        }
         let found: WKWebExtension
         do {
             found = try await WKWebExtension(resourceBaseURL: staged)
@@ -583,10 +626,15 @@ final class Extensions: NSObject, ObservableObject {
 
     func setEnabled(_ id: String, _ on: Bool) {
         guard let index = installed.firstIndex(where: { $0.id == id }) else { return }
+        if on, !enforceCompatibility(installed[index]) {
+            browser?.announce(ExtensionCompatibility.reason(id: id, folder: Extensions.folder(for: id)) ?? "This extension is incompatible with Copper.")
+            return
+        }
         installed[index].enabled = on
         save()
         if on {
-            Task { await load(installed[index]) }
+            let item = installed[index]
+            Task { await load(item) }
         } else {
             unload(id)
         }
