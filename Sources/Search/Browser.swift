@@ -519,15 +519,17 @@ final class Browser: NSObject, ObservableObject {
         pickedInto = tab.id
         suggesting = nil
         Passkeys.answer(tab: tab, with: passkey) { [weak self] worked in
-            if !worked { self?.announce("That passkey didn't sign in — the page may have stopped waiting") }
+            if !worked { self?.announce("The passkey wasn't used") }
         }
     }
 
     /// Fork (auto-codes): the page asking for a two-step code, right after a
-    /// sign-in with an account whose key Copper can read. The code goes into
-    /// the box on its own — once per sign-in, only on a page the account
-    /// would be offered on anyway, and never sent: the page's own button is
-    /// still yours to press.
+    /// sign-in picked from Copper's list with an account whose key it can
+    /// read. The code goes into the box on its own — once per pick, only on
+    /// a page the account would be offered on anyway, and never sent: the
+    /// page's own button is still yours to press. A sign-in the page merely
+    /// reports (typed by hand) doesn't count: any script on the page can
+    /// report one, and would be handed the code.
     private func codeBoxAppeared(in tab: Tab) {
         guard prefs.fillsPasswords, prefs.fillsCodes, fetching == nil, codePickedInto != tab.id,
               let host = curtain.host(of: tab.address),
@@ -546,24 +548,14 @@ final class Browser: NSObject, ObservableObject {
         }
     }
 
-    /// The account the code page wants and when its sign-in went in: the one
-    /// picked from the list in this tab, else the name the tab last sent,
-    /// within ten minutes, with a code key, and matched to this page.
+    /// The account picked from the list in this tab within ten minutes and
+    /// when, if it has a code key and matches this page.
     private func autoCodeCredential(for tab: Tab, host: String) -> (Credential, Date)? {
-        let fresh = Date().addingTimeInterval(-600)
-        let here = Credentials.candidates(for: host).filter(\.hasTOTP)
-        if let picked = signedInWith[tab.id], let at = signedInAt[tab.id], at > fresh,
-           let match = here.first(where: { $0.id == picked.id }) {
-            return (match, at)
-        }
-        guard let sent = tab.lastSignIn, sent.at > fresh else { return nil }
-        if let match = here.first(where: { $0.user.caseInsensitiveCompare(sent.user) == .orderedSame }) {
-            return (match, sent.at)
-        }
-        // A password step with no name box on it sends no name; then only
-        // a site with one account that has a code is sure enough.
-        if sent.user.isEmpty, here.count == 1, let only = here.first { return (only, sent.at) }
-        return nil
+        guard let picked = signedInWith[tab.id], let at = signedInAt[tab.id],
+              at > Date().addingTimeInterval(-600),
+              let match = Credentials.candidates(for: host).first(where: { $0.id == picked.id && $0.hasTOTP })
+        else { return nil }
+        return (match, at)
     }
 
     /// Accounts with an authenticator key for a one-time-code box: the one
@@ -1771,7 +1763,7 @@ final class Browser: NSObject, ObservableObject {
         tab.onCodeBox = { [weak self] tab in self?.codeBoxAppeared(in: tab) } // Fork (auto-codes)
         // Fork (passkey-picker): a page that starts waiting on a passkey while
         // the caret is already in its box gets its list redrawn with it.
-        Passkeys.onWaiting = { tab in tab.recheckField() }
+        Passkeys.onChange = { tab in tab.recheckField() }
         tab.onImageMenu = { [weak self] tab, url in self?.showImageMenu(for: tab, at: url) }
         tab.onStoreAdd = { [weak self] tab in self?.addFromStore(tab) }
 
@@ -2514,6 +2506,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
         Pace.page("commit", bench: tab.bench) // Fork (pace)
         tab.failure = nil
         tab.typing = false
+        Passkeys.drop(tab) // Fork (passkey-picker): a new document waits on nothing yet
         // Whatever you last set this site to, before it draws a single frame
         // at the wrong size.
         tab.applyRememberedZoom()

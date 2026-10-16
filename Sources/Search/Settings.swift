@@ -408,7 +408,7 @@ struct SettingsPanel: View {
                 .settingsAnchor("passwords.fill")
                 Rule()
                 // Fork (auto-codes): Fork/Credentials/KeychainCodes.swift keeps the keychain's keys
-                Line("Fill two-step codes", "Right after you sign in with an account whose code Copper keeps, the code page fills itself") {
+                Line("Fill two-step codes", "Right after you pick an account whose code Copper keeps, the code page fills itself") {
                     Switch(on: $prefs.fillsCodes)
                 }
                 .settingsAnchor("passwords.codes")

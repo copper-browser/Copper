@@ -127,15 +127,16 @@ never shown, and it is removed with the login. A CSV import keeps the
 `otpauth`/`totp` column the same way.
 
 **Filled on their own.** With Settings › Passwords › **Fill two-step codes**
-on (the default), Copper watches for the code page after a sign-in. If the
-account you just signed in with in that tab has a key, Copper fills the box
-without a click. That account is either the one you picked from the list or
-the name the page just sent. The fill happens once per sign-in, within ten
+on (the default), Copper watches for the code page after a sign-in. If you
+picked the account from Copper's list in that tab and it has a key, Copper
+fills the box without a click. This happens once per pick, within ten
 minutes, and only on a page where that account would be offered anyway. The
 box must plainly be a code box: `autocomplete="one-time-code"`, a row of
 one-digit boxes, or a name such as OTP, 2FA or verification code. Copper
-never presses the page's button. Codes texted or emailed to you are not
-read.
+never presses the page's button. A password you typed by hand does not
+trigger it, because any script on the page could fake that report and be
+handed the code. In that case click the code box and pick the *Two-step
+code* row. Codes texted or emailed to you are not read.
 
 Choose **Bitwarden** under **Save new passwords to** (Settings › Passwords ›
 Password managers) to route new save offers there while it is unlocked; choose

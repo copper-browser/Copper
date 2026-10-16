@@ -241,8 +241,9 @@ enum Passkeys {
 
     private static var waiting: [UUID: Waiting] = [:]
 
-    /// Told when a tab starts waiting, so a list already up can show its passkeys.
-    static var onWaiting: ((Tab) -> Void)?
+    /// Told when a tab starts or stops waiting, so a list already up can
+    /// show its passkeys or let them go.
+    static var onChange: ((Tab) -> Void)?
 
     /// The passkeys the tab's waiting request may use, most recently used
     /// first. Empty when nothing waits or the page has moved to another host.
@@ -259,11 +260,19 @@ enum Passkeys {
 
     /// The passkey picked from the list: Touch ID, then the waiting request
     /// is answered with its signature. `done` hears whether it was.
+    /// A Touch ID cancelled leaves the request waiting, as the site expects:
+    /// its list is still there to pick from.
     static func answer(tab: Tab, with credential: PasskeyStore.Credential, done: @escaping (Bool) -> Void) {
-        guard let request = waiting.removeValue(forKey: tab.id) else { done(false); return }
+        guard let request = waiting[tab.id] else { done(false); return }
         sign(credential, body: request.body, origin: request.origin, rpId: request.rpId) { result, error in
+            // Signed, but only for the request still waiting — not one
+            // aborted or replaced while Touch ID was up.
+            guard (result as? [String: Any])?["error"] == nil,
+                  waiting[tab.id]?.requestId == request.requestId
+            else { done(false); return }
+            waiting.removeValue(forKey: tab.id)
             request.reply(result, error)
-            done((result as? [String: Any])?["error"] == nil)
+            done(true)
         }
     }
 
@@ -272,11 +281,16 @@ enum Passkeys {
         waiting.removeValue(forKey: tab.id)?.reply(["error": "AbortError"], nil)
     }
 
+    /// Let go of the tab's request because the page asked to, and redraw.
+    private static func cancel(_ tab: Tab) {
+        guard let request = waiting.removeValue(forKey: tab.id) else { return }
+        request.reply(["error": "AbortError"], nil)
+        onChange?(tab)
+    }
+
     static func relay(_ body: [String: Any], tab: Tab?, reply: @escaping (Any?, String?) -> Void) {
         if body["kind"] as? String == "cancel" {
-            if let tab, let id = body["requestId"] as? String, waiting[tab.id]?.requestId == id {
-                waiting.removeValue(forKey: tab.id)?.reply(["error": "AbortError"], nil)
-            }
+            if let tab, let id = body["requestId"] as? String, waiting[tab.id]?.requestId == id { cancel(tab) }
             reply(["ok": true], nil)
             return
         }
@@ -301,7 +315,7 @@ enum Passkeys {
             guard bytes(body["challenge"]) != nil else { reply(["error": "InvalidStateError"], nil); return }
             waiting[tab.id] = Waiting(requestId: body["requestId"] as? String ?? "", body: body,
                                       origin: origin, rpId: rp, reply: reply)
-            onWaiting?(tab)
+            onChange?(tab)
         case "get": get(body, origin: origin, rpId: rp, reply: reply)
         default: reply(["error": "NotSupportedError"], nil)
         }
