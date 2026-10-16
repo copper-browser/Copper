@@ -30,9 +30,15 @@ then removes the keychain item.
   when their private key is available to the import path.
 - Keys are local to this Copper installation and its keychain. There is no
   cross-device sync, Bluetooth/hybrid hand-off, or iCloud sync in this build.
-- Conditional (autofill) mediation is reported unavailable so sites fall back
-  to their explicit passkey button. A normal create/get ceremony always asks
-  for user verification.
+- Conditional (autofill) mediation works for sign-in. A site that calls
+  `navigator.credentials.get({mediation: 'conditional'})` waits while Copper
+  lists that site's passkeys first in the account list under its name or
+  password box, beside the saved passwords. Picking one asks for Touch ID and
+  answers the waiting request; nothing is signed until you pick. A newer
+  conditional request replaces the older one, an abort or leaving the page
+  lets it go, and the rows show only while the tab is still on the host that
+  asked. Conditional *creation* is still refused. A normal create/get ceremony
+  always asks for user verification.
 - The authenticator supports ES256 (COSE algorithm `-7`) and discoverable
   credentials. Other algorithms are rejected rather than silently producing a
   credential a site cannot verify.

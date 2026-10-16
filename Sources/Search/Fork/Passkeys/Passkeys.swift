@@ -117,11 +117,28 @@ enum Passkeys {
         };
         return publicCredential(result.id, response, result.extensions || {});
       }
+      // Conditional requests still waiting in Copper, by request id. A site
+      // aborts one before starting the next; leaving the page drops them all.
+      var waiting = {};
+      function cancel(requestId) {
+        if (!waiting[requestId]) return;
+        delete waiting[requestId];
+        var message = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.copperPasskeys;
+        if (!message) return;
+        try {
+          Promise.resolve(message.postMessage({ kind: 'cancel', requestId: requestId })).catch(function () {});
+        } catch (_) {}
+      }
+      if (window.addEventListener) window.addEventListener('pagehide', function () {
+        Object.keys(waiting).forEach(cancel);
+      });
       function call(kind, options) {
         var p = options && options.publicKey;
         if (!p) return null;
         if (options.signal && options.signal.aborted) return Promise.reject(domError('AbortError', 'The operation was aborted'));
-        if (options.mediation === 'conditional') return Promise.reject(domError('NotSupportedError', 'Conditional mediation is not available'));
+        // A conditional get waits in Copper until its passkey is picked from
+        // the list under the sign-in box; creation has no conditional form here.
+        if (options.mediation === 'conditional' && kind !== 'get') return Promise.reject(domError('NotSupportedError', 'Conditional creation is not available'));
         var payload = jsonOptions(options, kind);
         payload.origin = location.origin;
         try { payload.topOrigin = top.location.origin; } catch (_) { payload.topOrigin = location.origin; }
@@ -132,14 +149,18 @@ enum Passkeys {
         payload.mediation = options.mediation || '';
         var message = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.copperPasskeys;
         if (!message) return Promise.reject(domError('NotSupportedError', 'Copper passkeys are unavailable'));
-        payload.requestId = Math.random().toString(36).slice(2);
+        var requestId = payload.requestId = Math.random().toString(36).slice(2);
+        var conditional = payload.mediation === 'conditional';
+        if (conditional) waiting[requestId] = true;
         var reply = Promise.resolve(message.postMessage(payload)).then(function (result) {
+          delete waiting[requestId];
           if (!result || result.error) return fail(result);
           return kind === 'create' ? attestation(result, p) : assertion(result);
-        });
+        }, function (error) { delete waiting[requestId]; throw error; });
         if (options.signal) {
           reply = Promise.race([reply, new Promise(function (_, reject) {
             options.signal.addEventListener('abort', function () {
+              if (conditional) cancel(requestId);
               reject(domError('AbortError', 'The operation was aborted'));
             }, { once: true });
           })]);
@@ -151,9 +172,9 @@ enum Passkeys {
       PublicKeyCredential.prototype = {};
       Object.defineProperty(PublicKeyCredential.prototype, 'constructor', { value: PublicKeyCredential });
       PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = function () { return Promise.resolve(true); };
-      PublicKeyCredential.isConditionalMediationAvailable = function () { return Promise.resolve(false); };
+      PublicKeyCredential.isConditionalMediationAvailable = function () { return Promise.resolve(true); };
       PublicKeyCredential.getClientCapabilities = function () { return Promise.resolve({
-        userVerifyingPlatformAuthenticator: true, conditionalGet: false, hybridTransport: false,
+        userVerifyingPlatformAuthenticator: true, conditionalGet: true, hybridTransport: false,
         passkeyPlatformAuthenticator: true, relatedOrigins: false, signalAllAcceptedCredentials: false,
         userVerifyingPlatformAuthenticatorAvailable: true
       }); };
@@ -207,7 +228,72 @@ enum Passkeys {
     private static let aaguid = Data([0x43, 0x6f, 0x70, 0x70, 0x65, 0x72, 0x20, 0x50,
                                       0x61, 0x73, 0x73, 0x6b, 0x65, 0x79, 0x73, 0x01])
 
+    /// A conditional sign-in a page has asked for and is waiting on: its
+    /// passkeys hang in the account list under the sign-in box, and the one
+    /// picked there answers it. One per tab, the newest.
+    struct Waiting {
+        let requestId: String
+        let body: [String: Any]
+        let origin: String
+        let rpId: String
+        let reply: (Any?, String?) -> Void
+    }
+
+    private static var waiting: [UUID: Waiting] = [:]
+
+    /// Told when a tab starts or stops waiting, so a list already up can
+    /// show its passkeys or let them go.
+    static var onChange: ((Tab) -> Void)?
+
+    /// The passkeys the tab's waiting request may use, most recently used
+    /// first. Empty when nothing waits or the page has moved to another host.
+    static func waitingCredentials(for tab: Tab) -> [PasskeyStore.Credential] {
+        guard let request = waiting[tab.id],
+              let origin = URL(string: request.origin)?.host?.lowercased(),
+              tab.address?.host()?.lowercased() == origin
+        else { return [] }
+        let allow = (request.body["allowCredentials"] as? [[String: Any]] ?? []).compactMap { bytes($0["id"]) }
+        return PasskeyStore.credentials(for: request.rpId)
+            .filter { allow.isEmpty || allow.contains($0.id) }
+            .sorted { ($0.lastUsed ?? $0.created) > ($1.lastUsed ?? $1.created) }
+    }
+
+    /// The passkey picked from the list: Touch ID, then the waiting request
+    /// is answered with its signature. `done` hears whether it was.
+    /// A Touch ID cancelled leaves the request waiting, as the site expects:
+    /// its list is still there to pick from.
+    static func answer(tab: Tab, with credential: PasskeyStore.Credential, done: @escaping (Bool) -> Void) {
+        guard let request = waiting[tab.id] else { done(false); return }
+        sign(credential, body: request.body, origin: request.origin, rpId: request.rpId) { result, error in
+            // Signed, but only for the request still waiting — not one
+            // aborted or replaced while Touch ID was up.
+            guard (result as? [String: Any])?["error"] == nil,
+                  waiting[tab.id]?.requestId == request.requestId
+            else { done(false); return }
+            waiting.removeValue(forKey: tab.id)
+            request.reply(result, error)
+            done(true)
+        }
+    }
+
+    /// The tab is going away: whatever it waited on is let go.
+    static func drop(_ tab: Tab) {
+        waiting.removeValue(forKey: tab.id)?.reply(["error": "AbortError"], nil)
+    }
+
+    /// Let go of the tab's request because the page asked to, and redraw.
+    private static func cancel(_ tab: Tab) {
+        guard let request = waiting.removeValue(forKey: tab.id) else { return }
+        request.reply(["error": "AbortError"], nil)
+        onChange?(tab)
+    }
+
     static func relay(_ body: [String: Any], tab: Tab?, reply: @escaping (Any?, String?) -> Void) {
+        if body["kind"] as? String == "cancel" {
+            if let tab, let id = body["requestId"] as? String, waiting[tab.id]?.requestId == id { cancel(tab) }
+            reply(["ok": true], nil)
+            return
+        }
         guard let op = body["kind"] as? String,
               let origin = body["origin"] as? String,
               let originURL = URL(string: origin),
@@ -221,6 +307,15 @@ enum Passkeys {
         }
         switch op {
         case "create": create(body, origin: origin, rpId: rp, reply: reply)
+        case "get" where body["mediation"] as? String == "conditional":
+            guard let tab else { reply(["error": "NotSupportedError"], nil); return }
+            // A newer conditional request replaces the older one, as a
+            // browser's single autofill slot does.
+            waiting.removeValue(forKey: tab.id)?.reply(["error": "AbortError"], nil)
+            guard bytes(body["challenge"]) != nil else { reply(["error": "InvalidStateError"], nil); return }
+            waiting[tab.id] = Waiting(requestId: body["requestId"] as? String ?? "", body: body,
+                                      origin: origin, rpId: rp, reply: reply)
+            onChange?(tab)
         case "get": get(body, origin: origin, rpId: rp, reply: reply)
         default: reply(["error": "NotSupportedError"], nil)
         }
@@ -297,7 +392,7 @@ enum Passkeys {
     }
 
     private static func get(_ body: [String: Any], origin: String, rpId: String, reply: @escaping (Any?, String?) -> Void) {
-        guard let challenge = bytes(body["challenge"]) else { reply(["error": "InvalidStateError"], nil); return }
+        guard bytes(body["challenge"]) != nil else { reply(["error": "InvalidStateError"], nil); return }
         let all = PasskeyStore.credentials(for: rpId)
         let allow = (body["allowCredentials"] as? [[String: Any]] ?? []).compactMap { bytes($0["id"]) }
         let candidates = allow.isEmpty ? all : all.filter { allow.contains($0.id) }
@@ -305,6 +400,14 @@ enum Passkeys {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { reply(["error": "NotAllowedError"], nil) }
             return
         }
+        sign(credential, body: body, origin: origin, rpId: rpId, reply: reply)
+    }
+
+    /// Touch ID, then the assertion: the same for a passkey the site asked
+    /// for outright and one picked from the list under the sign-in box.
+    private static func sign(_ credential: PasskeyStore.Credential, body: [String: Any], origin: String, rpId: String,
+                             reply: @escaping (Any?, String?) -> Void) {
+        guard let challenge = bytes(body["challenge"]) else { reply(["error": "InvalidStateError"], nil); return }
         prove("Sign in to \(rpId) with your passkey (\(credential.label))") { ok in
             guard ok, let key = credential.key else { reply(["error": "NotAllowedError"], nil); return }
             let client = clientData(type: "webauthn.get", challenge: challenge, origin: origin, crossOrigin: body["crossOrigin"] as? Bool ?? false)

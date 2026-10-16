@@ -115,8 +115,8 @@ private let safariPasswordsExport = "\u{FEFF}Title,URL,Username,Password,Notes,O
 }
 
 @Test func importSentenceSaysCodesStayBehind() {
-    #expect(PasswordCSV.Outcome(kept: 3, skipped: 0, codes: 2).sentence == "3 passwords imported — one-time codes aren’t kept")
-    #expect(PasswordCSV.Outcome(kept: 1, skipped: 1, codes: 1).sentence == "1 password imported, 1 skipped (no site or no password) — one-time codes aren’t kept")
+    #expect(PasswordCSV.Outcome(kept: 3, skipped: 0, codes: 2).sentence == "3 passwords imported, with 2 two-step codes")
+    #expect(PasswordCSV.Outcome(kept: 1, skipped: 1, codes: 1).sentence == "1 password imported, 1 skipped (no site or no password), with 1 two-step code")
 }
 
 // MARK: - Sites never asked

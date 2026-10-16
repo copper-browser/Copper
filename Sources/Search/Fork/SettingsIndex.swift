@@ -369,6 +369,8 @@ enum SettingsIndex {
           ["save passwords", "remember passwords", "password prompt"], "passwords.save", toggle: pref(\.savesPasswords)),
         e(.passwords, "Saved passwords", "Fill in sign-ins", "Click a sign-in box and the accounts kept for the site hang from it",
           ["autofill", "auto fill", "autocomplete", "fill logins", "login fill", "sign in"], "passwords.fill", toggle: pref(\.fillsPasswords)),
+        e(.passwords, "Saved passwords", "Fill two-step codes", "The code page fills itself right after a sign-in with an account whose code Copper keeps",
+          ["2fa", "two factor", "two-step", "one-time code", "otp", "totp", "authenticator", "verification code", "mfa"], "passwords.codes", toggle: pref(\.fillsCodes)),
         e(.passwords, "Saved passwords", "Fill addresses and cards", "Checkout and address forms fill from your Bitwarden and 1Password identities and cards",
           ["credit card", "address", "identity", "checkout", "autofill forms", "payment"], "passwords.everything", toggle: pref(\.fillsEverything)),
         e(.passwords, "Saved passwords", "Offer passkeys", "Touch ID to sign in on sites that offer a passkey",

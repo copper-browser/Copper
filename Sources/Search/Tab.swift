@@ -225,6 +225,8 @@ final class Tab: ObservableObject, Identifiable {
     /// The site the sign-in was sent from — not the one it landed on —
     /// then the name and the password.
     var onCredentials: ((Tab, String, String, String) -> Void)?
+    /// Fork (auto-codes): a box for a two-step code has just appeared.
+    var onCodeBox: ((Tab) -> Void)?
     var onPickEnd: ((Tab) -> Void)?
     var onPickTrouble: ((Tab, String) -> Void)?
     /// Right-click landed on an image. WebKit's own menu offers to copy or
@@ -500,6 +502,8 @@ final class Tab: ObservableObject, Identifiable {
 
     func foundSignIn() { onSignIn?(self) }
 
+    func foundCodeBox() { onCodeBox?(self) } // Fork (auto-codes)
+
     /// From the page, in CSS pixels; passed on in points. Page zoom is the
     /// only scale between the two that matters here.
     func fieldFocused(_ rect: CGRect?, hint: String = "", field: FocusedField? = nil) {
@@ -587,6 +591,12 @@ final class Tab: ObservableObject, Identifiable {
         ) { result, _ in
             done?((result as? Bool) ?? false)
         }
+    }
+
+    /// Fork (passkey-picker): the page says again where the caret is, so a
+    /// list already hanging from a box can be redrawn.
+    func recheckField() {
+        built?.evaluateJavaScript("window.__officeForms && window.__officeForms.caret()")
     }
 
     func fillOTP(_ code: String, done: ((Bool) -> Void)? = nil) {
@@ -1176,6 +1186,7 @@ final class Tab: ObservableObject, Identifiable {
         onSignIn = nil
         onField = nil
         onCredentials = nil
+        onCodeBox = nil // Fork (auto-codes)
         discard()
     }
 
@@ -1194,6 +1205,7 @@ final class Tab: ObservableObject, Identifiable {
         controller.removeScriptMessageHandler(forName: VeilRelay.name)
         controller.removeScriptMessageHandler(forName: FormRelay.name)
         controller.removeScriptMessageHandler(forName: Passkeys.name, contentWorld: .page)
+        Passkeys.drop(self) // Fork (passkey-picker): the page waiting on a passkey is gone
         controller.removeScriptMessageHandler(forName: ImageRelay.name)
         controller.removeScriptMessageHandler(forName: StoreRelay.name)
         controller.removeAllUserScripts()
