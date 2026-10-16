@@ -170,6 +170,7 @@ enum Vault {
     }
 
     static func forget(host: String, user: String) {
+        KeychainCodes.forget(host: host, user: user) // Fork (keychain-codes): the account's two-step key goes with it
         if ProbeKeychain.active { return ProbeKeychain.forget(host: host, user: user) } // Fork (probe-keychain)
         SecItemDelete([
             kSecClass as String: kSecClassInternetPassword,

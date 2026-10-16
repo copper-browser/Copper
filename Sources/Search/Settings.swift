@@ -407,6 +407,12 @@ struct SettingsPanel: View {
                 }
                 .settingsAnchor("passwords.fill")
                 Rule()
+                // Fork (auto-codes): Fork/Credentials/KeychainCodes.swift keeps the keychain's keys
+                Line("Fill two-step codes", "Right after you sign in with an account whose code Copper keeps, the code page fills itself") {
+                    Switch(on: $prefs.fillsCodes)
+                }
+                .settingsAnchor("passwords.codes")
+                Rule()
                 Line("Fill addresses and cards", "Click into a checkout or address form and your Bitwarden and 1Password identities and cards hang from it") { // Fork: 1Password
                     Switch(on: $prefs.fillsEverything)
                 }

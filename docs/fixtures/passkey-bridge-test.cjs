@@ -117,10 +117,40 @@ test('aborted operation sends no native request', async () => {
   assert.equal(p.messages.length, 0);
 });
 
-test('conditional mediation remains unavailable without making a native request', async () => {
+test('conditional get is offered and waits on the native list', async () => {
   const p = page();
-  assert.equal(await p.run('PublicKeyCredential.isConditionalMediationAvailable()'), false);
-  await assert.rejects(p.run("navigator.credentials.get({mediation: 'conditional', publicKey: {rpId: 'example.test'}})"), {name: 'NotSupportedError'});
+  assert.equal(await p.run('PublicKeyCredential.isConditionalMediationAvailable()'), true);
+  assert.equal((await p.run('PublicKeyCredential.getClientCapabilities()')).conditionalGet, true);
+  const result = await p.run("navigator.credentials.get({mediation: 'conditional', publicKey: {challenge: new Uint8Array([9])}})");
+  assert.equal(p.messages.length, 1);
+  assert.equal(p.messages[0].mediation, 'conditional');
+  assert.equal(p.messages[0].kind, 'get');
+  assert.equal(p.messages[0].rpId, 'accounts.example.test');
+  assert.equal(p.messages[0].challenge, 'CQ');
+  assert.equal(result.id, 'AQID');
+  assert.equal(result.type, 'public-key');
+});
+
+test('aborting a waiting conditional get tells Copper to let it go', async () => {
+  const pending = [];
+  const p = page({reply: body => body.kind === 'cancel' ? {ok: true} : new Promise(resolve => pending.push(resolve))});
+  p.run('controller = new AbortController();');
+  const waiting = p.run("navigator.credentials.get({mediation: 'conditional', signal: controller.signal, publicKey: {challenge: new Uint8Array([1])}})");
+  p.run('controller.abort();');
+  await assert.rejects(waiting, {name: 'AbortError'});
+  assert.equal(p.messages.length, 2);
+  assert.equal(p.messages[1].kind, 'cancel');
+  assert.equal(p.messages[1].requestId, p.messages[0].requestId);
+});
+
+test('a native refusal of a conditional get rejects it', async () => {
+  const p = page({reply: () => ({error: 'AbortError'})});
+  await assert.rejects(p.run("navigator.credentials.get({mediation: 'conditional', publicKey: {challenge: new Uint8Array([1])}})"), {name: 'AbortError'});
+});
+
+test('conditional creation is still refused without a native request', async () => {
+  const p = page();
+  await assert.rejects(p.run(`navigator.credentials.create(Object.assign(${createOptions}, {mediation: 'conditional'}))`), {name: 'NotSupportedError'});
   assert.equal(p.messages.length, 0);
 });
 

@@ -68,11 +68,8 @@ enum Credentials {
     }
 
     static func candidates(for host: String) -> [Credential] {
-        let keychain = Vault.logins(matching: host).map { login in
-            Credential(id: .keychain(host: login.host, user: login.user), source: .keychain,
-                       host: login.host, user: login.user, sites: [login.host], name: login.user,
-                       hasTOTP: false, used: login.used, folder: nil, agentHint: .none)
-        }
+        let codes = KeychainCodes.accounts()
+        let keychain = Vault.logins(matching: host).map { keychainCredential($0, codes: codes) }
         var bitwarden: [Credential] = []
         if isBitwardenUnlocked {
             let folders = Dictionary(uniqueKeysWithValues: Bitwarden.shared.cachedFolders.map { ($0.id, $0.name) })
@@ -83,11 +80,8 @@ enum Credentials {
     }
 
     static func all() -> [Credential] {
-        let keychain = Vault.all().map { login in
-            Credential(id: .keychain(host: login.host, user: login.user), source: .keychain,
-                       host: login.host, user: login.user, sites: [login.host], name: login.user,
-                       hasTOTP: false, used: login.used, folder: nil, agentHint: .none)
-        }
+        let codes = KeychainCodes.accounts()
+        let keychain = Vault.all().map { keychainCredential($0, codes: codes) }
         var bitwarden: [Credential] = []
         if isBitwardenUnlocked {
             let folders = Dictionary(uniqueKeysWithValues: Bitwarden.shared.cachedFolders.map { ($0.id, $0.name) })
@@ -117,8 +111,11 @@ enum Credentials {
 
     static func totp(_ id: CredentialID) async throws -> String {
         switch id {
-        case .keychain:
-            throw Failure(message: "Keychain credentials do not have a TOTP code")
+        case .keychain(let host, let user):
+            // Read now, for this one account only, as its password is.
+            guard let code = KeychainCodes.code(host: host, user: user)
+            else { throw Failure(message: "No two-step code is kept for that account") }
+            return code
         case .bitwarden(let itemID):
             return try await Bitwarden.shared.totp(for: itemID)
         case .onePassword(let itemID):
@@ -156,6 +153,15 @@ enum Credentials {
     static func touch(_ credential: Credential) {
         guard case .keychain(let host, let user) = credential.id else { return }
         Vault.touch(Login(host: host, user: user, password: "", used: nil))
+    }
+
+    /// A keychain login as the picker sees it. `codes` is
+    /// `KeychainCodes.accounts()`, read once per list rather than per row.
+    private static func keychainCredential(_ login: Login, codes: Set<String>) -> Credential {
+        Credential(id: .keychain(host: login.host, user: login.user), source: .keychain,
+                   host: login.host, user: login.user, sites: [login.host], name: login.user,
+                   hasTOTP: codes.contains(KeychainCodes.account(host: login.host, user: login.user)),
+                   used: login.used, folder: nil, agentHint: .none)
     }
 
     // MARK: - Bitwarden metadata and URI matching
@@ -307,7 +313,9 @@ enum Credentials {
             }
             // A vault's copy wins over the keychain's (it carries a TOTP key,
             // custom fields, the agent policy); the first vault's over the second.
-            if value.source != .keychain && result[existing].source == .keychain {
+            // Not over a keychain copy that has a code when the vault's has none.
+            if value.source != .keychain && result[existing].source == .keychain
+                && (value.hasTOTP || !result[existing].hasTOTP) {
                 result[existing] = value
             }
         }

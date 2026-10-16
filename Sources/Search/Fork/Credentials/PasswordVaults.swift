@@ -31,6 +31,9 @@ enum PickerFooter {
             case .code(let credential):
                 credentialRows = true
                 if credential.source != .keychain { vaults.insert(credential.source) }
+            case .passkey: // Fork (passkey-picker): Copper's passkeys are in the keychain too
+                credentialRows = true
+                codesOnly = false
             case .identity(let identity):
                 otherRows = true
                 codesOnly = false
