@@ -408,21 +408,23 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
 
       // A box that is surely the two-step code's, not a promo or a card's:
       // the autocomplete promise, a row of one-digit boxes, or a name that
-      // says so. Only this one is filled without a click.
+      // says so. Only this one is filled without a click. Asked whenever the
+      // page changes, so attributes are read first and layout only for a
+      // box that already looks like one.
+      var allInputs = document.getElementsByTagName('input');
       function plainOTP() {
-        if (splitOTPFields()) return true;
-        var inputs = document.querySelectorAll('input');
+        if (!allInputs.length) return false;
+        var promised = document.querySelectorAll('input[autocomplete~="one-time-code" i]');
+        for (var p = 0; p < promised.length; p++) if (visible(promised[p])) return true;
+        if (document.querySelectorAll('input[maxlength="1"]').length >= 4 && splitOTPFields()) return true;
         var clues = /otp|one.?time|totp|2fa|mfa|two.?(?:factor|step)|verification.?code|authenticat/i;
-        for (var i = 0; i < inputs.length; i++) {
-          var input = inputs[i];
-          if (!visible(input)) continue;
-          var autocomplete = (input.autocomplete || input.getAttribute('autocomplete') || '').toLowerCase();
-          if (autocomplete === 'one-time-code') return true;
+        for (var i = 0; i < allInputs.length; i++) {
+          var input = allInputs[i];
           var kind = (input.type || 'text').toLowerCase();
           if (['text', 'tel', 'number', 'password'].indexOf(kind) < 0) continue;
           var labels = [input.name, input.id, input.getAttribute('aria-label'),
                         input.getAttribute('placeholder')].join(' ');
-          if (clues.test(labels)) return true;
+          if (clues.test(labels) && visible(input)) return true;
         }
         return false;
       }

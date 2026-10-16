@@ -227,10 +227,6 @@ final class Tab: ObservableObject, Identifiable {
     var onCredentials: ((Tab, String, String, String) -> Void)?
     /// Fork (auto-codes): a box for a two-step code has just appeared.
     var onCodeBox: ((Tab) -> Void)?
-    /// Fork (auto-codes): the last sign-in this tab sent — the site and the
-    /// name, never the password — so the code page after it knows whose code
-    /// it wants.
-    private(set) var lastSignIn: (host: String, user: String, at: Date)?
     var onPickEnd: ((Tab) -> Void)?
     var onPickTrouble: ((Tab, String) -> Void)?
     /// Right-click landed on an image. WebKit's own menu offers to copy or
@@ -553,7 +549,6 @@ final class Tab: ObservableObject, Identifiable {
         guard let host = address?.host()?.lowercased() else { return }
         let bare = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
         sent = (bare, user, password, Date())
-        lastSignIn = (bare, user, Date()) // Fork (auto-codes)
     }
 
     /// The page has moved on — a new document has loaded, or the sign-in
