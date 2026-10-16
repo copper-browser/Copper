@@ -171,29 +171,44 @@ struct PasswordsPanel: View {
         @State private var hide: DispatchWorkItem?
         /// Read from the keychain only when shown; never kept past hiding.
         @State private var secret = ""
+        // Fork (keychain-codes): the account's two-step key, kept beside it.
+        @State private var hasCode = false
+        @State private var addingCode = false
+        @State private var seed = ""
+        @State private var seedRefused = false
 
         var body: some View {
-            HStack(spacing: 10) {
-                Text(login.user.isEmpty ? "No username" : login.user)
-                    .font(.system(size: 12))
-                    .foregroundStyle(login.user.isEmpty ? Palette.faint : Palette.ink)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .frame(minWidth: 120, alignment: .leading)
+            VStack(alignment: .leading, spacing: 6) { // Fork (keychain-codes)
+                HStack(spacing: 10) {
+                    Text(login.user.isEmpty ? "No username" : login.user)
+                        .font(.system(size: 12))
+                        .foregroundStyle(login.user.isEmpty ? Palette.faint : Palette.ink)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(minWidth: 120, alignment: .leading)
 
-                Text(shown ? secret : String(repeating: "•", count: 8))
-                    .font(.system(size: shown ? 12.5 : 10, design: .monospaced))
-                    .foregroundStyle(shown ? Palette.ink : Palette.muted)
-                    .lineLimit(1)
-                    .textSelection(.enabled)
+                    Text(shown ? secret : String(repeating: "•", count: 8))
+                        .font(.system(size: shown ? 12.5 : 10, design: .monospaced))
+                        .foregroundStyle(shown ? Palette.ink : Palette.muted)
+                        .lineLimit(1)
+                        .textSelection(.enabled)
 
-                Spacer(minLength: 8)
+                    Spacer(minLength: 8)
 
-                if hovering || shown {
-                    Quick(shown ? "Hide" : "Show") { shown ? conceal() : reveal() }
-                    Quick("Copy", act: copy)
-                    Quick("Remove", tint: .red.opacity(0.75), act: forget)
+                    if hovering || shown {
+                        Quick(shown ? "Hide" : "Show") { shown ? conceal() : reveal() }
+                        Quick("Copy", act: copy)
+                        // Fork (keychain-codes)
+                        if hasCode {
+                            Quick("Copy code", act: copyCode)
+                            Quick("Remove code", tint: .red.opacity(0.75), act: removeCode)
+                        } else {
+                            Quick("Add code") { addingCode.toggle() }
+                        }
+                        Quick("Remove", tint: .red.opacity(0.75), act: forget)
+                    }
                 }
+                if addingCode { codeForm } // Fork (keychain-codes)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
@@ -203,6 +218,52 @@ struct PasswordsPanel: View {
             .animation(Motion.quick, value: hovering)
             .animation(Motion.quick, value: shown)
             .onDisappear { conceal() }
+            .onAppear { hasCode = KeychainCodes.has(host: login.host, user: login.user) } // Fork (keychain-codes)
+        }
+
+        // Fork (keychain-codes): the setup key a site shows beside its QR
+        // code ("can't scan it?"), or the otpauth:// link itself.
+        private var codeForm: some View {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    SecureField("Setup key or otpauth:// link", text: $seed)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(Palette.ink)
+                        .onSubmit(keepCode)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Palette.wash, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    Quick("Save", act: keepCode)
+                    Quick("Cancel") { addingCode = false; seed = ""; seedRefused = false }
+                }
+                Text(seedRefused
+                     ? "That key doesn't make a code — copy it again from the site's two-step setup"
+                     : "Copper fills the code on the page that asks for it, right after you sign in")
+                    .font(.system(size: 11))
+                    .foregroundStyle(seedRefused ? Color.red.opacity(0.75) : Palette.muted)
+            }
+        }
+
+        private func keepCode() {
+            guard KeychainCodes.save(seed, host: login.host, user: login.user) else { seedRefused = true; return }
+            seed = ""
+            seedRefused = false
+            addingCode = false
+            hasCode = true
+        }
+
+        private func copyCode() {
+            guard let code = KeychainCodes.code(host: login.host, user: login.user) else { return }
+            SettingsActions.copy(code)
+        }
+
+        private func removeCode() {
+            Vault.prove("remove the two-step code for \(login.host)") { ok in
+                guard ok else { return }
+                KeychainCodes.forget(host: login.host, user: login.user)
+                hasCode = false
+            }
         }
 
         private func reveal() {

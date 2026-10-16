@@ -32,6 +32,8 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
                 )
             case "settled":
                 tab?.settleSignIn(navigated: false)
+            case "otp":
+                tab?.foundCodeBox() // Fork (auto-codes)
             case "focus":
                 tab?.typing = body["typing"] as? Bool ?? false
                 // Which box the caret is in, and where it sits on the page —
@@ -404,6 +406,27 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
         return null;
       }
 
+      // A box that is surely the two-step code's, not a promo or a card's:
+      // the autocomplete promise, a row of one-digit boxes, or a name that
+      // says so. Only this one is filled without a click.
+      function plainOTP() {
+        if (splitOTPFields()) return true;
+        var inputs = document.querySelectorAll('input');
+        var clues = /otp|one.?time|totp|2fa|mfa|two.?(?:factor|step)|verification.?code|authenticat/i;
+        for (var i = 0; i < inputs.length; i++) {
+          var input = inputs[i];
+          if (!visible(input)) continue;
+          var autocomplete = (input.autocomplete || input.getAttribute('autocomplete') || '').toLowerCase();
+          if (autocomplete === 'one-time-code') return true;
+          var kind = (input.type || 'text').toLowerCase();
+          if (['text', 'tel', 'number', 'password'].indexOf(kind) < 0) continue;
+          var labels = [input.name, input.id, input.getAttribute('aria-label'),
+                        input.getAttribute('placeholder')].join(' ');
+          if (clues.test(labels)) return true;
+        }
+        return false;
+      }
+
       var stateNames = {
         AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California',
         CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', FL: 'Florida', GA: 'Georgia',
@@ -700,6 +723,8 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
           return true;
         },
         hasOTP: function () { return !!otpField(); },
+        plainOTP: plainOTP,
+        caret: function () { caret(); },
         // Whether there is still a sign-in on the page. Asked after a
         // password went out, to tell a sign-in that took from one refused.
         hasPassword: function () { return !!pair(); },
@@ -754,7 +779,22 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
       // The boxes going away without a new page — a sign-in done in place —
       // is the other way a sign-in shows it took.
       var settling = null;
+      // The code page arriving: once when its box appears, at most a few
+      // times a second however busy the page is.
+      var coded = false, codeLook = null;
+      function lookForCode() {
+        if (codeLook) return;
+        codeLook = setTimeout(function () {
+          codeLook = null;
+          var here = plainOTP();
+          if (here && !coded) window.webkit.messageHandlers.officeForms.postMessage({ kind: 'otp' });
+          coded = here;
+        }, 300);
+      }
+      if (document.readyState === 'complete') { lookForCode(); }
+      else { window.addEventListener('load', lookForCode); }
       new MutationObserver(function () {
+        lookForCode();
         if (!told) { tell(); return; }
         if (pair()) return;
         told = false;

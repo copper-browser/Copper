@@ -311,6 +311,9 @@ final class Browser: NSObject, ObservableObject {
         /// The current two-step code of a Bitwarden login with an
         /// authenticator key, offered under a one-time-code box.
         case code(Credential)
+        /// Fork (passkey-picker): a Copper passkey for the sign-in the page
+        /// is waiting on (a conditional WebAuthn request).
+        case passkey(PasskeyStore.Credential)
         case username(String)
         case identity(AutofillIdentity)
         case card(AutofillCard)
@@ -320,6 +323,7 @@ final class Browser: NSObject, ObservableObject {
             switch self {
             case .credential(let credential): return credential.stableID
             case .code(let credential): return "code:\(credential.stableID)"
+            case .passkey(let passkey): return "passkey:\(passkey.idText)"
             case .username(let name): return "user:\(name)"
             case .identity(let identity): return "id:\(identity.id)"
             case .card(let card): return "card:\(card.id)"
@@ -356,6 +360,10 @@ final class Browser: NSObject, ObservableObject {
     /// comes first on the page that asks for one, which is often on another
     /// host than the sign-in (accounts.google.com, login.microsoftonline.com).
     private var signedInWith: [Tab.ID: Credential] = [:]
+    /// Fork (auto-codes): when each tab's sign-in went in, and the sign-in
+    /// whose code was already filled on its own — once per sign-in.
+    private var signedInAt: [Tab.ID: Date] = [:]
+    private var autoCoded: [Tab.ID: Date] = [:]
     /// A code went into this tab's box. A password pick does not hold back
     /// the code list: the page that asks for the code often replaces the
     /// sign-in without the caret ever leaving a box.
@@ -419,6 +427,7 @@ final class Browser: NSObject, ObservableObject {
                 }
                 Credentials.touch(credential)
                 self.signedInWith[tab.id] = credential
+                self.signedInAt[tab.id] = Date() // Fork (auto-codes)
                 self.suggesting = nil
             } catch {
                 self?.announce(error.localizedDescription)
@@ -439,6 +448,10 @@ final class Browser: NSObject, ObservableObject {
             chooseCode(credential)
             return
         }
+        if case .passkey(let passkey) = suggestion {
+            choosePasskey(passkey)
+            return
+        }
         lowering?.cancel()
         guard fetching == nil,
               let tab = tabs.first(where: { $0.id == suggesting?.tab }) ?? active
@@ -450,7 +463,7 @@ final class Browser: NSObject, ObservableObject {
             announce("Couldn't find the boxes anymore")
         }
         switch suggestion {
-        case .credential, .code:
+        case .credential, .code, .passkey:
             break
         case .username(let name):
             tab.fillFocused(name) { worked in
@@ -495,6 +508,62 @@ final class Browser: NSObject, ObservableObject {
             }
             self?.fetching = nil
         }
+    }
+
+    /// Fork (passkey-picker): the passkey picked from the list answers the
+    /// sign-in the page is waiting on, after Touch ID; the page takes it
+    /// from there as it would from Safari's list.
+    private func choosePasskey(_ passkey: PasskeyStore.Credential) {
+        lowering?.cancel()
+        guard let tab = tabs.first(where: { $0.id == suggesting?.tab }) ?? active else { return }
+        pickedInto = tab.id
+        suggesting = nil
+        Passkeys.answer(tab: tab, with: passkey) { [weak self] worked in
+            if !worked { self?.announce("That passkey didn't sign in — the page may have stopped waiting") }
+        }
+    }
+
+    /// Fork (auto-codes): the page asking for a two-step code, right after a
+    /// sign-in with an account whose key Copper can read. The code goes into
+    /// the box on its own — once per sign-in, only on a page the account
+    /// would be offered on anyway, and never sent: the page's own button is
+    /// still yours to press.
+    private func codeBoxAppeared(in tab: Tab) {
+        guard prefs.fillsPasswords, prefs.fillsCodes, fetching == nil, codePickedInto != tab.id,
+              let host = curtain.host(of: tab.address),
+              case let (credential, stamp)? = autoCodeCredential(for: tab, host: host),
+              autoCoded[tab.id] != stamp
+        else { return }
+        autoCoded[tab.id] = stamp
+        Task { [weak self, weak tab] in
+            guard let code = try? await Credentials.totp(credential.id), let self, let tab else { return }
+            tab.fillOTP(code) { worked in
+                guard worked else { return }
+                self.codePickedInto = tab.id
+                if self.suggesting?.tab == tab.id { self.suggesting = nil }
+                self.announce("Two-step code filled for \(credential.user.isEmpty ? credential.host : credential.user)")
+            }
+        }
+    }
+
+    /// The account the code page wants and when its sign-in went in: the one
+    /// picked from the list in this tab, else the name the tab last sent,
+    /// within ten minutes, with a code key, and matched to this page.
+    private func autoCodeCredential(for tab: Tab, host: String) -> (Credential, Date)? {
+        let fresh = Date().addingTimeInterval(-600)
+        let here = Credentials.candidates(for: host).filter(\.hasTOTP)
+        if let picked = signedInWith[tab.id], let at = signedInAt[tab.id], at > fresh,
+           let match = here.first(where: { $0.id == picked.id }) {
+            return (match, at)
+        }
+        guard let sent = tab.lastSignIn, sent.at > fresh else { return nil }
+        if let match = here.first(where: { $0.user.caseInsensitiveCompare(sent.user) == .orderedSame }) {
+            return (match, sent.at)
+        }
+        // A password step with no name box on it sends no name; then only
+        // a site with one account that has a code is sure enough.
+        if sent.user.isEmpty, here.count == 1, let only = here.first { return (only, sent.at) }
+        return nil
     }
 
     /// Accounts with an authenticator key for a one-time-code box: the one
@@ -1312,6 +1381,8 @@ final class Browser: NSObject, ObservableObject {
     func close(_ tab: Tab) {
         guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
         signedInWith[tab.id] = nil
+        signedInAt[tab.id] = nil // Fork (auto-codes)
+        autoCoded[tab.id] = nil
 
         // Fork (saved-close): a Saved tab is put down, as Arc does it — the
         // row keeps its place, its page is let go, and you land where a
@@ -1689,6 +1760,11 @@ final class Browser: NSObject, ObservableObject {
             ? Autofill.fields(for: host, matching: tab.fieldFocus?.label ?? "").map(Suggestion.field)
             : []
         var rows: [Suggestion] = []
+        // Fork (passkey-picker): a page waiting on a passkey sign-in has its
+        // passkeys first under a name or password box, as Safari lists them.
+        if (group == .login && kind != .otp) || kind == .email, prefs.fillsPasswords {
+            rows += Passkeys.waitingCredentials(for: tab).map(Suggestion.passkey)
+        }
         if kind == .otp, prefs.fillsPasswords {
             let codes = codeCredentials(for: tab, host: host)
             if !codes.isEmpty { return codes.map(Suggestion.code) + fields }
@@ -1725,6 +1801,10 @@ final class Browser: NSObject, ObservableObject {
             announce("Hidden — ⌘Z puts it back")
         }
         tab.onPickEnd = { [weak self] _ in self?.veiling = false }
+        tab.onCodeBox = { [weak self] tab in self?.codeBoxAppeared(in: tab) } // Fork (auto-codes)
+        // Fork (passkey-picker): a page that starts waiting on a passkey while
+        // the caret is already in its box gets its list redrawn with it.
+        Passkeys.onWaiting = { tab in tab.recheckField() }
         tab.onImageMenu = { [weak self] tab, url in self?.showImageMenu(for: tab, at: url) }
         tab.onStoreAdd = { [weak self] tab in self?.addFromStore(tab) }
 

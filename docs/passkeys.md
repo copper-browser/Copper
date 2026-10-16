@@ -71,13 +71,17 @@ stand-ins of the same names.
   when their private key is available to the import path.
 - Keys are local to this Copper installation and its keychain. There is no
   cross-device sync, Bluetooth/hybrid hand-off, or iCloud sync in this build.
-- Copper's own authenticator has no conditional (autofill) UI: on its own it
-  reports `isConditionalMediationAvailable()` false and rejects a
-  `mediation: 'conditional'` request with `NotSupportedError`, so sites fall
-  back to their explicit passkey button. When an extension that offers
-  passkey autofill (1Password) hooks the API, its answer is what the page
-  sees — Copper does not override it. A normal create/get ceremony always
-  asks for user verification.
+- Conditional (autofill) mediation works for sign-in. A site that calls
+  `navigator.credentials.get({mediation: 'conditional'})` waits while Copper
+  lists that site's passkeys first in the account list under its name or
+  password box, beside the saved passwords. Picking one asks for Touch ID and
+  answers the waiting request; nothing is signed until you pick. A newer
+  conditional request replaces the older one, an abort or leaving the page
+  lets it go, and the rows show only while the tab is still on the host that
+  asked. Conditional *creation* is still refused. When an extension that
+  offers passkey autofill (1Password) hooks the API, its answer is what the
+  page sees; a request it passes on reaches Copper's list. A normal
+  create/get ceremony always asks for user verification.
 - With no credential for the relying party, `get` rejects with
   `NotAllowedError`, the same answer a platform authenticator gives when the
   user has nothing to pick; sites treat it as a cancel and offer another way.
