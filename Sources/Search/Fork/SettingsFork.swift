@@ -432,6 +432,7 @@ struct UpdatesPage: View {
             if let problem = updates.problem, updates.outcome?.detail != problem {
                 SettingsNote(problem)
             }
+            AddonUpdatesSection(browser: browser) // Fork (addons): an addon waiting for Install (Fork/Addons/AddonUI.swift)
             VStack(alignment: .leading, spacing: 4) {
                 SettingsNote(installLine)
                 if let outcome = outcomeLine, updates.outcome?.ok == true {

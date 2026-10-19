@@ -1,0 +1,19 @@
+{
+  "schema": "copper-addon/1",
+  "id": "com.example.selftest",
+  "name": "Bridge self-test",
+  "version": "1.0.0",
+  "description": "Calls every window.copper method and shows what came back. A fixture for Copper's own tests.",
+  "author": "Copper",
+  "slot": "agent-sidebar",
+  "entry": "index.html",
+  "bridge": 1,
+  "permissions": {
+    "hosts": ["example.com", "*.example.org", "127.0.0.1"],
+    "capabilities": ["identity", "storage", "fetch", "oauth", "open-url", "page", "agent"]
+  },
+  "settings": {
+    "greeting": { "type": "string", "default": "Hello from the manifest's defaults", "title": "Greeting" },
+    "runs": { "type": "number", "default": 1, "title": "Times the page has been told to run" }
+  }
+}

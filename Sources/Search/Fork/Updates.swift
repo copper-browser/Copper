@@ -224,6 +224,7 @@ final class Updates: ObservableObject {
     /// hours after the previous attempt, including a failed/offline attempt.
     /// A newer release is staged as soon as it is seen.
     func check(force: Bool = false) {
+        AddonSync.shared.updatesChecked(force: force) // Fork (addons): addons are looked for at every update check
         guard !checking else { return }
         if !force, let checkedAt, Date().timeIntervalSince(checkedAt) < 6 * 60 * 60 { return }
         checking = true

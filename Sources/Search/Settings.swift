@@ -42,6 +42,7 @@ struct SettingsPanel: View {
 
     enum Page: String, CaseIterable, Identifiable {
         case general, tabs, spaces, intelligence, agents, voice, cloud, updates, extensions, passwords, downloads, privacy, labs, about // Fork: spaces, intelligence, agents, voice, cloud, updates, labs
+        case addons // Fork (addons): Fork/Addons/AddonUI.swift
         var id: String { rawValue }
         var title: String {
             switch self {
@@ -58,6 +59,7 @@ struct SettingsPanel: View {
             case .downloads: return "Downloads"
             case .privacy: return "Privacy"
             case .labs: return "Labs" // Fork (trails): flights
+            case .addons: return "Addons" // Fork (addons)
             case .about: return "About"
             }
         }
@@ -76,6 +78,7 @@ struct SettingsPanel: View {
             case .downloads: return "arrow.down.circle"
             case .privacy: return "hand.raised"
             case .labs: return "flask" // Fork (trails)
+            case .addons: return "puzzlepiece" // Fork (addons)
             case .about: return "info.circle"
             }
         }
@@ -240,6 +243,7 @@ struct SettingsPanel: View {
                         case .downloads: downloads
                         case .privacy: privacy
                         case .labs: LabsPage(browser: browser) // Fork (trails): Fork/Trails/Flights.swift
+                        case .addons: AddonsPage(browser: browser) // Fork (addons): Fork/Addons/AddonUI.swift
                         case .about: about
                         }
                     }

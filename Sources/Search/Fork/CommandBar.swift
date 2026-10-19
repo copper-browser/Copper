@@ -88,6 +88,7 @@ enum CommandBar {
         if Updates.shared.ready {
             list.insert(.init(id: "update", name: "Update Copper to \(Updates.shared.latest?.version ?? "")", glyph: "arrow.down.circle") { _ in Updates.shared.upgrade() }, at: 0)
         }
+        AddonCommands.add(to: &list) // Fork (addons): Install <addon>, the check, Settings › Addons
         if Spaces.shared.all.count > 1 {
             list.append(.init(id: "delete-space", name: "Delete Space…", glyph: "trash") { b in SpaceDelete.ask(Spaces.shared.current(in: b), in: b) })
         }

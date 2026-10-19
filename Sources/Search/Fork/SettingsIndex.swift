@@ -41,6 +41,7 @@ extension SettingsPanel.Page {
     var group: Group {
         switch self {
         case .general, .tabs, .spaces, .downloads, .extensions: return .browsing
+        case .addons: return .browsing // Fork (addons)
         case .intelligence, .agents, .voice: return .copper
         case .passwords, .privacy, .cloud: return .data
         case .labs, .updates, .about: return .about
@@ -51,6 +52,7 @@ extension SettingsPanel.Page {
     /// (and the stored `settings.page` values); this is only how it is drawn.
     static let railOrder: [SettingsPanel.Page] = [
         .general, .tabs, .spaces, .downloads, .extensions,
+        .addons, // Fork (addons): beside Extensions
         .intelligence, .agents, .voice,
         .passwords, .privacy, .cloud,
         .labs, .updates, .about,
@@ -72,6 +74,7 @@ extension SettingsPanel.Page {
         case .downloads: return "Where downloaded files go."
         case .privacy: return "Blocking ads and trackers, site permissions, and clearing what sites keep."
         case .labs: return "Previews of what Copper is trying next. Each is off until you turn it on."
+        case .addons: return "Web addons your Copper Cloud assigns you, like the Agent sidebar's." // Fork (addons)
         case .about: return "Version, feedback and the keyboard shortcuts."
         }
     }
@@ -93,6 +96,7 @@ extension SettingsPanel.Page {
         case .downloads: return ["files", "download folder"]
         case .privacy: return ["security", "tracking", "data", "clear"]
         case .labs: return ["experiments", "experimental", "flights", "beta", "beta features", "preview", "previews", "labs"]
+        case .addons: return ["addon", "add-on", "agent sidebar", "sidebar app", "web app"] // Fork (addons)
         case .about: return ["version", "credits", "help", "shortcuts"]
         }
     }
@@ -132,6 +136,7 @@ enum SettingsIndex {
     static let rows: [SettingsEntry] = [
         general, tabs, spaces, intelligence, agents, voice, cloud,
         updates, extensions, passwords, downloads, privacy, labs, about,
+        AddonSettingsIndex.entries, // Fork (addons): Fork/Addons/AddonUI.swift
     ].flatMap { $0 }
 
     // MARK: general

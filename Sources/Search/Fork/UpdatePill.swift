@@ -382,6 +382,7 @@ struct UpdatePillSlot: View {
                 // moves. Not clipped: the pill's glow would be cut square.
                 .transition(still ? .opacity : .offset(y: 14).combined(with: .opacity).combined(with: .scale(scale: 0.96, anchor: .bottom)))
             }
+            AddonPillSlot(browser: browser) // Fork (addons): an addon waiting for Install, under Copper's own
         }
         .animation(still ? .easeOut(duration: 0.2) : Motion.glide, value: cue == nil)
     }
@@ -410,6 +411,7 @@ struct UpdateToolbarPill: View {
                 .onAppear { withAnimation(still ? .easeOut(duration: 0.2) : Motion.settle) { risen = true } }
                 .onDisappear { risen = false }
         }
+        AddonPillSlot(browser: browser, compact: true) // Fork (addons): after Copper's own, nothing drawn when none waits
     }
 }
 

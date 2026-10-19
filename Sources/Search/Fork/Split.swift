@@ -249,7 +249,7 @@ struct SplitStage: View {
             driven
             if agent.open {
                 Rectangle().fill(Palette.hairline).frame(width: 1)
-                AgentPane(browser: browser)
+                AgentSlot(browser: browser) // Fork (addons): the slot's addon, else AgentPane (Fork/Addons/AddonUI.swift)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
