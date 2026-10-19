@@ -4,12 +4,12 @@
  * the board's zoom, set on its layer).
  */
 .cl-card {
+  --bs-b: 1px;
   --cl-col: 64px;
   color: var(--ink);
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 12px;
-  box-shadow: var(--shadow-note);
   font-size: 14px;
   line-height: 1.35;
 }

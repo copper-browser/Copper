@@ -99,6 +99,8 @@
     }
   }
   const deltas = []
+  // Frame times by phase (the first half pans, the second zooms), so a regression can be placed.
+  const byPhase = { pan: [], zoom: [] }
   let peakMounted = before.mountedShapes
   let peakLive = before.liveIframes
   let peakDom = before.domNodes
@@ -107,7 +109,10 @@
   Object.assign(B, { state: 'running', read: false, t0: performance.now(), result: null })
   const step = t => {
     const e = t - B.t0
-    if (last) deltas.push(t - last)
+    if (last) {
+      deltas.push(t - last)
+      byPhase[e < DURATION / 2 ? 'pan' : 'zoom'].push(t - last)
+    }
     last = t
     drive(Math.min(e, DURATION))
     if (++n % 15 === 0) {
@@ -137,6 +142,13 @@
       peakDomElements: peakDom,
       peakMountedElements: peakMounted,
       peakLiveIframes: peakLive,
+      phases: Object.fromEntries(
+        Object.entries(byPhase).map(([k, d]) => {
+          const s = [...d].sort((a, b) => a - b)
+          const q = p => (s.length ? s[Math.min(s.length - 1, Math.floor(s.length * p))] : 0)
+          return [k, { frames: d.length, p50: r1(q(0.5)), p95: r1(q(0.95)), max: r1(s[s.length - 1] || 0), over33: d.filter(x => x > 33.4).length }]
+        }),
+      ),
     }
     // Let pan/zoom settle (culling, live budgets, posters) before the after-sample.
     setTimeout(() => {

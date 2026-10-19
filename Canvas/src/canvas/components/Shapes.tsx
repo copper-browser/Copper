@@ -10,7 +10,8 @@ import { hueOf, inkOn, paperOf, strokeOf } from '../colors'
 import { countRender } from '../debug'
 import { toggleTask } from '../markdown-lite'
 import { STICKY_PAD_Y, growFor, overflows } from '../overflow'
-import { requestThumb, thumbs } from '../thumbs'
+import { requestThumb, subscribeMoving, thumbs, thumbsMoving } from '../thumbs'
+import { isVectorSrc } from '../lod'
 import { STICKY_FONT, TEXT_FONT, isNamedColor, type Shape } from '../types'
 import { useBoard, useExactZoomRef } from './context'
 import { MarkdownLite } from './MarkdownLite'
@@ -111,7 +112,7 @@ export const StickyView = memo(function StickyView({ shape, editing }: ViewProps
       data-id={shape.id}
       data-kind="sticky"
       data-overflow={showMore ? (fits ? 'grow' : 'open') : undefined}
-      className="absolute left-0 top-0 flex flex-col rounded-[4px] shadow-note"
+      className="baked-shadow baked-shadow-4 absolute left-0 top-0 flex flex-col rounded-[4px]"
       style={{
         ...place(shape),
         // Room for the "Show less" pill under the last line.
@@ -233,15 +234,25 @@ const LABEL_MAX_W = 'calc(100% * min(1, var(--zx, var(--z, 1))) / min(1, var(--z
  * falls back to the source).
  */
 export function useThumbSrc(src: string, bucket: number | null, wait = false): string {
+  // A vector image draws from a bitmap copy at any zoom; zooming in, a smaller copy stands in until the sharper one is made.
+  const vector = isVectorSrc(src)
   const subscribe = useCallback((fn: () => void) => thumbs.subscribe(src, fn), [src])
-  const thumb = useSyncExternalStore(subscribe, () => (bucket && src ? thumbs.best(src, bucket) : null))
+  const thumb = useSyncExternalStore(subscribe, () => (bucket && src ? (vector ? thumbs.bestOrSmaller(src, bucket) : thumbs.best(src, bucket)) : null))
   const failed = useSyncExternalStore(subscribe, () => !!src && thumbs.failed(src))
+  // Copies are made once the view is still; until then a vector image with none waits as a plain card
+  // (redrawing an SVG mid-gesture is the cost the copies exist to avoid), and shows its source once still.
+  const moving = useSyncExternalStore(subscribeMoving, () => vector && !!bucket && thumbsMoving())
   // A source already showing keeps showing while a smaller copy is made (zooming out from it).
   const [shown, setShown] = useState<string | null>(null)
   useEffect(() => {
-    if (bucket && src && !thumbs.best(src, bucket)) requestThumb(src, bucket)
-  }, [src, bucket])
-  const out = thumb ?? (wait && bucket && !failed && shown !== src ? '' : src)
+    // A vector image wants its own size: drawing a copy two buckets too big means scaling twice the pixels down every repaint.
+    if (bucket && src && (vector ? !thumbs.has(src, bucket) : !thumbs.best(src, bucket))) requestThumb(src, bucket)
+  }, [src, bucket, vector])
+  useEffect(() => {
+    if (thumb) thumbs.touchUrl(src, thumb)
+  }, [src, thumb])
+  const holdBack = vector ? moving && !failed && shown !== src : wait && bucket && !failed && shown !== src
+  const out = thumb ?? (holdBack ? '' : src)
   if (out === src && shown !== src && src) setShown(src)
   return out
 }
@@ -321,16 +332,28 @@ export const FrameView = memo(function FrameView({
   )
 })
 
-export const ImageView = memo(function ImageView({ shape, bucket, low }: { shape: Shape; bucket: number | null; low: boolean }) {
+/**
+ * Card-sized images get a compositing layer of their own. WebKit hands such a
+ * plain image to Core Animation as a texture, so a zoom scales it on the GPU
+ * instead of repainting the board's layer with every bitmap in it at each new
+ * scale (2026-10-19 bench, easel board on a 2× laptop: zoom frames 29.5 → 17 ms
+ * median, pan max 63 → 22 ms). Huge images — a backdrop the size of a section
+ * or a board — would be huge textures; they stay painted.
+ */
+export const OWN_LAYER_MAX_AREA = 2_000_000
+
+export const ImageView = memo(function ImageView({ shape, bucket }: { shape: Shape; bucket: number | null }) {
   const [failed, setFailed] = useState<string | null>(null)
   const own = shape.src ?? ''
   const src = useThumbSrc(own, bucket, true)
+  const layer = shape.w * shape.h <= OWN_LAYER_MAX_AREA
   return (
     <div
       data-id={shape.id}
       data-kind="image"
       data-pending={own && !src ? 'image' : undefined}
-      className={cn('absolute left-0 top-0 overflow-hidden rounded-[6px] bg-surface-2', !low && 'shadow-note')}
+      // The shadow stays at every zoom: drawn from a bitmap it costs nothing, and dropping it far out swapped every card's paint mid-zoom.
+      className="baked-shadow baked-shadow-6 absolute left-0 top-0 rounded-[6px] bg-surface-2"
       style={place(shape)}
     >
       {own && !src ? null : own && failed !== own ? (
@@ -343,7 +366,8 @@ export const ImageView = memo(function ImageView({ shape, bucket, low }: { shape
           onError={() => {
             if (src === own) setFailed(own)
           }}
-          className="pointer-events-none h-full w-full object-cover"
+          className="pointer-events-none h-full w-full rounded-[inherit] object-cover"
+          style={layer ? { willChange: 'transform' } : undefined}
         />
       ) : (
         <div className="flex h-full items-center justify-center text-[12px] text-ink-4">Image unavailable</div>

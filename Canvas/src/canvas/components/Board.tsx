@@ -108,6 +108,7 @@ import { checklistText, isChecklist } from '../checklist'
 import { TIMELINE_SIZE, isTimeline, neededHeight, newTimelineText } from '../timeline'
 import type { FrameUser } from './WebFrame'
 import { ShapeLayer } from './ShapeLayer'
+import { setThumbsMoving } from '../thumbs'
 import { MOD, cn } from './ui'
 
 type Gesture =
@@ -437,11 +438,13 @@ export function Board({ session }: { session: Session }) {
     if (settledRef.current) {
       settledRef.current = false
       setSettled(false)
+      setThumbsMoving(true)
     }
     const timer = setTimeout(() => {
       el.style.willChange = ''
       settledRef.current = true
       setSettled(true)
+      setThumbsMoving(false)
     }, SETTLE_MS)
     return () => clearTimeout(timer)
   }, [view, motion, zoomVars])

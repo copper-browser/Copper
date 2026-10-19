@@ -52,4 +52,26 @@ describe('downscaled copies of images', () => {
     expect(revoked).toEqual(['blob:1'])
     expect(c.bytes).toBe(100)
   })
+
+  it('stands a smaller copy in for a vector image being zoomed into', () => {
+    const c = new ThumbCache()
+    c.set('v', 384, thumb('blob:384'))
+    c.set('v', 1024, thumb('blob:1024'))
+    expect(c.bestOrSmaller('v', 768)).toBe('blob:1024')
+    expect(c.bestOrSmaller('v', 2048)).toBe('blob:1024')
+    expect(c.bestOrSmaller('v', 96)).toBe('blob:384')
+    expect(c.bestOrSmaller('none', 96)).toBeNull()
+    expect(c.has('v', 384)).toBe(true)
+    expect(c.has('v', 768)).toBe(false)
+  })
+
+  it('marks the copy a view shows as recently used, by its URL', () => {
+    const revoked: string[] = []
+    const c = new ThumbCache(250, url => revoked.push(url))
+    c.set('a', 96, thumb('blob:a'))
+    c.set('b', 96, thumb('blob:b'))
+    c.touchUrl('a', 'blob:a')
+    c.set('c', 96, thumb('blob:c'))
+    expect(revoked).toEqual(['blob:b'])
+  })
 })

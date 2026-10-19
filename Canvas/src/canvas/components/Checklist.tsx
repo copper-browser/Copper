@@ -666,7 +666,7 @@ export const ChecklistView = memo(function ChecklistView({
       aria-label={titleText ? `Checklist: ${titleText}` : 'Checklist'}
       aria-readonly={readOnly || undefined}
       onPointerDown={onCardDown}
-      className={cn('cl-card absolute left-0 top-0', single && 'cl-single', selected && 'cl-selected', locked !== null && 'cl-locked')}
+      className={cn('cl-card baked-shadow baked-shadow-12 absolute left-0 top-0', single && 'cl-single', selected && 'cl-selected', locked !== null && 'cl-locked')}
       style={
         {
           width: shape.w,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LOD_BAR_PX, LOD_STEP, LOD_TEXT_PX, THUMB_BUCKETS, barWidth, drawnWidth, headingLine, imageBucket, isBarText, isLowText, nextLodZoom } from '../lod'
+import { LOD_BAR_PX, LOD_STEP, LOD_TEXT_PX, THUMB_BUCKETS, VECTOR_BUCKETS, VECTOR_MAX_PIXELS, barWidth, drawnWidth, headingLine, imageBucket, isBarText, isLowText, isVectorSrc, nextLodZoom } from '../lod'
 import { STICKY_FONT, TEXT_FONT } from '../types'
 
 describe('text LOD', () => {
@@ -82,3 +82,41 @@ describe('the heading line', () => {
     expect(headingLine('x'.repeat(500)).text).toHaveLength(140)
   })
 })
+
+describe('vector images', () => {
+  it('knows an SVG source from its head or its path, without reading a whole data: URL', () => {
+    expect(isVectorSrc('data:image/svg+xml;base64,PHN2Zz4=')).toBe(true)
+    expect(isVectorSrc('data:image/svg+xml,%3Csvg%3E')).toBe(true)
+    expect(isVectorSrc('data:image/png;base64,' + 'A'.repeat(100) + '.svg')).toBe(false)
+    expect(isVectorSrc('https://example.com/art/card.svg?v=2')).toBe(true)
+    expect(isVectorSrc('https://example.com/svg/photo.jpg')).toBe(false)
+    expect(isVectorSrc(undefined)).toBe(false)
+  })
+
+  it('always draws a bitmap copy, at the smallest bucket covering the device pixels shown', () => {
+    // A 447-wide card at 1× zoom on a 2× screen: 894 device px → the 1024 copy.
+    expect(imageBucket(447, 447, 1, 2, true, 1.5)).toBe(1024)
+    // Even when shown at its own size or bigger (a bitmap would draw its source).
+    expect(imageBucket(447, 447, 2, 2, true, 1.5)).toBe(2048)
+    expect(imageBucket(447, 447, 0.1, 2, true, 1.5)).toBe(96)
+    // Steps of about √2: 390 px wanted is a 512 copy, not 768.
+    expect(imageBucket(447, 447, 0.436, 2, true, 1.5)).toBe(512)
+    for (let i = 1; i < VECTOR_BUCKETS.length; i++) expect(VECTOR_BUCKETS[i]! / VECTOR_BUCKETS[i - 1]!).toBeLessThanOrEqual(1.5)
+    for (const b of THUMB_BUCKETS) expect(VECTOR_BUCKETS).toContain(b)
+  })
+
+  it('keeps a copy under the pixel cap; a card is stretched at most 1.5× before its source is drawn', () => {
+    // A 4000×8400 backdrop at 0.44× on 2×: 3520 px wanted, but 16 MP caps it at ≈ 2760 → the 2048 copy is too soft.
+    const tall = 8400 / 4000
+    expect(Math.floor(Math.sqrt(VECTOR_MAX_PIXELS / tall))).toBeLessThan(3072)
+    // Held back by the pixel cap, it stays a (softer) bitmap rather than megapixels of vector.
+    expect(imageBucket(4000, 4000, 0.44, 2, true, tall)).toBe(2048)
+    expect(imageBucket(4000, 4000, 1, 2, true, tall)).toBe(2048)
+    expect(imageBucket(4000, 4000, 0.25, 2, true, tall)).toBe(2048)
+    // A 1384-wide hero at 2.5× zoom on 2×: 6920 px wanted, 4096 is the biggest copy → the source.
+    expect(imageBucket(1384, 1384, 2.5, 2, true, 0.4)).toBeNull()
+    expect(imageBucket(1384, 1384, 2, 2, true, 0.4)).toBe(4096)
+    expect(imageBucket(1384, 1384, 1.4, 2, true, 0.4)).toBe(4096)
+  })
+})
+

@@ -815,7 +815,7 @@ export const TimelineView = memo(function TimelineView({
       role="group"
       aria-label={titleText ? `Timeline: ${titleText}` : 'Timeline'}
       aria-readonly={readOnly || undefined}
-      className={cn('tl-card absolute left-0 top-0', selected && 'tl-selected')}
+      className={cn('tl-card baked-shadow baked-shadow-12 absolute left-0 top-0', selected && 'tl-selected')}
       style={
         {
           width: shape.w,

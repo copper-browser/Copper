@@ -7,8 +7,10 @@ import { CanvasApp } from './canvas/components/CanvasApp'
 import { VERSION } from './controller'
 import { hasNativeHost, postToHost } from './host-bridge'
 import { installTheme } from './theme'
+import { installBakedShadows } from './canvas/shadows'
 
 installTheme()
+installBakedShadows()
 installApi()
 // Render counters for measuring a running page (`canvas/debug.ts`): read-only numbers.
 Object.defineProperty(window, '__canvasCounters', { value: counters, configurable: true })
