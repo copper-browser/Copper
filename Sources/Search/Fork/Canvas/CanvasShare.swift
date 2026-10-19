@@ -87,6 +87,8 @@ enum CanvasJoinFlow {
     private static var pending: CanvasJoinLink? = loadPending()
 
     static func handle(_ url: URL, in browser: Browser) -> Bool {
+        // copper://cloud/join — a cloud's /start page (Fork/Cloud/CloudSSO.swift).
+        if CloudJoin.handle(url, in: browser) { return true }
         guard let link = accepts(url) else { return false }
         Task { await join(link, in: browser) }
         return true

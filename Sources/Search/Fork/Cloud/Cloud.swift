@@ -9,7 +9,8 @@ import Security
 //
 // Nothing here runs on its own. A link is made by pasting a link code, an
 // account by signing in — or both at once with a pairing code another
-// signed-in Copper made (CloudPairing.swift); until then no request leaves
+// signed-in Copper made (CloudPairing.swift), or with the company's single
+// sign-on from a join link (CloudSSO.swift); until then no request leaves
 // the Mac. What is kept
 // lives in `cloud.json` beside the session, mode 0600 like agent.json: the
 // instance address, its key and certificate fingerprint, the account, the
@@ -60,12 +61,54 @@ final class Cloud: ObservableObject {
         var link: String { Cloud.codeText(url, "p=\(code)", fingerprint) }
     }
 
+    /// A join link: `copper-cloud://HOST:PORT/#sso=PROVIDER&fp=HEX`, what
+    /// `copper-cloud link-code --sso` prints and the instance's `/start` page
+    /// hands over. No secret in it: where the instance is, how to know it,
+    /// and which of its sign-ins to use (`GET /v1/auth/sso`). Signing in with
+    /// that provider — a company Google account — links this Mac and signs it
+    /// in (CloudSSO.swift).
+    struct SSOCode: Equatable {
+        var url: URL
+        /// The provider's id on the instance (`google`).
+        var provider: String
+        /// As in a link code: the certificate's SHA-256, or nil for one the
+        /// system trusts (an ACME certificate).
+        var fingerprint: String?
+
+        var host: String { Cloud.hostText(url) }
+        var fingerprintPairs: String? { fingerprint.map(Cloud.pairs) }
+        /// The whole link, as the instance prints it.
+        var link: String { Cloud.codeText(url, "sso=\(provider)", fingerprint) }
+    }
+
     /// What a pasted code turned out to be.
     enum Code: Equatable {
         /// `#k=`: connects; signing in comes next.
         case link(Link)
         /// `#p=`: connects and signs in, in one step.
         case pairing(PairingCode)
+        /// `#sso=`: connects and signs in through the instance's single
+        /// sign-on, in one step.
+        case sso(SSOCode)
+
+        var url: URL {
+            switch self {
+            case .link(let link): return link.url
+            case .pairing(let code): return code.url
+            case .sso(let code): return code.url
+            }
+        }
+
+        var fingerprint: String? {
+            switch self {
+            case .link(let link): return link.fingerprint
+            case .pairing(let code): return code.fingerprint
+            case .sso(let code): return code.fingerprint
+            }
+        }
+
+        var host: String { Cloud.hostText(url) }
+        var fingerprintPairs: String? { fingerprint.map(Cloud.pairs) }
     }
 
     /// Who is signed in, and as which device.
@@ -253,9 +296,9 @@ final class Cloud: ObservableObject {
         return nil
     }
 
-    /// A link code (`#k=`) or a pairing code (`#p=`), whichever was pasted.
-    /// A bare `cp_…` pairing code has no address in it: it reads only with
-    /// `linkedTo`, the instance this Mac already knows.
+    /// A link code (`#k=`), a pairing code (`#p=`) or a join link (`#sso=`),
+    /// whichever was pasted. A bare `cp_…` pairing code has no address in
+    /// it: it reads only with `linkedTo`, the instance this Mac already knows.
     nonisolated static func parseCode(_ text: String, linkedTo current: Link? = nil) -> Code? {
         let raw = text.filter { !$0.isWhitespace }
         if let current, isBarePairingCode(raw) {
@@ -282,7 +325,19 @@ final class Cloud: ObservableObject {
            let end = endpoint(address: address, fingerprint: fields["fp"]) {
             return .pairing(PairingCode(url: end.url, code: code, fingerprint: end.pin))
         }
+        if let provider = fields["sso"], isProviderId(provider),
+           let end = endpoint(address: address, fingerprint: fields["fp"]) {
+            return .sso(SSOCode(url: end.url, provider: provider, fingerprint: end.pin))
+        }
         return nil
+    }
+
+    /// A provider id as the instance names one: short, and nothing that could
+    /// leave the path segment it goes in (`/v1/auth/sso/{id}`).
+    nonisolated static func isProviderId(_ text: String) -> Bool {
+        guard let first = text.first, first.isASCII, first.isLetter || first.isNumber else { return false }
+        return text.count <= 64
+            && text.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" || $0 == ".") }
     }
 
     /// `cp_` and base64url: a pairing code on its own, without the address.
@@ -398,8 +453,9 @@ final class Cloud: ObservableObject {
         Task { await loadInfo(force: true) }
     }
 
-    /// What `POST /v1/auth/pair` answers.
-    private struct Paired: Decodable {
+    /// What `POST /v1/auth/pair` answers — and `POST /v1/auth/sso/{id}`,
+    /// which adds `created`.
+    struct Paired: Decodable {
         struct User: Decodable {
             var id: UUID
             var email: String
@@ -416,7 +472,9 @@ final class Cloud: ObservableObject {
         /// What this Mac sends as `X-Copper-Instance` from now on: the
         /// instance key (an open instance) or an access key minted for it.
         var gateKey: String
-        enum CodingKeys: String, CodingKey { case token, user, device, gateKey = "gate_key" }
+        /// Single sign-on only: the account was made just now.
+        var created: Bool?
+        enum CodingKeys: String, CodingKey { case token, user, device, gateKey = "gate_key", created }
     }
 
     /// Link this Mac and sign it in with a pairing code, in one step. The
@@ -469,23 +527,50 @@ final class Cloud: ObservableObject {
         } catch let failure as Failure {
             throw failure
         } catch {
-            if pin == nil, code.url.scheme == "https", let seen = probeTrust.seen, Cloud.isCertificateRefusal(error) {
-                throw Failure(status: 0, code: "untrusted",
-                              message: "This instance's certificate isn't one this Mac trusts, and the pairing code has no fingerprint to pin it by. Compare its fingerprint with `copper-cloud doctor` on the server before trusting it.",
-                              seen: seen)
-            }
-            throw Cloud.transportFailure(error, trust: probeTrust)
+            throw Cloud.probeFailure(error, url: code.url, pin: pin, trust: probeTrust, carrying: "the pairing code has")
         }
+        try await adoptSignedIn(answer, url: code.url, pin: pin, trust: probeTrust) { link, account in
+            "Paired with \(link.host) — signed in as \(account.email)"
+        }
+    }
+
+    /// How pairing and single sign-on both end: the server's answer — the
+    /// link (address, `gate_key` as the key, the pin it was reached by), the
+    /// account and the session token — kept in one write (`adoptPaired`),
+    /// then the session asked who it is, as after a sign-in. The device id
+    /// is the one the server answered with.
+    func adoptSignedIn(_ answer: Paired, url: URL, pin: String?, trust: CloudTrust, note: (Link, Account) -> String) async throws {
         let key = answer.gateKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty, !key.contains(where: \.isWhitespace) else {
-            throw Failure(status: 0, code: "decode", message: "The server paired this Mac but sent no instance credential")
+            throw Failure(status: 0, code: "decode", message: "The server signed this Mac in but sent no instance credential")
         }
-        let link = Link(url: code.url, key: key, fingerprint: pin)
+        let link = Link(url: url, key: key, fingerprint: pin)
         let account = Account(userId: answer.user.id, email: answer.user.email,
                               displayName: answer.user.displayName ?? answer.user.email, deviceId: answer.device?.id ?? deviceId)
-        adoptPaired(link: link, trust: probeTrust, token: answer.token, account: account)
-        CloudLog.note("Paired with \(link.host) — signed in as \(account.email)")
+        adoptPaired(link: link, trust: trust, token: answer.token, account: account)
+        CloudLog.note(note(link, account))
         _ = try? await me()
+    }
+
+    /// A request on a probe session that failed before the server answered.
+    /// Without a pin, a certificate the Mac's roots refuse is `untrusted`,
+    /// carrying the fingerprint the server showed (`Failure.seen`) for a
+    /// person to compare and trust on first use; `carrying` says what came
+    /// without a fingerprint ("the pairing code has").
+    nonisolated static func probeFailure(_ error: Error, url: URL, pin: String?, trust: CloudTrust, carrying: String) -> Failure {
+        if pin == nil, url.scheme == "https", let seen = trust.seen, Cloud.isCertificateRefusal(error) {
+            return Failure(status: 0, code: "untrusted",
+                           message: "This instance's certificate isn't one this Mac trusts, and \(carrying) no fingerprint to pin it by. Compare its fingerprint with `copper-cloud doctor` on the server before trusting it.",
+                           seen: seen)
+        }
+        return Cloud.transportFailure(error, trust: trust)
+    }
+
+    /// A probe session pinned the way `connect` and `pair` pin theirs: to
+    /// `pin`, or to the Mac's own roots without one.
+    nonisolated static func probeSession(pin: String?) -> (URLSession, CloudTrust) {
+        let trust = CloudTrust(pin: pin)
+        return (makeSession(trust), trust)
     }
 
     /// The link, the account and the token from a pairing, kept in one write
@@ -871,7 +956,7 @@ final class Cloud: ObservableObject {
         }
     }
 
-    private static func makeSession(_ trust: CloudTrust) -> URLSession {
+    nonisolated private static func makeSession(_ trust: CloudTrust) -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 15
         configuration.httpCookieStorage = nil

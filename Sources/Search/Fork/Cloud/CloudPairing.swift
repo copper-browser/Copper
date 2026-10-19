@@ -268,6 +268,13 @@ final class CloudPairing: ObservableObject {
     /// everything — so one paste ends with this Mac syncing.
     static func pairAndSync(_ code: Cloud.PairingCode, trusting: String? = nil, domains: Set<CloudSync.Domain>? = nil) async throws {
         try await Cloud.shared.pair(code, trusting: trusting)
+        await syncAfterSignIn(domains)
+    }
+
+    /// What follows a sign-in that linked this Mac in one step — a pairing
+    /// code, or single sign-on (CloudSSO.swift): "Turn on sync" with
+    /// `domains`, or the switches this Mac had before, or everything.
+    static func syncAfterSignIn(_ domains: Set<CloudSync.Domain>? = nil) async {
         let sync = CloudSync.shared
         let chosen = domains ?? (sync.enabled.isEmpty ? Set(CloudSync.Domain.allCases) : sync.enabled)
         guard !chosen.isEmpty else { return }
