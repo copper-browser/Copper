@@ -39,7 +39,13 @@ jobs:
           new=$(cat Canvas/CANVAS_APP_REF)
           echo "old=$old" >> "$GITHUB_OUTPUT"
           echo "new=$new" >> "$GITHUB_OUTPUT"
-          git diff --quiet && echo "changed=false" >> "$GITHUB_OUTPUT" || echo "changed=true" >> "$GITHUB_OUTPUT"
+          # Only the page counts: a canvas-app commit that leaves dist/canvas.html as it was keeps the pin.
+          if git diff --quiet -- Canvas/dist/canvas.html; then
+            git checkout -- Canvas/CANVAS_APP_REF
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Push the pinned branch, open or update the issue
         if: steps.pin.outputs.changed == 'true'
         env:
@@ -64,5 +70,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           for num in $(gh issue list --state open --search 'in:title "Canvas: canvas-app moved on"' --json number --jq '.[].number'); do
-            gh issue close "$num" --comment "Copper pins canvas-app $(cut -c1-7 Canvas/CANVAS_APP_REF), its main."
+            gh issue close "$num" --comment "Copper's page is canvas-app main's (pinned $(cut -c1-7 Canvas/CANVAS_APP_REF))."
           done
