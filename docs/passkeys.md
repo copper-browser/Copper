@@ -71,13 +71,17 @@ stand-ins of the same names.
   when their private key is available to the import path.
 - Keys are local to this Copper installation and its keychain. There is no
   cross-device sync, Bluetooth/hybrid hand-off, or iCloud sync in this build.
-- Copper's own authenticator has no conditional (autofill) UI: on its own it
-  reports `isConditionalMediationAvailable()` false and rejects a
-  `mediation: 'conditional'` request with `NotSupportedError`, so sites fall
-  back to their explicit passkey button. When an extension that offers
-  passkey autofill (1Password) hooks the API, its answer is what the page
-  sees — Copper does not override it. A normal create/get ceremony always
-  asks for user verification.
+- Conditional (autofill) mediation works for sign-in. A site that calls
+  `navigator.credentials.get({mediation: 'conditional'})` waits while Copper
+  lists that site's passkeys first in the account list under its name or
+  password box, beside the saved passwords. Picking one asks for Touch ID and
+  answers the waiting request; nothing is signed until you pick. A newer
+  conditional request replaces the older one, an abort or leaving the page
+  lets it go, and the rows show only while the tab is still on the host that
+  asked. Conditional *creation* is still refused. When an extension that
+  offers passkey autofill (1Password) hooks the API, its answer is what the
+  page sees; a request it passes on reaches Copper's list. A normal
+  create/get ceremony always asks for user verification.
 - With no credential for the relying party, `get` rejects with
   `NotAllowedError`, the same answer a platform authenticator gives when the
   user has nothing to pick; sites treat it as a cancel and offer another way.
@@ -134,6 +138,19 @@ declined get/create fall through to Copper and return `PublicKeyCredential` /
 `NotAllowedError`. It cleans up like the native fixture. It uses no real
 extension, so it does not prove 1Password's own background decisions or a
 live Google sign-in.
+
+```sh
+# The account list in real WebKit, keychain on the probe file stand-in:
+COPPER_SKIP_BUILD=1 docs/fixtures/passkey-picker-codes-e2e.sh
+```
+
+This one runs a conditional `get` that must wait until its passkey row is
+picked from the list under an `autocomplete="username webauthn"` box. It then
+imports a CSV login with an `otpauth` column, picks that login, and checks
+that the code page's `one-time-code` box fills itself with the right TOTP.
+Over SSH the login keychain refuses access ("User interaction is not
+allowed"), so run the keychain-backed `passkey-native-e2e.sh` from a local
+Terminal, or with `SEARCH_PROBE_KEYCHAIN=file`.
 
 For automated QA, `./bench --world pkqa passkeys answer yes` answers the native
 verification prompt in that isolated test world. `list`, `count`, and

@@ -118,6 +118,26 @@ it — one box, or one box per digit. Codes kept only in the separate Bitwarden
 Authenticator app are invisible to `bw`: the key has to be on a Password
 Manager login item with the site's URL.
 
+Keychain logins can keep a code too. In the Passwords panel, open the site,
+hover the account and press **Add code**, then paste the setup key the site
+shows during two-step setup (the "can't scan it?" text under the QR code) or
+its `otpauth://totp/…` link. Copper checks that the key makes a code before
+keeping it. The key is a separate keychain item under **Copper Codes**. It is
+never shown, and it is removed with the login. A CSV import keeps the
+`otpauth`/`totp` column the same way.
+
+**Filled on their own.** With Settings › Passwords › **Fill two-step codes**
+on (the default), Copper watches for the code page after a sign-in. If you
+picked the account from Copper's list in that tab and it has a key, Copper
+fills the box without a click. This happens once per pick, within ten
+minutes, and only on a page where that account would be offered anyway. The
+box must plainly be a code box: `autocomplete="one-time-code"`, a row of
+one-digit boxes, or a name such as OTP, 2FA or verification code. Copper
+never presses the page's button. A password you typed by hand does not
+trigger it, because any script on the page could fake that report and be
+handed the code. In that case click the code box and pick the *Two-step
+code* row. Codes texted or emailed to you are not read.
+
 Choose **Bitwarden** under **Save new passwords to** (Settings › Passwords ›
 Password managers) to route new save offers there while it is unlocked; choose
 Keychain (or leave Bitwarden locked) to keep saving to the keychain. Existing

@@ -116,6 +116,11 @@ final class Preferences: ObservableObject {
     @Published var fillsPasswords: Bool {
         didSet { store.set(fillsPasswords, forKey: "passwords.fill") }
     }
+    /// Fork (auto-codes): put the two-step code in on its own on the page
+    /// that asks for it, right after a sign-in with an account that has one.
+    @Published var fillsCodes: Bool {
+        didSet { store.set(fillsCodes, forKey: "passwords.codes") }
+    }
     /// Fill identities, cards, usernames and matching custom fields as well as sign-ins.
     @Published var fillsEverything: Bool {
         didSet { store.set(fillsEverything, forKey: "autofill.everything") }
@@ -186,6 +191,7 @@ final class Preferences: ObservableObject {
         savesPasswords = store.object(forKey: "passwords.save") as? Bool ?? true
         fillsPasswords = store.object(forKey: "passwords.fill") as? Bool ?? true
         fillsEverything = store.object(forKey: "autofill.everything") as? Bool ?? true
+        fillsCodes = store.object(forKey: "passwords.codes") as? Bool ?? true // Fork (auto-codes)
         passwordsBackend = store.string(forKey: "passwords.backend")
             .flatMap(Credentials.Backend.init(rawValue:)) ?? .keychain
         // Anyone who already has a session was here before the welcome

@@ -78,6 +78,8 @@ struct AccountList: View {
                 credentialRow(credential)
             case .code(let credential):
                 credentialRow(credential, code: true)
+            case .passkey(let passkey): // Fork (passkey-picker)
+                autofillRow(icon: "person.badge.key", title: passkey.label, subtitle: "Passkey · \(passkey.rpId)")
             case .username(let name):
                 autofillRow(icon: "person", title: "Use \(name)", subtitle: "Most used")
             case .identity(let identity):

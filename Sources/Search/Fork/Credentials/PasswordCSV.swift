@@ -19,8 +19,7 @@ enum PasswordCSV {
     struct Outcome: Equatable {
         var kept = 0
         var skipped = 0
-        /// Kept logins that had a one-time-code secret, which Copper's
-        /// passwords don't hold.
+        /// Two-step code keys kept beside the logins (KeychainCodes).
         var codes = 0
         /// Set when nothing could be read at all: why, in a sentence.
         var refused: String?
@@ -35,7 +34,7 @@ enum PasswordCSV {
             }
             var line = kept == 1 ? "1 password imported" : "\(kept) passwords imported"
             if skipped > 0 { line += ", \(skipped) skipped (no site or no password)" }
-            if codes > 0 { line += " — one-time codes aren’t kept" }
+            if codes > 0 { line += codes == 1 ? ", with 1 two-step code" : ", with \(codes) two-step codes" }
             return line
         }
     }
@@ -200,6 +199,18 @@ enum PasswordCSV {
         }
     }
 
+    /// Each kept login's one-time-code column, as host, user and key.
+    static func seeds(_ text: String) -> [(host: String, user: String, seed: String)] {
+        var rows = parse(text)
+        guard !rows.isEmpty, let columns = columns(rows.removeFirst()), let at = columns.otp else { return [] }
+        return rows.compactMap { row in
+            guard login(row, columns) != nil, at < row.count else { return nil }
+            let seed = row[at].trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !seed.isEmpty else { return nil }
+            return (Vault.host(of: row[columns.url]), row[columns.user], seed)
+        }
+    }
+
     private static func login(_ row: [String], _ columns: Columns) -> (code: Bool, notes: Bool)? {
         guard row.count > max(columns.url, max(columns.user, columns.password)) else { return nil }
         guard !Vault.host(of: row[columns.url]).isEmpty, !row[columns.password].isEmpty else { return nil }
@@ -217,7 +228,13 @@ enum PasswordCSV {
         guard let plain = canonical(text) else { return Outcome(refused: notPasswords) }
         let found = summary(text)
         let result = Vault.take(csv: plain)
-        return Outcome(kept: result.kept, skipped: found.skipped + result.skipped, codes: found.withCodes)
+        // Fork (keychain-codes): each row's authenticator key goes beside its
+        // password; one that makes no code is left out, not guessed at.
+        var codes = 0
+        for (host, user, seed) in seeds(text) where Vault.logins(for: host).contains(where: { $0.user == user }) {
+            if KeychainCodes.save(seed, host: host, user: user) { codes += 1 }
+        }
+        return Outcome(kept: result.kept, skipped: found.skipped + result.skipped, codes: codes)
     }
 
     /// Text from a file the way exports come: UTF-8 (with or without a BOM),
