@@ -293,3 +293,55 @@ input {
 @media (prefers-reduced-motion: reduce) {
   .agent-lease { animation: none; }
 }
+
+/*
+ * Card shadows (canvas/shadows.ts): `--shadow-note` drawn from a nine-slice
+ * bitmap behind the card rather than blurred again at every zoom step. A card
+ * opts in with `baked-shadow` and `--bs-r` (its corner radius: 4, 6 or 12) and,
+ * if it has a border, `--bs-b`. Without the bitmaps it keeps the box-shadow.
+ */
+.baked-shadow {
+  box-shadow: var(--shadow-note);
+}
+:root[data-baked-shadows] .baked-shadow {
+  box-shadow: none;
+  isolation: isolate;
+}
+:root[data-baked-shadows] .baked-shadow::before {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * (var(--baked-shadow-pad) + var(--bs-b, 0px)));
+  border-style: solid;
+  border-color: transparent;
+  border-width: calc(var(--baked-shadow-pad) + var(--bs-r-px));
+  border-image-source: var(--bs-img);
+  border-image-slice: var(--bs-slice);
+  border-image-repeat: stretch;
+  pointer-events: none;
+  z-index: -1;
+}
+.baked-shadow-4 {
+  --bs-r-px: 4px;
+  --bs-slice: var(--baked-shadow-4-slice);
+  --bs-img: var(--baked-shadow-4-light);
+}
+.baked-shadow-6 {
+  --bs-r-px: 6px;
+  --bs-slice: var(--baked-shadow-6-slice);
+  --bs-img: var(--baked-shadow-6-light);
+}
+.baked-shadow-12 {
+  --bs-r-px: 12px;
+  --bs-slice: var(--baked-shadow-12-slice);
+  --bs-img: var(--baked-shadow-12-light);
+}
+.dark .baked-shadow-4 {
+  --bs-img: var(--baked-shadow-4-dark);
+}
+.dark .baked-shadow-6 {
+  --bs-img: var(--baked-shadow-6-dark);
+}
+.dark .baked-shadow-12 {
+  --bs-img: var(--baked-shadow-12-dark);
+}
+

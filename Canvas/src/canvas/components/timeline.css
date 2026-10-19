@@ -5,6 +5,7 @@
  * `timeline-layout.ts`; the numbers here that it relies on say so.
  */
 .tl-card {
+  --bs-b: 1px;
   --tl-line: color-mix(in srgb, var(--ink) 26%, transparent);
   --tl-tick: var(--ink-4);
   --tl-tick-strong: var(--ink-3);
@@ -12,7 +13,6 @@
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 12px;
-  box-shadow: var(--shadow-note);
   font-size: 14px;
   line-height: 1.35;
   box-sizing: border-box;

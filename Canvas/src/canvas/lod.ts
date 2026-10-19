@@ -6,7 +6,8 @@
  * - Text shapes (notes, text, checklists, timelines) whose text would be
  *   under `LOD_TEXT_PX` on screen draw a colour block and a heading line.
  * - Images drawn much smaller than their natural size draw a cached,
- *   downscaled copy (`thumbs.ts`) of the width bucket they need.
+ *   downscaled copy (`thumbs.ts`) of the width bucket they need; vector
+ *   images (SVG) always draw a bitmap copy at the size they are shown.
  *
  * The zoom these decisions use (`lodZoom`) follows the view in steps, not
  * every frame, so a pinch that wobbles around a threshold doesn't swap
@@ -57,13 +58,59 @@ export const THUMB_BUCKETS = [96, 192, 384, 768] as const
 const THUMB_GAIN = 2 / 3
 
 /**
- * The width of the downscaled copy to draw an image at, or null for its own
- * source. `drawnW` is how wide the image's pixels are laid out in world px
- * (its box, or more under `object-fit: cover`).
+ * Widths (device px) a vector image (SVG) is rasterized at. A vector source is
+ * redrawn from scratch every time WebKit paints it — each tile a pan exposes,
+ * every zoom step, the layer promotion at the start and end of a gesture — and
+ * an SVG card can carry filters, patterns and embedded pictures, so it is
+ * drawn from a bitmap copy at the size it is shown instead, at any zoom.
+ * Steps of about √2: a copy is never much bigger than what it covers, since
+ * every repaint scales the whole bitmap down to the screen.
  */
-export function imageBucket(drawnW: number, naturalW: number, zoom: number, dpr = 1): number | null {
-  if (!(naturalW > 0) || !(drawnW > 0) || !(zoom > 0)) return null
+export const VECTOR_BUCKETS = [96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096] as const
+/** The widest vector copy, in device pixels. */
+const VECTOR_MAX_W = 4096
+/** Biggest bitmap made for a vector image, in device pixels (≈ 64 MB decoded). */
+export const VECTOR_MAX_PIXELS = 16_000_000
+/** How far a vector copy may be stretched past its own size before the source itself is drawn. */
+const VECTOR_STRETCH = 1.5
+
+/** Is this image source a vector (SVG) image? */
+export function isVectorSrc(src: string | undefined): boolean {
+  if (!src) return false
+  // Only the head of a data: URL is looked at: a card's URL can be megabytes long.
+  if (src.startsWith('data:')) return /^data:image\/svg\+xml[;,]/i.test(src.slice(0, 32))
+  return /^[^?#]*\.svg(?:[?#]|$)/i.test(src)
+}
+
+/**
+ * The width of the copy to draw an image at, or null for its own source.
+ * `drawnW` is how wide the image's pixels are laid out in world px (its box,
+ * or more under `object-fit: cover`).
+ *
+ * Bitmaps get a downscaled copy only when drawn at well under their size.
+ * Vector images always get a bitmap copy, at the smallest bucket that covers
+ * the device pixels drawn, kept under `VECTOR_MAX_PIXELS` (`aspect` = h / w).
+ * A card zoomed into past 1.5× its biggest copy draws its source (few shapes
+ * are on screen then); an image held back by the pixel cap — a backdrop many
+ * screens big — stays a bitmap however far it is stretched.
+ */
+export function imageBucket(drawnW: number, naturalW: number, zoom: number, dpr = 1, vector = false, aspect = 1): number | null {
+  if (!(drawnW > 0) || !(zoom > 0)) return null
   const need = drawnW * zoom * Math.max(1, dpr)
+  if (vector) {
+    const limit = Math.min(VECTOR_MAX_W, Math.sqrt(VECTOR_MAX_PIXELS / Math.max(aspect, 1e-3)))
+    let pick: number | null = null
+    for (const b of VECTOR_BUCKETS) {
+      if (b > limit) break
+      pick = b
+      if (b >= need) break
+    }
+    if (pick === null) return null
+    // Held back by the pixel cap (a backdrop many screens big): a soft bitmap beats redrawing megapixels of vector.
+    if (limit < VECTOR_MAX_W) return pick
+    return need <= pick * VECTOR_STRETCH ? pick : null
+  }
+  if (!(naturalW > 0)) return null
   // Drawn at more than half its size: the source it is.
   if (need * 2 > naturalW) return null
   for (const b of THUMB_BUCKETS) if (b >= need) return b <= naturalW * THUMB_GAIN ? b : null

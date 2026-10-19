@@ -341,8 +341,17 @@ snapping, frames' children, zoom-to-fit, keyboard moves, comments and the tools 
   up only once the zoom has doubled, and exactly on settle.
 - *Images* (`canvas/thumbs.ts`). An image drawn at under half its natural width draws a
   downscaled copy (96–768 px buckets, made two at a time on a canvas, kept as object URLs, LRU
-  ≤ 64 MB decoded); a picture first seen zoomed out is never decoded at full size. Zooming back
-  in draws the source again.
+  ≤ 192 MB decoded); a picture first seen zoomed out is never decoded at full size. Zooming back
+  in draws the source again. A *vector* image (SVG) always draws a bitmap copy at the size it is
+  shown (96–4096 px in ≈ √2 steps, ≤ 16 MP), since WebKit otherwise redraws the vector at every
+  new scale; copies are made only while the view is still, a smaller copy stands in mid-zoom,
+  and one with no copy yet waits as a plain card until the view stops. Card-sized images
+  (≤ 2 M world px²) are their own compositing layer, so a zoom scales them on the GPU.
+- *Card shadows* (`canvas/shadows.ts`). `--shadow-note` is drawn from a nine-slice bitmap
+  rendered at startup (light and dark, radii 4/6/12) on a `::before`, not a blurred box-shadow
+  that is re-blurred at every scale; stickies, image cards, checklists and timelines wear it
+  (`baked-shadow`, index.css), and keep the box-shadow if the bitmaps can't be made.
+  `docs/fixtures/canvas-easel` has the bench and the numbers.
 - *Live frames* (`canvas/frames.ts` `planLiveFrames`). At most 6 iframes: the frame in use always;
   then frames on screen and ≥ 260 px wide on screen (kept down to 200 px), nearest the middle
   first. New ones mount only once the view has settled; one no longer wanted keeps its page 8 s

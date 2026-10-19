@@ -10,7 +10,7 @@
 import { memo } from 'react'
 import { isChecklist } from '../checklist'
 import { countRender } from '../debug'
-import { CHECKLIST_TEXT_PX, TIMELINE_TEXT_PX, drawnWidth, imageBucket, isBarText, isLowText } from '../lod'
+import { CHECKLIST_TEXT_PX, TIMELINE_TEXT_PX, drawnWidth, imageBucket, isBarText, isLowText, isVectorSrc } from '../lod'
 import { isTimeline } from '../timeline'
 import { STICKY_FONT, TEXT_FONT, type Shape } from '../types'
 import { ChecklistView } from './Checklist'
@@ -66,7 +66,9 @@ export const ShapeLayer = memo(function ShapeLayer({
     <>
       {frames.map(s => {
         const img = s.image
-        const bucket = img ? imageBucket(drawnWidth(s.w, s.h, img.naturalW, img.naturalH, 'contain'), img.naturalW, lodZoom, dpr) : null
+        const bucket = img
+          ? imageBucket(drawnWidth(s.w, s.h, img.naturalW, img.naturalH, 'contain'), img.naturalW, lodZoom, dpr, isVectorSrc(img.src), s.h / Math.max(s.w, 1))
+          : null
         return <FrameView key={s.id} shape={s} editing={editId === s.id} selected={selection.has(s.id)} imageBucket={bucket} />
       })}
       {boxes.map(s => {
@@ -93,8 +95,8 @@ export const ShapeLayer = memo(function ShapeLayer({
         }
         if (s.type === 'image') {
           const natW = s.naturalW ?? 0
-          const bucket = imageBucket(drawnWidth(s.w, s.h, natW, s.naturalH ?? 0, 'cover'), natW, lodZoom, dpr)
-          return <ImageView key={s.id} shape={s} bucket={bucket} low={isLowText(STICKY_FONT, lodZoom)} />
+          const bucket = imageBucket(drawnWidth(s.w, s.h, natW, s.naturalH ?? 0, 'cover'), natW, lodZoom, dpr, isVectorSrc(s.src), s.h / Math.max(s.w, 1))
+          return <ImageView key={s.id} shape={s} bucket={bucket} />
         }
         if (s.live)
           return (
