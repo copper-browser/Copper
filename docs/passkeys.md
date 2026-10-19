@@ -139,6 +139,19 @@ declined get/create fall through to Copper and return `PublicKeyCredential` /
 extension, so it does not prove 1Password's own background decisions or a
 live Google sign-in.
 
+```sh
+# The account list in real WebKit, keychain on the probe file stand-in:
+COPPER_SKIP_BUILD=1 docs/fixtures/passkey-picker-codes-e2e.sh
+```
+
+This one runs a conditional `get` that must wait until its passkey row is
+picked from the list under an `autocomplete="username webauthn"` box. It then
+imports a CSV login with an `otpauth` column, picks that login, and checks
+that the code page's `one-time-code` box fills itself with the right TOTP.
+Over SSH the login keychain refuses access ("User interaction is not
+allowed"), so run the keychain-backed `passkey-native-e2e.sh` from a local
+Terminal, or with `SEARCH_PROBE_KEYCHAIN=file`.
+
 For automated QA, `./bench --world pkqa passkeys answer yes` answers the native
 verification prompt in that isolated test world. `list`, `count`, and
 `forget --id ID` expose metadata only; private key bytes are never returned.
