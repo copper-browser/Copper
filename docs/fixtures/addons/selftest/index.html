@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bridge self-test</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Bridge self-test</h1>
+      <p id="who">Waiting for window.copper…</p>
+    </div>
+    <button id="run" type="button">Run again</button>
+  </header>
+  <p id="greeting" class="muted"></p>
+  <section>
+    <h2>Methods <span id="tally" class="muted"></span></h2>
+    <ol id="calls"></ol>
+  </section>
+  <section>
+    <h2>Events</h2>
+    <ol id="events" class="log"><li class="muted">None yet. Toggle ⌘E, switch the theme or change tabs.</li></ol>
+  </section>
+  <footer class="muted">A fixture for Copper's tests: <code>docs/fixtures/addons/selftest</code>. Links:
+    <a href="https://example.com/">example.com</a> opens in a tab;
+    <a href="https://example.com/" target="_blank">target=_blank</a> too.</footer>
+</body>
+</html>

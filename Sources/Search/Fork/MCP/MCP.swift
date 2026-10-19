@@ -271,6 +271,7 @@ final class MCP: ObservableObject {
         Intelligence.shared.watchForReload()
         // Model keys the linked Copper Cloud provides (Fork/Cloud/CloudIntelligence.swift).
         CloudIntelligence.shared.start()
+        AddonSync.shared.start() // Fork (addons): the cloud's addons, same lifecycle (Fork/Addons/AddonSync.swift)
         Headless.start(for: browser)
         // Agent links dial out once there is a window to drive.
         AgentLinks.shared.start()
@@ -581,6 +582,7 @@ final class MCP: ObservableObject {
         case "jev": config.jev = (request["arg"] as? String ?? "on") != "off"
         case "link": return AgentLinks.shared.bench(request["arg"] as? String ?? "")
         case "transcript": return VoiceTools.bench(request["arg"] as? String ?? "") // Fork (voice): test world only
+        case "addons": return AddonBench.handle(request["arg"] as? String ?? "") // Fork (addons): `bench agent addons …`
         case "setup-phi":
             do { return try Setup(endpoint: endpoint, token: config.token).phi().dictionary } catch let error { return ["error": (error as? Tools.Failure)?.text ?? error.localizedDescription] }
         case "setup-claude":

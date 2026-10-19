@@ -19,7 +19,7 @@ let package = Package(
             // carries that bundle into the app; Fork/AnimatedBackdrop.swift
             // looks in both places). The canvas page rides the same way
             // (Fork/Canvas/CanvasHost.swift, CanvasPage).
-            resources: [.copy("Fork/Backdrop"), .copy("Fork/Canvas/Resources")],
+            resources: [.copy("Fork/Backdrop"), .copy("Fork/Canvas/Resources"), .copy("Fork/Addons/Resources/bridge.js")], // Fork (addons): the bridge shim, verbatim (Fork/Addons/AddonHost.swift)
             // The runner's log-mel front end multiplies with cblas_sgemm;
             // Accelerate's current BLAS headers (macOS 13.3+) are the ones
             // that don't mark it deprecated. Nothing else here uses BLAS.
