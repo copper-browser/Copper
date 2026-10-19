@@ -3,7 +3,7 @@
 A reproducible, busy whiteboard for Copper's canvas performance work (contract §D,
 `exowatt/reports/2026-10-16-copper-canvas-perf/CONTRACT.md`), and a bench that measures it.
 Same fixture, same numbers on macOS Copper and Copper for Linux: both run the one canvas page
-(`Canvas/` → `canvas.html`) and both speak `copper call` / `copper eval` / `copper shot`.
+([canvas-app](https://github.com/copper-browser/canvas-app) → `canvas.html`) and both speak `copper call` / `copper eval` / `copper shot`.
 
 **Only ever against a probe world.** `apply.sh` and `measure.sh` refuse to run unless
 `SEARCH_PROBE` is set and `SEARCH_MCP_PORT` is not 4123 (and, on Linux, `COPPER_WORLD` is set).
@@ -36,7 +36,7 @@ long design doc; all use web fonts copied from the machine's own fonts (no netwo
 `example.com`, Wikipedia (*Whiteboard*), MDN (*Canvas API*), w3.org, rust-lang.org and Hacker News.
 
 Why board images are data URLs: the page accepts only `data:` or `https:` image sources
-(`Canvas/src/ops.ts` `validImageSrc`), so `http://127.0.0.1` images are not an option; the
+(canvas-app `src/ops.ts` `validImageSrc`), so `http://127.0.0.1` images are not an option; the
 heavy served images live inside the local pages instead. Each image op stays under 110 KB so it
 fits one argv string on Linux (`MAX_ARG_STRLEN` = 128 KB); `drive.py` splits every
 `canvas_apply` JSON into ≤ 100 KB argv pieces at op boundaries (the CLI joins its arguments
@@ -174,7 +174,7 @@ On Linux `measure.sh` reports no WebContent RSS; use
 ```
 
 - `mountedShapes` = distinct `data-id` values under the board (`[role="application"]`); every shape
-  component in `Canvas/src/canvas/components/` carries `data-id={shape.id}`.
+  component in canvas-app `src/canvas/components/` carries `data-id={shape.id}`.
 - `liveIframes` = `<iframe>` with a real `src`.
 - The run: synthetic `wheel` events on the board, driven by time, not frames (each frame sends what
   is still owed of an eased path), so every build travels the same path and ends where it started:

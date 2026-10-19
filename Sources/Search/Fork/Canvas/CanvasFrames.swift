@@ -2,7 +2,7 @@ import AppKit
 import WebKit
 
 // Live web frames: a link on the board with `live: true` shows its site in an
-// <iframe> (Canvas/src/canvas/frames.ts, components/WebFrame.tsx). The page
+// <iframe> (canvas-app src/canvas/frames.ts, components/WebFrame.tsx). The page
 // draws the frame and syncs where it is; Copper does the parts a page can't:
 //
 // - Embedding. The board is a file:// page, so every site in a frame is

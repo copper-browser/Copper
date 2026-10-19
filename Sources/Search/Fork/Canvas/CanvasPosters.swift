@@ -6,7 +6,7 @@ import WebKit
 // Posters: what a live web frame shows while its <iframe> is unloaded. A board
 // with forty live sites can't keep forty pages running, so the page keeps only
 // the few on screen live and draws the rest from a picture of how each looked
-// (Canvas/src/canvas/frames.ts). The page can't take that picture — a
+// (canvas-app src/canvas/frames.ts). The page can't take that picture — a
 // cross-site frame's pixels are not its to read — so it asks Copper:
 //
 //   page → host  {type: 'framePoster', name, id, url, rect: {x, y, w, h}, maxWidth}

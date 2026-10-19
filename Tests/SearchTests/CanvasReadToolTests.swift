@@ -4,7 +4,7 @@ import WebKit
 @testable import Search
 
 // canvas_read's options reach the page as given (the page pages and narrows,
-// Canvas/src/read-pages.ts); posters are scaled and cropped the way the page
+// canvas-app src/read-pages.ts); posters are scaled and cropped the way the page
 // asked (Fork/Canvas/CanvasPosters.swift); the MCP socket takes pipelined
 // requests in order (Fork/MCP/MCP.swift). docs/canvas.md, "Reading a big canvas".
 

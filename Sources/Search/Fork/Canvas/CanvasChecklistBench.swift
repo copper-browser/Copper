@@ -2,7 +2,7 @@ import AppKit
 import WebKit
 
 // `./bench canvas checklist …` and `canvas check …`: the checklist shape
-// (Canvas/src/canvas/checklist.ts) from the bench, on the board in front.
+// (canvas-app src/canvas/checklist.ts) from the bench, on the board in front.
 //
 //   canvas checklist [SHAPE]        every checklist on the board (or one): title, columns,
 //                                   rows with their picks and who made them, the tally

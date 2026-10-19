@@ -1,4 +1,0 @@
-node_modules/
-*.log
-.vite/
-# dist/canvas.html is committed on purpose: the app bundles it.

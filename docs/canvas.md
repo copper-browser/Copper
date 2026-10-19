@@ -6,7 +6,7 @@ network and no account, and is never shared — it stays on this Mac until you c
 canvas** in Settings › Cloud › Choose what syncs; with Copper Cloud signed in you can make shared
 canvases, invite people, and see each other — and each other's agents — live. The ⌘E agent, MCP
 agents and the `copper` CLI all read and write the same boards. Implementation:
-`Sources/Search/Fork/Canvas/` (the page itself is built from `Canvas/`).*
+`Sources/Search/Fork/Canvas/` (the page itself is [canvas-app](https://github.com/copper-browser/canvas-app), vendored in `Canvas/`).*
 
 ## Using it
 
@@ -204,8 +204,8 @@ someone picked from the canvas's people — and who assigned them, when, sit bes
 and count only for a name the text still has: rename *@Grace Hopper* by hand in an older Copper
 and she is a name of her own. A face shows the person's name on the canvas now when the id is
 theirs, so a renamed account reads right without touching the text. Model and rules:
-`Canvas/src/canvas/checklist.ts` and `checklist-text.ts`; the picker's list is
-`Canvas/src/canvas/assignees.ts`, the card's faces and picker `components/ChecklistPeople.tsx`.
+canvas-app `src/canvas/checklist.ts` and `checklist-text.ts`; the picker's list is
+canvas-app `src/canvas/assignees.ts`, the card's faces and picker `components/ChecklistPeople.tsx`.
 
 Agents add one with `{type:'checklist', title, columns?, rows:['Ann', …], picks?:{'Ann':'Yes'},
 notes?:{'Ann':'Back at 6'}, assignees?:{'Fix login':['Grace Hopper', 'ann@example.com']}}` and
@@ -293,7 +293,7 @@ date — is kept as it is and drawn by nobody. Every write changes only the char
 lines (the title's, the range's, or one item's), so edits to different items from two Coppers at
 once both land, and an item moved past its neighbours is lifted out and put back in its place. An
 older Copper shows a readable note: the heading, the range, a list, bubbles as quotes. Model and
-rules: `Canvas/src/canvas/timeline-text.ts`, `timeline.ts`; layout: `timeline-layout.ts`.
+rules: canvas-app `src/canvas/timeline-text.ts`, `timeline.ts`; layout: `timeline-layout.ts`.
 
 Agents add one with `{type:'timeline', title?, start, end, step?, items?:[{date, end?, label,
 text?, color?}]}` (`text` makes a bubble, `end` a section; without `start`/`end` the items' span
@@ -308,7 +308,7 @@ item) or an index, and a patch is `{date?, end?, label?, text?, color?}` (`end:n
 
 ## Comments on shapes
 
-*Page: `Canvas/src/canvas/comments.ts` (model and writes), `components/Comments.tsx` (pins, thread
+*Page: canvas-app `src/canvas/comments.ts` (model and writes), `components/Comments.tsx` (pins, thread
 popover, Comments panel, right-click menu), wired in `components/Board.tsx`.*
 
 Figma- / Google Docs-style threads on any shape — above all a frame, which on a deck board is a
@@ -444,7 +444,7 @@ the `IsThirdPartyCookieBlockingDisabled` feature has no effect for an app.
 
 ### How it works
 
-- **Page** (`Canvas/src/canvas/frames.ts`, `components/WebFrame.tsx`): the iframe is sandboxed
+- **Page** (canvas-app `src/canvas/frames.ts`, `components/WebFrame.tsx`): the iframe is sandboxed
   (`allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox
   allow-modals allow-downloads allow-storage-access-by-user-activation
   allow-top-navigation-by-user-activation` — never `allow-top-navigation`, so a frame-buster can't
@@ -603,7 +603,8 @@ for the same address is a reminder: `200` with `nudged`), the invites waiting on
 ## The page ↔ host bridge
 
 The page is one self-contained file, `Sources/Search/Fork/Canvas/Resources/canvas.html`
-(`build.sh` copies a newer `Canvas/dist/canvas.html` over it), loaded with
+(`build.sh` copies a newer `Canvas/dist/canvas.html` over it: canvas-app's build at the commit in
+`Canvas/CANVAS_APP_REF`, see `Canvas/README.md`), loaded with
 `loadFileURL(…canvas.html?id=<id>, allowingReadAccessTo: <its folder>)`. There is no URL scheme
 handler: `copper://canvas/…` is caught in the browser's navigation delegate
 (`CanvasHost.decide`) and the tab keeps the copper:// address. Canvas tabs opened through
@@ -699,7 +700,7 @@ copper call canvas_share_link '{"reason":"invite a teammate","id":"Roadmap"}'
 A board of a few dozen shapes reads in one answer, exactly as it always has (plus `total` and
 `returned`). One of thousands — forty slides, live sites, pictures — would be half a megabyte of
 JSON, more than an agent can take in one gulp, so `canvas_read` answers it a page at a time and
-lets the agent ask for just the part it wants. The page does it (`Canvas/src/read-pages.ts`,
+lets the agent ask for just the part it wants. The page does it (canvas-app `src/read-pages.ts`,
 called by `readCanvas` in `ops.ts`), from the document, never the DOM — a shape the board hasn't
 drawn because it is off screen reads like any other — so macOS and Linux answer alike.
 
@@ -791,7 +792,7 @@ poster — a picture of how the site last looked — which only the host can tak
 a cross-site frame's pixels. The page posts `{type:'framePoster', name, id, url, rect:{x,y,w,h},
 maxWidth}` (the iframe's `window.name`, the shape, its address, its content box in CSS px of the
 board's viewport) once the frame has settled fully on screen with nothing drawn over its page that
-must not be in the picture (no tool bar, panel, menu, cursor or handle: `Canvas/src/canvas/poster-view.ts`
+must not be in the picture (no tool bar, panel, menu, cursor or handle: canvas-app `src/canvas/poster-view.ts`
 tests every element painted above it by its box and shadow; arrows and opaque notes may be in it,
 and the page drops such a picture once they or the frame change); Copper snapshots that rect of the
 board's view (`WKWebView.takeSnapshot`, the last painted frame), scales it to at most `maxWidth`
@@ -923,7 +924,7 @@ to that canvas off this Copper at once (`Canvases.drop(canvas:)`), before the li
 
 ## Chat
 
-*Page: `Canvas/src/canvas/chat/` (model, hub, panel, composer, button, dock, API). Host:
+*Page: canvas-app `src/canvas/chat/` (model, hub, panel, composer, button, dock, API). Host:
 `Sources/Search/Fork/Canvas/CanvasChat.swift` (state, mentions) and `CanvasChatUI.swift` (pill,
 notifications, `canvas_chat`, bench). Server: copper-cloud 0.6.0's mentions API.*
 
