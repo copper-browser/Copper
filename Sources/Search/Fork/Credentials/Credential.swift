@@ -97,6 +97,9 @@ struct Credential: Identifiable, Hashable {
     let used: Date?
     let folder: String?
     let agentHint: AgentHint
+    /// A Bitwarden login that also holds a passkey (`fido2Credentials`);
+    /// the picker says so, and Copper signs with it when the site asks.
+    var hasPasskey = false
 
     var stableID: String { id.string }
 }

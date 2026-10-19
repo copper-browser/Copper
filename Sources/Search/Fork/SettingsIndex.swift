@@ -423,8 +423,8 @@ enum SettingsIndex {
           ["csv", "import csv", "apple passwords", "icloud keychain", "safari passwords", "chrome passwords", "password manager export", "import file"], "passwords.csv"),
         e(.passwords, "Import and export", "Export to a CSV file", "Every password Copper keeps, after Touch ID",
           ["export passwords", "export csv", "backup passwords", "download passwords", "save passwords to file"], "passwords.export"),
-        e(.passwords, "Passkeys", "Copper passkeys", "The passkeys Copper keeps, and forgetting one",
-          ["passkeys", "forget passkey", "webauthn credentials"], "passwords.passkeylist"),
+        e(.passwords, "Passkeys", "Copper passkeys", "The passkeys Copper keeps and the ones in Bitwarden, and forgetting one",
+          ["passkeys", "forget passkey", "webauthn credentials", "bitwarden passkeys"], "passwords.passkeylist"),
     ]
 
     // MARK: downloads

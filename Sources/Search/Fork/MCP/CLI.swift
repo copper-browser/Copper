@@ -185,6 +185,7 @@ enum CLI {
                     guard let value = next(&args, &i), !value.isEmpty else { return bad("signin --account needs USER") }
                     arguments["account"] = value
                 case "--otp": arguments["what"] = "otp"
+                case "--passkey": arguments["what"] = "passkey" // Fork: bitwarden-passkeys
                 case "--no-submit": arguments["submit"] = false
                 default: return bad("unknown signin option: \(args[i])")
                 }
@@ -1567,8 +1568,10 @@ enum CLI {
       use [ID]                                  make a tab yours, in the background (no ID: the user's)
       show [ID]                                 make a tab yours and switch the user's window to it
       go URL                                    navigate your tab
-      signin [--account USER] [--otp] [--no-submit]
+      signin [--account USER] [--otp|--passkey] [--no-submit]
                                                 fill a shared saved account on the current tab
+                                                (--passkey: arm its Bitwarden passkey for the
+                                                site's next passkey sign-in)
       autofill card|identity|field [--name NAME] [--submit]
                                                 fill a shared Bitwarden or 1Password card, identity, or field
       observe [--no-text] [-n N]                fast Jev observation

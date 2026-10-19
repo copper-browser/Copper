@@ -123,6 +123,18 @@ Password managers) to route new save offers there while it is unlocked; choose
 Keychain (or leave Bitwarden locked) to keep saving to the keychain. Existing
 fills continue to include every source.
 
+## Bitwarden passkeys
+
+Passkeys kept in the vault (`login.fido2Credentials`) sign in on their sites
+while Bitwarden is unlocked, signed by Copper after Touch ID, with the key read
+from the vault only at that moment and held in memory only. With **Save new
+passwords to** set to Bitwarden, a passkey a site creates is saved to the vault
+too (joining the site's login for that account when it has none yet), and to
+the keychain when Bitwarden is locked or refuses it. The picker marks a login
+that holds a passkey (*site · passkey*); Settings › Passwords › Passkeys lists
+them. Details, counters and limits: [Passkeys › Bitwarden
+passkeys](passkeys.md#bitwarden-passkeys).
+
 ## Autofill everything
 
 Turn on **Fill addresses and cards** in Settings › Passwords to let the
@@ -426,7 +438,13 @@ The per-account toggles stay in Copper and are not editable through MCP. The
 broad switch can also be set by the owner from the shell or the headless Mac page
 (`copper bitwarden policy --share folder|all`, loopback only; see above). See [Agents](agents.md) for `browser_sign_in`, `copper signin`, and Jev's
 `SIGN_IN` control. Those operations fill in-process and return status only;
-they do not return a password, TOTP code, or Bitwarden session key. Private
+they do not return a password, TOTP code, or Bitwarden session key. A Bitwarden
+login's passkey follows its login's switch: `browser_sign_in` with
+`what: "passkey"` (`copper signin --passkey`) arms the tab, and the site's next
+passkey sign-in from that page is signed in-process with no prompt (user
+presence only; a site requiring user verification, and a login with
+master-password reprompt on, take the person's Touch ID); the key never leaves
+Copper ([Passkeys › Agents](passkeys.md#bitwarden-passkeys)). Private
 (`shy`) tabs are refused. With `--no-submit`, the secret remains in the page by
 design, so do not immediately ask ordinary page-reading tools to inspect that
 tab.

@@ -47,6 +47,24 @@ final class Bitwarden: ObservableObject {
         }
     }
 
+    /// One of a login's `fido2Credentials` — a passkey kept in the vault —
+    /// without its private key. The key is read from `bw get item` at the
+    /// moment it signs (BitwardenPasskeys.swift) and never cached.
+    struct Passkey: Hashable {
+        /// The vault's own spelling (a GUID, or `b64.`-prefixed base64url),
+        /// used to find the credential again in `bw get item`.
+        let credentialId: String
+        let rpId: String
+        /// base64url, as Bitwarden stores it; nil when the site gave none.
+        let userHandle: String?
+        let userName: String
+        let userDisplayName: String
+        let rpName: String
+        let counter: UInt32
+        let discoverable: Bool
+        let created: Date?
+    }
+
     /// A deliberately stripped vault item. Secret values stay in `secrets`;
     /// card and identity values live in the unlocked autofill cache.
     struct Item: Hashable {
@@ -59,9 +77,13 @@ final class Bitwarden: ObservableObject {
         let hasTOTP: Bool
         let hasNotes: Bool
         let fields: [Field]
+        /// Passkeys on this login, metadata only.
+        var passkeys: [Passkey] = []
+        /// Bitwarden's master-password reprompt is on for this item.
+        var reprompt = false
 
         init(id: String, type: Int = 1, name: String, folderId: String?, username: String,
-             uris: [URI], hasTOTP: Bool, hasNotes: Bool = false, fields: [Field]) {
+             uris: [URI], hasTOTP: Bool, hasNotes: Bool = false, fields: [Field], passkeys: [Passkey] = []) {
             self.id = id
             self.type = type
             self.name = name
@@ -71,6 +93,7 @@ final class Bitwarden: ObservableObject {
             self.hasTOTP = hasTOTP
             self.hasNotes = hasNotes
             self.fields = fields
+            self.passkeys = passkeys
         }
     }
 
@@ -351,7 +374,7 @@ final class Bitwarden: ObservableObject {
 
     /// Run a CLI command away from the main actor. `extra` is used for the
     /// password environment during login/unlock; secrets are never arguments.
-    private func run(_ args: [String], env extra: [String: String] = [:], stdin: Data? = nil,
+    func run(_ args: [String], env extra: [String: String] = [:], stdin: Data? = nil,
                      timeout: TimeInterval = 10) async throws -> Data {
         guard let executable = Self.executableURL else {
             throw Failure(message: "Bitwarden CLI is not installed")
@@ -651,6 +674,58 @@ final class Bitwarden: ObservableObject {
         let password: String?
         let totp: String?
         let uris: [RawURI]?
+        let fido2Credentials: [RawPasskey]?
+    }
+
+    /// A `fido2Credentials` entry, metadata only: `keyValue` is not a field
+    /// here, so the decoder never copies a private key into the cache. The
+    /// CLI writes counter and discoverable as strings; numbers and booleans
+    /// are taken too.
+    private struct RawPasskey: Decodable {
+        let credentialId: String?
+        let rpId: String?
+        let userHandle: String?
+        let userName: String?
+        let userDisplayName: String?
+        let rpName: String?
+        let counter: String?
+        let discoverable: String?
+        let creationDate: String?
+        let keyAlgorithm: String?
+        let keyCurve: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case credentialId, rpId, userHandle, userName, userDisplayName, rpName, counter, discoverable
+            case creationDate, keyAlgorithm, keyCurve
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            credentialId = try container.decodeLossyString(forKey: .credentialId)
+            rpId = try container.decodeLossyString(forKey: .rpId)
+            userHandle = try container.decodeLossyString(forKey: .userHandle)
+            userName = try container.decodeLossyString(forKey: .userName)
+            userDisplayName = try container.decodeLossyString(forKey: .userDisplayName)
+            rpName = try container.decodeLossyString(forKey: .rpName)
+            counter = try container.decodeLossyString(forKey: .counter)
+            discoverable = try container.decodeLossyString(forKey: .discoverable)
+            creationDate = try container.decodeLossyString(forKey: .creationDate)
+            keyAlgorithm = try container.decodeLossyString(forKey: .keyAlgorithm)
+            keyCurve = try container.decodeLossyString(forKey: .keyCurve)
+        }
+
+        /// Only ES256 keys: the one algorithm Bitwarden makes and Copper signs.
+        var passkey: Passkey? {
+            guard let credentialId, !credentialId.isEmpty, let rpId, !rpId.isEmpty else { return nil }
+            if let keyAlgorithm, !keyAlgorithm.isEmpty, keyAlgorithm.uppercased() != "ECDSA" { return nil }
+            if let keyCurve, !keyCurve.isEmpty, keyCurve.uppercased() != "P-256" { return nil }
+            return Passkey(credentialId: credentialId, rpId: rpId.lowercased(),
+                           userHandle: userHandle.flatMap { $0.isEmpty ? nil : $0 },
+                           userName: userName ?? "", userDisplayName: userDisplayName ?? "", rpName: rpName ?? "",
+                           counter: counter.flatMap { UInt32($0.trimmingCharacters(in: .whitespaces)) } ?? 0,
+                           discoverable: (discoverable ?? "").lowercased() == "true",
+                           created: Bitwarden.date(creationDate))
+        }
     }
 
     private struct RawCard: Decodable {
@@ -763,11 +838,14 @@ final class Bitwarden: ObservableObject {
         let card: RawCard?
         let identity: RawIdentity?
         let fields: [RawField]?
+        let reprompt: Int?
     }
 
     func items() async throws -> [Item] {
         try await requireUnlocked()
-        let data = try await run(["list", "items"])
+        // Every item, passkey keys included: cleared once decoded.
+        var data = try await run(["list", "items"])
+        defer { data.resetBytes(in: 0..<data.count) }
         let rows = try JSONDecoder().decode([RawItem].self, from: data)
         var fresh: [String: Secret] = [:]
         var identities: [AutofillIdentity] = []
@@ -857,10 +935,13 @@ final class Bitwarden: ObservableObject {
                 || !secret.hiddenFields.isEmpty {
                 fresh[id] = secret
             }
-            return Item(id: id, type: type, name: row.name ?? "", folderId: row.folderId,
-                        username: row.login?.username ?? "", uris: uris,
-                        hasTOTP: !(row.login?.totp?.isEmpty ?? true),
-                        hasNotes: secret.notes != nil, fields: fields)
+            var item = Item(id: id, type: type, name: row.name ?? "", folderId: row.folderId,
+                            username: row.login?.username ?? "", uris: uris,
+                            hasTOTP: !(row.login?.totp?.isEmpty ?? true),
+                            hasNotes: secret.notes != nil, fields: fields,
+                            passkeys: (row.login?.fido2Credentials ?? []).compactMap(\.passkey))
+            item.reprompt = (row.reprompt ?? 0) != 0
+            return item
         }
         cachedItems = result
         cachedIdentities = identities
@@ -868,6 +949,18 @@ final class Bitwarden: ObservableObject {
         secrets = fresh
         cacheVersion += 1
         return result
+    }
+
+    /// A passkey Copper just wrote to the vault, in the cache at once: the
+    /// page's next sign-in must not wait for a full `bw list items`. The
+    /// refresh that follows replaces it with the vault's own copy.
+    func cache(_ passkey: Passkey, on id: String, otherwise item: Item) {
+        if !id.isEmpty, let at = cachedItems.firstIndex(where: { $0.id == id }) {
+            cachedItems[at].passkeys.append(passkey)
+        } else {
+            cachedItems.append(item)
+        }
+        cacheVersion += 1
     }
 
     private func clearCache() {
@@ -969,7 +1062,7 @@ final class Bitwarden: ObservableObject {
 
     // MARK: - Cache and timers
 
-    private func requireUnlocked() async throws {
+    func requireUnlocked() async throws {
         guard sessionKey != nil else { throw Failure(message: "Bitwarden is locked") }
         guard case .unlocked = state else { throw Failure(message: "Bitwarden is locked") }
     }
@@ -1032,7 +1125,7 @@ final class Bitwarden: ObservableObject {
 
     // MARK: - Small decoding helpers
 
-    private static func date(_ value: String?) -> Date? {
+    nonisolated static func date(_ value: String?) -> Date? {
         guard let value, !value.isEmpty else { return nil }
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -1046,7 +1139,7 @@ final class Bitwarden: ObservableObject {
             .trimmingCharacters(in: .whitespaces)
     }
 
-    private static func trimTrailingNewlines(_ value: String) -> String {
+    nonisolated static func trimTrailingNewlines(_ value: String) -> String {
         value.trimmingCharacters(in: CharacterSet.newlines)
     }
 

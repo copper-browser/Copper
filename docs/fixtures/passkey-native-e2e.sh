@@ -23,6 +23,8 @@ cleanup() {
   done
   if [ -n "$server" ]; then kill "$server" 2>/dev/null || true; wait "$server" 2>/dev/null || true; fi
   defaults delete "com.officecommun.search.test.$world" >/dev/null 2>&1 || true
+  # cfprefsd leaves the emptied domain's file behind.
+  rm -f "$HOME/Library/Preferences/com.officecommun.search.test.$world.plist"
   rm -rf "$folder" "$tmp"
   local hash=2166136261 i byte stem
   for ((i = 0; i < ${#world}; i++)); do

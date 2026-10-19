@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""A stand-in for the Bitwarden CLI (`bw`) for Copper's passkey tests.
+
+It answers the subcommands Copper's Bitwarden backend uses, with bw's JSON
+shapes, from a JSON state file instead of a Bitwarden account:
+
+    --version | status | config server URL | unlock --passwordenv BW_PASSWORD --raw
+    lock | logout | sync | list items | list folders | get item ID
+    get template item | encode | edit item ID [ENCODED] | create item [ENCODED]
+
+`edit` and `create` take the base64 item from argv or, as Copper sends it,
+stdin. Commands that need the vault check BW_SESSION against the session
+`unlock` printed, the way the real CLI refuses a wrong key.
+
+The state ($BW_MOCK_STATE) is written by the test:
+
+    {"password": "...", "status": "locked", "email": "...",
+     "folders": [{"id": "...", "name": "Agents"}], "items": [ {bw item JSON}, ... ]}
+
+Fault switches a test may set in the state, each used once:
+
+    "fail_after_create": true      `create item` saves the item, then fails
+                                   the way a timed-out CLI call does
+    "hide_after_edit": ["ITEM"]    after `edit item ITEM`, the next
+                                   `get item ITEM` shows no fido2Credentials
+                                   (another client changed it meanwhile)
+
+Every call is appended to calls.log beside it: argv (an encoded item argument
+as its length only), the names of BW_* variables, and the stdin byte count —
+never stdin itself or a variable's value — so a test can prove no key went on
+argv. Synthetic data only; nothing here talks to a server.
+"""
+import base64
+import fcntl
+import json
+import os
+import sys
+import uuid
+
+STATE = os.environ.get("BW_MOCK_STATE") or os.path.expanduser("~/.config/bw-mock/state.json")
+SESSION = "mock-session-not-a-secret"
+
+
+def load():
+    with open(STATE) as handle:
+        return json.load(handle)
+
+
+def save(state):
+    tmp = STATE + ".tmp"
+    with open(tmp, "w") as handle:
+        json.dump(state, handle, indent=1)
+    os.replace(tmp, STATE)
+
+
+def log(argv, stdin_bytes):
+    shown = []
+    for i, arg in enumerate(argv):
+        # An encoded item after `edit item ID` / `create item` is a secret.
+        if i >= 2 and argv[:2] in (["edit", "item"], ["create", "item"]) and len(arg) > 64:
+            shown.append(f"<encoded:{len(arg)}>")
+        else:
+            shown.append(arg)
+    names = sorted(k for k in os.environ if k.startswith("BW_"))
+    with open(os.path.join(os.path.dirname(STATE), "calls.log"), "a") as handle:
+        handle.write(json.dumps({"argv": shown, "env": names, "stdin": stdin_bytes}) + "\n")
+
+
+def die(message, code=1):
+    sys.stderr.write(message + "\n")
+    sys.exit(code)
+
+
+def out(value):
+    sys.stdout.write(value if isinstance(value, str) else json.dumps(value))
+
+
+def main():
+    argv = sys.argv[1:]
+    # Only the commands that take an item read stdin (the others get none).
+    reads = argv[:1] == ["encode"] or argv[:2] in (["edit", "item"], ["create", "item"])
+    data = sys.stdin.buffer.read() if reads and not sys.stdin.isatty() else b""
+    lock = open(STATE + ".lock", "w")
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    log(argv, len(data))
+    state = load()
+
+    def need_session():
+        if state.get("status") != "unlocked" or os.environ.get("BW_SESSION") != SESSION:
+            die("Vault is locked.")
+
+    if argv == ["--version"]:
+        return out("2025.1.0\n")
+    if argv[:1] == ["status"]:
+        status = state.get("status", "locked")
+        return out({"serverUrl": state.get("server"), "lastSync": "2026-10-01T00:00:00.000Z",
+                    "userEmail": state.get("email", "probe@example.invalid"), "userId": "mock",
+                    "status": status})
+    if argv[:2] == ["config", "server"]:
+        state["server"] = argv[2] if len(argv) > 2 else None
+        save(state)
+        return out("Saved setting `config`.\n")
+    if argv[:1] == ["unlock"]:
+        if os.environ.get("BW_PASSWORD") != state.get("password"):
+            die("Invalid master password.")
+        state["status"] = "unlocked"
+        save(state)
+        return out(SESSION)
+    if argv[:1] in (["lock"], ["logout"]):
+        state["status"] = "locked" if argv[0] == "lock" else "unauthenticated"
+        save(state)
+        return out("Your vault is locked.\n")
+    if argv[:1] == ["sync"]:
+        need_session()
+        return out("Syncing complete.\n")
+    if argv[:1] == ["encode"]:
+        return out(base64.b64encode(data).decode())
+    if argv == ["list", "items"]:
+        need_session()
+        return out(state.get("items", []))
+    if argv == ["list", "folders"]:
+        need_session()
+        return out([{"object": "folder", "id": None, "name": "No Folder"}] + state.get("folders", []))
+    if argv == ["get", "template", "item"]:
+        return out({"organizationId": None, "collectionIds": None, "folderId": None, "type": 1,
+                    "name": "Item name", "notes": "Some notes about this item.", "favorite": False,
+                    "fields": [], "login": None, "secureNote": None, "card": None, "identity": None,
+                    "reprompt": 0})
+    if argv[:2] == ["get", "item"] and len(argv) == 3:
+        need_session()
+        for item in state.get("items", []):
+            if item.get("id") == argv[2]:
+                hidden = state.get("hidden_once", [])
+                if argv[2] in hidden:
+                    hidden.remove(argv[2])
+                    save(state)
+                    item = json.loads(json.dumps(item))
+                    item["login"]["fido2Credentials"] = []
+                return out(item)
+        die("Not found.")
+    if argv[:2] in (["edit", "item"], ["create", "item"]):
+        need_session()
+        encoded = argv[3] if argv[0] == "edit" and len(argv) > 3 else argv[2] if argv[0] == "create" and len(argv) > 2 else data.decode()
+        try:
+            item = json.loads(base64.b64decode(encoded.strip()))
+        except Exception:
+            die("Error parsing the encoded request data.")
+        items = state.setdefault("items", [])
+        if argv[0] == "edit":
+            for i, existing in enumerate(items):
+                if existing.get("id") == argv[2]:
+                    item["id"] = argv[2]
+                    item["object"] = "item"
+                    items[i] = item
+                    hide = state.get("hide_after_edit", [])
+                    if argv[2] in hide:
+                        hide.remove(argv[2])
+                        state.setdefault("hidden_once", []).append(argv[2])
+                    save(state)
+                    return out(item)
+            die("Not found.")
+        item["id"] = str(uuid.uuid4())
+        item["object"] = "item"
+        items.append(item)
+        failing = state.pop("fail_after_create", False)
+        save(state)
+        if failing:
+            die("Request timed out.")
+        return out(item)
+    die("mock bw: unsupported command " + " ".join(argv))
+
+
+if __name__ == "__main__":
+    main()

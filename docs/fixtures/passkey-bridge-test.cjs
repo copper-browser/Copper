@@ -265,3 +265,16 @@ test('the reply shapes serialise like WebKit credentials', async () => {
   assert.deepEqual(json.clientExtensionResults, {});
   assert.equal(Object.keys(got).includes('getClientExtensionResults'), false, 'methods are not enumerable fields');
 });
+
+test('a refusal reaches the page as its bare name with the standard wording, never Copper\'s reason', async () => {
+  const p = page({reply: () => ({error: 'NotAllowedError', message: 'Several shared Bitwarden passkeys (alice, bob): Bitwarden is locked'})});
+  await assert.rejects(p.run(`navigator.credentials.get(${getOptions})`), error => {
+    assert.equal(error.name, 'NotAllowedError');
+    assert.match(error.message, /^The operation either timed out or was not allowed/);
+    assert.doesNotMatch(error.message, /alice|Bitwarden|locked/);
+    return true;
+  });
+  // An error name Copper does not send is still only NotAllowedError.
+  const q = page({reply: () => ({error: 'Not found.'})});
+  await assert.rejects(q.run(`navigator.credentials.get(${getOptions})`), {name: 'NotAllowedError'});
+});

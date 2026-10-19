@@ -343,8 +343,9 @@
     ./bench cloud pairing-code|pairing-codes|revoke-pairing ID|current
                                        Copper Cloud: link a probe world to an instance, sign in, sync;
                                        mint a one-time code for another Mac, list or revoke them
-    ./bench passkeys list|count|forget --id ID|answer yes|no|ask
-                                       Copper's own test-world passkeys (no private keys in list)
+    ./bench passkeys list|count|forget --id ID|answer yes|no|ask|pick NAME|N|ask|offered
+                                       Copper's own test-world passkeys and the unlocked Bitwarden vault's
+                                       (no private keys in list); pick answers the chooser, offered is its last rows
     ./bench mcp transcript begin|append TEXT|live on|off|forget|share on|off|state
                                        test world: the Listen transcript agents read (voice_transcript,
                                        `copper transcript`), driven with no audio; share = Settings › Voice's switch
@@ -549,7 +550,7 @@ def main(argv):
         request["path"] = os.path.abspath(args[0])
         if len(args) > 1: request["index"] = int(args[1])  # the Nth browser window (bench windows)
     elif verb == "passkeys":
-        if not args: sys.exit("usage: bench passkeys list|count|forget --id ID|answer yes|no|ask")
+        if not args: sys.exit("usage: bench passkeys list|count|forget --id ID|answer yes|no|ask|pick NAME|N|ask|offered")
         request["op"] = args[0]
         if args[0] == "forget":
             if len(args) == 3 and args[1] == "--id": request["arg"] = args[2]
@@ -558,8 +559,11 @@ def main(argv):
         elif args[0] == "answer":
             if len(args) != 2 or args[1] not in ("yes", "no", "ask"): sys.exit("usage: bench passkeys answer yes|no|ask")
             request["arg"] = args[1]
+        elif args[0] == "pick":
+            if len(args) != 2: sys.exit("usage: bench passkeys pick NAME|N|ask")
+            request["arg"] = args[1]
         elif len(args) > 1:
-            sys.exit("usage: bench passkeys list|count|forget --id ID|answer yes|no|ask")
+            sys.exit("usage: bench passkeys list|count|forget --id ID|answer yes|no|ask|pick NAME|N|ask|offered")
     elif verb in ("privacy", "about"):
         request["op"] = args[0] if args else "status"
         request["arg"] = " ".join(args[1:])

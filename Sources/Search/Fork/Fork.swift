@@ -311,7 +311,7 @@ enum Fork {
                 return ["started": true]
             case "candidates":
                 guard let host = words.first else { return ["error": "bw candidates HOST"] }
-                return ["candidates": Credentials.candidates(for: host).map { ["id": $0.id.string, "user": $0.user, "host": $0.host, "source": "\($0.source)", "totp": $0.hasTOTP, "agent": AgentAccess.isAllowed($0)] }]
+                return ["candidates": Credentials.candidates(for: host).map { ["id": $0.id.string, "user": $0.user, "host": $0.host, "source": "\($0.source)", "totp": $0.hasTOTP, "passkey": $0.hasPasskey, "agent": AgentAccess.isAllowed($0)] }]
             case "identities":
                 return ["identities": Autofill.identities.map { identity in
                     ["id": identity.id, "name": identity.name, "fullName": identity.fullName,

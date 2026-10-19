@@ -218,7 +218,15 @@ enum Credentials {
         let host = item.uris.first.flatMap { uriHost($0.uri) } ?? item.name
         return Credential(id: .bitwarden(item.id), source: .bitwarden, host: host,
                           user: item.username, sites: item.uris.map(\.uri), name: item.name,
-                          hasTOTP: item.hasTOTP, used: nil, folder: folder, agentHint: hint)
+                          hasTOTP: item.hasTOTP, used: nil, folder: folder, agentHint: hint,
+                          hasPasskey: !item.passkeys.isEmpty)
+    }
+
+    /// One Bitwarden login as the agent policy sees it — for its passkeys,
+    /// which share the login's switch (Fork/Passkeys/BitwardenPasskeys.swift).
+    static func credential(bitwarden item: Bitwarden.Item) -> Credential {
+        let folders = Dictionary(Bitwarden.shared.cachedFolders.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        return credential(for: item, folders: folders)
     }
 
     static func itemsMatching(host: String) -> [Bitwarden.Item] {

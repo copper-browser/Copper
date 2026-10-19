@@ -111,7 +111,7 @@ struct AccountList: View {
                             .font(.system(size: 12.5))
                             .foregroundStyle(Palette.ink)
                             .lineLimit(1)
-                        Text(code ? "Two-step code · \(credential.host)" : credential.host)
+                        Text(code ? "Two-step code · \(credential.host)" : credential.hasPasskey ? "\(credential.host) · passkey" : credential.host) // Fork: bitwarden-passkeys
                             .font(.system(size: 10.5))
                             .foregroundStyle(Palette.muted)
                             .lineLimit(1)

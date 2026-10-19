@@ -532,7 +532,12 @@ final class Drive: ObservableObject {
             default: return ("Listing the tabs", detail)
             }
         case "browser_groups": return ("Tab groups: \((args["action"] as? String) ?? "list")", detail)
-        case "browser_sign_in": return ((args["what"] as? String) == "otp" ? "Filling the one-time code from the vault" : "Signing in with a saved account", detail)
+        case "browser_sign_in":
+            switch args["what"] as? String {
+            case "otp": return ("Filling the one-time code from the vault", detail)
+            case "passkey": return ("Signing in with a saved passkey", detail) // Fork: bitwarden-passkeys
+            default: return ("Signing in with a saved account", detail)
+            }
         case "browser_autofill": return ("Filling a saved \((args["kind"] as? String) ?? "item")", detail)
         case "browser_perf_probe": return ("Sampling the page's performance", detail)
         case "browser_crashes": return ("Reading Copper's crash history", detail)

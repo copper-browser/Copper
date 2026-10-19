@@ -133,10 +133,11 @@ enum PasskeyStore {
         ] as CFDictionary)
     }
 
-    /// A fresh passkey for a site: new key, new 16-byte id.
+    /// A fresh passkey for a site: new key, new 16-byte id. The id is a
+    /// random (version 4) UUID's bytes, so one saved to Bitwarden is the
+    /// valid GUID the vault and its other clients expect (BitwardenPasskeys.vaultID).
     static func make(rpId: String, userHandle: Data, userName: String, displayName: String) -> Credential {
-        var id = Data(count: 16)
-        id.withUnsafeMutableBytes { _ = SecRandomCopyBytes(kSecRandomDefault, 16, $0.baseAddress!) }
+        let id = withUnsafeBytes(of: UUID().uuid) { Data($0) }
         return Credential(id: id, rpId: rpId, userHandle: userHandle, userName: userName, displayName: displayName,
                           privateKey: P256.Signing.PrivateKey().rawRepresentation)
     }
