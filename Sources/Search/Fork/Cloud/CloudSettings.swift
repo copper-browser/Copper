@@ -20,18 +20,22 @@ struct CloudPage: View {
     var draft = ""
     @ObservedObject private var cloud = Cloud.shared
     @ObservedObject private var sync = CloudSync.shared
+    @ObservedObject private var sso = CloudSSO.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             CloudSteps(cloud: cloud, sync: sync)
                 .settingsAnchor("cloud.steps", card: true) // Fork (settings-revamp): search anchors
+            if let offer = sso.offer, let linked = cloud.link, !CloudSSO.sameInstance(linked.url, offer.code.url) {
+                CloudOfferNotice(offer: offer, linked: linked, sso: sso)
+            }
             if !cloud.isLinked {
-                CloudConnectCard(draft: draft)
+                CloudConnectCard(draft: draft, browser: browser)
                     .settingsAnchor("cloud.connect", card: true)
             } else if !cloud.isSignedIn {
                 CloudConnection(cloud: cloud, sync: sync, opener: "Change…", lead: "Connected to")
                     .settingsAnchor("cloud.instance", card: true)
-                CloudAccountForm()
+                CloudAccountForm(browser: browser)
                     .settingsAnchor("cloud.signin", card: true)
             } else {
                 CloudSyncCard(sync: sync, cloud: cloud)
@@ -117,13 +121,17 @@ private struct CloudSteps: View {
 
 // MARK: - 1. connect
 
-/// One field for either code: a link code (`#k=`, the instance's key or a
+/// One field for any code: a link code (`#k=`, the instance's key or a
 /// person's access key) connects and leaves signing in for step 2; a pairing
 /// code (`#p=`, from Pair another Mac on a Copper already signed in) connects,
-/// signs in and turns on sync, all on one press.
+/// signs in and turns on sync, all on one press; a join link (`#sso=`, from
+/// the instance's /start page or its admin) does the same through the
+/// company's sign-in — Continue with Google (CloudSSO.swift).
 private struct CloudConnectCard: View {
     enum Field: Hashable { case code, host, key, fingerprint }
 
+    let browser: Browser?
+    @ObservedObject private var sso = CloudSSO.shared
     @FocusState private var focus: Field?
     @State private var code = ""
     @State private var advanced = false
@@ -137,12 +145,28 @@ private struct CloudConnectCard: View {
     /// person to compare and trust on first use.
     @State private var unknown: (code: Cloud.PairingCode, seen: String)?
 
-    init(draft: String = "") {
+    init(draft: String = "", browser: Browser? = nil) {
         _code = State(initialValue: draft)
+        self.browser = browser
     }
 
     private var parsed: Cloud.Code? {
         advanced ? Cloud.link(address: host, key: key, fingerprint: fingerprint).map(Cloud.Code.link) : Cloud.parseCode(code)
+    }
+
+    /// The join link pasted, if that is what it is.
+    private var join: Cloud.SSOCode? {
+        if case .sso(let code)? = parsed { return code }
+        return nil
+    }
+
+    /// What the instance said about the link's provider, once it has.
+    private func provider(_ code: Cloud.SSOCode) -> Cloud.SSODiscovery.Provider? {
+        sso.discovered.first { CloudSSO.sameInstance($0.key, code.url) }?.value.usable.first { $0.id == code.provider }
+    }
+
+    private func providerName(_ code: Cloud.SSOCode) -> String {
+        provider(code)?.name ?? CloudSSO.guessName(code.provider)
     }
 
     private var hint: String? {
@@ -155,7 +179,12 @@ private struct CloudConnectCard: View {
         if Cloud.isBarePairingCode(typed) {
             return "That's the pairing code without its address — copy the whole code, from copper-cloud:// to the end"
         }
-        return "That isn't a link code or a pairing code — both start copper-cloud://, a link code has #k= in it and a pairing code #p="
+        return "That isn't a link code, a join link or a pairing code — all start copper-cloud://, then #k=, #sso= or #p="
+    }
+
+    /// The last single sign-on's refusal, while that link is still the one pasted.
+    private var ssoProblem: String? {
+        join.flatMap { sso.problem(for: CloudSSO.Target($0)) }
     }
 
     var body: some View {
@@ -179,7 +208,7 @@ private struct CloudConnectCard: View {
                     .cloudAnchor("cloud.connect.fingerprint")
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Paste the link code from your Copper Cloud administrator — or a pairing code from a Mac that is already signed in.")
+                        Text("Paste the link code or join link from your Copper Cloud administrator — or a pairing code from a Mac that is already signed in.")
                             .font(.system(size: 13))
                             .foregroundStyle(Palette.ink)
                             .fixedSize(horizontal: false, vertical: true)
@@ -188,7 +217,7 @@ private struct CloudConnectCard: View {
                             .foregroundStyle(Palette.muted)
                             .fixedSize(horizontal: false, vertical: true)
                         HStack(spacing: 6) {
-                            TextField("copper-cloud://host:port/#k=…  or  #p=…", text: $code, axis: .vertical)
+                            TextField("copper-cloud://host:port/#k=…, #sso=… or #p=…", text: $code, axis: .vertical)
                                 .textFieldStyle(.plain)
                                 .font(.system(size: 11.5, design: .monospaced))
                                 .lineLimit(1...3)
@@ -215,20 +244,20 @@ private struct CloudConnectCard: View {
                 if let parsed {
                     Rule()
                     Line("Instance", trust(parsed)) {
-                        Text(host(parsed)).font(.system(size: 12, design: .monospaced)).foregroundStyle(Palette.ink)
+                        Text(parsed.host).font(.system(size: 12, design: .monospaced)).foregroundStyle(Palette.ink)
                     }
-                    if let pairs = pairs(parsed) {
+                    if let pairs = parsed.fingerprintPairs {
                         fingerprintText(pairs)
                             .help("Compare with `copper-cloud doctor` on the server")
                     }
                 }
-                if let unknown, case .pairing(let now)? = parsed, now == unknown.code {
+                if let seen = unknownSeen {
                     Rule()
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("This Mac doesn't trust the instance's certificate, and the pairing code has no fingerprint to pin it by. Its certificate's fingerprint is:")
+                        Text("This Mac doesn't trust the instance's certificate, and the \(join == nil ? "pairing code" : "join link") has no fingerprint to pin it by. Its certificate's fingerprint is:")
                             .font(.system(size: 11.5)).foregroundStyle(Palette.muted)
                             .fixedSize(horizontal: false, vertical: true)
-                        Text(cloudPairLines(Cloud.pairs(unknown.seen)))
+                        Text(cloudPairLines(Cloud.pairs(seen)))
                             .font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Palette.ink)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
@@ -240,24 +269,33 @@ private struct CloudConnectCard: View {
                     .padding(.horizontal, 14).padding(.vertical, 10)
                 }
                 Rule()
-                HStack(spacing: 8) {
-                    Button(advanced ? "Paste a code instead" : "Enter it by hand") {
-                        withAnimation(Motion.settle) { advanced.toggle(); problem = nil; unknown = nil }
+                Group {
+                    if let join, sso.running(CloudSSO.Target(join)) {
+                        CloudSSOWaiting(sso: sso)
+                    } else {
+                        HStack(spacing: 8) {
+                            Button(advanced ? "Paste a code instead" : "Enter it by hand") {
+                                withAnimation(Motion.settle) { advanced.toggle(); problem = nil; unknown = nil }
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Palette.muted)
+                            Spacer()
+                            if connecting { ProgressView().controlSize(.small) }
+                            Pill(buttonTitle, filled: parsed != nil && !connecting, action: go)
+                                .disabled(parsed == nil || connecting)
+                                .opacity(parsed == nil ? 0.5 : 1)
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(Palette.muted)
-                    Spacer()
-                    if connecting { ProgressView().controlSize(.small) }
-                    Pill(buttonTitle, filled: parsed != nil && !connecting, action: go)
-                        .disabled(parsed == nil || connecting)
-                        .opacity(parsed == nil ? 0.5 : 1)
                 }
                 .padding(.horizontal, 14).padding(.vertical, 10)
                 .cloudAnchor("cloud.connect.submit")
             }
-            .onChange(of: code) { _, _ in problem = nil }
-            if let message = problem ?? hint {
+            .onChange(of: code) { _, _ in
+                problem = nil
+                if !sso.busy { sso.clearProblem() }
+            }
+            if let message = problem ?? ssoProblem ?? hint {
                 CloudProblem(message).cloudAnchor("cloud.connect.problem")
             }
         }
@@ -266,12 +304,28 @@ private struct CloudConnectCard: View {
         }
         // Something wrong, or a certificate to confirm: the message and the
         // button it is about, in view.
-        .onChange(of: problem ?? hint) { _, message in
+        .onChange(of: problem ?? ssoProblem ?? hint) { _, message in
             if message != nil { cloudReveal("cloud.connect.problem") }
         }
         .onChange(of: parsed != nil) { _, ready in
             if ready { cloudReveal("cloud.connect.submit") }
         }
+        // A join link pasted: ask its instance what its sign-in is called and
+        // which domains it takes, for the button and the line above it.
+        .task(id: join) {
+            guard let join else { return }
+            await sso.discover(url: join.url, pin: join.fingerprint)
+        }
+        // copper://cloud/join brought a code: it is the one in the field.
+        .onAppear { take(sso.offer) }
+        .onChange(of: sso.offer) { _, offer in take(offer) }
+    }
+
+    private func take(_ offer: CloudSSO.Offer?) {
+        guard let offer, offer.text != code else { return }
+        advanced = false
+        unknown = nil
+        code = offer.text
     }
 
     private static func anchor(_ field: Field) -> String {
@@ -283,16 +337,30 @@ private struct CloudConnectCard: View {
         }
     }
 
-    private var trusting: Bool {
-        if let unknown, case .pairing(let now)? = parsed { return now == unknown.code }
-        return false
+    /// The fingerprint an instance without a pin showed, waiting to be
+    /// compared and trusted: the pairing code's, or the join link's.
+    private var unknownSeen: String? {
+        switch parsed {
+        case .pairing(let now)?:
+            if let unknown, now == unknown.code { return unknown.seen }
+            return nil
+        case .sso(let join)?:
+            guard join.fingerprint == nil, let target = sso.target, target.reaches(CloudSSO.Target(join)), !sso.busy else { return nil }
+            return sso.seen
+        default:
+            return nil
+        }
     }
+
+    private var trusting: Bool { unknownSeen != nil }
 
     private var buttonTitle: String {
         switch parsed {
         case .pairing?:
             if connecting { return "Pairing…" }
             return trusting ? "Trust and pair" : "Pair this Mac"
+        case .sso(let join)?:
+            return (trusting ? "Trust and continue with " : "Continue with ") + providerName(join)
         default:
             return connecting ? "Connecting…" : "Connect"
         }
@@ -301,17 +369,29 @@ private struct CloudConnectCard: View {
     /// Which code it is, and what pressing the button will do with it.
     @ViewBuilder
     private func kind(_ parsed: Cloud.Code) -> some View {
-        let pairing: Bool = { if case .pairing = parsed { return true }; return false }()
+        let (symbol, title, detail): (String, String, String?) = {
+            switch parsed {
+            case .link:
+                return ("link", "Link code — connects to the instance; you sign in next", nil)
+            case .pairing:
+                return ("person.badge.key", "Pairing code — links this Mac and signs you in",
+                        "Good once, for 10 minutes. Sync turns on for everything — switch any of it off after.")
+            case .sso(let join):
+                let hint = provider(join)?.domainHint.map { $0 + ". " } ?? ""
+                return ("person.badge.shield.checkmark", "Join link — links this Mac and signs you in with \(providerName(join))",
+                        hint + "Copper opens your browser to sign in. Sync turns on for everything — switch any of it off after.")
+            }
+        }()
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Image(systemName: pairing ? "person.badge.key" : "link")
+            Image(systemName: symbol)
                 .font(.system(size: 10.5, weight: .medium))
                 .foregroundStyle(Palette.ink)
             VStack(alignment: .leading, spacing: 2) {
-                Text(pairing ? "Pairing code — links this Mac and signs you in" : "Link code — connects to the instance; you sign in next")
+                Text(title)
                     .font(.system(size: 11.5, weight: .medium))
                     .foregroundStyle(Palette.ink)
-                if pairing {
-                    Text("Good once, for 10 minutes. Sync turns on for everything — switch any of it off after.")
+                if let detail {
+                    Text(detail)
                         .font(.system(size: 11))
                         .foregroundStyle(Palette.muted)
                         .fixedSize(horizontal: false, vertical: true)
@@ -321,33 +401,19 @@ private struct CloudConnectCard: View {
         .padding(.top, 2)
     }
 
-    private func host(_ parsed: Cloud.Code) -> String {
-        switch parsed {
-        case .link(let link): return link.host
-        case .pairing(let code): return code.host
-        }
-    }
-
-    private func pairs(_ parsed: Cloud.Code) -> String? {
-        switch parsed {
-        case .link(let link): return link.fingerprintPairs
-        case .pairing(let code): return code.fingerprintPairs
-        }
-    }
-
     private func trust(_ parsed: Cloud.Code) -> String {
-        let (url, pinned): (URL, Bool) = {
-            switch parsed {
-            case .link(let link): return (link.url, link.fingerprint != nil)
-            case .pairing(let code): return (code.url, code.fingerprint != nil)
-            }
-        }()
-        if url.scheme == "http" { return "Plain HTTP — this Mac only, for development" }
-        return pinned ? "Pinned to this certificate" : "Trusted by its public certificate"
+        if parsed.url.scheme == "http" { return "Plain HTTP — this Mac only, for development" }
+        return parsed.fingerprint != nil ? "Pinned to this certificate" : "Trusted by its public certificate"
     }
 
     private func go() {
         guard let parsed, !connecting else { return }
+        if case .sso(let join) = parsed {
+            guard !sso.running(CloudSSO.Target(join)) else { return }
+            problem = nil
+            sso.start(CloudSSO.Target(join), trusting: unknownSeen, in: browser)
+            return
+        }
         connecting = true
         problem = nil
         Task {
@@ -359,6 +425,8 @@ private struct CloudConnectCard: View {
                     let confirmed = unknown.flatMap { $0.code == pairing ? $0.seen : nil }
                     try await CloudPairing.pairAndSync(pairing, trusting: confirmed)
                     unknown = nil
+                case .sso:
+                    break
                 }
             } catch let failure as Cloud.Failure where failure.code == "untrusted" {
                 if case .pairing(let pairing) = parsed, let seen = failure.seen { unknown = (pairing, seen) }
@@ -367,6 +435,67 @@ private struct CloudConnectCard: View {
                 problem = error.localizedDescription
             }
             connecting = false
+        }
+    }
+}
+
+/// While a single sign-on is under way: what Copper is waiting for, and a
+/// way to stop. The same row in Connect and in the account step.
+private struct CloudSSOWaiting: View {
+    @ObservedObject var sso: CloudSSO
+
+    private var text: String {
+        switch sso.phase {
+        case .starting: return "Opening your browser…"
+        case .waiting: return "Finish signing in in your browser…"
+        case .finishing: return "Signing you in…"
+        case .idle, .failed: return ""
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Ring(size: 12)
+            Text(text)
+                .font(.system(size: 11.5))
+                .foregroundStyle(Palette.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+            if sso.phase != .finishing {
+                Pill("Cancel") { sso.cancel() }
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// copper://cloud/join brought a code for another instance than the one
+/// this Mac is connected to. Nothing changes on its own: switching is a
+/// disconnect, below, and the link again.
+private struct CloudOfferNotice: View {
+    let offer: CloudSSO.Offer
+    let linked: Cloud.Link
+    @ObservedObject var sso: CloudSSO
+
+    var body: some View {
+        Card {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "link")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(Palette.ink)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("This link is for \(offer.code.host)")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Palette.ink)
+                    Text("This Mac is connected to \(linked.host). To use the link instead, disconnect below, then open it again.")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Palette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Pill("Dismiss") { sso.dismissOffer() }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10)
         }
     }
 }
@@ -383,10 +512,18 @@ private func fingerprintText(_ pairs: String) -> some View {
 
 // MARK: - 2. account
 
+/// Signing in on a connected instance. When the instance offers single
+/// sign-on (`GET /v1/auth/sso`), Continue with Google comes first; the
+/// password form stays below it — or behind a line, when the instance has
+/// password sign-in off for everyone but its admins.
 private struct CloudAccountForm: View {
     enum Mode: Hashable { case signIn, create }
     enum Field: Hashable { case email, password, name }
 
+    let browser: Browser?
+    @ObservedObject private var cloud = Cloud.shared
+    @ObservedObject private var sso = CloudSSO.shared
+    @State private var usePassword = false
     @FocusState private var focus: Field?
     @State private var mode: Mode = .signIn
     @State private var email = ""
@@ -399,58 +536,127 @@ private struct CloudAccountForm: View {
         !email.isEmpty && !password.isEmpty && (mode == .signIn || (password.count >= Cloud.minimumPassword && !name.trimmingCharacters(in: .whitespaces).isEmpty))
     }
 
+    /// The instance's single sign-on, when it offers one.
+    private var provider: Cloud.SSODiscovery.Provider? { sso.providers(for: cloud.link).first }
+
+    private var target: CloudSSO.Target? {
+        guard let link = cloud.link, let provider else { return nil }
+        return CloudSSO.Target(link, provider: provider.id)
+    }
+
+    /// The password form: always without single sign-on; with it, unless
+    /// the instance keeps passwords for its admins.
+    private var passwords: Bool {
+        guard provider != nil, let link = cloud.link, let discovery = sso.discovered[link.url] else { return true }
+        return discovery.passwordSignin || usePassword
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Caption("2 · Your account on this instance")
             Card {
-                Segmented(options: [(Mode.signIn, "Sign in"), (Mode.create, "Create account")], selection: $mode, wide: true, label: "Account")
-                    .padding(.horizontal, 14).padding(.vertical, 10)
-                Rule()
-                Line("Email") {
-                    field("you@example.com", text: $email, width: 220, submit: next).focused($focus, equals: .email)
-                }
-                .cloudAnchor("cloud.account.email")
-                Rule()
-                Line("Password", mode == .create ? "At least \(Cloud.minimumPassword) characters" : nil) {
-                    field(mode == .create ? "10 or more characters" : "password", text: $password, width: 220, secure: true, submit: mode == .create ? next : go)
-                        .focused($focus, equals: .password)
-                }
-                .cloudAnchor("cloud.account.password")
-                if mode == .create {
-                    Rule()
-                    Line("Your name", "Shown beside your cursor on shared canvases") {
-                        field("Name", text: $name, width: 220, submit: go).focused($focus, equals: .name)
+                if let provider, let target {
+                    Group {
+                        if sso.running(target) {
+                            CloudSSOWaiting(sso: sso)
+                        } else {
+                            HStack(spacing: 8) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Sign in with your \(provider.name) account")
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(Palette.ink)
+                                    Text(provider.domainHint.map { $0 + " — Copper opens your browser." } ?? "Copper opens your browser to sign in.")
+                                        .font(.system(size: 11.5))
+                                        .foregroundStyle(Palette.muted)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Spacer()
+                                Pill("Continue with \(provider.name)", filled: true) {
+                                    problem = nil
+                                    sso.start(target, in: browser)
+                                }
+                            }
+                        }
                     }
-                    .cloudAnchor("cloud.account.name")
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .cloudAnchor("cloud.account.sso")
+                    Rule()
                 }
-                Rule()
-                HStack {
-                    Text(mode == .create ? "The first account on an instance is its admin." : "Same email and password as on your other Macs.")
+                if passwords {
+                    passwordForm
+                } else {
+                    HStack {
+                        Button("Sign in with a password instead") {
+                            withAnimation(Motion.settle) { usePassword = true }
+                        }
+                        .buttonStyle(.plain)
                         .font(.system(size: 11.5))
                         .foregroundStyle(Palette.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer()
-                    if working { ProgressView().controlSize(.small) }
-                    Pill(working ? "…" : (mode == .create ? "Create account" : "Sign in"), filled: ready && !working, action: go)
-                        .disabled(!ready || working)
-                        .opacity(ready ? 1 : 0.5)
+                        .help("Password sign-in is for this instance's admins")
+                        Spacer()
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 10)
                 }
-                .padding(.horizontal, 14).padding(.vertical, 10)
-                .cloudAnchor("cloud.account.submit")
             }
             .onChange(of: mode) { _, mode in
                 problem = nil
                 // Create account grows the form by a field: keep its button in view.
                 if mode == .create { cloudReveal("cloud.account.submit") }
             }
-            if let problem { CloudProblem(problem).cloudAnchor("cloud.account.problem") }
+            if let problem = problem ?? target.flatMap({ sso.problem(for: $0) }) {
+                CloudProblem(problem).cloudAnchor("cloud.account.problem")
+            }
         }
         .onChange(of: focus) { _, field in
             if let field { cloudReveal(Self.anchor(field)) }
         }
-        .onChange(of: problem) { _, problem in
+        .onChange(of: problem ?? target.flatMap({ sso.problem(for: $0) })) { _, problem in
             if problem != nil { cloudReveal("cloud.account.problem") }
         }
+        // Whether the instance offers single sign-on: asked each time the
+        // step shows, so a provider the admin just set up appears.
+        .task(id: cloud.link?.url) {
+            guard let link = cloud.link else { return }
+            await sso.discover(url: link.url, pin: link.fingerprint, force: true)
+        }
+    }
+
+    @ViewBuilder
+    private var passwordForm: some View {
+        Segmented(options: [(Mode.signIn, "Sign in"), (Mode.create, "Create account")], selection: $mode, wide: true, label: "Account")
+            .padding(.horizontal, 14).padding(.vertical, 10)
+        Rule()
+        Line("Email") {
+            field("you@example.com", text: $email, width: 220, submit: next).focused($focus, equals: .email)
+        }
+        .cloudAnchor("cloud.account.email")
+        Rule()
+        Line("Password", mode == .create ? "At least \(Cloud.minimumPassword) characters" : nil) {
+            field(mode == .create ? "10 or more characters" : "password", text: $password, width: 220, secure: true, submit: mode == .create ? next : go)
+                .focused($focus, equals: .password)
+        }
+        .cloudAnchor("cloud.account.password")
+        if mode == .create {
+            Rule()
+            Line("Your name", "Shown beside your cursor on shared canvases") {
+                field("Name", text: $name, width: 220, submit: go).focused($focus, equals: .name)
+            }
+            .cloudAnchor("cloud.account.name")
+        }
+        Rule()
+        HStack {
+            Text(mode == .create ? "The first account on an instance is its admin." : "Same email and password as on your other Macs.")
+                .font(.system(size: 11.5))
+                .foregroundStyle(Palette.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+            if working { ProgressView().controlSize(.small) }
+            Pill(working ? "…" : (mode == .create ? "Create account" : "Sign in"), filled: ready && !working, action: go)
+                .disabled(!ready || working)
+                .opacity(ready ? 1 : 0.5)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .cloudAnchor("cloud.account.submit")
     }
 
     private static func anchor(_ field: Field) -> String {

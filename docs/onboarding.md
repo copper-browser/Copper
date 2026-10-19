@@ -143,6 +143,17 @@ done.
 Copper Cloud is a server your team runs. Copper links to one instance at a
 time, signs in to your account there, and syncs what you switch on.
 
+### Your company signs in with Google?
+
+If your admin set up single sign-on, they share a **/start** page (or a join
+link, `copper-cloud://HOST:PORT/#sso=google&fp=…`). On the page, press
+**Open in Copper** — Copper opens Settings › Cloud and your browser at Google's
+account picker — and choose your work account. That's all: this Mac is
+connected, signed in and syncing. (Pasting the join link into Settings › Cloud
+and pressing **Continue with Google** does the same.) No link code, no
+password. Details: [cloud.md › Single sign-on](cloud.md#single-sign-on-continue-with-google).
+Otherwise, read on.
+
 ### Get a link code
 
 Ask your Copper Cloud administrator for a **link code**. It looks like:

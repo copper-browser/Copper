@@ -13,6 +13,12 @@ import Foundation
 //                                    link + sign in with a pairing code (the whole
 //                                    copper-cloud://…#p=… or, already linked, a bare cp_…),
 //                                    then turn on sync as the page does (all, unless --sync)
+//   cloud sso [CODE] [--trust FP] [--sync DOMAINS|none] [--follow]
+//                                    single sign-on with a join link (copper-cloud://…#sso=google&fp=…)
+//                                    or the linked instance: opens the system browser (--follow: Copper
+//                                    fetches the provider page itself, for a test server) and answers
+//                                    when signed in, failed, cancelled or timed out (5 min)
+//   cloud sso discover [CODE]        what GET /v1/auth/sso offers; `cloud sso cancel` | `cloud sso state`
 //   cloud pairing-code               signed in: mint a code for another Mac → {id, code, link, expiresAt}
 //   cloud pairing-codes              my codes still open
 //   cloud revoke-pairing ID          revoke one (ID from pairing-codes, or `current`)
@@ -82,6 +88,8 @@ enum CloudBench {
             answer(status())
         case "pair":
             pair(words, answer: answer)
+        case "sso":
+            sso(words, in: browser, answer: answer)
         case "pairing-code":
             Task { @MainActor in
                 do {
@@ -223,7 +231,7 @@ enum CloudBench {
             browser.pin(tab)
             answer(["pinned": url.absoluteString, "pins": browser.pinnedCount])
         default:
-            answer(["error": "unknown cloud op \(op) — status|link|pair|pairing-code|pairing-codes|revoke-pairing|signup|signin|signout|disconnect|sync|devices|doc|log|history-limits|selftest|wstest|picture"])
+            answer(["error": "unknown cloud op \(op) — status|link|pair|sso|pairing-code|pairing-codes|revoke-pairing|signup|signin|signout|disconnect|sync|devices|doc|log|history-limits|selftest|wstest|picture"])
         }
     }
 
@@ -272,6 +280,97 @@ enum CloudBench {
             } catch {
                 answer(failure(error))
             }
+        }
+    }
+
+    /// `cloud sso [CODE] [--trust FP] [--sync DOMAINS|none] [--follow]`,
+    /// `cloud sso discover [CODE]`, `cloud sso cancel`, `cloud sso state`.
+    private static func sso(_ words: [String], in browser: Browser, answer: @escaping ([String: Any]) -> Void) {
+        let usage = "usage: cloud sso [CODE] [--trust FINGERPRINT] [--sync DOMAINS|all|none] [--follow] | cloud sso discover [CODE] | cloud sso cancel | cloud sso state — CODE is copper-cloud://HOST:PORT/#sso=google&fp=…; without one, the linked instance"
+        let flow = CloudSSO.shared
+        func phase() -> [String: Any] {
+            var out = status()
+            switch flow.phase {
+            case .idle: out["sso"] = "idle"
+            case .starting: out["sso"] = "starting"
+            case .waiting(let name): out["sso"] = "waiting"; out["provider"] = name
+            case .finishing: out["sso"] = "finishing"
+            case .failed(let text): out["sso"] = "failed"; out["error"] = text
+            }
+            if let seen = flow.seen { out["seen"] = seen }
+            return out
+        }
+        var rest = words
+        let verb = rest.first.flatMap { ["discover", "cancel", "state"].contains($0) ? $0 : nil }
+        if verb != nil { rest.removeFirst() }
+        if verb == "cancel" { flow.cancel(); return answer(phase()) }
+        if verb == "state" { return answer(phase()) }
+        var text: String?
+        var trust: String?
+        var domains: Set<CloudSync.Domain>? = nil
+        var skipSync = false
+        var follow = false
+        var i = 0
+        while i < rest.count {
+            switch rest[i] {
+            case "--trust":
+                guard i + 1 < rest.count else { return answer(["error": usage]) }
+                trust = rest[i + 1]; i += 2
+            case "--sync":
+                guard i + 1 < rest.count else { return answer(["error": usage]) }
+                let list = rest[i + 1].split(separator: ",").map(String.init)
+                if list == ["none"] { skipSync = true }
+                else if !list.contains("all") {
+                    domains = Set(list.compactMap(CloudSync.Domain.init(rawValue:)))
+                    if domains?.isEmpty == true { return answer(["error": usage]) }
+                }
+                i += 2
+            case "--follow":
+                follow = true; i += 1
+            default:
+                if text == nil { text = rest[i] } else { return answer(["error": usage]) }
+                i += 1
+            }
+        }
+        let target: CloudSSO.Target
+        if let text {
+            guard case .sso(let code)? = Cloud.parseCode(text) else {
+                return answer(["error": "That isn't a join link (copper-cloud://…#sso=…) — " + usage])
+            }
+            target = CloudSSO.Target(code)
+        } else if let link = Cloud.shared.link {
+            target = CloudSSO.Target(link, provider: nil)
+        } else {
+            return answer(["error": "Not linked — give a join link. " + usage])
+        }
+        if verb == "discover" {
+            Task { @MainActor in
+                do {
+                    let pin = try CloudSSO.pin(target, trusting: trust)
+                    let found = try await Cloud.discoverSSO(url: target.url, pin: pin)
+                    answer(["enabled": found.enabled, "passwordSignin": found.passwordSignin,
+                            "providers": found.providers.map { ["id": $0.id, "kind": $0.kind, "name": $0.name, "domains": $0.domains, "hd": $0.hd ?? NSNull(),
+                                                                "authorizationEndpoint": $0.authorizationEndpoint] as [String: Any] }])
+                } catch {
+                    answer(failure(error))
+                }
+            }
+            return
+        }
+        // --follow: Copper fetches the provider's page itself and follows its
+        // redirect back — for a pretend provider that answers at once
+        // (a test server); without it, the system browser, for a person.
+        let open: ((URL) -> Bool)? = follow ? { url in
+            Task.detached { _ = try? await URLSession.shared.data(from: url) }
+            return true
+        } : nil
+        flow.start(target, trusting: trust, domains: domains, sync: !skipSync, in: browser, open: open)
+        Task { @MainActor in
+            let deadline = Date().addingTimeInterval(CloudSSO.timeout + 30)
+            while flow.busy, Date() < deadline {
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
+            answer(phase())
         }
     }
 
@@ -467,6 +566,9 @@ enum CloudSelfTest {
 
         historyPush(check)
         await historyDelete(check)
+
+        // Single sign-on and copper://cloud/join (CloudSSO.swift).
+        for (name, ok) in CloudSSO.selfTest() { check(ok, name) }
 
         return ["checks": count, "passed": count - failures.count, "failures": failures]
     }

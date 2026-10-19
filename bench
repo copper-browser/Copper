@@ -341,6 +341,9 @@
     ./bench cloud devices|doc DOMAIN|log|selftest|wstest|picture PATH [dark] [CODE]|bookmark URL [TITLE]|pin URL|open URL
     ./bench cloud pair CODE [--trust FP] [--sync DOMAINS|none]   link + sign in with a pairing code (#p=, or a bare cp_… when linked)
     ./bench cloud pairing-code|pairing-codes|revoke-pairing ID|current
+    ./bench cloud sso [CODE] [--trust FP] [--sync DOMAINS|none] [--follow]   Continue with Google: a join link
+                                       (#sso=) or the linked instance; answers once signed in, failed or timed out
+    ./bench cloud sso discover [CODE]|state|cancel
                                        Copper Cloud: link a probe world to an instance, sign in, sync;
                                        mint a one-time code for another Mac, list or revoke them
     ./bench passkeys list|count|forget --id ID|answer yes|no|ask

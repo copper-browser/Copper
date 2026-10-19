@@ -11,10 +11,12 @@ cloud documents by definition — that is what sharing means
 ## Setting it up
 
 Three steps on the page, in order — or one, with a pairing code from a Mac
-already signed in (see [Pairing another Mac](#pairing-another-mac)):
+already signed in (see [Pairing another Mac](#pairing-another-mac)) or a
+join link for your company's sign-in (see [Single sign-on](#single-sign-on-continue-with-google)):
 
-1. **Connect.** One field, led by *Paste the link code from your Copper Cloud
-   administrator — or a pairing code from a Mac that is already signed in*;
+1. **Connect.** One field, led by *Paste the link code or join link from your
+   Copper Cloud administrator — or a pairing code from a Mac that is already
+   signed in*;
    the page says which it got. A **link code** is what the instance's admin
    hands you — on an instance that keeps a directory of people, from the admin
    portal. Running your own server, `copper-cloud link-code` prints one (and
@@ -105,6 +107,94 @@ against the Mac's own trust. If the Mac doesn't trust the certificate, the
 page shows the fingerprint the server presented and offers *Trust and pair*:
 compare it with `copper-cloud doctor` first; trusting it pins the instance to
 that certificate from then on, exactly as an `fp=` would have.
+
+## Single sign-on (Continue with Google)
+
+An instance whose admin set up company sign-in (copper-cloud ≥ 0.9.0, Google
+first) lets anyone with an allowed-domain account in without a link code, an
+account to create or a password. Implementation:
+`Sources/Search/Fork/Cloud/CloudSSO.swift`.
+
+**Where the button appears.**
+
+- **A join link** pasted into the Connect field — what `copper-cloud
+  link-code --sso` prints and the instance's `/start` page shows:
+
+  ```text
+  copper-cloud://HOST:PORT/#sso=google&fp=<sha256 of the certificate>
+  ```
+
+  (`fp=` left out for an instance with a public certificate). The field says
+  *Join link — links this Mac and signs you in with Google* and, once the
+  instance has answered `GET /v1/auth/sso`, *Use your @exowatt.com account*;
+  the button reads **Continue with Google** (the provider's name from the
+  instance). There is no secret in a join link: the company account is the
+  key.
+- **Step 2, Account**, on an instance linked any other way: when its
+  `GET /v1/auth/sso` lists a provider, *Sign in with your Google account* and
+  **Continue with Google** come first in the card, above the password form.
+  An instance with password sign-in off for everyone but its admins
+  (`password_signin: false`) folds the form behind *Sign in with a password
+  instead*. An instance from before single sign-on (404) shows the page as
+  before.
+- **`copper://cloud/join?code=<percent-encoded join link>`** — the `/start`
+  page's *Open in Copper*. It opens Settings › Cloud with the code in the
+  field and, for a join link, starts the sign-in at once, so the person is
+  one click from Google's account picker. A link for another instance than
+  the one this Mac is connected to changes nothing on its own: the page says
+  *This link is for HOST* and how to switch (disconnect, then open it again).
+  Already signed in there, it just says so. The `copper://` scheme is the one
+  `build.sh` registers for canvas links; the link is taken wherever a
+  `copper://` link arrives (another app, the address bar, a page in Copper).
+
+**What pressing it does** (the native-app loopback flow, RFC 8252, with PKCE
+S256):
+
+1. `GET /v1/auth/sso` (no instance key, no session) through the pinned
+   certificate — the join link's `fp`, or the linked instance's — for the
+   provider's `client_id`, `authorization_endpoint`, `scopes`, `domains` and
+   `hd`.
+2. A listener on `127.0.0.1`, on a port the system picks, for one redirect.
+3. The system's default browser opens at the provider with `client_id`,
+   `response_type=code`, `scope`, `redirect_uri=http://127.0.0.1:<port>/`, a
+   random `state`, the S256 `code_challenge`, `prompt=select_account` and
+   `hd` when the instance gives one. The card says *Finish signing in in your
+   browser…* with **Cancel**.
+4. The browser comes back to the listener. A redirect without this attempt's
+   `state` is turned away and the wait goes on. Copper comes to the front,
+   sends `{code, code_verifier, redirect_uri, device}` to
+   `POST /v1/auth/sso/google` (again without the instance key), and the
+   browser tab shows *You're signed in — return to Copper* (or what went
+   wrong, in the same words as the page).
+5. The answer is kept exactly as a pairing's is (`Cloud.adoptSignedIn`, one
+   write: the link with `gate_key` as its key, the account, the session token,
+   the device id the server answered with), and sync turns on for everything,
+   as after a pairing (`CloudPairing.syncAfterSignIn`).
+
+The client secret never comes to the Mac — the server trades the code and
+the verifier at the provider and checks the ID token (the issuer, the client,
+a verified email in an allowed domain). The code, the verifier and the state
+are never written down or logged. Nothing coming back within **5 minutes**
+ends the wait (*Nothing came back from the browser in 5 minutes — try
+again*); **Cancel** closes the listener at once.
+
+**Refusals, in words:** `sso_domain` → *Use your @exowatt.com account* (the
+domains the instance listed); `sso_no_account` → there's no account for that
+email and the instance doesn't create them; `account_disabled`;
+`sso_disabled` → single sign-on is turned off on the instance; `sso_failed`
+→ Google didn't confirm the sign-in; `bad_redirect`; too many tries. A join
+link without `fp=` to an instance the Mac doesn't trust shows the fingerprint
+it presented and *Trust and continue with Google*, as a pairing code does.
+
+From a script: `./bench cloud sso CODE` (or, linked, `./bench cloud sso`)
+opens the browser and answers when the sign-in has finished, failed, been
+cancelled or timed out; `--follow` makes Copper fetch the provider page
+itself, for a pretend provider that redirects straight back;
+`./bench cloud sso discover [CODE]` prints what the instance offers. The pure
+parts (join links, discovery, the authorization address, PKCE, the callback,
+the refusals, `copper://cloud/join`) are in `./bench cloud selftest` and
+`swift test --filter CloudSSOTests`, which also runs the listener and both
+requests against a pretend instance on this Mac.
 
 ## What syncs
 
@@ -349,6 +439,9 @@ In a probe world (never your own Copper), with *Let a script drive Copper* on:
 ./bench --world OTHER cloud pair 'copper-cloud://…/#p=cp_…&fp=…'   # links + signs in + turns on sync
 ./bench --world NAME cloud pairing-codes   # my codes still open
 ./bench --world NAME cloud revoke-pairing ID|current
+./bench --world NAME cloud sso 'copper-cloud://…/#sso=google&fp=…'   # Continue with Google: browser, then signed in + sync on
+./bench --world NAME cloud sso discover [CODE]   # what GET /v1/auth/sso offers (CODE, or the linked instance)
+./bench --world NAME cloud sso state|cancel
 ```
 
 `cloud pair CODE` takes the whole code, or a bare `cp_…` on a Copper already
@@ -389,11 +482,14 @@ Pairing (`Fork/Cloud/CloudPairing.swift`, `Cloud.pair` in `Cloud.swift`):
 `pairingCodes()`; `revokePairingCode(_:)`. `CloudPairing.shared` is the one
 code this Copper is showing (card, ⌘K and bench share it), and
 `CloudPairing.pairAndSync` is what the page's *Pair this Mac* runs.
+Single sign-on: `Cloud.discoverSSO(url:pin:)` and
+`Cloud.exchangeSSO(…)` are the two requests; `CloudSSO.shared` is the one
+sign-in under way (`start`, `cancel`, `phase`), shared by the page,
+`copper://cloud/join` (`CloudJoin`) and the bench; both it and pairing end in
+`Cloud.adoptSignedIn` and `CloudPairing.syncAfterSignIn`.
 
 ## TODO
 
-- **Google SSO** — sign in with a Google account on instances that configure
-  it, instead of (or beside) email and password.
 - Sync a pinned tab's order within its row, tab groups, and theme pictures.
 - Device management (list and remove devices) on the Cloud page; the server
   already has `GET/PATCH/DELETE /v1/devices`.
