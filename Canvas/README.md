@@ -14,5 +14,9 @@ Canvas/sync.sh --check                          # is the vendored file the pinne
 Canvas/sync.sh --from ~/src/canvas-app/dist/canvas.html   # try a local build (pin before merging)
 ```
 
+Nobody edits the page here. Every hour, `.github/workflows/canvas.yml` checks canvas-app `main`
+and opens or updates a "Canvas: take canvas-app …" PR when it has moved; pull requests that touch
+`Canvas/` must pass `Canvas/sync.sh --check`.
+
 The host side (`Sources/Search/Fork/Canvas/`) and its contract (canvas-app's README, "Embedding")
 stay here.

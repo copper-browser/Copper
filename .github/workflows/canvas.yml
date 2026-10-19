@@ -1,0 +1,60 @@
+# The canvas page lives in copper-browser/canvas-app; Copper vendors its build (Canvas/README.md).
+# - pull requests touching Canvas/: the vendored canvas.html must be the pinned canvas-app build;
+# - hourly (or by hand): when canvas-app main has moved, open or update the "canvas: take canvas-app …" PR.
+name: Canvas
+on:
+  pull_request:
+    paths: [Canvas/**]
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: Canvas/sync.sh --check
+  bump:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fork
+      - name: Pin canvas-app main
+        id: pin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          old=$(cat Canvas/CANVAS_APP_REF)
+          Canvas/sync.sh main
+          new=$(cat Canvas/CANVAS_APP_REF)
+          echo "old=$old" >> "$GITHUB_OUTPUT"
+          echo "new=$new" >> "$GITHUB_OUTPUT"
+          git diff --quiet && echo "changed=false" >> "$GITHUB_OUTPUT" || echo "changed=true" >> "$GITHUB_OUTPUT"
+      - name: Open or update the pin PR
+        if: steps.pin.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OLD: ${{ steps.pin.outputs.old }}
+          NEW: ${{ steps.pin.outputs.new }}
+        run: |
+          branch=canvas/take-canvas-app
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git commit -qam "Canvas: take canvas-app ${NEW:0:7}" -m "https://github.com/copper-browser/canvas-app/compare/${OLD:0:12}...${NEW:0:12}"
+          git push -f origin "$branch"
+          log=$(gh api "repos/copper-browser/canvas-app/compare/$OLD...$NEW" --jq '.commits[] | "- " + (.commit.message | split("\n")[0]) + " (" + .sha[0:7] + ")"' | head -50)
+          body=$(printf 'canvas-app moved on. This pins `Canvas/` to %s and vendors its `dist/canvas.html` (`Canvas/sync.sh`).\n\n%s\n\nhttps://github.com/copper-browser/canvas-app/compare/%s...%s\n' "${NEW:0:7}" "$log" "${OLD:0:12}" "${NEW:0:12}")
+          if gh pr view "$branch" --json state --jq .state 2>/dev/null | grep -q OPEN; then
+            gh pr edit "$branch" --title "Canvas: take canvas-app ${NEW:0:7}" --body "$body"
+          else
+            gh pr create --base fork --head "$branch" --title "Canvas: take canvas-app ${NEW:0:7}" --body "$body"
+          fi
