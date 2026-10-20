@@ -64,7 +64,7 @@
                                        the sidebar's update pill forced into a state (its clicks are
                                        rehearsed, never real); pill click|later|unsnooze|notes [TEXT]|replay
     ./bench downloads [open|close|cancel ID|retry ID|clear|start URL]
-    ./bench render bitwarden|onepassword[-app|-password|-service|-dark]|managers[-dark]|picker|agent|agent-dark|drive|hands|hands-dark|pill|pill-dark PATH [HOST]
+    ./bench render bitwarden|onepassword[-app|-password|-service|-dark]|managers[-dark]|picker|picker-live|agent|agent-dark|drive|hands|hands-dark|pill|pill-dark PATH [HOST]
                                        one card drawn to a PNG on its own, no window brought forward
                                        (picker: the account list for HOST, default localhost)
     ./bench agent seed chat|running|jev|driver|cutoff|empty   a made-up conversation in the agent pane, for pictures (no model)
@@ -573,7 +573,7 @@ def main(argv):
         if request["op"] in ("import", "export", "csvcheck") and rest: rest = [os.path.abspath(rest[0])] + rest[1:]
         request["arg"] = " ".join(rest)
     elif verb == "render":
-        if len(args) < 2: sys.exit("usage: bench render bitwarden|onepassword[-app|-password|-service|-dark]|managers[-dark]|picker|agent|agent-dark|drive|hands|hands-dark|pill|pill-dark PATH [HOST]")
+        if len(args) < 2: sys.exit("usage: bench render bitwarden|onepassword[-app|-password|-service|-dark]|managers[-dark]|picker|picker-live|agent|agent-dark|drive|hands|hands-dark|pill|pill-dark PATH [HOST]")
         request["op"] = args[0]
         request["path"] = os.path.abspath(args[1])
         if len(args) > 2: request["host"] = args[2]

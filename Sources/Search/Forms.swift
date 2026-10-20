@@ -51,6 +51,15 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
                         group: group,
                         label: field["label"] as? String ?? ""
                     )
+                    // Fork (new-password)
+                    focused?.role = (field["role"] as? String).flatMap(PasswordRole.init(rawValue:))
+                    if focused?.role?.makesPassword == true {
+                        focused?.rules = PasswordRules(
+                            passwordrules: field["rules"] as? String ?? "",
+                            minLength: (field["minLength"] as? NSNumber)?.intValue,
+                            maxLength: (field["maxLength"] as? NSNumber)?.intValue
+                        )
+                    }
                 }
                 if let rect = body["rect"] as? [String: Double],
                    let x = rect["x"], let y = rect["y"], let w = rect["w"], let h = rect["h"] {
@@ -248,6 +257,180 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
         return parts.length ? parts[0] : '';
       }
 
+      // Fork (new-password): which part a password box plays on a form that
+      // makes a new password — the one you have now, the new one, or the new
+      // one again. The autocomplete promise first, then the box's own words,
+      // then where it sits: a change form is almost always old, new, again.
+      var confirmClue = /confirm|re.?enter|re.?type|repeat|again|verif|pass(?:word)?[ _-]?2(?![0-9])|passconf|pw2/;
+      var currentClue = /(^|[^a-z])(old|current|existing|previous)([^a-z]|$)|old.?pass|curr(?:ent)?.?pass|existing.?pass|pass(?:word)?[ _-]?0(?![0-9])/;
+      var newClue = /(^|[^a-z])new([^a-z]|$)|new.?pass|create|choose|sign.?up|register/;
+      // "password1" names the new box only beside a second one; alone it
+      // is as likely a sign-in's.
+      var numberedClue = /pass(?:word)?[ _-]?1(?![0-9])/;
+
+      function passwordClue(el, several) {
+        var promise = (el.autocomplete || el.getAttribute('autocomplete') || '').toLowerCase();
+        var clues = labelParts(el).join(' ').toLowerCase();
+        if (/(^|\\s)current-password(\\s|$)/.test(promise)) return 'current';
+        // Sites promise new-password on both boxes; the words tell them apart.
+        if (/(^|\\s)new-password(\\s|$)/.test(promise)) return confirmClue.test(clues) ? 'confirm' : 'new';
+        if (confirmClue.test(clues)) return several ? 'confirm' : null;
+        if (currentClue.test(clues)) return 'current';
+        if (newClue.test(clues) || (several && numberedClue.test(clues))) return 'new';
+        return null;
+      }
+
+      function visiblePasswords(scope) {
+        var boxes = scope.querySelectorAll('input[type="password"]');
+        var result = [];
+        for (var i = 0; i < boxes.length; i++) if (visible(boxes[i])) result.push(boxes[i]);
+        return result;
+      }
+
+      // The form a password box belongs to: its <form>, or the nearest
+      // ancestor holding more than one password box.
+      function passwordForm(el) {
+        var scope = el.form || (el.closest && el.closest('form'));
+        if (!scope) {
+          var ancestor = el.parentElement;
+          for (var level = 0; ancestor && level < 6; level++, ancestor = ancestor.parentElement) {
+            if (ancestor.querySelectorAll('input[type="password"]').length >= 2) { scope = ancestor; break; }
+          }
+        }
+        var boxes = scope ? visiblePasswords(scope) : [el];
+        if (boxes.indexOf(el) < 0) boxes = [el];
+        return { scope: scope || el.parentElement || document, boxes: boxes, roles: passwordRoles(boxes) };
+      }
+
+      function passwordRoles(boxes) {
+        var n = boxes.length;
+        var roles = boxes.map(function (box) { return passwordClue(box, n > 1); });
+        if (n === 1) return [roles[0] === 'confirm' ? 'new' : roles[0]];
+        var fresh = -1;
+        for (var i = 0; i < n; i++) {
+          if (roles[i] !== 'new') continue;
+          // A second box promised new is the first one's echo.
+          if (fresh >= 0) roles[i] = 'confirm'; else fresh = i;
+        }
+        if (fresh < 0) {
+          var current = roles.indexOf('current'), confirm = roles.indexOf('confirm');
+          for (var j = 0; j < n && fresh < 0; j++) {
+            if (roles[j] !== null) continue;
+            if (current >= 0 && j > current) fresh = j;
+            else if (current < 0 && confirm >= 0 && j < confirm) fresh = j;
+          }
+          // Nothing said at all: two boxes are new and again, three or
+          // more are old, new and again.
+          if (fresh < 0 && current < 0 && confirm < 0) fresh = n === 2 ? 0 : 1;
+          if (fresh < 0) return roles;
+          roles[fresh] = 'new';
+        }
+        for (var k = 0; k < n; k++) {
+          if (roles[k] === null) roles[k] = k < fresh ? 'current' : 'confirm';
+        }
+        return roles;
+      }
+
+      function passwordRole(el) {
+        var form = passwordForm(el);
+        return form.roles[form.boxes.indexOf(el)] || null;
+      }
+
+      // The form on the page that makes a new password, if there is one:
+      // the one `near` is in, else the caret's, else the first on the page.
+      function freshForm(near) {
+        function check(el) {
+          if (!el || (el.tagName || '').toLowerCase() !== 'input') return null;
+          var form = passwordForm(el);
+          return form.roles.indexOf('new') >= 0 ? form : null;
+        }
+        if (near) {
+          var scope = near.form || (near.closest && near.closest('form')) ||
+            ((near.tagName || '').toLowerCase() === 'form' ? near : null);
+          if (scope) {
+            var inside = visiblePasswords(scope);
+            return inside.length ? check(inside[0]) : null;
+          }
+          // A button outside any form answers for the box with the caret,
+          // not for a sign-up form elsewhere on the page.
+          var caretAt = document.activeElement;
+          return caretAt && (caretAt.type || '').toLowerCase() === 'password' ? check(caretAt) : null;
+        }
+        var active = document.activeElement;
+        if (active && (active.type || '').toLowerCase() === 'password') {
+          var mine = check(active);
+          if (mine) return mine;
+        }
+        var all = visiblePasswords(document);
+        for (var i = 0; i < all.length; i++) {
+          var found = check(all[i]);
+          if (found) return found;
+        }
+        return null;
+      }
+
+      // What the new boxes say a password may be.
+      function rulesOf(form) {
+        var rules = '', least = 0, most = 0;
+        for (var i = 0; i < form.boxes.length; i++) {
+          if (form.roles[i] !== 'new' && form.roles[i] !== 'confirm') continue;
+          var box = form.boxes[i];
+          var said = box.getAttribute('passwordrules');
+          if (said && !rules) rules = said;
+          if (box.minLength > 0) least = Math.max(least, box.minLength);
+          if (box.maxLength > 0) most = most ? Math.min(most, box.maxLength) : box.maxLength;
+        }
+        return { rules: rules, minLength: least, maxLength: most };
+      }
+
+      // Whose password it is: a box promised to hold the username (change
+      // forms are told to carry a hidden one), the name box before the
+      // first password box, or an address printed nearby.
+      function accountOf(form) {
+        var inputs = form.scope.querySelectorAll ? form.scope.querySelectorAll('input') : [];
+        for (var i = 0; i < inputs.length; i++) {
+          var promise = (inputs[i].getAttribute('autocomplete') || '').toLowerCase();
+          if (/(^|\\s)username(\\s|$)/.test(promise) && inputs[i].value) return inputs[i].value.trim();
+        }
+        var user = null;
+        for (var j = 0; j < inputs.length; j++) {
+          if (inputs[j] === form.boxes[0]) break;
+          var kind = (inputs[j].type || 'text').toLowerCase();
+          if ((kind === 'text' || kind === 'email' || kind === 'tel') && visible(inputs[j])) user = inputs[j];
+        }
+        if (user && user.value) return user.value.trim();
+        return hint({ user: null, pass: form.boxes[0] });
+      }
+
+      function newPasswordInfo() {
+        var form = freshForm();
+        if (!form) return { found: false };
+        var rules = rulesOf(form);
+        var current = null;
+        for (var i = 0; i < form.boxes.length; i++) {
+          if (form.roles[i] === 'current') { current = form.boxes[i]; break; }
+        }
+        return {
+          found: true, user: accountOf(form), rules: rules.rules,
+          minLength: rules.minLength, maxLength: rules.maxLength,
+          current: !!current, currentEmpty: !!current && !current.value
+        };
+      }
+
+      // The new password into the new box and every box that repeats it;
+      // the one you have now only into an empty current box, when given.
+      function fillNewPassword(password, old) {
+        var form = freshForm();
+        if (!form) return 0;
+        var filled = 0;
+        for (var i = 0; i < form.boxes.length; i++) {
+          var role = form.roles[i];
+          if (role === 'new' || role === 'confirm') { put(form.boxes[i], password); filled++; }
+          else if (role === 'current' && old && !form.boxes[i].value) put(form.boxes[i], old);
+        }
+        return filled;
+      }
+
       function autocompleteKind(el) {
         var value = (el.autocomplete || el.getAttribute('autocomplete') || '').toLowerCase();
         var tokens = value.split(/\\s+/);
@@ -324,7 +507,12 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
           else kind = regexKind(el);
         }
         if (!kind || (tag === 'select' && !selectKind(kind))) return null;
-        return { kind: kind, group: groupFor(kind), label: fieldLabel(el) };
+        var result = { kind: kind, group: groupFor(kind), label: fieldLabel(el) };
+        if (tag === 'input' && type === 'password') {
+          var role = passwordRole(el); // Fork (new-password)
+          if (role) result.role = role;
+        }
+        return result;
       }
 
       function controlsIn(scope) {
@@ -735,13 +923,35 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
         fillFocused: fillFocused,
         fillField: fillField,
         hasFields: hasFields,
-        fieldsPresent: fieldsPresent
+        fieldsPresent: fieldsPresent,
+        newPasswordInfo: newPasswordInfo, // Fork (new-password)
+        fillNewPassword: fillNewPassword
       };
 
       // What is in the boxes when they are sent. Said every time — a click
       // on "show password" says it too — because the browser only listens
       // once the page has moved on, and keeps the last thing it heard.
-      function offer() {
+      function offer(near) {
+        // Fork (new-password): a form that makes a password says the new
+        // one — the first box on a change form is the password going away.
+        var fresh = freshForm(near && near.nodeType === 1 ? near : null);
+        if (fresh) {
+          var made = '', again = true;
+          for (var i = 0; i < fresh.boxes.length; i++) {
+            if (fresh.roles[i] === 'new' && !made) made = fresh.boxes[i].value;
+          }
+          for (var j = 0; j < fresh.boxes.length; j++) {
+            if (fresh.roles[j] === 'confirm' && fresh.boxes[j].value !== made) again = false;
+          }
+          // Two boxes that disagree are a form about to say so, not a
+          // password worth keeping.
+          if (made && again) {
+            window.webkit.messageHandlers.officeForms.postMessage({
+              kind: 'submit', user: accountOf(fresh), password: made, fresh: true
+            });
+          }
+          return;
+        }
         var both = pair();
         if (!both || !both.pass.value) return;
         window.webkit.messageHandlers.officeForms.postMessage({
@@ -751,18 +961,20 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
         });
       }
 
-      document.addEventListener('submit', offer, true);
+      document.addEventListener('submit', function (e) { offer(e.target); }, true);
       document.addEventListener('keydown', function (e) {
         if (e.key !== 'Enter') return;
+        var el = document.activeElement;
+        if (el && (el.type || '').toLowerCase() === 'password' && freshForm(el)) { offer(el); return; }
         var both = pair();
-        if (both && (document.activeElement === both.pass || document.activeElement === both.user)) offer();
+        if (both && (el === both.pass || el === both.user)) offer(el);
       }, true);
       // Plenty of sign-in buttons aren't in a form and never fire submit.
       document.addEventListener('click', function (e) {
         var el = e.target;
         if (!el || !el.closest) return;
         if (el.closest('button, input[type="submit"], [role="button"]')) {
-          setTimeout(offer, 0);
+          setTimeout(function () { offer(el); }, 0);
         }
       }, true);
 
@@ -850,6 +1062,12 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
           var r = el.getBoundingClientRect();
           if (r.width > 0 && r.height > 0) rect = { x: r.left, y: r.top, w: r.width, h: r.height };
           else field = null;
+        }
+        if (field && (field.role === 'new' || field.role === 'confirm')) {
+          var rules = rulesOf(passwordForm(el)); // Fork (new-password)
+          field.rules = rules.rules;
+          field.minLength = rules.minLength;
+          field.maxLength = rules.maxLength;
         }
         var login = both && el && (el === both.user || el === both.pass);
         window.webkit.messageHandlers.officeForms.postMessage({

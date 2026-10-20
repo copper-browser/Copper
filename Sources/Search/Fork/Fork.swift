@@ -499,11 +499,11 @@ enum Fork {
             case "pill", "pill-dark":
                 // Every update pill state on every space (Fork/UpdatePill.swift).
                 view = AnyView(UpdatePillSheet(browser: browser, dark: which == "pill-dark"))
-            case "onepassword", "onepassword-app", "onepassword-password", "onepassword-service", "onepassword-dark", "managers", "managers-dark", "picker":
+            case "onepassword", "onepassword-app", "onepassword-password", "onepassword-service", "onepassword-dark", "managers", "managers-dark", "picker", "picker-live":
                 // The 1Password card, or the account picker under a sign-in box.
                 guard let made = OnePasswordBench.view(which, host: request["host"] as? String, in: browser) else { return ["error": "no view"] }
                 view = made
-            default: return ["error": "render bitwarden|onepassword[-app|-password|-service|-dark]|managers[-dark]|picker|drive|agent|agent-dark|hands|hands-dark|pill|pill-dark PATH"]
+            default: return ["error": "render bitwarden|onepassword[-app|-password|-service|-dark]|managers[-dark]|picker|picker-live|drive|agent|agent-dark|hands|hands-dark|pill|pill-dark PATH"]
             }
             let pane = ["drive", "agent", "agent-dark"].contains(which)
             let hosted = ["pill", "onepassword", "managers", "picker"].contains { which.hasPrefix($0) }
