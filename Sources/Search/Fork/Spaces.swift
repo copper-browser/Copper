@@ -1092,6 +1092,10 @@ final class Spaces: ObservableObject {
             if wasActive { activePin = tab.id }
         }
 
+        // Fork (perf): a row nobody can see yet gets its icons once the launch
+        // has settled — each a file read and a decode on the main thread,
+        // before the window's first frame (perf/README.md, "Next").
+        var unseen: [Tab] = []
         for (i, entry) in saved.tabs.enumerated() {
             guard entry.pin == nil, let url = URL(string: entry.url).flatMap(CanvasImport.restored) else { continue } // Fork (canvas-hooks): easels → canvases
             if let board = CanvasLinks.id(from: url), !boards.insert(board).inserted { continue }
@@ -1100,7 +1104,8 @@ final class Spaces: ObservableObject {
             // it has to be there when the view is made, long before it wakes.
             let tab = building(for: id) { Tab(configuration: CanvasHost.configuration(for: url)) } // Fork (canvas-hooks)
             browser.prepare(tab)
-            tab.restore(url: url, title: CanvasTabs.rowTitle(for: url, kept: entry.title)) // Fork (canvas-hooks): a canvas's name is the registry's, and it wears the mark
+            tab.restore(url: url, title: CanvasTabs.rowTitle(for: url, kept: entry.title), icon: id == current) // Fork (canvas-hooks): a canvas's name is the registry's, and it wears the mark
+            if id != current { unseen.append(tab) }
             // No flag at all is an upstream-shaped file: everything in it is
             // something you kept, so the whole column comes back as Saved.
             Sections.shared.restore(tab, saved: entry.saved ?? true, seen: entry.seen)
@@ -1113,6 +1118,9 @@ final class Spaces: ObservableObject {
             restored[id] = row
         }
         for space in all { rows[space.id] = restored[space.id]?.tabs ?? [] }
+        Launch.shared.whenSettled {
+            for tab in unseen where tab.icon == nil { tab.adoptIcon() }
+        }
         // Fork (space-warm): the tab each space was on when the session was
         // written is the one a switch there lands on — not whichever was
         // touched last, which right after a restore is anyone's.

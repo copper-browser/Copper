@@ -161,7 +161,7 @@ final class Tab: ObservableObject, Identifiable {
         return host.first(where: { $0.isLetter || $0.isNumber }).map { String($0).uppercased() } ?? "•"
     }
 
-    private func adoptIcon() {
+    func adoptIcon() { // Fork (perf): Spaces.restore asks for other spaces' icons after the launch
         if let mark = CanvasTabs.mark(for: pending ?? address) { icon = mark; return } // Fork (canvas-hooks): a board wears the Canvas mark
         guard let host = address?.host()?.lowercased() else { return }
         icon = Favicons.shared.cached(host)
@@ -794,12 +794,12 @@ final class Tab: ObservableObject, Identifiable {
 
     /// Brought back from the last session: everything the row needs to draw it,
     /// and nothing fetched.
-    func restore(url: URL, title: String) {
+    func restore(url: URL, title: String, icon: Bool = true) { // Fork (perf): `icon` false leaves the icon for later
         address = url
         self.title = title
         pending = url
         fromCache = true
-        adoptIcon()
+        if icon { adoptIcon() }
     }
 
     /// Fork (perf): a tab brought back (a session, a move-in, the cloud) loads
