@@ -131,6 +131,19 @@ final class MCP: ObservableObject {
     private var connections: [ObjectIdentifier: Connection] = [:]
 
     static let path = "/mcp"
+
+    /// Whether a request with this Origin header may reach the socket. None at
+    /// all is a proper MCP client; otherwise the host must be exactly a loopback
+    /// name over http(s) — a substring test let `http://localhost.evil.example`
+    /// through. `null`, empty and unparsable origins are refused.
+    nonisolated static func originAllowed(_ origin: String?) -> Bool {
+        guard let origin else { return true }
+        let text = origin.trimmingCharacters(in: .whitespaces).lowercased()
+        guard let parts = URLComponents(string: text),
+              let scheme = parts.scheme, scheme == "http" || scheme == "https",
+              let host = parts.host else { return false }
+        return ["127.0.0.1", "localhost", "::1", "[::1]"].contains(host)
+    }
     static let protocolVersions = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"]
 
     /// Where the token and port live. Beside the session, this user only.
@@ -352,8 +365,7 @@ final class MCP: ObservableObject {
     private func route(_ request: HTTPRequest, _ answer: @escaping (HTTPResponse) -> Void) {
         // A page in some other browser must never be able to reach in here:
         // a browser sends Origin, a proper MCP client does not.
-        if let origin = request.headers["origin"]?.lowercased(),
-           !(origin.contains("://127.0.0.1") || origin.contains("://localhost")) {
+        guard MCP.originAllowed(request.headers["origin"]) else {
             answer(HTTPResponse(status: 403, json: ["error": "forbidden origin"]))
             return
         }
