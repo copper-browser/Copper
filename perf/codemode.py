@@ -407,7 +407,7 @@ def main():
     ap.add_argument("--write-pages", metavar="DIR", help="write the five pages into DIR and exit")
     ap.add_argument("--bench", help="the bench command for Stop, e.g. './bench --world codemode'")
     ap.add_argument("--out", help="append the rounds as JSON lines here")
-    ap.add_argument("what", choices=["check", "canvas", "pages", "all"])
+    ap.add_argument("what", nargs="?", default="check", choices=["check", "canvas", "pages", "all"])
     ap.add_argument("rounds", nargs="?", type=int, default=3)
     a = ap.parse_args()
     if a.write_pages:
