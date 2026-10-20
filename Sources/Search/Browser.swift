@@ -2369,7 +2369,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
         if action.targetFrame?.isMainFrame ?? true, let tab = tab(for: webView) {
             Pace.page("ask", bench: tab.bench) // Fork (pace)
             let host = curtain.host(of: url)
-            tab.arm(hiding: curtain.css(on: host))
+            tab.arm(hiding: curtain.css(on: host), for: url) // Fork (perf): the store's script goes to the store alone
             // And the blocker, on or off for where it is going.
             Shield.shared.tune(webView.configuration.userContentController, for: host)
         }

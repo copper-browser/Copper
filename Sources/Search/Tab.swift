@@ -448,7 +448,7 @@ final class Tab: ObservableObject, Identifiable {
     /// pointing mode, and this site's stylesheet of things you have hidden. The
     /// stylesheet goes in before the document has a body, so nothing is ever
     /// seen arriving and then leaving again.
-    func arm(hiding css: String) {
+    func arm(hiding css: String, for next: URL? = nil) { // Fork (perf): `next`, the address the document is for
         veils = css
         guard let built else { return }
         if CanvasHost.arm(built) { return } // Fork (canvas-hooks): a board gets one small script, not every page's
@@ -457,9 +457,6 @@ final class Tab: ObservableObject, Identifiable {
         listenForPasskeys(controller) // Fork (passkeys-hooks): follows Settings › Passwords
         controller.addUserScript(
             WKUserScript(source: ScrollRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
-        )
-        controller.addUserScript(
-            WKUserScript(source: Veiling.picker, injectionTime: .atDocumentStart, forMainFrameOnly: true)
         )
         controller.addUserScript(
             WKUserScript(source: FormRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
@@ -475,9 +472,14 @@ final class Tab: ObservableObject, Identifiable {
         controller.addUserScript(
             WKUserScript(source: ImageRelay.watch, injectionTime: .atDocumentStart, forMainFrameOnly: false)
         )
-        controller.addUserScript(
-            WKUserScript(source: StoreRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
-        )
+        // Fork (perf): the store's script on the store alone, and the pointing
+        // mode (Veiling.picker) only when it is asked for (startPicking) — 14 KB
+        // every document parsed and ran for nothing.
+        if StoreRelay.serves(next ?? pending ?? address) {
+            controller.addUserScript(
+                WKUserScript(source: StoreRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
+            )
+        }
         if Passkeys.active {
             controller.addUserScript(
                 WKUserScript(source: Passkeys.script, injectionTime: .atDocumentStart, forMainFrameOnly: false)
@@ -513,7 +515,7 @@ final class Tab: ObservableObject, Identifiable {
         built?.evaluateJavaScript(Veiling.style(css))
     }
 
-    func startPicking() { web.evaluateJavaScript("window.__officeVeil && window.__officeVeil.on()") }
+    func startPicking() { web.evaluateJavaScript(Veiling.picker + "\nwindow.__officeVeil.on()") } // Fork (perf): put in when asked for, not on every page
     func stopPicking() { web.evaluateJavaScript("window.__officeVeil && window.__officeVeil.off()") }
 
     func foundSignIn() { onSignIn?(self) }
@@ -717,7 +719,7 @@ final class Tab: ObservableObject, Identifiable {
     /// Show one hidden thing while the pointer rests on its row in the list.
     func peek(_ selector: String, keeping css: String) {
         web.evaluateJavaScript(
-            "window.__officeVeil && window.__officeVeil.peek(`\(escape(css))`, `\(escape(selector))`)"
+            Veiling.picker + "\nwindow.__officeVeil.peek(`\(escape(css))`, `\(escape(selector))`)" // Fork (perf): as startPicking
         )
     }
 

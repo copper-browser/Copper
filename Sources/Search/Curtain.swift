@@ -158,8 +158,9 @@ enum Veiling {
         """
     }
 
-    /// The pointing mode. Loaded on every page but asleep: it costs one closure
-    /// and a few functions until somebody actually asks for it.
+    /// The pointing mode. Fork (perf): put into the page when it is asked for
+    /// (Tab.startPicking, Tab.peek) rather than into every page asleep; run
+    /// again on a page that has it, it does nothing.
     static let picker = """
     (function () {
       if (window.__officeVeil) return;
