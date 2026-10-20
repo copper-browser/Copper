@@ -158,6 +158,100 @@ canvas's invite link; `canvas_join` opens one, the way clicking it would. Read b
 a big canvas reads a page at a time — `overview: true` first, then a `frame` or `region`, or follow
 `next` as `cursor` ([Reading a big canvas](canvas.md#reading-a-big-canvas)). See [canvas.md](canvas.md).
 
+## Code mode — one script instead of N calls
+
+Every tool call is a model round trip. Building a board is a dozen `canvas_apply`
+calls of 40 ops; reading five tabs and putting each one's title on a board is
+twenty calls, with nothing to decide between them. `copper_run` takes one
+JavaScript script that calls the same tools through a `copper` object and
+answers once. (Cloudflare's "Code Mode", done locally in Copper.)
+
+```js
+// copper_run {script: "…", timeout: 60, maxCalls: 100, reason: "put the open docs on the board"}
+const tabs = (await copper.browser.tabs({action: "list"})).text;
+const ids = [...tabs.matchAll(/\{tab ([0-9a-f]+)\}/g)].map((m) => m[1]).slice(0, 5);
+const rows = [];
+for (const tab of ids) {
+  const page = await copper.browser.evaluate({tab, function: "() => [document.title, document.querySelector('h1')?.innerText]"});
+  rows.push(JSON.parse(page.text));
+}
+const ops = rows.map(([title, h1], i) => ({op: "add", shape: {type: "sticky", x: 40 + (i % 3) * 260, y: 40 + Math.floor(i / 3) * 180, w: 240, h: 150, text: `**${title}**\n${h1 ?? ""}`}}));
+const applied = await copper.canvas.apply({ops, reason: "one note per open page"});
+console.log(applied.summary);
+return {pages: rows, applied: applied.json.applied};
+```
+
+**The `copper` object.** `copper.browser.navigateBack` is the tool
+`browser_navigate_back`: the first word is the namespace, the rest camel-cased —
+`copper.browser.*`, `copper.canvas.*`, `copper.jev.*` (Jev mode on),
+`copper.cloud.historyDelete`, `copper.voice.*`. Each method takes the tool's
+arguments object (the same `reason` and `tab` included) and resolves to
+`{text, json?, images?, summary?}`: `text` is the tool's text answer, `json` is it
+parsed when the tool answered JSON (`canvas_read`, `canvas_apply`, `browser_sign_in`
+do), `images` the screenshots, `summary` the one-line summary a tool leaves. A call
+the tool refuses or fails rejects with an `Error` whose `tool` names it — catch it
+to go on, or let it end the run. Also `copper.call(name, args)` for a name built at
+run time, `copper.tools` (the names), `copper.sleep(ms)` (≤ 30 s) and `console.log`.
+
+**What the script is.** The body of an async function: `await` and `return` work
+at the top level, and the returned value (JSON-serialisable) is the answer's
+`value`. Plain JavaScript, not TypeScript — Copper strips nothing and compiles
+nothing. A script's `tab` argument, own tab (`browser_tabs new` / `select` inside
+the script binds it for the calls after, and for calls after the run) and `reason`
+work exactly as they do call by call.
+
+**What it runs in.** A fresh JavaScriptCore context per run — the engine already
+in the OS, nothing added — with nothing in it but the language and `copper`: no
+DOM, no `fetch` or `XMLHttpRequest`, no timers, no `require`, no `import`, no
+files. Every `copper.*` call goes through the same dispatch as a direct
+`tools/call` (`MCP.invoke`): the same argument validation by the same handler, the
+same agent-access checks (shared sign-ins, Bitwarden policy, `cloud_history_delete`'s
+loopback rule), the same announcement in the line at the bottom, the same row with
+its `reason` on the driver's card, and the same **Stop**: the user's Stop refuses
+the script's next call with *Stopped by the user in Copper…* and the run ends with
+that as its error. A script can do nothing a run of direct calls could not; it saves
+the round trips between them. `copper_run` is a loopback tool (the same gate as
+`cloud_history_delete`): never offered through an agent link nor to the ⌘E pane's
+agent, and a script cannot call `copper_run`.
+
+**Limits.** `timeout` seconds for the whole run, tool calls included (default 60,
+at most 300) — backed by JavaScriptCore's execution-time watchdog, so a script that
+spins ends at the deadline too; the script's own code runs on a queue of its own, so
+a loop costs a core, never the window. `maxCalls` (default 100, at most 500): calls
+past it reject, the answer says `callCapReached`. `console` keeps 200 lines / 64 KB
+(`logsDropped` counts the rest); the returned value is cut at 256 KB
+(`valueTruncated`).
+
+**The answer.** JSON text: `{ok, value, logs, calls, callLog: [{tool, ms, error?}],
+ms}`. A thrown error — in the script, or a tool's rejection it did not catch — is a
+tool error (`isError: true`) whose text is `{ok: false, error: {message, name, line,
+column, tool?, stack?}, logs, calls, callLog, ms}`; `line` and `column` are the
+script's own. The driver's card shows *Running a script · N lines*, then one row
+per call under it.
+
+**Types.** `copper_types` (and the MCP resource `copper://types/copper.d.ts`) is
+`copper.d.ts`, generated from this Copper's tool schemas — each method typed with
+its tool's arguments and description, so it says exactly what this Copper offers
+(Jev mode on or off, voice tools or not). Type-checking is the agent's, optional,
+before sending: save the declarations beside the script, wrap the script as a
+function body, and run a checker that needs no install step on the Mac, e.g.
+
+```sh
+copper call copper_types > copper.d.ts
+printf 'async function run() {\n%s\n}\n' "$(cat script.js)" > check.ts
+npx -y @typescript/native-preview --noEmit --strict --target es2022 --lib es2022 copper.d.ts check.ts   # tsgo
+# or: tsrs --noEmit copper.d.ts check.ts
+```
+
+Copper bundles no compiler: the app stays small, and a script that fails the check
+still runs as plain JavaScript if you send it.
+
+**Shell.** `copper script FILE [--timeout S] [--max-calls N] [--reason TEXT]` (or
+`-` for stdin) runs a file as one `copper_run`; `copper call copper_run '{"script":
+"…"}'` is the same. Code: `Fork/MCP/CodeMode.swift` (the runner),
+`Fork/MCP/CodeModeTypes.swift` (the declarations), `MCP.invoke` (the shared
+dispatch).
+
 ## Jev mode — hand over a goal
 
 Settings › Agents › **Let the agent hand Copper a goal**. Three more tools

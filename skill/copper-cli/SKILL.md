@@ -26,6 +26,7 @@ created. Enable **Settings › Agents › Let agents drive this window** once.
 | `copper shot [PATH]` / `copper eval 'JS'` | Save a screenshot / evaluate JavaScript. |
 | `copper --json COMMAND` | Return the raw result object for scripts. |
 | `copper tools` | Inspect available capabilities. |
+| `copper script FILE\|- [--timeout S] [--max-calls N] [--reason TEXT]` | Code mode: run one JavaScript file (or stdin) that calls the tools through `copper` (`await copper.canvas.apply({...})`, `await copper.browser.snapshot({})`) and answers once — use it when a task is many calls with no decision between them (build a board, read N tabs). Same validation, permission checks and Stop as the tools themselves; `copper call copper_types` prints `copper.d.ts` to check a script against first. |
 | `copper session list` | List session.json and session.previous.json with counts and mtimes. |
 | `copper session restore [PATH] [--quit]` | Restore a session backup; default is session.previous.json. |
 | `copper link status` | Show every configured agents app (`--json` for scripts). |

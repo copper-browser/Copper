@@ -132,10 +132,14 @@ enum CLI {
             error("could not construct request")
             return 2
         }
-        let name = ((request["params"] as? [String: Any])?["name"] as? String) ?? ""
+        let params = request["params"] as? [String: Any]
+        let name = (params?["name"] as? String) ?? ""
         // A delete by site pages through the whole cloud history.
         // A canvas tool waits up to a minute for a big board's page to come up (CanvasHost.readyBound).
-        let timeout: TimeInterval = name == "jev_run" ? 240 : (name == "cloud_history_delete" ? 600 : name.hasPrefix("canvas_") ? 120 : 60)
+        // A code-mode run says how long it may take (CodeMode.Limits); the wait is that and a margin.
+        let scriptTimeout = ((params?["arguments"] as? [String: Any])?["timeout"] as? NSNumber)?.doubleValue ?? 60
+        let timeout: TimeInterval = name == "jev_run" ? 240 : (name == "cloud_history_delete" ? 600 : name.hasPrefix("canvas_") ? 120
+            : name == "copper_run" ? min(max(scriptTimeout, 1), 300) + 30 : 60)
         guard let response = post(request, config: config, timeout: timeout) else { return 2 }
         return render(response, spec: spec, json: json)
     }
@@ -351,6 +355,33 @@ enum CLI {
         case "health":
             guard args.isEmpty else { return bad("health takes no arguments") }
             return RequestSpec(request: nil, health: true)
+        case "script":
+            // Code mode (CodeMode.swift): the file, or stdin, as one copper_run.
+            guard let path = args.first, !path.isEmpty else { return bad("script needs FILE (or - for stdin)") }
+            var arguments: [String: Any] = [:]
+            var rest = Array(args.dropFirst())
+            while !rest.isEmpty {
+                let flag = rest.removeFirst()
+                guard let value = rest.first else { return bad("\(flag) needs a value") }
+                rest.removeFirst()
+                switch flag {
+                case "--timeout":
+                    guard let seconds = Double(value) else { return bad("--timeout needs seconds") }
+                    arguments["timeout"] = seconds
+                case "--max-calls":
+                    guard let count = Int(value) else { return bad("--max-calls needs a number") }
+                    arguments["maxCalls"] = count
+                case "--reason": arguments["reason"] = value
+                default: return bad("unknown option \(flag) — script FILE [--timeout S] [--max-calls N] [--reason TEXT]")
+                }
+            }
+            if path == "-" {
+                arguments["script"] = String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self)
+            } else {
+                guard let source = try? String(contentsOfFile: (path as NSString).expandingTildeInPath, encoding: .utf8) else { return bad("could not read \(path)") }
+                arguments["script"] = source
+            }
+            return call("copper_run", arguments)
         case "call":
             guard let name = args.first, !name.isEmpty else { return bad("call needs TOOL") }
             let rawJSON = Array(args.dropFirst()).joined(separator: " ")
@@ -1581,7 +1612,10 @@ enum CLI {
       text                                      read page text
       find TEXT                                 find matching page elements
       shot [PATH] [--full] [--jpeg]             save a screenshot
-      eval 'JS'                                 evaluate JavaScript
+      eval 'JS'                                 evaluate JavaScript in the page
+      script FILE|- [--timeout S] [--max-calls N] [--reason TEXT]
+                                                code mode: run FILE (or stdin) as one copper_run, calling
+                                                the tools through `copper` (docs/agents.md › Code mode)
       click REF | --selector CSS                click an element
       type REF TEXT [--submit]                  type into an element
       key KEY                                   press a key
