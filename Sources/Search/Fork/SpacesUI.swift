@@ -119,14 +119,18 @@ final class SpaceEditing: ObservableObject {
 /// The title row: which space this column is. Under the lights, above the
 /// favourites — the one label the column was missing.
 struct SpaceHeader: View {
-    @ObservedObject var browser: Browser
+    /// Read, not watched: every space's column has its own header, and a
+    /// parked one must not be redrawn by the browser (SpaceColumns).
+    let browser: Browser
+    /// Whose column this heads.
+    let space: UUID
     @ObservedObject private var spaces = Spaces.shared
     @Environment(\.colorScheme) private var scheme
     @State private var over = false
     @State private var overMark = false
 
     var body: some View {
-        let space = spaces.space(in: browser)
+        let space = spaces.all.first { $0.id == self.space } ?? spaces.space(in: browser)
         let tint = SpaceTint(space: space, dark: scheme == .dark)
         // Arc's: the space's icon where a row's mark goes and its name in
         // the theme's own colour, first thing under the favourites. The
@@ -162,7 +166,6 @@ struct SpaceHeader: View {
         .help("\(space.title) — click for the space menu")
         .animation(Motion.quick, value: over)
         .animation(Motion.quick, value: overMark)
-        .animation(Motion.glide, value: spaces.current(in: browser))
     }
 
     private func header(_ space: Space, tint: SpaceTint) -> some View {
@@ -238,7 +241,6 @@ struct SpaceStrip<Tools: View>: View {
         .padding(.top, 4)
         .padding(.bottom, 8)
         .overlayPreferenceValue(ChipFrames.self) { frames in label(frames) }
-        .animation(Motion.glide, value: spaces.current(in: browser))
     }
 
     private var chips: some View {

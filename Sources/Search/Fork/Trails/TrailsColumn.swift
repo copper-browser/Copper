@@ -172,12 +172,15 @@ private struct TrailPageRow: View {
     private var lead: CGFloat { indent ? CGFloat(page.depth + 1) * Trails.step : 0 }
 
     var body: some View {
+        let editing = browser.editingTab == page.tab.id
         SideRow(
             browser: browser,
             tab: page.tab,
             live: page.tab.id == browser.activeID,
             tint: tint,
             pill: pill,
+            editing: editing,
+            refusals: editing ? browser.refusals : nil,
             close: { browser.close(page.tab) }
         )
         .padding(.leading, lead)

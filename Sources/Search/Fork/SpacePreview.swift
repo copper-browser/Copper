@@ -125,17 +125,21 @@ struct SpacePreviewModel {
         put(rows: FolderTree.plan(today))
         let content = y + below
 
-        // Where the real column lands. Its scroll view is the same one
-        // before and after the switch (only the rows change), so it keeps
-        // its offset as far as the new rows allow, then brings the live row
-        // into view by the least it takes (SideBar.show, with no anchor):
-        // to the top edge if it is above, the bottom if it is below.
+        // Where the real column lands. Fork (space-columns): a space visited
+        // this launch kept its own column, scrolled where it was left; one
+        // not yet visited gets a new one, at the top. (With one column for
+        // every space — Trails — the scroll view is the one on screen, as it
+        // always was.) It keeps that offset as far as the rows allow, then
+        // brings the live row into view by the least it takes (SideBar.show,
+        // with no anchor): to the top edge if it is above, the bottom if it
+        // is below.
         let viewport = max(1, height)
         let scroll: CGFloat
         if let given {
             scroll = given
         } else {
-            let old = SideScrollElasticity.column?.contentView.bounds.minY ?? 0
+            let column = SpaceColumns.keeps ? SideScrollElasticity.column(for: space.id) : SideScrollElasticity.column
+            let old = column?.contentView.bounds.minY ?? 0
             var off = min(max(0, old), max(0, content - viewport))
             if let live = items.first(where: { if case .tab(let tab, _, _) = $0.item { return tab.id == active } else { return false } }) {
                 if live.y < off { off = live.y } else if live.y + live.height > off + viewport { off = live.y + live.height - viewport }

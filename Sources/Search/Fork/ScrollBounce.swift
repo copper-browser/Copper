@@ -13,10 +13,19 @@ import SwiftUI
 // column's fade (SideBar.fade) masks the scroll's frame, not its content, so
 // rows pulled past an end still run out under the same soft edge.
 struct SideScrollElasticity: NSViewRepresentable {
+    /// Whose column this scroll is: every space visited this launch keeps
+    /// its own (SpaceColumns).
+    var space: UUID? = nil
+
     func makeNSView(context: Context) -> Probe { Probe() }
-    func updateNSView(_ view: Probe, context: Context) { view.apply() }
+    func updateNSView(_ view: Probe, context: Context) {
+        view.space = space
+        view.apply()
+    }
 
     final class Probe: NSView {
+        var space: UUID?
+
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             // The scroll view is put together around the content after the
@@ -28,14 +37,22 @@ struct SideScrollElasticity: NSViewRepresentable {
             guard let scroll = enclosingScrollView else { return }
             if scroll.verticalScrollElasticity != .allowed { scroll.verticalScrollElasticity = .allowed }
             if scroll.horizontalScrollElasticity != .none { scroll.horizontalScrollElasticity = .none }
-            if window == Links.window { SideScrollElasticity.column = scroll }
+            if window == Links.window, let space { SideScrollElasticity.columns[space] = Held(scroll) }
         }
 
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
 
-    /// The first window's column, for the bench.
-    @MainActor static weak var column: NSScrollView?
+    /// The first window's column for each space it keeps one for.
+    private final class Held { weak var scroll: NSScrollView?; init(_ scroll: NSScrollView) { self.scroll = scroll } }
+    @MainActor private static var columns: [UUID: Held] = [:]
+
+    /// The first window's column for `space`, if it has one laid out.
+    @MainActor static func column(for space: UUID) -> NSScrollView? { columns[space]?.scroll }
+
+    /// The first window's column on screen: the bench's, and what a slide's
+    /// outgoing preview is scrolled as.
+    @MainActor static var column: NSScrollView? { column(for: Spaces.shared.current(in: Windows.main)) }
 
     // MARK: - the bench
 

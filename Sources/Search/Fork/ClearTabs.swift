@@ -32,8 +32,12 @@ final class ClearTabs: ObservableObject {
 
     /// Bench and the sidebar use this same predicate, so a visible Clear
     /// button always means that clicking it will do useful work.
-    func clearable(in browser: Browser) -> [Tab] {
-        browser.tabs.filter { tab in
+    func clearable(in browser: Browser) -> [Tab] { clearable(browser.tabs, in: browser) }
+
+    /// The same, for a row of tabs that may be another space's — a parked
+    /// column (SpaceColumns) shows its own count before it is on screen.
+    func clearable(_ tabs: [Tab], in browser: Browser) -> [Tab] {
+        tabs.filter { tab in
             guard tab.pin == nil,
                   !tab.isBlank,
                   !Sections.shared.isSaved(tab),
@@ -133,7 +137,7 @@ final class ClearTabsDividerHover: ObservableObject {
 /// button second: at rest it is indistinguishable from the existing hairline;
 /// the Arc-style "↓ Clear" text appears only while the seam is hovered.
 struct ClearTabsDivider: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser // read, not watched: only the button acts on it (SpaceColumns)
     let tint: SpaceTint
     let count: Int
     @ObservedObject private var hover = ClearTabsDividerHover.shared

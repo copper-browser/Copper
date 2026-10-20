@@ -107,6 +107,8 @@
                                        a two-finger swipe over the column, one event per DX at
                                        120 Hz; `spaces swipe stats` is the event pacing after
     ./bench spaces scroll              the column's scroll view: elasticity each way, position
+    ./bench spaces columns [N]         the spaces whose columns this window keeps laid out, most
+                                       recent first; N sets how many (1: rebuilt every switch)
     ./bench swipe left|right|down [--window N]
                                        a quick whole two-finger swipe over window N's column
     ./bench backdrop                   the column's animated scenes: WebContent pid, hidden, and

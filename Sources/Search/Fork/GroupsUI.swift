@@ -8,15 +8,27 @@ import SwiftUI
 // SideRow, untouched; this only decides what goes between them and how far
 // in each one starts.
 
-struct GroupedRows: View {
-    @ObservedObject var browser: Browser
-    @ObservedObject var prefs: Preferences
+struct GroupedRows: View, Equatable {
+    /// Read, not watched (Fork: space-columns): what the rows show of the
+    /// browser is handed in below, so a parked space's column — and the
+    /// column on screen, for a change that is not about its rows — is not
+    /// redrawn by every change to the browser.
+    let browser: Browser
+    let prefs: Preferences
     @ObservedObject var groups = Groups.shared
     let pill: Namespace.ID
     let tint: SpaceTint
     /// The sidebar draws the loose list as two blocks (Saved, Today); each
-    /// hands in the ids it owns and this draws only those.
-    var only: Set<Tab.ID>? = nil
+    /// hands in its own rows, in order, and this draws only those.
+    let tabs: [Tab]
+    /// The space the rows are in: its folders, and its column (SpaceColumns).
+    let space: UUID
+    /// The live row, the row being renamed and its refusals, and the id the
+    /// live row's pill wears — the browser's, for the column on screen.
+    var active: Tab.ID? = nil
+    var editing: Tab.ID? = nil
+    var refusals = 0
+    var pillID = "live"
     /// The Saved block also draws the space's empty top-level folders.
     var homeless = false
     /// Where this block starts in the whole loose list, so a drag inside it
@@ -39,15 +51,22 @@ struct GroupedRows: View {
     static let row: CGFloat = 37
     static let gap: CGFloat = 4
 
-    private var loose: [Tab] {
-        browser.tabs.filter { $0.pin == nil && (only?.contains($0.id) ?? true) }
+    private var loose: [Tab] { tabs }
+
+    /// Everything the body reads but the groups, which it watches itself.
+    /// `holding` is the same column's hook every time.
+    static func == (a: GroupedRows, b: GroupedRows) -> Bool {
+        a.browser === b.browser && a.pill == b.pill && a.tint == b.tint && a.space == b.space
+            && a.active == b.active && a.editing == b.editing && a.refusals == b.refusals && a.pillID == b.pillID
+            && a.homeless == b.homeless && a.offset == b.offset && a.block == b.block
+            && a.tabs.count == b.tabs.count && zip(a.tabs, b.tabs).allSatisfy { $0 === $1 }
     }
 
     /// What the column draws, top to bottom: a header at the start of each
     /// run, then the run's rows — none of them, nor any folder inside it,
     /// while the folder is shut. Worked out by `FolderTree`.
     private var rows: [FolderRow] {
-        FolderTree.plan(loose, homeless: homeless ? groups.homeless(in: Spaces.shared.current(in: browser)) : [], space: Spaces.shared.current(in: browser))
+        FolderTree.plan(loose, homeless: homeless ? groups.homeless(in: space) : [], space: space)
     }
 
     /// Rows the column shows beyond one per tab: a header for each folder,
@@ -76,17 +95,22 @@ struct GroupedRows: View {
                     let held = dragging == tab.id
                     if block == .saved { SavedDropGap(drag: drag, anchor: .before(tab.id), tint: tint) }
                     VStack(spacing: GroupedRows.gap) {
+                        let renaming = tab.id == editing
                         SideRow(
                             browser: browser,
                             tab: tab,
-                            live: tab.id == browser.activeID,
+                            live: tab.id == active,
                             tint: tint,
                             pill: pill,
+                            editing: renaming,
+                            refusals: renaming ? refusals : nil,
+                            pillID: tab.id == active ? pillID : "live",
                             // Fork (saved-close): the cross (and Close Tab on the
                             // row's menu) is the one close that takes a Saved row
                             // out of Saved; ⌘W only puts it down.
                             close: { Sections.shared.remove(tab, in: browser) }
                         )
+                        .equatable()
                         .padding(.leading, CGFloat(depth) * Folders.step)
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { SideHand.frames[tab.id] = $0 }
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SavedDrop.space)) } action: { frame in
@@ -127,10 +151,7 @@ struct GroupedRows: View {
         // The Saved block's own frame: where it ends, for a row on its way
         // down out of it, whatever is in the hand.
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SavedDrop.space)) } action: { frame in
-            if block == .saved { drag.saved = frame }
-        }
-        .onChange(of: browser.tabs.map(\.id)) { _, _ in
-            groups.prune(keeping: browser.tabs + Spaces.shared.parkedTabs)
+            if block == .saved { drag.place(saved: frame, in: space) }
         }
     }
 
@@ -192,7 +213,7 @@ struct GroupedRows: View {
 /// width at all: it takes the glyph's place under the pointer, which is
 /// where Arc keeps its own, and rotates as the folder opens.
 struct GroupHead: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser // Fork (space-columns): only its menu's Close acts on it
     @ObservedObject var groups = Groups.shared
     let group: TabGroup
     let count: Int

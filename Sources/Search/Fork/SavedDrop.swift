@@ -228,10 +228,21 @@ final class SideDrag: ObservableObject {
 
     var rows: [Tab.ID: CGRect] = [:]
     var heads: [UUID: CGRect] = [:]
-    var saved: CGRect = .zero
-    var header: CGRect = .zero
-    var seam: CGRect = .zero
     var slotFrame: CGRect = .zero
+
+    /// The Saved block, the space's name and the New Tab row, per space:
+    /// every space visited this launch keeps its column laid out
+    /// (SpaceColumns), and a drag is worked out against the one on screen.
+    /// Rows and folders need no such key — no two spaces share one.
+    private struct Edges {
+        var saved: CGRect = .zero
+        var header: CGRect = .zero
+        var seam: CGRect = .zero
+    }
+    private var edges: [UUID: Edges] = [:]
+    func place(saved frame: CGRect, in space: UUID) { edges[space, default: Edges()].saved = frame }
+    func place(header frame: CGRect, in space: UUID) { edges[space, default: Edges()].header = frame }
+    func place(seam frame: CGRect, in space: UUID) { edges[space, default: Edges()].seam = frame }
 
     private var closing: DispatchWorkItem?
 
@@ -318,9 +329,10 @@ final class SideDrag: ObservableObject {
                                    depth: depth, group: groups.membership[tab.id]))
             }
         }
-        let top = slot && lines.isEmpty ? slotFrame.midY : header.maxY + GroupedRows.gap / 2
-        return SavedDrop.Layout(lines: lines, top: top, bottom: max(saved.maxY, top),
-                                seamTop: seam.minY, seamBottom: seam.maxY)
+        let here = edges[space] ?? Edges()
+        let top = slot && lines.isEmpty ? slotFrame.midY : here.header.maxY + GroupedRows.gap / 2
+        return SavedDrop.Layout(lines: lines, top: top, bottom: max(here.saved.maxY, top),
+                                seamTop: here.seam.minY, seamBottom: here.seam.maxY)
     }
 
     /// Let go over Saved or Today: the row goes where the gap was.

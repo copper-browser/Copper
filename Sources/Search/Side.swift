@@ -29,7 +29,6 @@ struct SideBar: View {
     }
 
     @Environment(\.colorScheme) private var scheme
-    @Environment(\.accessibilityReduceMotion) private var still
 
     @Namespace private var pill
 
@@ -135,7 +134,11 @@ struct SideBar: View {
         // again when a switch brings a whole new column into view.
         .task(id: spaces.current(in: browser)) { Marks.warm(browser.tabs) }
         // A row nobody has met is today's, and goes to the top of Today.
-        .onChange(of: browser.tabs.map(\.id)) { _, _ in sections.arrived(in: browser) }
+        .onChange(of: browser.tabs.map(\.id)) { _, _ in
+            sections.arrived(in: browser)
+            // Fork (space-columns): was each block's (GroupsUI), once per change.
+            Groups.shared.prune(keeping: browser.tabs + Spaces.shared.parkedTabs)
+        }
         .onChange(of: browser.activeID) { _, now in sections.note(now) }
         .animation(Motion.quick, value: landing)
         .animation(Motion.glide, value: browser.activeID)
@@ -304,102 +307,65 @@ struct SideBar: View {
     /// the space's name, the rows you keep and their folders, a hairline
     /// once there is anything open today, "New Tab", and today's rows right
     /// under it — never parked at the foot of the window.
+    ///
+    /// Fork (space-columns): one such column for every space this window
+    /// has shown lately, each laid out once and kept, and only the current
+    /// space's on screen — a switch shows another instead of building its
+    /// rows (Fork/SpaceColumns.swift). Nothing in a column watches the
+    /// browser; what it shows is worked out here, so the parked ones are
+    /// left alone by a change that is not theirs.
+    @ViewBuilder
     private var column: some View {
-        let kept = looseRows.filter { sections.isSaved($0.tab) }
-        let today = looseRows.filter { !sections.isSaved($0.tab) }
-        let clearCount = clearTabs.clearable(in: browser).count
-        return ScrollViewReader { proxy in
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: SideBar.gap) {
-                    SpaceHeader(browser: browser)
-                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SavedDrop.space)) } action: { SideDrag.of(browser).header = $0 } // Fork (saved-drag)
-                    if drag.slot { SavedDropSlot(drag: drag, tint: tint) } // Fork (saved-drag): an empty Saved block's drop target
-                    rows(kept, homeless: true, block: .saved)
-                    if !today.isEmpty {
-                        if clearCount > 0 {
-                            ClearTabsDivider(browser: browser, tint: tint, count: clearCount)
-                        } else {
-                            divider
-                        }
-                    }
-                    newTab
-                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SavedDrop.space)) } action: { SideDrag.of(browser).seam = $0 } // Fork (saved-drag)
-                    TodayDropGap(drag: drag, tint: tint) // Fork (saved-drag): a Saved row on its way out lands here
-                    // Fork (trails): with the flight on, Today is drawn as
-                    // trails (Fork/Trails/); off, exactly as before.
-                    if flights.trails {
-                        TrailsColumn(browser: browser, prefs: prefs, tint: tint, pill: pill, tabs: today.map(\.tab))
-                    } else {
-                        rows(today, block: .today)
-                    }
+        let current = spaces.current(in: browser)
+        if SpaceColumns.keeps {
+            let ids = SpaceColumns.kept(for: browser).mount(current, among: spaces.all.map(\.id))
+            ZStack(alignment: .topLeading) {
+                ForEach(ids, id: \.self) { id in
+                    let shown = id == current
+                    spaceColumn(id, shown: shown)
+                        .equatable()
+                        .opacity(shown ? 1 : 0)
+                        .allowsHitTesting(shown)
+                        .disabled(!shown)
+                        .accessibilityHidden(!shown)
+                        // The wheel button finds rows by the frames they
+                        // hand up; a parked column's are not there to find.
+                        .transformPreference(SideTargets.self) { if !shown { $0 = SideTargets() } }
+                        .zIndex(shown ? 1 : 0)
                 }
-                // Fork (saved-drag): one space for every frame a drop is
-                // worked out from, a folder lit for a drop onto it, the card
-                // in the hand, and the column's drop target for a trail's
-                // page (Fork/SavedDrop.swift).
-                .coordinateSpace(name: SavedDrop.space)
-                .overlay(alignment: .topLeading) { SavedDropMark(drag: drag, tint: tint) }
-                .overlay(alignment: .topLeading) { SideDragCard(drag: drag, browser: browser, tint: tint) }
-                .onDrop(of: [Trails.dragType], delegate: SavedTrailDrop(browser: browser, drag: drag))
-                .padding(.horizontal, SideBar.inset)
-                .padding(.top, 2)
-                .padding(.bottom, 12)
-                // Fork (scroll-bounce): elastic up and down, never sideways.
-                .background(SideScrollElasticity())
             }
-            .scrollBounceBehavior(.always, axes: .vertical)
             .frame(maxHeight: .infinity)
-            .mask(SideBar.fade)
-            // Fork: the rows are only under the pointer inside the scroll —
-            // one scrolled off the top still has a frame, under the favourites.
-            .transformAnchorPreference(key: SideTargets.self, value: .bounds) { $0.window = $1 }
-            // A row saved from far down Today lands at the end of the kept
-            // rows, which may be well above. Go and show it — once it has
-            // finished moving, and without an animation of its own: a scroll
-            // that overlaps the move's leaves the grid above blank.
-            .onChange(of: sections.reveal) { _, id in
-                guard let id else { return }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    proxy.scrollTo("tab-\(id.uuidString)", anchor: .bottom)
-                }
-            }
-            .onAppear { show(browser.activeID, in: proxy, gliding: false) }
-            .onChange(of: browser.activeID) { _, id in show(id, in: proxy) }
-        }
-        .frame(maxHeight: .infinity)
-    }
-
-    /// Wherever the live row is, the column keeps it in sight: ⌘1–9, ⌃Tab,
-    /// a link that opens a tab, a space switch, the restore at launch. Only
-    /// as far as it takes to bring the row in, and not while a row or a
-    /// favourite is in the hand.
-    private func show(_ id: Tab.ID?, in proxy: ScrollViewProxy, gliding: Bool = true) {
-        guard let id, pinDragging == nil, !rowHeld else { return }
-        // A turn of the run loop later, so a row that has only just arrived
-        // has been laid out before it is looked for. A column sliding in
-        // (Fork: SpaceSlide) is already where it should be, not gliding to it.
-        DispatchQueue.main.async {
-            withAnimation(gliding && !still && !SpaceSlide.shared.moving(in: browser) ? Motion.glide : nil) {
-                proxy.scrollTo("tab-\(id.uuidString)", anchor: nil)
-            }
+        } else {
+            // One column whose rows change with the space, as before.
+            spaceColumn(current, shown: true).equatable()
         }
     }
 
-    /// One block's rows, drawn by the groups' view so each run wears its
-    /// header and the drag knows about groups; `only` keeps it to this block.
-    /// A row carried over the other block crosses the seam where a room
-    /// opens for it: up into Saved saves it there, down into Today lets it
-    /// go (Fork/SavedDrop.swift).
-    private func rows(_ list: [(index: Int, tab: Tab)], homeless: Bool = false, block: SavedDrop.Block) -> some View {
-        GroupedRows(
+    /// What a space's column shows, worked out from the browser for the
+    /// space on screen and from the space's own row for a parked one.
+    private func spaceColumn(_ id: UUID, shown: Bool) -> SpaceColumn {
+        let loose = shown ? looseRows : spaces.row(id).enumerated().map { (index: $0.offset, tab: $0.element) }
+        let kept = loose.filter { sections.isSaved($0.tab) }
+        let today = loose.filter { !sections.isSaved($0.tab) }
+        let clearCount = shown ? clearTabs.clearable(in: browser).count : clearTabs.clearable(loose.map(\.tab), in: browser).count
+        let editing = shown ? browser.editingTab : nil
+        return SpaceColumn(
             browser: browser,
             prefs: prefs,
+            drag: drag,
+            space: id,
+            shown: shown,
+            kept: kept,
+            today: today,
+            active: shown ? browser.activeID : spaces.remembered(in: id, for: browser),
+            editing: editing,
+            refusals: editing == nil ? 0 : browser.refusals,
+            clearCount: clearCount,
+            trails: flights.trails,
+            tint: shown ? tint : SpaceTint(space: spaces.all.first { $0.id == id } ?? spaces.space(in: browser), dark: scheme == .dark),
             pill: pill,
-            tint: tint,
-            only: Set(list.map(\.tab.id)),
-            homeless: homeless,
-            offset: list.first?.index ?? 0,
-            block: block,
+            held: shown && (pinDragging != nil || rowHeld),
+            reveal: sections.reveal,
             holding: { rowHeld = $0 }
         )
     }
@@ -417,25 +383,6 @@ struct SideBar: View {
         }
     }
 
-    /// The quiet line between what you keep and what you opened today. Half
-    /// a hairline, inset from both edges, and nothing else — Arc captions
-    /// neither block, and a column this quiet is worse for a word in it.
-    private var divider: some View {
-        Rectangle()
-            .fill(tint.hairline)
-            .frame(height: 1)
-            .padding(.horizontal, SideBar.rowInset)
-            .padding(.vertical, 6)
-    }
-
-    /// Arc's New Tab: a plus and the words, as quiet as the rows around it,
-    /// right under the rows you keep.
-    private var newTab: some View {
-        Quiet(icon: "plus", title: "New Tab", height: SideBar.row, inset: SideBar.rowInset, glow: tint.hover, ink: tint.muted) {
-            browser.launch() // Fork: the ⌘T card, as Arc's New Tab row opens it
-        }
-        .contextMenu { NewItemMenu(browser: browser) } // Fork (canvas): New Tab / New Canvas, Arc's new-item menu
-    }
 
     // MARK: - the edge and the foot
 
@@ -578,13 +525,33 @@ private struct PinSquare: View {
 }
 
 /// One tab, as a line in the column.
-struct SideRow: View { // Fork: was private; GroupedRows draws it
-    @ObservedObject var browser: Browser
+///
+/// Fork (space-columns): the row reads the browser but does not watch it.
+/// What it showed from the browser — whether it is being renamed, the
+/// refusals that shake it — is handed in, so a change to the browser redraws
+/// the rows it is about rather than every row of every column, and a parked
+/// space's column (Fork/SpaceColumns.swift) is not redrawn at all. Equatable
+/// for the same reason: `close` is the same action for the same tab.
+struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
+    let browser: Browser
     @ObservedObject var tab: Tab
     let live: Bool
     let tint: SpaceTint
     let pill: Namespace.ID
+    /// Fork (space-columns): `browser.editingTab == tab.id`, and while it
+    /// is, `browser.refusals`; nil otherwise.
+    var editing = false
+    var refusals: Int? = nil
+    /// Fork (space-columns): the matched-geometry id the live row's pill
+    /// wears — "live" in the column on screen, the space's own in a parked
+    /// one, so each column can keep its live row without two sources.
+    var pillID = "live"
     let close: () -> Void
+
+    static func == (a: SideRow, b: SideRow) -> Bool {
+        a.browser === b.browser && a.tab === b.tab && a.live == b.live && a.tint == b.tint && a.pill == b.pill
+            && a.editing == b.editing && a.refusals == b.refusals && a.pillID == b.pillID
+    }
 
     @State private var pointing = false
     @ObservedObject private var benchHover = SideRowHover.shared // Fork (saved-close): `bench sections hover ID`
@@ -592,8 +559,6 @@ struct SideRow: View { // Fork: was private; GroupedRows draws it
     private var hovering: Bool { pointing || benchHover.forced == tab.id }
     @State private var shake: CGFloat = 0
     @ObservedObject private var heat = Heat.shared
-
-    private var editing: Bool { browser.editingTab == tab.id }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -685,8 +650,8 @@ struct SideRow: View { // Fork: was private; GroupedRows draws it
         .anchorPreference(key: SideTargets.self, value: .bounds) { SideTargets(rows: [tab.id: $0]) }
         .animation(Motion.quick, value: hovering)
         .animation(Motion.glide, value: editing)
-        .onChange(of: browser.refusals) { _, _ in
-            guard editing else { return }
+        .onChange(of: refusals) { was, _ in
+            guard editing, was != nil else { return }
             shake = 0
             withAnimation(.easeOut(duration: 0.5)) { shake = 1 }
         }
@@ -714,7 +679,7 @@ struct SideRow: View { // Fork: was private; GroupedRows draws it
                     .strokeBorder(tint.rim, lineWidth: 1)
             }
             .shadow(color: tint.lift, radius: 4, y: 1)
-            .matchedGeometryEffect(id: "live", in: pill)
+            .matchedGeometryEffect(id: pillID, in: pill)
         } else if hovering {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(tint.hover)

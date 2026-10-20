@@ -18,7 +18,7 @@ import SwiftUI
 // toned to near white in dark mode gets the light column's. The window's own
 // appearance is `night`, which only picks the theme's ground.
 
-struct SpaceTint {
+struct SpaceTint: Equatable { // Equatable: a parked column is redrawn only when its ink changes (SpaceColumns)
     /// The hue the rest of the app knows the space by, or nil for grey.
     let hue: Double?
     /// Whether the column, as drawn, is dark: light ink on it, and white

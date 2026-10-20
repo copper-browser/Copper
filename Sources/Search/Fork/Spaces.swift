@@ -496,6 +496,12 @@ final class Spaces: ObservableObject {
         activeByBrowserSpace.values.contains { $0.values.contains(tab) }
     }
 
+    /// The tab this window last looked at in space `id`, if any: the live
+    /// row of that space's column while it is parked (SpaceColumns).
+    func remembered(in id: UUID, for browser: Browser) -> Tab.ID? {
+        activeByBrowserSpace[ObjectIdentifier(browser)]?[id]
+    }
+
     /// The tab a window lands on in a space it hasn't been to this launch,
     /// named ahead of time (Fork/SpaceWarm.swift warms it). Never over one it
     /// already remembers.
@@ -1309,6 +1315,7 @@ extension Spaces {
         case "slide": return ["slide": SpaceSlide.shared.bench(arg)]
         case "swipe": return ["slide": SpaceSwipe.script(arg, in: browser)]
         case "scroll": return ["slide": SideScrollElasticity.script(arg)]
+        case "columns": return ["columns": SpaceColumns.bench(words, in: browser)]
         case "preview": return ["preview": SpacePreview.bench(words, find: find, in: browser)]
         case "profile": profile(current(in: browser), named: arg)
         case "theme":
