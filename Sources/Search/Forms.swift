@@ -28,7 +28,8 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
             case "submit":
                 tab?.sentSignIn(
                     user: body["user"] as? String ?? "",
-                    password: body["password"] as? String ?? ""
+                    password: body["password"] as? String ?? "",
+                    fresh: body["fresh"] as? Bool ?? false // Fork (new-password)
                 )
             case "settled":
                 tab?.settleSignIn(navigated: false)
@@ -918,6 +919,7 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
         // Whether there is still a sign-in on the page. Asked after a
         // password went out, to tell a sign-in that took from one refused.
         hasPassword: function () { return !!pair(); },
+        hasFreshForm: function () { return !!freshForm(); }, // Fork (new-password)
         classify: classify,
         fillValues: fillValues,
         fillFocused: fillFocused,
@@ -946,6 +948,7 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
           // Two boxes that disagree are a form about to say so, not a
           // password worth keeping.
           if (made && again) {
+            sentFresh = true;
             window.webkit.messageHandlers.officeForms.postMessage({
               kind: 'submit', user: accountOf(fresh), password: made, fresh: true
             });
@@ -978,6 +981,10 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
         }
       }, true);
 
+      // Fork (new-password): a new password was sent, and its form going is
+      // the sign that it took — whatever else with a password box follows.
+      var sentFresh = false, freshSettling = null;
+
       var told = false;
       function tell() {
         if (told || !pair()) return;
@@ -1009,6 +1016,14 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
       else { window.addEventListener('load', lookForCode); }
       new MutationObserver(function () {
         lookForCode();
+        if (sentFresh && !freshSettling && !freshForm()) {
+          freshSettling = setTimeout(function () {
+            freshSettling = null;
+            if (freshForm()) return;
+            sentFresh = false;
+            window.webkit.messageHandlers.officeForms.postMessage({ kind: 'settled' });
+          }, 400);
+        }
         if (!told) { tell(); return; }
         if (pair()) return;
         told = false;

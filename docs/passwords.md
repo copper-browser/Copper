@@ -181,7 +181,11 @@ box, an address printed near the form, the account picked into the tab, or the
 only one kept for the site.
 
 When you type a new password yourself, the save offer after submit carries the
-new box, not the one being replaced, and only when the two new boxes agree.
+new box, not the one being replaced, and only when the two new boxes agree. It
+names the account the same way (a change form that names none is for the login
+the site already has, so the offer reads **Update**), and it comes when the
+new-password form goes away, even if the page then shows a sign-in form to use
+the new password on.
 A password manager extension that took over saving hides the row.
 
 `docs/fixtures/new-password-e2e.sh` runs it all in a headless dev world against

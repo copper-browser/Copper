@@ -227,8 +227,9 @@ final class Tab: ObservableObject, Identifiable {
     /// The account the page names beside the box the caret is in, if any.
     var fieldHint = ""
     /// The site the sign-in was sent from — not the one it landed on —
-    /// then the name and the password.
-    var onCredentials: ((Tab, String, String, String) -> Void)?
+    /// then the name and the password, and whether it came from a form that
+    /// makes a new password (Fork: new-password).
+    var onCredentials: ((Tab, String, String, String, Bool) -> Void)?
     /// Fork (auto-codes): a box for a two-step code has just appeared.
     var onCodeBox: ((Tab) -> Void)?
     var onPickEnd: ((Tab) -> Void)?
@@ -544,15 +545,15 @@ final class Tab: ObservableObject, Identifiable {
     /// Whether the sign-in worked is only known afterwards: a page that
     /// comes back without a password box took it, one that still has the
     /// box refused it, and only the first is worth remembering.
-    private var sent: (host: String, user: String, password: String, at: Date)?
+    private var sent: (host: String, user: String, password: String, fresh: Bool, at: Date)?
 
-    func sentSignIn(user: String, password: String) {
+    func sentSignIn(user: String, password: String, fresh: Bool = false) {
         // The host now, while the page is still the sign-in page: a moment
         // later it may be somewhere else entirely, and that is not where
         // the password belongs.
         guard let host = address?.host()?.lowercased() else { return }
         let bare = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
-        sent = (bare, user, password, Date())
+        sent = (bare, user, password, fresh, Date())
     }
 
     /// The page has moved on — a new document has loaded, or the sign-in
@@ -579,7 +580,10 @@ final class Tab: ObservableObject, Identifiable {
             }
             return
         }
-        web.evaluateJavaScript("!!(window.__officeForms && window.__officeForms.hasPassword())") { [weak self] still, _ in
+        // Fork (new-password): a new password took when its form went, even
+        // if the page then shows a sign-in to use it on.
+        let check = sent.fresh ? "hasFreshForm" : "hasPassword"
+        web.evaluateJavaScript("!!(window.__officeForms && window.__officeForms.\(check)())") { [weak self] still, _ in
             MainActor.assumeIsolated {
                 guard let self, let sent = self.sent else { return }
                 // The box is still there: a refused sign-in, or the second
@@ -587,7 +591,7 @@ final class Tab: ObservableObject, Identifiable {
                 // still on its way.
                 if (still as? Bool) == true { return }
                 self.sent = nil
-                self.onCredentials?(self, sent.host, sent.user, sent.password)
+                self.onCredentials?(self, sent.host, sent.user, sent.password, sent.fresh)
             }
         }
     }

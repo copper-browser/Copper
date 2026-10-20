@@ -1905,7 +1905,7 @@ final class Browser: NSObject, ObservableObject {
                 : Suggesting(tab: tab.id, spot: spot, credentials: credentials, rows: rows)
         }
 
-        tab.onCredentials = { [weak self] tab, host, user, password in
+        tab.onCredentials = { [weak self] tab, host, user, password, fresh in
             guard let self, prefs.savesPasswords, !password.isEmpty, !tab.shy,
                   !Vault.isNever(host)
             else { return }
@@ -1921,6 +1921,13 @@ final class Browser: NSObject, ObservableObject {
                 madePasswords[tab.id] = nil
                 guard made.deferred else { return }
                 user = made.user
+            } else if fresh {
+                // Fork (new-password): a password typed into a sign-up or
+                // change form. A change form seldom names its account; the
+                // one it is for is the login kept for the site — so the
+                // offer reads Update for it rather than Save for nobody.
+                user = NewPassword.account(host: host, named: user, target: Credentials.saveTarget,
+                                           pickedHere: signedInWith[tab.id]).user
             }
             let known = Vault.logins(for: host)
             let target = Credentials.saveTarget
