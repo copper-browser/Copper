@@ -722,13 +722,14 @@ final class CodeModeRunner: @unchecked Sendable {
             finished = true
             if let error, outcome.error == nil { outcome.error = error }
             outcome.abandoned = inflight
-            defer { continuation = nil }
-            return (outcome, continuation)
+            let waiter = self.continuation
+            self.continuation = nil
+            return (outcome, waiter)
         }
         guard let handoff else { return }
-        let (out, continuation) = handoff
+        let (out, waiter) = handoff
         if let group, let setLimit = CodeModeRunner.setLimit { setLimit(group, 0.001, CodeModeRunner.shouldTerminate, Unmanaged.passUnretained(self).toOpaque()) }
-        continuation?.resume(returning: out)
+        waiter?.resume(returning: out)
         queue.async { [self] in
             pending = [:]
             helpers = nil
