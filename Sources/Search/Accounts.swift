@@ -97,6 +97,8 @@ struct AccountList: View {
             case .field(let field):
                 let subtitle = field.itemName + (field.hidden ? " · hidden" : "")
                 autofillRow(icon: "textformat.123", title: field.name, subtitle: subtitle)
+            case .newPassword(let length): // Fork (new-password)
+                autofillRow(icon: "key.viewfinder", title: "Suggest strong password", subtitle: NewPassword.rowSubtitle(length: length))
             }
         }
 

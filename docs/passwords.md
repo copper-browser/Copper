@@ -143,6 +143,50 @@ Password managers) to route new save offers there while it is unlocked; choose
 Keychain (or leave Bitwarden locked) to keep saving to the keychain. Existing
 fills continue to include every source.
 
+## New passwords
+
+On a sign-up or change-password form, click the new password box and the
+list offers one row: **Suggest strong password**. Pick it and Copper:
+
+1. makes a password on this Mac (`SystemRandomNumberGenerator`, the system's
+   cryptographically secure source): 20 characters with lower case, upper
+   case, digits and symbols (`!#$%&*+-=?@^_`), no character three times in a
+   row, never containing the username. A box's `passwordrules` attribute
+   (`required:`, `allowed:`, `max-consecutive:`, `minlength:`, `maxlength:`)
+   and its own `minlength`/`maxlength` narrow that.
+2. **saves it before it fills anything**, to the **Save new passwords to**
+   destination. An existing login for the account gets the new password
+   (Bitwarden and 1Password keep the one it replaces in the item's password
+   history, so a change the site refuses can be undone); otherwise a new login
+   is made with the site's address. If the save fails, nothing is filled and
+   the account keeps its old password. The keychain keeps no history, so for a
+   login the keychain already holds Copper fills first and offers **Update**
+   once the site has taken the change.
+3. fills the new box and every box that repeats it, through the boxes' own
+   setters with input and change events, and puts the saved login's current
+   password into an empty current-password box, read before the save replaced
+   it. The confirmation names the account and where it went, never the
+   password.
+
+Which box is which: `autocomplete="new-password"` and `"current-password"`
+first (sites often promise new-password on both new boxes; the second is the
+confirm box), then the box's own words (label, placeholder, name, id: *old*,
+*current* / *new*, *create*, *sign up* / *confirm*, *again*, *re-enter*,
+`Pass2`), then position, since a change form is almost always current, new and
+again. UKG's form, `OldPass` / `Pass1` / `Pass2` with no labels or hints,
+reads as current / new / confirm. A lone password box is a sign-in unless it
+says otherwise. The account is the box promised to hold the username (change
+forms are told to carry a hidden one), the name box before the first password
+box, an address printed near the form, the account picked into the tab, or the
+only one kept for the site.
+
+When you type a new password yourself, the save offer after submit carries the
+new box, not the one being replaced, and only when the two new boxes agree.
+A password manager extension that took over saving hides the row.
+
+`docs/fixtures/new-password-e2e.sh` runs it all in a headless dev world against
+the 1Password mock and the probe keychain.
+
 ## Autofill everything
 
 Turn on **Fill addresses and cards** in Settings › Passwords to let the

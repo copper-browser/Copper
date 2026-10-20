@@ -18,6 +18,10 @@ enum PickerFooter {
     /// keychain, Bitwarden and 1Password", "From 1Password" …
     @MainActor
     static func text(for asked: Browser.Suggesting) -> String {
+        // Fork (new-password): nothing in this list comes from a vault yet.
+        if case .newPassword? = asked.rows.first {
+            return "Made on this Mac · kept in \(Credentials.saveTarget.title)"
+        }
         var vaults = Set<Credential.Source>()
         var credentialRows = false
         var otherRows = false
@@ -50,6 +54,8 @@ enum PickerFooter {
                 otherRows = true
                 codesOnly = false
                 vaults.formUnion(openVaults)
+            case .newPassword:
+                codesOnly = false
             }
         }
         for credential in asked.credentials where credential.source != .keychain { vaults.insert(credential.source) }

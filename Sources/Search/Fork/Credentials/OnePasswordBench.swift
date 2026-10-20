@@ -237,6 +237,14 @@ enum OnePasswordBench {
                     OnePasswordCard(browser: browser)
                 }
             })
+        case "picker-live":
+            // The list hanging from the box the caret is in right now.
+            guard let asked = browser.suggesting else { return nil }
+            return AnyView(AccountList(browser: browser, asked: Browser.Suggesting(
+                tab: asked.tab, spot: CGRect(x: 0, y: 0, width: max(320, asked.spot.width), height: 0),
+                credentials: asked.credentials, rows: asked.rows))
+                .padding(EdgeInsets(top: 18, leading: 28, bottom: 40, trailing: 28))
+                .background(Palette.wash))
         case "picker":
             let site = host ?? "localhost"
             let credentials = Credentials.candidates(for: site)

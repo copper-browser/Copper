@@ -61,6 +61,10 @@ struct FocusedField: Equatable {
     let kind: FieldKind
     let group: FieldKind.Group
     let label: String
+    /// Fork (new-password): a password box's part on a form that makes one,
+    /// and what that form says a new password may be.
+    var role: PasswordRole? = nil
+    var rules: PasswordRules? = nil
 }
 
 @MainActor
@@ -665,6 +669,34 @@ final class Tab: ObservableObject, Identifiable {
             "window.__officeForms && window.__officeForms.fillField(\(label), \(value))"
         ) { result, _ in
             done?((result as? Bool) ?? false)
+        }
+    }
+
+    /// Fork (new-password): the page's new-password form — whose it is and
+    /// its rules — or nil when there is none.
+    func newPasswordPage() async -> NewPasswordPage? {
+        await withCheckedContinuation { (continuation: CheckedContinuation<NewPasswordPage?, Never>) in
+            web.evaluateJavaScript(
+                "(window.__officeForms && window.__officeForms.newPasswordInfo()) || null"
+            ) { result, _ in
+                continuation.resume(returning: NewPasswordPage(result))
+            }
+        }
+    }
+
+    /// Fork (new-password): the new password into the new and confirm boxes,
+    /// `current` into an empty current-password box. Passed as JSON
+    /// arguments, never spliced into the source; answers how many new boxes
+    /// took it.
+    func fillNewPassword(_ password: String, current: String?) async -> Int {
+        guard let password = jsonLiteral(password) else { return 0 }
+        let old = current.flatMap(jsonLiteral) ?? "null"
+        return await withCheckedContinuation { (continuation: CheckedContinuation<Int, Never>) in
+            web.evaluateJavaScript(
+                "(window.__officeForms && window.__officeForms.fillNewPassword(\(password), \(old))) || 0"
+            ) { result, _ in
+                continuation.resume(returning: (result as? NSNumber)?.intValue ?? 0)
+            }
         }
     }
 

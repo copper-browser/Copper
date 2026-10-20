@@ -318,6 +318,9 @@ final class Browser: NSObject, ObservableObject {
         case identity(AutofillIdentity)
         case card(AutofillCard)
         case field(AutofillField)
+        /// Fork (new-password): make a strong password, keep it, fill it —
+        /// this many characters, as the form's rules allow.
+        case newPassword(length: Int)
 
         var id: String {
             switch self {
@@ -328,6 +331,7 @@ final class Browser: NSObject, ObservableObject {
             case .identity(let identity): return "id:\(identity.id)"
             case .card(let card): return "card:\(card.id)"
             case .field(let field): return "field:\(field.itemID)\u{1}\(field.name)"
+            case .newPassword: return "new-password"
             }
         }
     }
@@ -368,6 +372,9 @@ final class Browser: NSObject, ObservableObject {
     /// the code list: the page that asks for the code often replaces the
     /// sign-in without the caret ever leaving a box.
     private var codePickedInto: Tab.ID?
+    /// Fork (new-password): the password last made for each tab, held only
+    /// in memory so its own submit isn't offered for saving a second time.
+    private var madePasswords: [Tab.ID: (host: String, user: String, password: String, deferred: Bool)] = [:]
     /// The list is taken down a beat after the caret leaves, not the same
     /// instant: clicking a row can take the caret out of the page first, and
     /// a list that vanished on the way down would never be clicked.
@@ -452,6 +459,10 @@ final class Browser: NSObject, ObservableObject {
             choosePasskey(passkey)
             return
         }
+        if case .newPassword = suggestion {
+            chooseNewPassword()
+            return
+        }
         lowering?.cancel()
         guard fetching == nil,
               let tab = tabs.first(where: { $0.id == suggesting?.tab }) ?? active
@@ -463,7 +474,7 @@ final class Browser: NSObject, ObservableObject {
             announce("Couldn't find the boxes anymore")
         }
         switch suggestion {
-        case .credential, .code, .passkey:
+        case .credential, .code, .passkey, .newPassword:
             break
         case .username(let name):
             tab.fillFocused(name) { worked in
@@ -520,6 +531,53 @@ final class Browser: NSObject, ObservableObject {
         suggesting = nil
         Passkeys.answer(tab: tab, with: passkey) { [weak self] worked in
             if !worked { self?.announce("The passkey wasn't used") }
+        }
+    }
+
+    /// A password manager extension that took Chrome's password saving
+    /// offers its own generator; two would be one too many.
+    private static var extensionSavesPasswords: Bool {
+        if #available(macOS 15.4, *) { return Extensions.shared.passwordSavingTakenBy != nil }
+        return false
+    }
+
+    /// Fork (new-password): a strong password for the form the caret is in.
+    /// Made and saved before anything goes into the page — a save that fails
+    /// fills nothing — then put in the new and confirm boxes, and in an empty
+    /// current box from the saved login when one matches.
+    private func chooseNewPassword() {
+        lowering?.cancel()
+        guard let tab = tabs.first(where: { $0.id == suggesting?.tab }) ?? active,
+              let host = curtain.host(of: tab.address)
+        else { return }
+        pickedInto = tab.id
+        suggesting = nil
+        Task { [weak self, weak tab] in
+            guard let self, let tab else { return }
+            guard let page = await tab.newPasswordPage() else {
+                self.announce("Couldn't find the new password box anymore")
+                return
+            }
+            if Credentials.saveTarget != .keychain {
+                self.announce("Saving a strong password to \(Credentials.saveTarget.title)…")
+            }
+            do {
+                let made = try await NewPassword.make(host: host, page: page, pickedHere: self.signedInWith[tab.id])
+                // Remembered so the save offer after submit doesn't ask
+                // about the password just kept.
+                self.madePasswords[tab.id] = (host, made.user, made.password, made.deferred)
+                let filled = await tab.fillNewPassword(made.password, current: made.current)
+                guard filled > 0 else {
+                    self.announce(made.deferred
+                        ? "Couldn't find the new password box anymore"
+                        : "Saved to \(made.target.title), but the new password box is gone — the password is in \(made.target.title)")
+                    return
+                }
+                self.relist()
+                self.announce(made.sentence)
+            } catch {
+                self.announce(error.localizedDescription)
+            }
         }
     }
 
@@ -1761,6 +1819,14 @@ final class Browser: NSObject, ObservableObject {
             let codes = codeCredentials(for: tab, host: host)
             if !codes.isEmpty { return codes.map(Suggestion.code) + fields }
         }
+        // Fork (new-password): a box that makes a password is offered one,
+        // as Safari does — not the saved accounts, which belong in the
+        // current box.
+        if group == .login, tab.fieldFocus?.role?.makesPassword == true, prefs.fillsPasswords,
+           !Self.extensionSavesPasswords {
+            let length = StrongPassword.length(for: tab.fieldFocus?.rules ?? PasswordRules())
+            return [.newPassword(length: length)] + rows
+        }
         switch group {
         case .login:
             rows += credentials.map(Suggestion.credential)
@@ -1846,6 +1912,16 @@ final class Browser: NSObject, ObservableObject {
             // A password manager extension that asked Chrome's way to do the
             // saving itself.
             if #available(macOS 15.4, *), Extensions.shared.passwordSavingTakenBy != nil { return }
+            // Fork (new-password): the strong password Copper made here was
+            // kept before it went into the page.
+            // A keychain change waited for this submit, and the page may not
+            // name the account; the one the password was made for does.
+            var user = user
+            if let made = madePasswords[tab.id], made.host == host, made.password == password {
+                madePasswords[tab.id] = nil
+                guard made.deferred else { return }
+                user = made.user
+            }
             let known = Vault.logins(for: host)
             let target = Credentials.saveTarget
             // Nothing to ask about one that is already known. Only the
