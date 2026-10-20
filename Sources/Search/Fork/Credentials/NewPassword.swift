@@ -82,13 +82,14 @@ enum NewPassword {
     /// The saved login the new password belongs to: the account the page
     /// names, else the one picked into this tab, else the only one kept for
     /// the site. Nil means a new login.
-    static func account(host: String, page: NewPasswordPage, target: Credentials.Backend,
+    static func account(host: String, named: String, target: Credentials.Backend,
                         pickedHere: Credential?) -> (user: String, existing: Credential?) {
         let kept = Credentials.candidates(for: host).filter { $0.source == target.source }
-        if !page.user.isEmpty {
-            let same = kept.first { $0.user == page.user }
-                ?? kept.first { $0.user.caseInsensitiveCompare(page.user) == .orderedSame }
-            return (same?.user ?? page.user, same)
+        let named = named.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !named.isEmpty {
+            let same = kept.first { $0.user == named }
+                ?? kept.first { $0.user.caseInsensitiveCompare(named) == .orderedSame }
+            return (same?.user ?? named, same)
         }
         if let pickedHere, let same = kept.first(where: { $0.id == pickedHere.id || $0.user == pickedHere.user }) {
             return (same.user, same)
@@ -101,7 +102,7 @@ enum NewPassword {
     /// comes back. `avoiding` is what the password must not contain.
     static func make(host: String, page: NewPasswordPage, pickedHere: Credential? = nil) async throws -> Made {
         let target = Credentials.saveTarget
-        let (user, existing) = account(host: host, page: page, target: target, pickedHere: pickedHere)
+        let (user, existing) = account(host: host, named: page.user, target: target, pickedHere: pickedHere)
         let password = StrongPassword.generate(rules: page.rules, avoiding: [user, user.split(separator: "@").first.map(String.init) ?? ""])
 
         // The current password is read before the save replaces it.

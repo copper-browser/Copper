@@ -16,6 +16,10 @@
 #   /change   again with the keychain as the target → filled, the keychain
 #             left alone until the change is sent, then an Update offer for
 #             the right account that writes the new password when kept
+#   typed     a sign-up typed by hand → a Save offer with the new password
+#             and its account; a change typed by hand on a form that names no
+#             account, followed by a sign-in form → an Update offer for the
+#             only login kept for the site
 #
 # Every password is checked by comparison (op mock check, bench passwords
 # check) — none is printed. COPPER_SHOTS=DIR keeps pictures of the list and
@@ -50,7 +54,9 @@ app="$root/build/Copper.app/Contents/MacOS/Copper"
 python3 - "$tmp/port" <<'PY' >"$tmp/server.log" 2>&1 &
 import http.server, pathlib, sys
 done = b'''<script>function sent(e) { e.preventDefault(); document.getElementById('f').remove();
-document.body.insertAdjacentHTML('beforeend', '<p id="ok">Saved</p>'); }
+document.body.insertAdjacentHTML('beforeend', location.search.indexOf('then=login') >= 0
+  ? '<form id="again"><input name="username" type="email"><input name="password" type="password"></form>'
+  : '<p id="ok">Saved</p>'); }
 document.getElementById('f').addEventListener('submit', sent);</script>'''
 pages = {
   '/login': b'''<!doctype html><meta charset="utf-8"><title>Sign in</title>
@@ -229,4 +235,49 @@ bench op offer keep >/dev/null
 for _ in {1..20}; do [ "$(json "$(bench passwords check localhost erin@example.com "$pw")" "d['matches']")" = True ] && break; sleep 0.1; done
 [ "$(json "$(bench passwords check localhost erin@example.com "$pw")" "d['matches']")" = True ] || fail "keychain not updated after keep"
 echo "PASS change (keychain): filled, keychain untouched until submit, Update offer for erin kept the new password"
+bench close "$kc" >/dev/null
+
+# --- 5. Typed by hand: sign-up, then a change that names no account ---------
+typed() { # ID SELECTOR VALUE
+  bench eval "$1" "(() => { const b = document.querySelector('$2'); b.focus(); b.value = '$3';
+    b.dispatchEvent(new Event('input', {bubbles: true})); return 'typed'; })()" >/dev/null
+}
+wait_offer() {
+  local offer='{}'
+  for _ in {1..50}; do
+    offer=$(bench op offer)
+    [ "$(json "$offer" "d['offer'] is not None")" = True ] && break
+    sleep 0.1
+  done
+  echo "$offer"
+}
+ts=$(bench open "http://localhost:$port/signup")
+wait_eval "$ts" "document.readyState === 'complete' && !!window.__officeForms" || fail "signup page (typed)"
+typed "$ts" "#email" frank@example.com
+typed "$ts" "#new" Typed-by-hand-1
+typed "$ts" "#again" Typed-by-hand-1
+bench eval "$ts" "document.getElementById('f').requestSubmit(); 'sent'" >/dev/null
+offer=$(wait_offer)
+[ "$(json "$offer" "(d['offer'] or {}).get('user')")" = frank@example.com ] || fail "no save offer for frank: $offer"
+[ "$(json "$offer" "d['offer']['changed']")" = False ] || fail "a new account reads as an update: $offer"
+bench op offer keep >/dev/null
+for _ in {1..20}; do [ "$(json "$(bench passwords check localhost frank@example.com Typed-by-hand-1)" "d['matches']")" = True ] && break; sleep 0.1; done
+[ "$(json "$(bench passwords check localhost frank@example.com Typed-by-hand-1)" "d['matches']")" = True ] || fail "frank not saved"
+bench close "$ts" >/dev/null
+bench passwords forget localhost frank@example.com >/dev/null
+echo "PASS typed sign-up: Save offer for frank with the new password"
+
+tc=$(bench open "http://localhost:$port/change?then=login")
+wait_eval "$tc" "document.readyState === 'complete' && !!window.__officeForms" || fail "change page (typed)"
+typed "$tc" "#OldPass" whatever-it-was
+typed "$tc" "#Pass1" Typed-change-22
+typed "$tc" "#Pass2" Typed-change-22
+bench eval "$tc" "document.getElementById('f').requestSubmit(); 'sent'" >/dev/null
+offer=$(wait_offer)
+[ "$(json "$offer" "(d['offer'] or {}).get('user')")" = erin@example.com ] || fail "no update offer for erin after a typed change: $offer"
+[ "$(json "$offer" "d['offer']['changed']")" = True ] || fail "typed change is not an update: $offer"
+bench op offer keep >/dev/null
+for _ in {1..20}; do [ "$(json "$(bench passwords check localhost erin@example.com Typed-change-22)" "d['matches']")" = True ] && break; sleep 0.1; done
+[ "$(json "$(bench passwords check localhost erin@example.com Typed-change-22)" "d['matches']")" = True ] || fail "erin not updated to the typed password"
+echo "PASS typed change: the new box (not OldPass) offered as an Update for erin, though a sign-in form followed"
 echo "ALL PASS"
