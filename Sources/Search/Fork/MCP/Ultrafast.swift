@@ -566,9 +566,9 @@ enum Ultrafast {
 
     @MainActor
     static func js(_ web: WKWebView, _ expression: String) async throws -> Any? {
-        let installed = try await Page.raw(web, "typeof window.__jevFast === 'object' && window.__jevFast.ready === true") as? Bool ?? false
-        if !installed { _ = try await Page.raw(web, script) }
-        return try await Page.raw(web, expression)
+        // The script returns at once when `__jevFast.ready`: installed in the
+        // same call rather than after a question (Page.js).
+        try await Page.raw(web, Page.installing(script, expression))
     }
 
     static func encode(_ value: Any) -> String {

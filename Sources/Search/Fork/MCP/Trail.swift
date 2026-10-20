@@ -50,9 +50,8 @@ enum Trail {
         }
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             Task { @MainActor in
-                await install(web)
                 web.callAsyncJavaScript(
-                    "if (window.__jevTrail && window.__jevTrail.glide) { return await window.__jevTrail.glide(a); } return false;",
+                    Page.installing(script, "if (window.__jevTrail && window.__jevTrail.glide) { return await window.__jevTrail.glide(a); } return false;"),
                     arguments: ["a": ["x": x, "y": y]], in: nil, in: .page
                 ) { _ in
                     if arrived.take() { continuation.resume() }
@@ -119,16 +118,10 @@ enum Trail {
         }
     }
 
-    /// The layer, in this document, now. Errors are swallowed on purpose:
-    /// the overlay is decoration.
-    @MainActor
-    private static func install(_ web: WKWebView) async {
-        let installed = try? await Page.raw(web, "typeof window.__jevTrail === 'object' && window.__jevTrail !== null") as? Bool
-        if installed != true { _ = try? await Page.raw(web, script) }
-    }
-
     /// One call into the layer, installing it first if this document hasn't
-    /// got it.
+    /// got it — in the same call (Page.js): the layer's script only checks
+    /// its element is still there when it already is. Errors are swallowed
+    /// on purpose: the overlay is decoration.
     @MainActor
     private static func fire(_ web: WKWebView, _ name: String, _ arguments: [String: Any]) {
         guard JSONSerialization.isValidJSONObject(arguments),
@@ -136,8 +129,7 @@ enum Trail {
         else { return }
         let json = String(decoding: data, as: UTF8.self)
         Task { @MainActor in
-            await install(web)
-            _ = try? await Page.raw(web, "window.__jevTrail && window.__jevTrail.\(name)(\(json))")
+            _ = try? await Page.raw(web, Page.installing(script, "window.__jevTrail && window.__jevTrail.\(name)(\(json))"))
         }
     }
 

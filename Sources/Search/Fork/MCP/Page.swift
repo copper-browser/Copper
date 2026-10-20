@@ -32,12 +32,19 @@ enum Page {
         (try? JSONSerialization.data(withJSONObject: list)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
     }
 
-    /// Run in the page, with the helper installed first if it isn't yet.
+    /// Run in the page, with the helper installed first if it isn't yet — in
+    /// the same call. The helper is a no-op once `window.__copper` is there,
+    /// so it goes ahead of every script rather than after a question: asking
+    /// first cost every tool call a second round trip to the page.
     @MainActor
     static func js(_ web: WKWebView, _ script: String) async throws -> Any? {
-        let installed = try await raw(web, "typeof window.__copper === 'object'") as? Bool ?? false
-        if !installed { _ = try await raw(web, helper) }
-        return try await raw(web, script)
+        try await raw(web, installing(helper, script))
+    }
+
+    /// An idempotent installer, then the script, as one program: what the
+    /// page answers is the script's value.
+    static func installing(_ installer: String, _ script: String) -> String {
+        installer + ";\n" + script
     }
 
     @MainActor
