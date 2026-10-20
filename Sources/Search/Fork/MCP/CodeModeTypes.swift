@@ -7,6 +7,7 @@ import Foundation
 // script before sending it (docs/agents.md › Code mode). The app carries no
 // compiler.
 
+@MainActor
 enum CodeModeTypes {
     /// The `copper` object's shape in one line, for copper_run's description:
     /// "copper.browser.{tabs, navigate, …}; copper.canvas.{…}".

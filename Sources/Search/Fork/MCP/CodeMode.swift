@@ -131,7 +131,7 @@ enum CodeMode {
             // context; here it only comes back to an object for the answer.
             let json = outcome.value ?? "null"
             if json.utf8.count > Limits.valueBytes {
-                out["value"] = String(json.utf8.prefix(Limits.valueBytes).map { Character(UnicodeScalar($0)) })
+                out["value"] = String(decoding: json.utf8.prefix(Limits.valueBytes), as: UTF8.self)
                 out["valueTruncated"] = true
             } else {
                 out["value"] = (try? JSONSerialization.jsonObject(with: Data(json.utf8), options: [.fragmentsAllowed])) ?? json
@@ -269,7 +269,8 @@ final class CodeModeRunner: @unchecked Sendable {
         context.setObject(names, forKeyedSubscript: "__copperTools" as NSString)
         arm()
         context.evaluateScript(CodeModeRunner.shim, withSourceURL: URL(string: "copper://run/copper.js"))
-        if let exception = takeException() { return finish(error: CodeModeRunner.describe(exception)) }
+        afterEntry()
+        if finished { return }
 
         // The script is the body of an async function, so `await` and
         // `return` work at the top level. The opener shares its first
@@ -279,7 +280,8 @@ final class CodeModeRunner: @unchecked Sendable {
         let wrapped = "(async () => {" + script + "\n})().then((v) => { const s = JSON.stringify(v === undefined ? null : v); return s === undefined ? \"null\" : s; })"
         arm()
         let promise = context.evaluateScript(wrapped, withSourceURL: URL(string: "copper://run/script.js"))
-        if let exception = takeException() { return finish(error: CodeModeRunner.describe(exception)) }
+        afterEntry()
+        if finished { return }
         let done: @convention(block) (JSValue?) -> Void = { [weak self] value in
             guard let self else { return }
             self.outcome.value = value?.isString == true ? value?.toString() : "null"
@@ -291,7 +293,7 @@ final class CodeModeRunner: @unchecked Sendable {
         }
         arm()
         promise?.invokeMethod("then", withArguments: [done, failed])
-        if let exception = takeException() { return finish(error: CodeModeRunner.describe(exception)) }
+        afterEntry()
         // A script that returns without awaiting has already finished
         // in the handlers above; otherwise its calls carry it on.
         queue.asyncAfter(deadline: .now() + timeout + 0.05) { [weak self] in self?.timedOut() }
@@ -410,7 +412,8 @@ final class CodeModeRunner: @unchecked Sendable {
     private func settle(_ id: Int, name: String, began: Date, answer: [String: Any], refused: String?) {
         inflight[id] = nil
         let promise = pending.removeValue(forKey: id)
-        guard !finished, let context, let (resolve, reject) = promise else { return }
+        guard !finished, let context, let promise else { return }
+        let (resolve, reject) = promise
         let ms = Int(Date().timeIntervalSince(began) * 1000)
         let content = answer["content"] as? [[String: Any]] ?? []
         let isError = (answer["isError"] as? Bool) ?? false
@@ -476,7 +479,7 @@ final class CodeModeRunner: @unchecked Sendable {
             outcome.logsDropped += 1
             return
         }
-        var line = text.utf8.count > CodeMode.Limits.lineBytes ? String(text.utf8.prefix(CodeMode.Limits.lineBytes).map { Character(UnicodeScalar($0)) }) + "…" : text
+        var line = text.utf8.count > CodeMode.Limits.lineBytes ? String(decoding: text.utf8.prefix(CodeMode.Limits.lineBytes), as: UTF8.self) + "…" : text
         if level != "log" { line = "[\(level)] " + line }
         logBytes += line.utf8.count
         outcome.logs.append(line)
@@ -485,8 +488,9 @@ final class CodeModeRunner: @unchecked Sendable {
     // MARK: ending
 
     /// After every entry into the engine (the promise handlers ran as it
-    /// returned): a script ended by the watchdog shows up as an
-    /// exception, not as a rejection.
+    /// returned): an exception that came out of it ends the run. A script
+    /// the watchdog ended shows up here, not as a rejection, and is a
+    /// timeout; one ended for the user's Stop is the stop.
     private func afterEntry() {
         guard !finished, let exception = takeException() else { return }
         if stopped != nil {
