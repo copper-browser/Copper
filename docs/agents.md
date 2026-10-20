@@ -183,8 +183,11 @@ return {pages: rows, applied: applied.json.applied};
 
 **The `copper` object.** `copper.browser.navigateBack` is the tool
 `browser_navigate_back`: the first word is the namespace, the rest camel-cased —
-`copper.browser.*`, `copper.canvas.*`, `copper.jev.*` (Jev mode on),
-`copper.cloud.historyDelete`, `copper.voice.*`. Each method takes the tool's
+`copper.browser.*`, `copper.canvas.*`, `copper.jev.*` (Jev mode on). Not in it,
+on purpose: `browser_sign_in`, `browser_autofill`, `cloud_history_delete` and the
+voice tools — each is one call a person should see and approve on its own (a host
+that asks before each tool would otherwise ask once for the script), and none
+saves a round trip worth having; call those directly. Each method takes the tool's
 arguments object (the same `reason` and `tab` included) and resolves to
 `{text, json?, images?, summary?}`: `text` is the tool's text answer, `json` is it
 parsed when the tool answered JSON (`canvas_read`, `canvas_apply`, `browser_sign_in`
@@ -205,29 +208,39 @@ in the OS, nothing added — with nothing in it but the language and `copper`: n
 DOM, no `fetch` or `XMLHttpRequest`, no timers, no `require`, no `import`, no
 files. Every `copper.*` call goes through the same dispatch as a direct
 `tools/call` (`MCP.invoke`): the same argument validation by the same handler, the
-same agent-access checks (shared sign-ins, Bitwarden policy, `cloud_history_delete`'s
-loopback rule), the same announcement in the line at the bottom, the same row with
-its `reason` on the driver's card, and the same **Stop**: the user's Stop refuses
-the script's next call with *Stopped by the user in Copper…* and the run ends with
-that as its error. A script can do nothing a run of direct calls could not; it saves
-the round trips between them. `copper_run` is a loopback tool (the same gate as
-`cloud_history_delete`): never offered through an agent link nor to the ⌘E pane's
-agent, and a script cannot call `copper_run`.
+same agent-access checks, the same announcement in the line at the bottom, the same
+row with its `reason` on the driver's card, and the same **Stop**: the user's Stop
+(the card's, the pill's, a tab badge's, or Stop on a Jev run the script started)
+ends the run at once — mid-sleep, mid-loop or between calls — with *Stopped by the
+user in Copper…* as its error, and refuses the agent's next direct calls as it always
+did. A script can do nothing a run of direct calls could not; it saves the round trips
+between them. `copper_run` is a loopback tool (the same gate as `cloud_history_delete`):
+never offered through an agent link nor to the ⌘E pane's agent, and a script cannot
+call `copper_run`. Its catalogue entry carries `destructiveHint` and `openWorldHint`,
+so a host that asks before destructive tools asks before this one.
 
 **Limits.** `timeout` seconds for the whole run, tool calls included (default 60,
-at most 300) — backed by JavaScriptCore's execution-time watchdog, so a script that
-spins ends at the deadline too; the script's own code runs on a queue of its own, so
-a loop costs a core, never the window. `maxCalls` (default 100, at most 500): calls
-past it reject, the answer says `callCapReached`. `console` keeps 200 lines / 64 KB
-(`logsDropped` counts the rest); the returned value is cut at 256 KB
-(`valueTruncated`).
+at most 300). JavaScriptCore's watchdog polls the script every 0.1 s and ends it at
+the deadline, when the user has stopped it, or when the process has grown by more
+than 512 MB since the run began (`OutOfMemory`), so a script that spins or allocates
+in a loop ends too; the script's own code runs on a queue of its own, so a loop costs
+a core, never the window. `maxCalls` (default 100, at most 500): calls past it reject,
+the answer says `callCapReached`. At most 4 scripts run at once. `console` keeps 200
+lines / 64 KB (`logsDropped` counts the rest); the returned value is cut at 256 KB
+(`valueTruncated`); a call's arguments may be as large as a request (32 MB). A call
+the script leaves dangling when it returns finishes on its own, as a direct call whose
+client went away would, and its answer is dropped: the answer counts those as
+`abandoned`, and nothing the script starts after its answer goes anywhere.
+Shared memory (`SharedArrayBuffer`, `Atomics`) and `WebAssembly` are removed from
+the context.
 
 **The answer.** JSON text: `{ok, value, logs, calls, callLog: [{tool, ms, error?}],
 ms}`. A thrown error — in the script, or a tool's rejection it did not catch — is a
 tool error (`isError: true`) whose text is `{ok: false, error: {message, name, line,
 column, tool?, stack?}, logs, calls, callLog, ms}`; `line` and `column` are the
-script's own. The driver's card shows *Running a script · N lines*, then one row
-per call under it.
+script's own (an uncaught tool rejection names the tool and the line of the `await`).
+The driver's card shows *Running a script · N lines*, then one row per call under it,
+and keeps its Stop for as long as the script runs.
 
 **Types.** `copper_types` (and the MCP resource `copper://types/copper.d.ts`) is
 `copper.d.ts`, generated from this Copper's tool schemas — each method typed with

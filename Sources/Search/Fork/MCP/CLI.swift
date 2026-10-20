@@ -86,6 +86,11 @@ enum CLI {
         if command == "bitwarden" {
             return runBitwarden(Array(args.dropFirst()), dryRun: dryRun, launchRequested: launchRequested)
         }
+        // Code mode (CodeMode.swift): the script names its own tabs.
+        if command == "script", tabRef != nil {
+            error("script doesn't work in a tab — pass `tab` inside the script's calls, and drop --tab")
+            return 2
+        }
         // The Listen transcript (VoiceTools.swift): reads only, never the page.
         if command == "listen" || command == "transcript" {
             guard tabRef == nil else {
@@ -366,7 +371,7 @@ enum CLI {
                 rest.removeFirst()
                 switch flag {
                 case "--timeout":
-                    guard let seconds = Double(value) else { return bad("--timeout needs seconds") }
+                    guard let seconds = Double(value), seconds.isFinite, seconds > 0 else { return bad("--timeout needs seconds") }
                     arguments["timeout"] = seconds
                 case "--max-calls":
                     guard let count = Int(value) else { return bad("--max-calls needs a number") }

@@ -634,7 +634,7 @@ final class MCP: ObservableObject {
                 // the same caller, the same announcement, and the flag that
                 // keeps copper_run out of its own scripts. The refusal is
                 // the caller's — Stop on the pane's card turns the run away.
-                content = try await CodeMode.run(arguments, tools: tools, call: { [weak self] tool, args in
+                content = try await CodeMode.run(arguments, tools: tools, caller: caller, call: { [weak self] tool, args in
                     guard let self else { throw Tools.Failure(text: "Copper is shutting down") }
                     return try await MCP.$inScript.withValue(true) {
                         try await self.invoke(tool, args, announce: announce, driver: driver, caller: caller)

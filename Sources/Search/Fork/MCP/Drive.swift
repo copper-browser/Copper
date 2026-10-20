@@ -286,6 +286,8 @@ final class Drive: ObservableObject {
             // card, a session already torn down — ends here, or it would
             // sit "running" with a Stop that does nothing.
             if Tools.Ultrafast.sessions[run.tabID]?.finished ?? true { finish(.stopped, note: "Stopped by you") }
+            // A script that started this Jev run ends with it (CodeMode.swift).
+            CodeMode.stop(key: run.who.key, because: Drive.refusalWords)
         case .agent, .bot, .pane:
             refuse(run.who.key)
             refusingUntil = Date().addingTimeInterval(Drive.refusal)
@@ -305,10 +307,16 @@ final class Drive: ObservableObject {
         refusedKeys = [:]
     }
 
-    /// Turn one session's calls away for `refusal` seconds.
+    /// Turn one session's calls away for `refusal` seconds. A code-mode
+    /// script of that session ends now too (CodeMode.swift): it would
+    /// otherwise sleep or compute past the window and call again.
     func refuse(_ key: String) {
         refusedKeys[key] = Date().addingTimeInterval(Drive.refusal)
+        CodeMode.stop(key: key, because: Drive.refusalWords)
     }
+
+    static let refusalWords = "Stopped by the user in Copper: they took the browser back. Do not retry; tell them what you were doing and wait until they ask you to continue."
+
 
     /// Why a call from this session must not run right now, in words for the
     /// agent — or nil. Only the session that was stopped is refused.
@@ -317,7 +325,7 @@ final class Drive: ObservableObject {
         refusedKeys = refusedKeys.filter { $0.value > now }
         if refusingUntil.map({ $0 <= now }) == true { refusingUntil = nil }
         guard refusedKeys[key] != nil else { return nil }
-        return "Stopped by the user in Copper: they took the browser back. Do not retry; tell them what you were doing and wait until they ask you to continue."
+        return Drive.refusalWords
     }
 
     /// The pane's agent, which is one session.
@@ -458,7 +466,10 @@ final class Drive: ObservableObject {
 
     /// Nothing came for `grace` seconds: the driver has let go.
     private func lapse() {
-        guard live, let run, run.driver != .jev, !busy else { return }
+        // A code-mode script between its calls is not a driver that let go:
+        // its card keeps its Stop, and the run lapses after the script's own
+        // call ends (CodeMode.swift).
+        guard live, let run, run.driver != .jev, !busy, !CodeMode.isRunning(run.who.key) else { return }
         let acted = run.cycles.count
         finish(.ended, note: "\(acted) call\(acted == 1 ? "" : "s")")
     }

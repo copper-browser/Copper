@@ -118,7 +118,12 @@ def check(copper, bench):
     case("resource copper://types/copper.d.ts", any(r["uri"] == "copper://types/copper.d.ts" for r in resources) and read["contents"][0]["text"] == dts)
     # Every tool in the catalogue has a method on the object, and none of copper_*.
     ok, a = copper.run("return copper.tools")
-    case("copper.tools is the catalogue less copper_*", ok and set(a["value"]) == names - {"copper_run", "copper_types"}, f"{len(a.get('value', []))} tools")
+    excluded = {"copper_run", "copper_types", "browser_sign_in", "browser_autofill", "cloud_history_delete", "voice_status", "voice_transcript"}
+    case("copper.tools is the catalogue less copper_* and the excluded few", ok and set(a["value"]) == names - excluded, f"{len(a.get('value', []))} tools")
+    ok, a = copper.run("try { await copper.call('browser_sign_in', {}); return 'ran'; } catch (e) { return e.message }")
+    case("browser_sign_in is not reachable from a script", ok and "no tool named browser_sign_in" in str(a.get("value")), str(a.get("value")))
+    ok, a = copper.run("return [typeof copper.cloud, typeof copper.voice, typeof copper.browser.signIn, typeof copper.browser.autofill]")
+    case("…nor cloud, voice, signIn, autofill on the object", ok and a.get("value") == ["undefined"] * 4, str(a.get("value")))
 
     # Several tools in one script, the value and logs coming back.
     ok, a = copper.run("""
@@ -137,7 +142,7 @@ def check(copper, bench):
         catch (e) { return {name: e.name, tool: e.tool, message: e.message}; }
     """)
     v = a.get("value", {})
-    case("a tool's error rejects with .tool", ok and v.get("name") == "CopperToolError" and v.get("tool") == "browser_navigate" and "url" in v.get("message", ""), str(v))
+    case("a tool's error rejects with .tool", ok and v.get("name") == "CopperToolError" and v.get("tool") == "browser_navigate" and "not an address" in v.get("message", ""), str(v))
     case("…and the callLog says so", a["callLog"][0]["tool"] == "browser_navigate" and "error" in a["callLog"][0])
 
     # Argument validation identical to a direct call: the same handler, the same words.
@@ -160,7 +165,10 @@ def check(copper, bench):
     case("a syntax error names its line", (not ok) and e.get("name") == "SyntaxError" and e.get("line") == 2, str(e))
     ok, a = copper.run("return undefined_thing.foo")
     e = a.get("error", {})
-    case("a ReferenceError at line 1", (not ok) and e.get("name") == "ReferenceError" and e.get("line") == 1, str(e))
+    case("a ReferenceError at line 1, column 8", (not ok) and e.get("name") == "ReferenceError" and e.get("line") == 1 and e.get("column") in (8, 23), str(e))
+    ok, a = copper.run("const x = 1;\nawait copper.browser.navigate({url: ''});\nreturn x;")
+    e = a.get("error", {})
+    case("an uncaught tool rejection names the tool and the script's line", (not ok) and e.get("tool") == "browser_navigate" and e.get("line") == 2, str(e))
 
     # Nothing but copper: no network, no modules, no timers, no DOM.
     ok, a = copper.run("""
@@ -177,6 +185,8 @@ def check(copper, bench):
     case("fetch, XMLHttpRequest, require, WebSocket, timers, DOM absent", ok and not present, f"present={present} import()={v.get('dyn')} static import={v.get('statik')}")
     case("import() rejects", ok and v.get("dyn") != "ok", str(v.get("dyn")))
     case("static import is a SyntaxError", ok and v.get("statik") == "SyntaxError", str(v.get("statik")))
+    ok, a = copper.run("return [typeof SharedArrayBuffer, typeof Atomics, typeof WebAssembly]")
+    case("SharedArrayBuffer, Atomics, WebAssembly removed", ok and a.get("value") == ["undefined"] * 3, str(a.get("value")))
     # The doors are gone and copper is sealed.
     ok, a = copper.run("""
         const r = {native: typeof globalThis.__copperNative, tools: typeof globalThis.__copperTools};
@@ -194,6 +204,18 @@ def check(copper, bench):
     ok, a = copper.run("try { await copper.call('copper_types', {}); return 'ran'; } catch (e) { return e.message }")
     case("nor copper_types", ok and "no tool named copper_types" in str(a.get("value")), str(a.get("value")))
 
+    # A script that tampers with Promise.prototype.then or JSON before returning changes nothing out here.
+    ok, a = copper.run("Promise.prototype.then = function () { throw new Error('hijacked'); }; JSON.stringify = () => 'nope'; return {a: 1};")
+    case("replacing Promise.prototype.then / JSON.stringify changes nothing", ok and a.get("value") == {"a": 1}, str(a.get("error") or a.get("value")))
+    # A call left dangling when the script returns is abandoned, and nothing starts after the answer.
+    ok, a = copper.run("copper.browser.tabs({action: 'list'}); (async () => { for (;;) { await null; copper.browser.tabs({action: 'list'}); } })(); return 1;")
+    case("dangling calls are reported as abandoned and nothing starts after the answer", ok and a.get("value") == 1 and a.get("abandoned", 0) >= 1 and a.get("calls", 0) <= 2,
+         f"calls={a.get('calls')} abandoned={a.get('abandoned')}")
+    # The memory budget.
+    t = time.time()
+    ok, a = copper.run("const keep = []; for (;;) keep.push(new Float64Array(1 << 22));", timeout=60)
+    e = a.get("error", {})
+    case("the memory budget ends an allocating script", (not ok) and e.get("name") == "OutOfMemory" and time.time() - t < 30, f"{time.time() - t:.1f} s {e}")
     # The timeout: a spinning script, and one waiting on calls.
     t = time.time()
     ok, a = copper.run("let n = 0; while (true) { n++; } return n;", timeout=2)
@@ -203,6 +225,9 @@ def check(copper, bench):
     ok, a = copper.run("for (let i = 0; i < 100; i++) { await copper.sleep(500); await copper.browser.tabs({action: 'list'}); } return 'done';", timeout=2)
     e = a.get("error", {})
     case("timeout ends a script between calls", (not ok) and e.get("name") == "Timeout" and time.time() - t < 6 and 1 <= a.get("calls", 0) <= 6, f"{time.time() - t:.1f} s calls={a.get('calls')} {e}")
+    ok, a = copper.run("const t = Date.now(); while (Date.now() - t < 1500) {} try { await copper.browser.tabs({action: 'list'}); } catch (e) { return 'caught ' + e.message } return 'late';", timeout=1)
+    e = a.get("error", {})
+    case("a call made past the deadline is a Timeout, not a catchable error", (not ok) and e.get("name") == "Timeout", str(e or a.get("value")))
     ok, a = copper.run("return 1", timeout=100000)
     case("timeout is capped (a huge one still runs)", ok and a.get("value") == 1)
 
@@ -244,12 +269,14 @@ def check(copper, bench):
         threading.Thread(target=stop_later, daemon=True).start()
         t = time.time()
         ok, a = copper.run("""
-            let n = 0;
-            for (let i = 0; i < 40; i++) { await copper.browser.tabs({action: "list", reason: "stop me"}); n++; await copper.sleep(300); }
-            return n;
-        """, timeout=30)
+            await copper.browser.tabs({action: "list", reason: "stop me"});
+            await copper.sleep(30000);
+            await copper.sleep(30000);
+            await copper.browser.tabs({action: "list", reason: "too late"});
+            return "outlived";
+        """, timeout=120)
         e = a.get("error", {})
-        case("Stop ends the run with the refusal", (not ok) and e.get("name") == "Stopped" and "Stopped by the user" in e.get("message", "") and time.time() - t < 10,
+        case("Stop ends the run at once, even mid-sleep", (not ok) and e.get("name") == "Stopped" and "Stopped by the user" in e.get("message", "") and time.time() - t < 6,
              f"{time.time() - t:.1f} s calls={a.get('calls')} bench={box.get('stop')!r} {e.get('message', '')[:60]}")
         direct = copper.raw("browser_tabs", {"action": "list"})
         case("…and the next direct call is refused the same way", direct.get("isError") and "Stopped by the user" in direct["content"][0]["text"])
