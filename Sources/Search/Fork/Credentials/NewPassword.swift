@@ -64,7 +64,9 @@ enum NewPassword {
         var sentence: String {
             let who = user.isEmpty ? host : "\(user) on \(host)"
             if deferred {
-                return "Strong password filled for \(who) — Copper offers to update the keychain once the site takes it"
+                return updated
+                    ? "Strong password filled for \(who) — Copper offers to update \(target.title) once the site takes it"
+                    : "Strong password filled for \(who) — not saved yet; Copper offers to once the site takes it"
             }
             if updated {
                 let history = target == .keychain ? "" : " (the old one is in its password history)"
@@ -99,10 +101,12 @@ enum NewPassword {
     }
 
     /// Makes the password and saves it; the caller fills the page with what
-    /// comes back. `avoiding` is what the password must not contain.
-    static func make(host: String, page: NewPasswordPage, pickedHere: Credential? = nil) async throws -> Made {
+    /// comes back. `named` overrides the account the page names; `save:
+    /// false` keeps nothing, and the save offer after submit asks instead.
+    static func make(host: String, page: NewPasswordPage, named: String? = nil, pickedHere: Credential? = nil,
+                     save: Bool = true) async throws -> Made {
         let target = Credentials.saveTarget
-        let (user, existing) = account(host: host, named: page.user, target: target, pickedHere: pickedHere)
+        let (user, existing) = account(host: host, named: named ?? page.user, target: target, pickedHere: pickedHere)
         let password = StrongPassword.generate(rules: page.rules, avoiding: [user, user.split(separator: "@").first.map(String.init) ?? ""])
 
         // The current password is read before the save replaces it.
@@ -110,9 +114,9 @@ enum NewPassword {
         if page.hasCurrent, page.currentEmpty, let existing {
             current = try? await Credentials.secret(existing.id)
         }
-        if target == .keychain, existing != nil {
+        if !save || (target == .keychain && existing != nil) {
             return Made(password: password, current: current, host: host, user: user,
-                        target: target, updated: true, deferred: true)
+                        target: target, updated: existing != nil, deferred: true)
         }
         do {
             try await Credentials.save(host: host, user: user, password: password)

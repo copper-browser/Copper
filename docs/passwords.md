@@ -188,6 +188,11 @@ new-password form goes away, even if the page then shows a sign-in form to use
 the new password on.
 A password manager extension that took over saving hides the row.
 
+Agents get the same through `browser_autofill kind=new-password` or `copper
+autofill new-password` ([agents.md](agents.md) › New passwords); the password
+never reaches them, and an existing login's password changes only when that
+login is shared with agents.
+
 `docs/fixtures/new-password-e2e.sh` runs it all in a headless dev world against
 the 1Password mock and the probe keychain.
 

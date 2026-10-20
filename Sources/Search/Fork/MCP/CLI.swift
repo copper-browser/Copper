@@ -192,8 +192,8 @@ enum CLI {
             }
             return call("browser_sign_in", arguments)
         case "autofill":
-            guard let kind = args.first, ["card", "identity", "field"].contains(kind) else {
-                return bad("autofill needs card, identity, or field")
+            guard let kind = args.first, ["card", "identity", "field", "new-password"].contains(kind) else {
+                return bad("autofill needs card, identity, field, or new-password")
             }
             var arguments: [String: Any] = ["kind": kind]
             var i = 1
@@ -202,6 +202,14 @@ enum CLI {
                 case "--name":
                     guard let value = next(&args, &i), !value.isEmpty else { return bad("autofill --name needs NAME") }
                     arguments["name"] = value
+                case "--account":
+                    guard kind == "new-password", let value = next(&args, &i), !value.isEmpty else {
+                        return bad("autofill new-password --account needs USER")
+                    }
+                    arguments["account"] = value
+                // Saving is the default: --save says so, --no-save fills only.
+                case "--save": arguments["save"] = true
+                case "--no-save": arguments["save"] = false
                 case "--submit": arguments["submit"] = true
                 default: return bad("unknown autofill option: \(args[i])")
                 }
@@ -1571,6 +1579,9 @@ enum CLI {
                                                 fill a shared saved account on the current tab
       autofill card|identity|field [--name NAME] [--submit]
                                                 fill a shared Bitwarden or 1Password card, identity, or field
+      autofill new-password [--account USER] [--no-save] [--submit]
+                                                make a strong password for the page's sign-up or change
+                                                form, save it, then fill it (the password is never printed)
       observe [--no-text] [-n N]                fast Jev observation
       run "GOAL…" [--url URL] [--new-tab [--focus]] [--max N] [--no-elements]
                  [--vision off|screenshot|marks|box|pixels] [--model jev-1.14.0]

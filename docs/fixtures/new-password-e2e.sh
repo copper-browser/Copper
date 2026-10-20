@@ -20,6 +20,10 @@
 #             and its account; a change typed by hand on a form that names no
 #             account, followed by a sign-in form → an Update offer for the
 #             only login kept for the site
+#   agents    browser_autofill kind=new-password refuses a login not shared
+#             with agents (nothing filled), then with it shared saves and
+#             fills without the password in its answer; `copper autofill
+#             new-password --account --submit` makes a sign-up's login
 #
 # Every password is checked by comparison (op mock check, bench passwords
 # check) — none is printed. COPPER_SHOTS=DIR keeps pictures of the list and
@@ -97,7 +101,8 @@ suite="com.officecommun.search.test.$world"
 defaults write "$suite" bench -bool true
 defaults write "$suite" welcomed -bool true
 defaults write "$suite" probe.keychain -string file
-SEARCH_PROBE="$world" SEARCH_HEADLESS=1 SEARCH_OP_PATH="$root/docs/fixtures/op-mock/op" SEARCH_OP_APP_PATH=none \
+mcp_port=$((41000 + $$ % 9000))
+SEARCH_PROBE="$world" SEARCH_HEADLESS=1 SEARCH_MCP_PORT="$mcp_port" SEARCH_OP_PATH="$root/docs/fixtures/op-mock/op" SEARCH_OP_APP_PATH=none \
   "$app" >"$tmp/copper.log" 2>&1 &
 pid=$!
 for _ in {1..60}; do bench tabs >/dev/null 2>&1 && break; sleep 0.25; done
@@ -280,4 +285,41 @@ bench op offer keep >/dev/null
 for _ in {1..20}; do [ "$(json "$(bench passwords check localhost erin@example.com Typed-change-22)" "d['matches']")" = True ] && break; sleep 0.1; done
 [ "$(json "$(bench passwords check localhost erin@example.com Typed-change-22)" "d['matches']")" = True ] || fail "erin not updated to the typed password"
 echo "PASS typed change: the new box (not OldPass) offered as an Update for erin, though a sign-in form followed"
+bench close "$tc" >/dev/null
+
+# --- 6. Agents ---------------------------------------------------------------
+copper() { SEARCH_PROBE="$world" SEARCH_MCP_PORT="$mcp_port" "$root/build/Copper.app/Contents/Resources/bin/copper" "$@"; }
+bench op backend onepassword >/dev/null
+ag=$(bench open "http://localhost:$port/change?u=alice@example.com")
+wait_eval "$ag" "document.readyState === 'complete' && !!window.__officeForms" || fail "change page (agent)"
+bench select "$ag" >/dev/null
+out=$(copper call browser_autofill '{"kind":"new-password","reason":"e2e"}' 2>&1 || true)
+case "$out" in *"not shared with agents"*) ;; *) fail "unshared login was not refused: $out";; esac
+wait_eval "$ag" "document.getElementById('Pass1').value === '' && document.getElementById('OldPass').value === ''" 5 \
+  || fail "a refused call filled something"
+bench op share all on >/dev/null
+out=$(copper call browser_autofill '{"kind":"new-password","reason":"e2e"}' 2>&1) || fail "agent call: $out"
+pw=$(value "$ag" "#Pass1")
+[ ${#pw} = 20 ] || fail "agent fill length ${#pw}"
+case "$out" in *"$pw"*) fail "the password is in the agent's answer";; esac
+python3 -c 'import json,re,sys; t=sys.argv[1]; d=json.loads(re.search(r"\{.*\}", t, re.S).group(0))
+assert d["saved"] and d["updated"] and d["current"] and d["user"]=="alice@example.com" and d["length"]==20 and d["filled"]==2, d' "$out" \
+  || fail "agent answer: $out"
+[ "$(op mock check Localhost alice@example.com "$pw")" = true ] || fail "agent change not saved"
+bench close "$ag" >/dev/null
+echo "PASS agent change: refused while unshared; shared, saved + filled with no password in the answer"
+
+as=$(bench open "http://localhost:$port/signup")
+wait_eval "$as" "document.readyState === 'complete' && !!window.__officeForms" || fail "signup page (agent)"
+bench select "$as" >/dev/null
+out=$(copper autofill new-password --account gina@example.com --submit 2>&1) || fail "copper autofill new-password: $out"
+wait_eval "$as" "!!document.getElementById('ok')" || fail "agent sign-up was not submitted: $out"
+python3 - "$OP_MOCK_STATE" <<'PY' || fail "no 1Password login for gina"
+import json, sys
+items = json.load(open(sys.argv[1]))["items"]
+sys.exit(0 if any(i.get("title") == "localhost" and i.get("additional_information") == "gina@example.com" for i in items) else 1)
+PY
+sleep 2.5
+[ "$(json "$(bench op offer)" "d['offer']")" = None ] || fail "a save offer after the agent's sign-up: $(bench op offer)"
+echo "PASS agent sign-up: copper autofill new-password --account --submit made gina's login, no offer"
 echo "ALL PASS"
