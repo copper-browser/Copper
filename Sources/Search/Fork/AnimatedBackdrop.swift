@@ -359,27 +359,36 @@ final class BackdropWeb: WKWebView, WKNavigationDelegate {
     }
 }
 
-/// The backdrop's page — scene.html, scene.js, three.js — handed to its web
-/// view from the app's own bundle at `copper-scene://scene/…` (see
-/// `BackdropWeb.configuration`). Nothing outside the Backdrop folder is served.
+/// A folder of the app's own pages handed to a web view from the bundle, so
+/// WebKit never needs a sandbox extension for a file URL (see
+/// `BackdropWeb.configuration`). `shared` is the backdrop's — scene.html,
+/// scene.js, three.js at `copper-scene://scene/…`; the canvas page has one of
+/// its own (`CanvasPage.files`). Nothing outside the folder is served.
 final class SceneFiles: NSObject, WKURLSchemeHandler {
-    static let shared = SceneFiles()
+    static let shared = SceneFiles { BackdropScene.folder }
     static let scheme = "copper-scene"
 
     private static let types = ["html": "text/html", "js": "text/javascript", "jpg": "image/jpeg",
                                 "jpeg": "image/jpeg", "png": "image/png", "json": "application/json"]
 
+    private let folder: () -> URL?
+
+    init(folder: @escaping () -> URL?) {
+        self.folder = folder
+    }
+
     func webView(_ webView: WKWebView, start task: any WKURLSchemeTask) {
-        guard let url = task.request.url, let folder = BackdropScene.folder?.standardizedFileURL else {
+        guard let url = task.request.url, let folder = folder()?.standardizedFileURL else {
             return task.didFailWithError(URLError(.fileDoesNotExist))
         }
         let file = folder.appendingPathComponent(url.path).standardizedFileURL
-        guard file.path.hasPrefix(folder.path + "/"), let data = try? Data(contentsOf: file) else {
+        let type = SceneFiles.types[file.pathExtension.lowercased()] ?? "application/octet-stream"
+        guard file.path.hasPrefix(folder.path + "/"), let data = try? Data(contentsOf: file),
+              let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1",
+                                             headerFields: ["Content-Type": type, "Content-Length": String(data.count)])
+        else {
             return task.didFailWithError(URLError(.fileDoesNotExist))
         }
-        let type = SceneFiles.types[file.pathExtension.lowercased()] ?? "application/octet-stream"
-        let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1",
-                                       headerFields: ["Content-Type": type, "Content-Length": String(data.count)])!
         task.didReceive(response)
         task.didReceive(data)
         task.didFinish()

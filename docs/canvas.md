@@ -414,7 +414,8 @@ an inbox — shows each person their own view of it, or a sign-in page if they h
 
 ### Which sites stay signed out, and why
 
-The board is a local file (`file://`), so to the browser every site in a frame is a
+The board is Copper's own page (`copper-canvas:///canvas.html`, served from the app; a `file://`
+page until October 2026), so to the browser every site in a frame is a
 **third-party, cross-site** frame. WebKit then sends a frame only the cookies marked
 `SameSite=None` (and unmarked ones); `SameSite=Lax` and `Strict` cookies — which most sign-ins
 use now — are never sent to a frame, whatever the board does, and storage (localStorage,
@@ -438,7 +439,8 @@ macOS 26 with WebKit's own settings:
 What would change it, and why Copper doesn't: turning off WebKit's third-party cookie blocking
 (`_setThirdPartyCookieBlockingMode:` on the store) works, but for the whole store — every tab of
 the space, every tracker on every page — so it stays off. Serving the board from a custom scheme
-instead of `file://` changes nothing: the board would still be cross-site to every site.
+instead of `file://` changes nothing: the board is still cross-site to every site (its address has
+no host, as a file had none, which is what lets `SameSite=None` cookies through).
 `_setShouldRelaxThirdPartyCookieBlocking:` is Safari's alone (WebKit throws for anyone else), and
 the `IsThirdPartyCookieBlockingDisabled` feature has no effect for an app.
 
@@ -604,9 +606,12 @@ for the same address is a reminder: `200` with `nudged`), the invites waiting on
 
 The page is one self-contained file, `Sources/Search/Fork/Canvas/Resources/canvas.html`
 (`build.sh` copies a newer `Canvas/dist/canvas.html` over it: canvas-app's build at the commit in
-`Canvas/CANVAS_APP_REF`, see `Canvas/README.md`), loaded with
-`loadFileURL(…canvas.html?id=<id>, allowingReadAccessTo: <its folder>)`. There is no URL scheme
-handler: `copper://canvas/…` is caught in the browser's navigation delegate
+`Canvas/CANVAS_APP_REF`, see `Canvas/README.md`), served from the
+app at `copper-canvas:///canvas.html?id=<id>` by a `WKURLSchemeHandler` on the board's
+configuration (`CanvasPage.files`; a file URL had WebKit issue a sandbox extension on the main
+thread, which once took seconds). A tab whose view wasn't built from a board's configuration (a
+bench tab) gets it with `loadFileURL` instead. There is no handler for the address itself:
+`copper://canvas/…` is caught in the browser's navigation delegate
 (`CanvasHost.decide`) and the tab keeps the copper:// address. Canvas tabs opened through
 `Browser.open` or the session get their own `WKWebViewConfiguration` with the `canvas` handler on
 it before the view exists and no extensions attached; any other tab told to go to a canvas gets

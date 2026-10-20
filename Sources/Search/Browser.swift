@@ -2376,7 +2376,9 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
 
         // chrome-extension: an extension's own pages — options, a side
         // panel, a tab it opened. WebKit serves them; nothing else here does.
-        if ["http", "https", "file", "about", "data", "blob", "chrome-extension", "webkit-extension"].contains(scheme) {
+        // (Fork (canvas-hooks): and a board's own page, which CanvasHost.decide
+        // let through only into a board's view — Fork/Canvas/CanvasHost.swift.)
+        if ["http", "https", "file", "about", "data", "blob", "chrome-extension", "webkit-extension", CanvasPage.scheme].contains(scheme) {
             decisionHandler(.allow)
         } else {
             NSWorkspace.shared.open(url)

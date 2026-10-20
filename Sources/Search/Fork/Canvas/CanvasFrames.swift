@@ -5,7 +5,8 @@ import WebKit
 // <iframe> (canvas-app src/canvas/frames.ts, components/WebFrame.tsx). The page
 // draws the frame and syncs where it is; Copper does the parts a page can't:
 //
-// - Embedding. The board is a file:// page, so every site in a frame is
+// - Embedding. The board is a page with no host (copper-canvas:///, served
+//   from the app; CanvasPage.scheme), so every site in a frame is
 //   cross-site, and the ones that send X-Frame-Options or a frame-ancestors
 //   policy (GitHub, Google, most sign-in pages) are refused outright. The
 //   board's own view — and only it — sets WebKit's private feature
@@ -16,7 +17,7 @@ import WebKit
 //   (Store.websites, which knows the space's profile), so a frame carries the
 //   same session as a tab in that space — what WebKit lets a cross-site frame
 //   carry, which is SameSite=None and unset cookies; Lax and Strict never go
-//   to a frame under a file:// page, and the knob that would change that is
+//   to a frame under the board, and the knob that would change that is
 //   store-wide (docs/canvas.md, "Live web frames").
 // - Reports. A frame is another site's document; the board can't read where
 //   it went. A user script in every subframe — in a content world of its own,

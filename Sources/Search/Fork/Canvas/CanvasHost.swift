@@ -5,10 +5,11 @@ import WebKit
 // The canvas page in a tab, and the bridge between it and Copper.
 //
 // A canvas tab is an ordinary Tab whose address is `copper://canvas/<id>`.
-// There is no scheme handler: on its way into WebKit that address is caught
-// (`decide`, from the browser's navigation delegate) and the bundled
-// `canvas.html` is loaded in its place with `loadFileURL`. The tab keeps the
-// copper:// address (Tab ignores the file URL), so the omnibox, the session
+// There is no scheme handler for that address: on its way into WebKit it is
+// caught (`decide`, from the browser's navigation delegate) and the bundled
+// `canvas.html` is loaded in its place, served from the app at
+// `copper-canvas:///canvas.html?id=<id>` (`CanvasPage.files`). The tab keeps the
+// copper:// address (Tab ignores the page's), so the omnibox, the session
 // and the agents all see the canvas, not a file.
 //
 // The page speaks through one script message handler, `canvas`
@@ -49,17 +50,40 @@ enum CanvasPage {
     /// What the page may read: its own folder, nothing more.
     static var folder: URL? { file?.deletingLastPathComponent() }
 
+    /// Fork (perf): the page comes from the app, not a file URL. A file URL has
+    /// WebKit issue the new content process a sandbox extension for the folder,
+    /// on the main thread, and on some days that one call took five to six
+    /// seconds (the backdrop's did, MBX2, October 2026; `SceneFiles`). A board
+    /// view's configuration carries this handler; the address has no host, so
+    /// to WebKit's cookie rules the board is still no site at all, as a file
+    /// was, and a live frame keeps the cookies it had (CanvasFrames).
+    static let scheme = "copper-canvas"
+    static let files = SceneFiles { CanvasPage.folder }
+
+    /// Whether this view can be handed the served page: built from a board's
+    /// configuration. Any other view (a bench tab given a canvas) gets the file.
+    static func serves(_ web: WKWebView) -> Bool {
+        web.configuration.urlSchemeHandler(forURLScheme: scheme) != nil
+    }
+
     /// The page for one canvas: `canvas.html?id=<id>`, so a page coming back
     /// from its own history (a slept tab waking) still says which canvas it is.
-    static func url(for id: String) -> URL? {
-        guard let file, var parts = URLComponents(url: file, resolvingAgainstBaseURL: false) else { return nil }
+    /// Served, or as the file for a view that can't be served it.
+    static func url(for id: String, served: Bool = true) -> URL? {
+        guard let file, let name = file.lastPathComponent.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let page = served ? URL(string: "\(scheme):///\(name)") : file,
+              var parts = URLComponents(url: page, resolvingAgainstBaseURL: false)
+        else { return nil }
         parts.queryItems = [URLQueryItem(name: "id", value: id)]
         return parts.url
     }
 
+    /// The canvas page, served or (a bench tab's, or a tab's history from
+    /// before it was served) its file.
     static func isPage(_ url: URL?) -> Bool {
-        guard let url, url.isFileURL, let file else { return false }
-        return url.standardizedFileURL.path == file.path
+        guard let url, let file else { return false }
+        if url.scheme?.lowercased() == scheme { return url.path == "/" + file.lastPathComponent }
+        return url.isFileURL && url.standardizedFileURL.path == file.path
     }
 
     static func id(fromPage url: URL) -> String? {
@@ -309,6 +333,7 @@ final class CanvasHost {
         config.websiteDataStore = Store.websites
         config.applicationNameForUserAgent = Web.userAgentName
         if Store.testing, !Store.measuring { config.preferences.inactiveSchedulingPolicy = .none }
+        config.setURLSchemeHandler(CanvasPage.files, forURLScheme: CanvasPage.scheme) // Fork (perf): the page, served (CanvasPage.scheme)
         // Sites that refuse to be framed load in the board's frames, on this view only.
         allowEmbedding(config.preferences)
         config.userContentController.add(CanvasRelay.shared, name: handler)
@@ -377,7 +402,15 @@ final class CanvasHost {
 
         guard let tab else { return false }
         if CanvasPage.isPage(url) {
-            guard main else { return false }
+            // The served page is a board view's own, in its main frame only.
+            let served = !url.isFileURL
+            guard main else { return served }
+            if served != CanvasPage.serves(web) {
+                // A view that can't be served it never loads it; a board view
+                // coming back to the file (history from before) gets it served.
+                if !served, let id = CanvasPage.id(fromPage: url) { mount(tab, id, in: browser) }
+                return true
+            }
             let id = CanvasPage.id(fromPage: url) ?? Canvases.personalID
             let host = hosts[tab.id] ?? register(tab, id, in: browser)
             host.browser = browser
@@ -487,11 +520,12 @@ final class CanvasHost {
 
     private func load() {
         guard let tab else { return }
-        guard let page = CanvasPage.url(for: canvasId), let folder = CanvasPage.folder else {
+        let web = tab.web
+        let served = CanvasPage.serves(web)
+        guard let page = CanvasPage.url(for: canvasId, served: served), let folder = CanvasPage.folder else {
             tab.failure = "This build of Copper has no canvas page."
             return
         }
-        let web = tab.web
         CanvasHost.attach(web)
         // A canvas opened behind the tab you are on has never been laid out:
         // give it the window's size so "near the middle of the view" means something.
@@ -501,7 +535,7 @@ final class CanvasHost {
         }
         tab.failure = nil
         tab.icon = CanvasPage.icon
-        web.loadFileURL(page, allowingReadAccessTo: folder)
+        if served { web.load(URLRequest(url: page)) } else { web.loadFileURL(page, allowingReadAccessTo: folder) }
     }
 
     /// The tab went somewhere that isn't a canvas.
