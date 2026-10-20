@@ -1,4 +1,5 @@
 import AppKit
+import WebKit
 
 // EXPERIMENT ONLY (perf/launch-exp): strategies picked by the app bundle's name.
 @MainActor
@@ -6,8 +7,17 @@ enum LaunchExp {
     static let name = Bundle.main.bundleURL.deletingPathExtension().lastPathComponent
     static var asked = false
 
+    static func atInit() {
+        guard name.contains("Warm") else { return }
+        let pool = WKWebViewConfiguration().processPool
+        let warm = NSSelectorFromString("_warmInitialProcess")
+        if pool.responds(to: warm) { pool.perform(warm); Pace.mark("t.warm") }
+    }
+
     static func atDidFinish() {
-        if name.hasSuffix("Spin") {
+        if name.hasSuffix("Drain") {
+            spin(max: 0)
+        } else if name.hasSuffix("Spin") {
             spin(max: 0)
         } else if name.hasSuffix("Wait") {
             spin(max: 0.25)

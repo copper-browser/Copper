@@ -16,6 +16,7 @@ struct SearchApp: App {
         Fork.migratePasskeysPreference()
         Bridge.runIfAsked()
         Voice.shared.boot() // Fork (voice): the speech engine behind Settings › Voice, and ⌃⇧D (Fork/Voice/VoiceSession.swift)
+        LaunchExp.atInit()
     } // Fork: `--mcp-stdio` pipes to the running app and exits
 
     var body: some Scene {
