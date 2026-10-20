@@ -13,14 +13,24 @@ import WebKit
 
 enum Web {
     /// Modern WebKit pools processes by data store on its own — every tab
-    /// asking for the same one is what gets the second tab a warm process, and
-    /// the old WKProcessPool knob does nothing now.
+    /// asking for the same one is what gets the second tab a warm process.
+    ///
+    /// Fork (perf-shared-pool): but each fresh configuration still makes a
+    /// WebProcessPool of its own, the moment a view is built from it, and a
+    /// pool makes the list of the Mac's installed fonts for every page it
+    /// starts (`registerUserInstalledFonts`, ~18 ms on the main thread) and
+    /// keeps it only for itself. Every tab handed the one pool makes that
+    /// list once a launch. Set by key: the property is deprecated in name,
+    /// not in what it does.
+    private static let pool: Any? = WKWebViewConfiguration().value(forKey: "processPool")
+
     /// What every view says it is after "AppleWebKit … (KHTML, like Gecko)"
     /// — web tabs and extension views alike (see Extensions.init).
     static let userAgentName = "Version/26.5 Safari/605.1.15"
 
     static func configuration(shy: Bool = false, store: WKWebsiteDataStore? = nil) -> WKWebViewConfiguration {
         let config = WKWebViewConfiguration()
+        if let pool { config.setValue(pool, forKey: "processPool") } // Fork (perf-shared-pool)
         // The real store, not the ephemeral one: staying signed in between
         // launches is the difference between a browser and a preview pane. A
         // shy tab gets its own store, which exists only while it does — its own
