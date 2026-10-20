@@ -324,14 +324,7 @@ struct SideBar: View {
                     let shown = id == current
                     spaceColumn(id, shown: shown)
                         .equatable()
-                        .opacity(shown ? 1 : 0)
-                        .allowsHitTesting(shown)
-                        .disabled(!shown)
-                        .accessibilityHidden(!shown)
-                        // The wheel button finds rows by the frames they
-                        // hand up; a parked column's are not there to find.
-                        .transformPreference(SideTargets.self) { if !shown { $0 = SideTargets() } }
-                        .zIndex(shown ? 1 : 0)
+                        .modifier(SpaceColumnPlace(browser: browser, space: id, shown: shown))
                 }
             }
             .frame(maxHeight: .infinity)

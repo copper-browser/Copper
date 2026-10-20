@@ -248,3 +248,36 @@ struct SpaceColumn: View, Equatable {
         .contextMenu { NewItemMenu(browser: browser) } // Fork (canvas): New Tab / New Canvas, Arc's new-item menu
     }
 }
+
+/// A kept column's place in the band: on screen, hidden, or — the old
+/// space's, during a click's slide — going out the way the outgoing preview
+/// went (SpaceSlide.leavingPlace). It travels inside the band, which is
+/// itself coming in, so it is offset from the band by the band's own travel.
+/// Watches the slide so the column itself does not have to.
+struct SpaceColumnPlace: ViewModifier {
+    let browser: Browser
+    let space: UUID
+    let shown: Bool
+    @ObservedObject private var slide = SpaceSlide.shared
+
+    init(browser: Browser, space: UUID, shown: Bool) {
+        self.browser = browser
+        self.space = space
+        self.shown = shown
+    }
+
+    func body(content: Content) -> some View {
+        let leaving = !shown && slide.leavingColumn(space, in: browser)
+        let place: (x: CGFloat, shown: Double) = leaving ? slide.leavingPlace(in: browser) : (0, shown ? 1 : 0)
+        content
+            .offset(x: leaving ? place.x - slide.bandOffset(in: browser) : 0)
+            .opacity(place.shown)
+            .allowsHitTesting(shown)
+            .disabled(!shown)
+            .accessibilityHidden(!shown)
+            // The wheel button finds rows by the frames they hand up; a
+            // parked column's are not there to find.
+            .transformPreference(SideTargets.self) { if !shown { $0 = SideTargets() } }
+            .zIndex(shown ? 1 : 0)
+    }
+}

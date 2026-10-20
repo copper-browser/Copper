@@ -187,7 +187,10 @@ final class SpaceSlide: ObservableObject {
         let old = Spaces.shared.space(in: browser)
         // The rows as they stand, planned for the preview that slides out.
         // Planning is the cheap part; the view is built with the frame.
-        let model = SpacePreviewModel.live(old, in: browser, width: column.width, height: band.height)
+        // Fork (space-columns): a window that keeps its columns slides the
+        // old space's own column out instead (`leavingColumn`), so there is
+        // no preview to build.
+        let model = SpaceColumns.keeps ? nil : SpacePreviewModel.live(old, in: browser, width: column.width, height: band.height)
         withTransaction(calm) {
             dragging = false
             swiping = false
@@ -449,6 +452,13 @@ final class SpaceSlide: ObservableObject {
     func leavingPlace(in browser: Browser) -> (x: CGFloat, shown: Double) {
         guard owner === browser, sliding, !swiping else { return (0, 0) }
         return (-way * column.width * phase, way == 0 ? Double(1 - phase) : 1)
+    }
+
+    /// Fork (space-columns): whether `space`'s kept column is the one a
+    /// click's slide is taking out — it goes where the preview would, and
+    /// in its place.
+    func leavingColumn(_ space: UUID, in browser: Browser) -> Bool {
+        owner === browser && sliding && !swiping && leaving == nil && from?.id == space
     }
 
     // MARK: - the bench
