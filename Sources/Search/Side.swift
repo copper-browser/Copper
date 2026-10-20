@@ -535,15 +535,11 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
     /// is, `browser.refusals`; nil otherwise.
     var editing = false
     var refusals: Int? = nil
-    /// Fork (space-columns): the matched-geometry id the live row's pill
-    /// wears — "live" in the column on screen, the space's own in a parked
-    /// one, so each column can keep its live row without two sources.
-    var pillID = "live"
     let close: () -> Void
 
     static func == (a: SideRow, b: SideRow) -> Bool {
         a.browser === b.browser && a.tab === b.tab && a.live == b.live && a.tint == b.tint && a.pill == b.pill
-            && a.editing == b.editing && a.refusals == b.refusals && a.pillID == b.pillID
+            && a.editing == b.editing && a.refusals == b.refusals
     }
 
     @State private var pointing = false
@@ -554,7 +550,8 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
     @ObservedObject private var heat = Heat.shared
 
     var body: some View {
-        HStack(spacing: 10) {
+        SideRowCount.n += 1
+        return HStack(spacing: 10) {
             if editing {
                 TabAddressField(browser: browser)
                     .frame(height: 18)
@@ -672,7 +669,7 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
                     .strokeBorder(tint.rim, lineWidth: 1)
             }
             .shadow(color: tint.lift, radius: 4, y: 1)
-            .matchedGeometryEffect(id: pillID, in: pill)
+            .modifier(LivePill(pill: pill)) // Fork (space-columns): was matchedGeometryEffect(id: "live", in: pill)
         } else if hovering {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(tint.hover)

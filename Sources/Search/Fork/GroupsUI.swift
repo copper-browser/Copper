@@ -23,12 +23,11 @@ struct GroupedRows: View, Equatable {
     let tabs: [Tab]
     /// The space the rows are in: its folders, and its column (SpaceColumns).
     let space: UUID
-    /// The live row, the row being renamed and its refusals, and the id the
-    /// live row's pill wears — the browser's, for the column on screen.
+    /// The live row, the row being renamed and its refusals — the
+    /// browser's, for the column on screen.
     var active: Tab.ID? = nil
     var editing: Tab.ID? = nil
     var refusals = 0
-    var pillID = "live"
     /// The Saved block also draws the space's empty top-level folders.
     var homeless = false
     /// Where this block starts in the whole loose list, so a drag inside it
@@ -57,7 +56,7 @@ struct GroupedRows: View, Equatable {
     /// `holding` is the same column's hook every time.
     static func == (a: GroupedRows, b: GroupedRows) -> Bool {
         a.browser === b.browser && a.pill == b.pill && a.tint == b.tint && a.space == b.space
-            && a.active == b.active && a.editing == b.editing && a.refusals == b.refusals && a.pillID == b.pillID
+            && a.active == b.active && a.editing == b.editing && a.refusals == b.refusals
             && a.homeless == b.homeless && a.offset == b.offset && a.block == b.block
             && a.tabs.count == b.tabs.count && zip(a.tabs, b.tabs).allSatisfy { $0 === $1 }
     }
@@ -78,7 +77,8 @@ struct GroupedRows: View, Equatable {
     }
 
     var body: some View {
-        VStack(spacing: GroupedRows.gap) {
+        SpaceColumns.drewRows(space)
+        return VStack(spacing: GroupedRows.gap) {
             ForEach(rows) { row in
                 switch row {
                 case .head(let group, let count, _, let depth, let label):
@@ -104,7 +104,6 @@ struct GroupedRows: View, Equatable {
                             pill: pill,
                             editing: renaming,
                             refusals: renaming ? refusals : nil,
-                            pillID: tab.id == active ? pillID : "live",
                             // Fork (saved-close): the cross (and Close Tab on the
                             // row's menu) is the one close that takes a Saved row
                             // out of Saved; ⌘W only puts it down.

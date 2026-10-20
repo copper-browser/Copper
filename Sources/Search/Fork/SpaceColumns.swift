@@ -35,6 +35,15 @@ enum SpaceColumns {
     /// Whether a window keeps more than the column on screen.
     static var keeps: Bool { cap > 1 && !Flights.trails }
 
+    // Temporary (measuring): what a parked column is told, and how often
+    // each space's column and rows are drawn.
+    static var disables = true
+    static var hidesAX = true
+    private(set) static var columns: [UUID: Int] = [:]
+    private(set) static var blocks: [UUID: Int] = [:]
+    static func drew(_ space: UUID) { columns[space, default: 0] += 1 }
+    static func drewRows(_ space: UUID) { blocks[space, default: 0] += 1 }
+
     /// One window's columns, most recently shown first.
     @MainActor final class Kept {
         private(set) var recent: [UUID] = []
@@ -64,15 +73,28 @@ enum SpaceColumns {
     /// `spaces columns [N]`: which spaces this window keeps a column for,
     /// most recent first, and how many it may; N sets that.
     static func bench(_ words: [String], in browser: Browser) -> [String: Any] {
-        if let word = words.first {
-            guard let n = Int(word), n >= 1 else { return ["error": "spaces columns [N ≥ 1]"] }
+        let spaces = Spaces.shared
+        func name(_ id: UUID) -> String { spaces.all.first { $0.id == id }?.name ?? "?" }
+        if words.first == "reset" {
+            columns = [:]
+            blocks = [:]
+        } else if words.first == "disabled", words.count > 1 {
+            disables = words[1] == "on"
+            Spaces.shared.objectWillChange.send()
+        } else if words.first == "ax", words.count > 1 {
+            hidesAX = words[1] == "on"
+            Spaces.shared.objectWillChange.send()
+        } else if let word = words.first {
+            guard let n = Int(word), n >= 1 else { return ["error": "spaces columns [N ≥ 1 | reset | disabled on|off | ax on|off]"] }
             cap = n
             // The sidebar works out its columns as it draws; have it draw.
             Spaces.shared.objectWillChange.send()
         }
-        let spaces = Spaces.shared
-        return ["cap": cap, "keeps": keeps,
-                "kept": kept(for: browser).recent.map { id in spaces.all.first { $0.id == id }?.name ?? "?" }]
+        return ["cap": cap, "keeps": keeps, "disables": disables, "hidesAX": hidesAX,
+                "kept": kept(for: browser).recent.map(name),
+                "columnBodies": Dictionary(uniqueKeysWithValues: columns.map { (name($0.key), $0.value) }),
+                "rowBlockBodies": Dictionary(uniqueKeysWithValues: blocks.map { (name($0.key), $0.value) }),
+                "sideRowBodies": SideRowCount.n]
     }
 }
 
@@ -120,10 +142,13 @@ struct SpaceColumn: View, Equatable {
     /// The live row's pill is matched across the favourites and the column
     /// on screen as "live", so it glides between them; a parked column's
     /// live row wears its space's own, so there is one source for each.
+    /// Handed down rather than in, so that on a switch only the two live
+    /// rows' pills hear of it (LivePill), not every row.
     private var pillID: String { shown ? "live" : "live-\(space.uuidString)" }
 
     var body: some View {
-        ScrollViewReader { proxy in
+        SpaceColumns.drew(space)
+        return ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: SideBar.gap) {
                     SpaceHeader(browser: browser, space: space)
@@ -185,6 +210,7 @@ struct SpaceColumn: View, Equatable {
             .onChange(of: shown) { _, now in if now { show(active, in: proxy, gliding: false) } }
         }
         .frame(maxHeight: .infinity)
+        .environment(\.livePill, pillID)
     }
 
     /// Wherever the live row is, the column keeps it in sight: ⌘1–9, ⌃Tab,
@@ -219,7 +245,6 @@ struct SpaceColumn: View, Equatable {
             active: active,
             editing: editing,
             refusals: refusals,
-            pillID: pillID,
             homeless: homeless,
             offset: list.first?.index ?? 0,
             block: block,
@@ -273,11 +298,36 @@ struct SpaceColumnPlace: ViewModifier {
             .offset(x: leaving ? place.x - slide.bandOffset(in: browser) : 0)
             .opacity(place.shown)
             .allowsHitTesting(shown)
-            .disabled(!shown)
-            .accessibilityHidden(!shown)
+            .disabled(SpaceColumns.disables && !shown)
+            .accessibilityHidden(SpaceColumns.hidesAX && !shown)
             // The wheel button finds rows by the frames they hand up; a
             // parked column's are not there to find.
             .transformPreference(SideTargets.self) { if !shown { $0 = SideTargets() } }
             .zIndex(shown ? 1 : 0)
     }
 }
+
+/// The live row's pill, matched by the id its column hands down (see
+/// `SpaceColumn.pillID`); "live" anywhere else.
+struct LivePill: ViewModifier {
+    let pill: Namespace.ID
+    @Environment(\.livePill) private var id
+
+    func body(content: Content) -> some View {
+        content.matchedGeometryEffect(id: id, in: pill)
+    }
+}
+
+private struct LivePillKey: EnvironmentKey {
+    static let defaultValue = "live"
+}
+
+extension EnvironmentValues {
+    var livePill: String {
+        get { self[LivePillKey.self] }
+        set { self[LivePillKey.self] = newValue }
+    }
+}
+
+/// Temporary (measuring): how many times a SideRow's body ran.
+@MainActor enum SideRowCount { static var n = 0 }
