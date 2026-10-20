@@ -335,7 +335,10 @@ final class History: ObservableObject {
 
     /// Often, and lately. A month-old visit counts for about a third of a
     /// fresh one, which is roughly how long a habit takes to stop being one.
-    private func frecency(_ visit: Visit, now: Date) -> Double {
+    private func frecency(_ visit: Visit, now: Date) -> Double { History.frecency(visit, now: now) }
+
+    /// Fork (perf-history-save): the same sum, for the writer off the main thread.
+    nonisolated private static func frecency(_ visit: Visit, now: Date) -> Double {
         let days = max(0, now.timeIntervalSince(visit.last) / 86_400)
         return Double(visit.count) * exp(-days / 30)
     }
@@ -372,13 +375,20 @@ final class History: ObservableObject {
             guard let self else { return }
             saving = false
             let now = Date()
-            // A cap, so the file can't grow without end. What goes is what has
-            // been visited least and longest ago.
-            let list = self.visits.values
-                .sorted { self.frecency($0, now: now) > self.frecency($1, now: now) }
-                .prefix(20_000)
-                .map { $0 }
+            // Fork (perf-history-save): the visits as they are now (a copy that
+            // costs nothing until one side changes), ranked and written off
+            // the main thread. Sorting four thousand of them here, working out
+            // each one's frecency again at every comparison, took ~10 ms of
+            // every page load, a second and a half after it finished.
+            let visits = self.visits
             DispatchQueue.global(qos: .utility).async {
+                // A cap, so the file can't grow without end. What goes is what has
+                // been visited least and longest ago.
+                let list = visits.values
+                    .map { (visit: $0, rank: History.frecency($0, now: now)) }
+                    .sorted { $0.rank > $1.rank }
+                    .prefix(20_000)
+                    .map(\.visit)
                 guard let data = try? JSONEncoder().encode(list) else { return }
                 try? FileManager.default.createDirectory(
                     at: History.folder, withIntermediateDirectories: true
