@@ -36,7 +36,7 @@ enum SpaceColumns {
     static var keeps: Bool { cap > 1 && !Flights.trails }
 
     /// One window's columns, most recently shown first.
-    final class Kept {
+    @MainActor final class Kept {
         private(set) var recent: [UUID] = []
 
         /// `current` goes to the front; spaces since deleted, and any past
