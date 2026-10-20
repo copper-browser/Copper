@@ -14,6 +14,7 @@ created. Enable **Settings › Agents › Let agents drive this window** once.
 | `copper tabs` | List tabs with ids; *yours* marks where your calls land, *on screen* what the user sees. |
 | `copper signin [--account USER] [--otp] [--no-submit] [--json]` | Fill a shared saved account on the current tab (submits by default). |
 | `copper autofill card|identity|field [--name NAME] [--submit]` | Fill a shared Bitwarden card, identity, or custom field; vault values are never returned. |
+| `copper autofill new-password [--account USER] [--no-save] [--submit]` | On a sign-up or change-password form: make a strong password, save it to the user's password manager, then fill it; the password is never returned. |
 | `copper health` | Check connectivity and Jev mode. |
 | `copper open URL [--focus]` / `copper go URL` | Open a background tab of your own (the user's tab stays put) / navigate your tab. |
 | `copper use [ID]` / `copper show [ID]` | Make a tab yours without touching the user's view / and switch their window to it. |

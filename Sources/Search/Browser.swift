@@ -558,28 +558,42 @@ final class Browser: NSObject, ObservableObject {
                 self.announce("Couldn't find the new password box anymore")
                 return
             }
-            if Credentials.saveTarget != .keychain {
-                self.announce("Saving a strong password to \(Credentials.saveTarget.title)…")
-            }
             do {
-                let made = try await NewPassword.make(host: host, page: page, pickedHere: self.signedInWith[tab.id])
-                // Remembered so the save offer after submit doesn't ask
-                // about the password just kept.
-                self.madePasswords[tab.id] = (host, made.user, made.password, made.deferred)
-                let filled = await tab.fillNewPassword(made.password, current: made.current)
-                guard filled > 0 else {
-                    self.announce(made.deferred
-                        ? "Couldn't find the new password box anymore"
-                        : "Saved to \(made.target.title), but the new password box is gone — the password is in \(made.target.title)")
-                    return
-                }
-                self.relist()
-                self.announce(made.sentence)
+                _ = try await self.makeNewPassword(in: tab, host: host, page: page)
             } catch {
                 self.announce(error.localizedDescription)
             }
         }
     }
+
+    /// Fork (new-password): make, keep and fill — the picker row's path and
+    /// the agent tool's (`browser_autofill kind=new-password`), so both save
+    /// first and both say what happened. Answers how many new boxes took it.
+    @discardableResult
+    func makeNewPassword(in tab: Tab, host: String, page: NewPasswordPage, named: String? = nil,
+                         save: Bool = true) async throws -> (made: NewPassword.Made, filled: Int) {
+        if save, Credentials.saveTarget != .keychain {
+            announce("Saving a strong password to \(Credentials.saveTarget.title)…")
+        }
+        let made = try await NewPassword.make(host: host, page: page, named: named,
+                                              pickedHere: signedInWith[tab.id], save: save)
+        // Remembered so the save offer after submit doesn't ask about the
+        // password just kept.
+        madePasswords[tab.id] = (host, made.user, made.password, made.deferred)
+        let filled = await tab.fillNewPassword(made.password, current: made.current)
+        guard filled > 0 else {
+            throw NewPassword.Failure(message: made.deferred
+                ? "Couldn't find the new password box anymore"
+                : "Saved to \(made.target.title), but the new password box is gone — the password is in \(made.target.title)")
+        }
+        relist()
+        announce(made.sentence)
+        return (made, filled)
+    }
+
+    /// The account last picked into a tab from the list, for agents asking
+    /// whose a new password is.
+    func pickedCredential(in tab: Tab) -> Credential? { signedInWith[tab.id] }
 
     /// Fork (auto-codes): the page asking for a two-step code, right after a
     /// sign-in picked from Copper's list with an account whose key it can

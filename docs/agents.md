@@ -131,6 +131,22 @@ missing form groups, and items not enabled under Settings › Passwords › Agen
 access. When more than one shared item matches, it returns candidate names so a
 caller can choose one.
 
+### New passwords
+
+`browser_autofill` with `kind: "new-password"` (CLI: `copper autofill
+new-password [--account USER] [--no-save] [--submit]`) does on a sign-up or
+change-password form what Settings' **Suggest strong password** row does: Copper
+makes a strong password that keeps the form's rules, saves it to the user's
+save destination first (a failed save fills nothing), then fills the new and
+confirm boxes, and an empty current-password box from the saved login. The
+answer is `filled`, `saved`, `target`, `user`, `updated`, `current`, `length`
+and `submitted`, never the password. The account is `account`, else the one the
+page names, else the site's kept login. Changing the password of a login that
+exists needs that login shared under Agent access; a new login needs nothing
+shared. `save: false` fills only (Copper offers to save after the submit), and
+cannot be combined with `submit`, since that could leave an account on a
+password nobody kept.
+
 Jev exposes `AUTOFILL_CARD` when the page has card fields and a shared card, and
 `AUTOFILL_IDENTITY` for identity fields and a shared identity. Jev chooses the
 first permitted item and fills in-process; neither control returns vault values.

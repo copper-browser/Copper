@@ -1,7 +1,8 @@
 import Foundation
 
 /// Fill a shared Bitwarden or 1Password card, identity, or custom field
-/// without returning its value.
+/// without returning its value — or make, save and fill a new password
+/// (`kind=new-password`) without ever returning it.
 enum AgentAutofill {
     struct Failure: LocalizedError {
         let message: String
@@ -18,6 +19,12 @@ enum AgentAutofill {
         }
         var host = rawHost.lowercased()
         if host.hasPrefix("www.") { host.removeFirst(4) }
+        // Fork (new-password): needs no open vault — a locked one sends the
+        // save to the keychain, as the picker's row does.
+        if let raw = args["kind"] as? String,
+           ["new-password", "new_password", "newpassword"].contains(raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) {
+            return try await newPassword(args, tab: tab, host: host, in: browser)
+        }
         var bitwardenOpen = false
         if case .unlocked = Bitwarden.shared.state { bitwardenOpen = true }
         guard bitwardenOpen || OnePassword.shared.isUnlocked else {
@@ -28,11 +35,11 @@ enum AgentAutofill {
         }
 
         guard let rawKind = args["kind"] as? String else {
-            throw Failure(message: "kind is required (card, identity, or field)")
+            throw Failure(message: "kind is required (card, identity, field, or new-password)")
         }
         let kind = rawKind.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard ["card", "identity", "field"].contains(kind) else {
-            throw Failure(message: "kind must be card, identity, or field")
+            throw Failure(message: "kind must be card, identity, field, or new-password")
         }
         let shouldSubmit = (args["submit"] as? Bool) ?? false
         let first = (args["first"] as? Bool) ?? false
@@ -137,6 +144,38 @@ enum AgentAutofill {
         default:
             throw Failure(message: "kind must be card, identity, or field")
         }
+    }
+
+    /// A strong password for the page's sign-up or change form: made, saved
+    /// (first, so a failed save fills nothing), filled into the new and
+    /// confirm boxes and an empty current box. The answer says whose it is,
+    /// where it went and how long it is — never the password. An existing
+    /// login's password changes only when that login is shared with agents.
+    @MainActor
+    private static func newPassword(_ args: [String: Any], tab: Tab, host: String, in browser: Browser) async throws -> [String: Any] {
+        let save = (args["save"] as? Bool) ?? true
+        let shouldSubmit = (args["submit"] as? Bool) ?? false
+        let named = (args["account"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard save || !shouldSubmit else {
+            throw Failure(message: "submit needs save: a new password nobody kept would lock the account")
+        }
+        guard let page = await tab.newPasswordPage() else {
+            throw Failure(message: "no new-password form on the page (sign-up or change-password)")
+        }
+        let target = Credentials.saveTarget
+        let account = NewPassword.account(host: host, named: named.flatMap { $0.isEmpty ? nil : $0 } ?? page.user,
+                                          target: target, pickedHere: browser.pickedCredential(in: tab))
+        if let existing = account.existing, !AgentAccess.isAllowed(existing) {
+            throw Failure(message: "the saved login \(existing.user.isEmpty ? host : existing.user) is not shared with agents — enable it in Settings › Passwords › Agent access")
+        }
+        let (made, filled) = try await browser.makeNewPassword(
+            in: tab, host: host, page: page, named: account.user, save: save)
+        let submitted = shouldSubmit ? await submit(tab) : false
+        return [
+            "kind": "new-password", "filled": filled, "saved": !made.deferred, "target": made.target.rawValue,
+            "user": made.user, "updated": made.updated, "current": made.current != nil,
+            "length": made.password.count, "submitted": submitted, "note": made.sentence,
+        ]
     }
 
     @MainActor
