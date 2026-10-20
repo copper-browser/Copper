@@ -60,8 +60,10 @@ enum CodeModeTypes {
         interface CopperResult {
           /** The tool's text answer (every text part, joined). */
           text: string;
-          /** `text` parsed, when the tool answered JSON. */
-          json?: unknown;
+          /** `text` parsed, when the tool answered JSON. Its shape is the tool's own (see the
+           *  tool's description), so it is `any` here: `(await copper.canvas.read({})).json.shapes`. */
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          json?: any;
           /** Pictures the tool returned (screenshots), base64. */
           images?: { mimeType: string; data: string }[];
           /** The tool's one-line summary of what it did, when it left one. */
