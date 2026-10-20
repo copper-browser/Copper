@@ -276,6 +276,8 @@ private struct MenuLine: View {
 
 struct ContentView: View {
     @ObservedObject var browser: Browser
+    // EXP
+    private let _expMark: Void = MainActor.assumeIsolated { Pace.mark("t.view") }
     @ObservedObject private var recent = Recent.shared
     @ObservedObject private var canvases = Canvases.shared
     @ObservedObject private var clearTabs = ClearTabs.shared

@@ -1031,6 +1031,7 @@ final class Spaces: ObservableObject {
     /// projection for its own current space; other windows attach later.
     func restore(_ saved: Session.Shape, into browser: Browser) {
         self.browser = browser
+        Pace.mark("t.restore")
         SessionGuard.beginRestore()
         defer { SessionGuard.finishRestore() }
         defer { CloudSync.shared.start(for: browser) } // Fork (cloud): sync starts once yesterday's rows are back
@@ -1147,6 +1148,7 @@ final class Spaces: ObservableObject {
             Launch.shared.whenSettled { DispatchQueue.main.asyncAfter(deadline: .now() + 2) { Room.leave(view) } }
         }
         _ = active.wake()
+        Pace.mark("t.woke")
         Split.shared.resume(in: browser)
     }
 }

@@ -52,7 +52,15 @@ final class Links: NSObject, NSApplicationDelegate {
     /// every address handed at launch had the window presented afresh, and
     /// five of them meant five rebuilds of the content before the window
     /// had shown once.
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        MainActor.assumeIsolated {
+            Pace.mark("t.didFinish")
+            LaunchExp.atDidFinish()
+        }
+    }
+
     func applicationWillFinishLaunching(_ notification: Notification) {
+        MainActor.assumeIsolated { Pace.mark("t.willFinish") }
         Links.watchForTrouble()
         NSAppleEventManager.shared().setEventHandler(
             self, andSelector: #selector(handle(getURL:reply:)),

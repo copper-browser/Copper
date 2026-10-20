@@ -2368,6 +2368,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
         // decided here because here is the last moment before it loads.
         if action.targetFrame?.isMainFrame ?? true, let tab = tab(for: webView) {
             Pace.page("ask", bench: tab.bench) // Fork (pace)
+            if !tab.bench { LaunchExp.asked = true }
             let host = curtain.host(of: url)
             tab.arm(hiding: curtain.css(on: host))
             // And the blocker, on or off for where it is going.

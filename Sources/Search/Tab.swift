@@ -333,7 +333,9 @@ final class Tab: ObservableObject, Identifiable {
     }
 
     private func build() -> PageView {
+        if !bench { Pace.mark("t.build") }
         let web = PageView(frame: .zero, configuration: configuration)
+        if !bench { Pace.mark("t.built") }
         // The trackpad pinch is WebKit's own: it magnifies what is on screen
         // and lets you move around inside it, the way pinching does everywhere
         // else on a Mac. ⌘+ and ⌘- are the other thing — they lay the page out
@@ -1006,6 +1008,7 @@ final class Tab: ObservableObject, Identifiable {
             self.attachmentWait?.cancel()
             self.attachmentWait = nil
             view.onStage = nil
+            if !self.bench { Pace.mark("t.load") }
             if let state { view.interactionState = state } else { view.load(URLRequest(url: url, cachePolicy: policy)) }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self, weak view] in
                 guard let self, let view, self.built === view,

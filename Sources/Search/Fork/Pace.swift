@@ -66,6 +66,11 @@ enum Pace {
         observer = watch
         // Until the first sleep, the launch is one long pass.
         waking = born
+        // EXP: the first run-loop iteration's start and its first beforeWaiting.
+        let first = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeTimers.rawValue | CFRunLoopActivity.beforeWaiting.rawValue, true, -1_000_000) { _, activity in
+            mark(activity == .beforeTimers ? "t.loop" : "t.wait")
+        }
+        CFRunLoopAddObserver(CFRunLoopGetMain(), first, .commonModes)
     }
 
     private static func pass(from start: CFTimeInterval, to end: CFTimeInterval) {
