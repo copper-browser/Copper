@@ -496,75 +496,38 @@ final class MCP: ObservableObject {
         case "ping":
             return reply([:])
         case "tools/list":
-            // cloud_history_delete and the Listen transcript's tools only for
-            // loopback clients (no `driver`): never offered through an agent
-            // link (CloudHistoryTool, VoiceTools).
-            return reply(["tools": Tools.catalogue(jev: config.jev) + (driver == nil ? [CloudHistoryTool.schema] + VoiceTools.catalogue : [])])
-        case "tools/call" where VoiceTools.names.contains(params["name"] as? String ?? ""):
-            // Fork (voice): reading the Listen transcript drives nothing — no
-            // announcement, Drive ticket, staged tab or breadcrumb, and a
-            // long-poll only suspends (VoiceTools.swift). A linked bot is
-            // refused whatever the person's choice.
-            let name = params["name"] as? String ?? ""
-            if let refused = VoiceTools.refusal(loopback: driver == nil) {
-                return reply(["content": [["type": "text", "text": refused]], "isError": true])
+            // cloud_history_delete, the Listen transcript's tools and code
+            // mode only for loopback clients (no `driver`): never offered
+            // through an agent link (CloudHistoryTool, VoiceTools, CodeMode).
+            var tools = Tools.catalogue(jev: config.jev)
+            if driver == nil {
+                tools += loopbackTools
+                tools += CodeMode.catalogue(for: tools)
             }
-            let answer = await VoiceTools.call(name, params["arguments"] as? [String: Any] ?? [:])
-            return reply(["content": [["type": "text", "text": answer.text]], "isError": answer.isError])
+            return reply(["tools": tools])
         case "tools/call":
-            guard let browser = browser ?? (running ? Windows.main : nil) else { return fail(-32000, "Copper has no window") }
             let name = params["name"] as? String ?? ""
             let arguments = params["arguments"] as? [String: Any] ?? [:]
-            calls += 1
-            lastTool = name
             // Which session this is, from what it says about itself (Hands.swift).
             let saidNow = MCP.said(params, context)
             let known = context.session.flatMap { said[$0] } ?? Drive.Who.Said()
             let caller = given ?? Drive.Who.from(saidNow.over(known), mcpSession: context.session, fallbackName: clientName)
-            let who = driver ?? .agent(caller.agent)
-            // The tab the call will land on: its own, the caller's, or the
-            // one on screen (AgentTabs). Work in a tab you are not looking at
-            // is not announced over the one you are.
-            let landing = AgentTabs.peek(arguments, in: browser, caller: caller.key)
-            let behind = AgentTabs.opensBehind(name, arguments)
-            if AgentTabs.onScreen(landing), !behind {
-                switch announce {
-                case .agent: if config.announces { browser.announce("Agent · \(name)") }
-                case .prefix(let who): browser.announce("\(who) · \(name)")
-                case .quiet: break
-                }
-            }
-            // The user pressed Stop on this driver: the call is refused with
-            // words the agent can act on, and nothing touches the page.
-            if let refusal = Drive.shared.refusal(for: caller.key) {
-                Drive.shared.refused(call: name, args: arguments, by: who, who: caller)
-                return reply(["content": [["type": "text", "text": refusal]], "isError": true])
-            }
-            let ticket = AgentTabs.$behind.withValue(behind) { Drive.shared.began(call: name, args: arguments, by: who, who: caller, tab: landing) }
-            // A tool may leave a one-line summary (jev_run / jev_step do:
-            // "done · 7 actions · 12.3 s · example.com"); it rides as
-            // `_meta.summary`, which the app's gateway copies into its audit.
-            let summary = Tools.SummaryBox()
-            func result(_ content: [[String: Any]], isError: Bool) -> [String: Any] {
-                var out: [String: Any] = ["content": content, "isError": isError]
-                if let line = summary.line { out["_meta"] = ["summary": line] }
-                return out
-            }
             do {
-                let content = try await DriveCaller.$who.withValue(caller) {
-                    try await Tools.$summary.withValue(summary) {
-                        try await Tools.call(name, arguments, in: browser)
-                    }
-                }
-                if let ticket { Drive.shared.ended(ticket, error: nil, summary: summary.line, tab: AgentTabs.peek(arguments, in: browser, caller: caller.key)) }
-                return reply(result(content.map(\.json), isError: false))
+                return reply(try await invoke(name, arguments, announce: announce, driver: driver, caller: caller))
             } catch {
-                let text = (error as? Tools.Failure)?.text ?? error.localizedDescription
-                if let ticket { Drive.shared.ended(ticket, error: text, tab: AgentTabs.peek(arguments, in: browser, caller: caller.key)) }
-                return reply(result([["type": "text", "text": text]], isError: true))
+                return fail(-32000, (error as? Tools.Failure)?.text ?? error.localizedDescription)
             }
         case "resources/list":
-            return reply(["resources": []])
+            // The one resource, copper.d.ts, for loopback clients (CodeMode).
+            guard driver == nil else { return reply(["resources": []]) }
+            return reply(["resources": [[
+                "uri": CodeMode.resourceURI, "name": "copper.d.ts", "mimeType": "text/plain",
+                "description": "TypeScript declarations for the `copper` object copper_run scripts see, from this Copper's tool schemas",
+            ] as [String: Any]]])
+        case "resources/read":
+            guard driver == nil, params["uri"] as? String == CodeMode.resourceURI else { return fail(-32002, "Resource not found") }
+            let text = CodeModeTypes.declarations(Tools.catalogue(jev: config.jev) + loopbackTools)
+            return reply(["contents": [["uri": CodeMode.resourceURI, "mimeType": "text/plain", "text": text] as [String: Any]]])
         case "resources/templates/list":
             return reply(["resourceTemplates": []])
         case "prompts/list":
@@ -573,6 +536,116 @@ final class MCP: ObservableObject {
             return reply([:])
         default:
             return fail(-32601, "Method not found: \(method)")
+        }
+    }
+
+    /// The tools only a loopback client gets, beyond `Tools.catalogue`.
+    var loopbackTools: [[String: Any]] { [CloudHistoryTool.schema] + VoiceTools.catalogue }
+
+    /// Whether a code-mode run is on, for the call being served: a script's
+    /// calls carry it, so copper_run cannot start another from inside.
+    @TaskLocal static var inScript = false
+
+    /// One tool call, by name, for a known caller — everything a `tools/call`
+    /// does between the request and its result: the voice tools' loopback
+    /// gate, the announcement in the line at the bottom, the user's Stop, the
+    /// Drive ticket for the pane, the task-locals the handlers read, and the
+    /// result's shape (content, isError, _meta). Code mode (CodeMode.swift)
+    /// runs each of a script's calls through here with the same caller, so a
+    /// script can do nothing a run of direct calls could not. Throws only
+    /// when there is no window to drive: everything else is the tool's own
+    /// answer, errors included.
+    func invoke(_ name: String, _ arguments: [String: Any], announce: Announce, driver: Drive.Driver?, caller: Drive.Who) async throws -> [String: Any] {
+        if VoiceTools.names.contains(name) {
+            // Fork (voice): reading the Listen transcript drives nothing — no
+            // announcement, Drive ticket, staged tab or breadcrumb, and a
+            // long-poll only suspends (VoiceTools.swift). A linked bot is
+            // refused whatever the person's choice.
+            if let refused = VoiceTools.refusal(loopback: driver == nil) {
+                return ["content": [["type": "text", "text": refused]], "isError": true]
+            }
+            let answer = await VoiceTools.call(name, arguments)
+            return ["content": [["type": "text", "text": answer.text]], "isError": answer.isError]
+        }
+        guard let browser = browser ?? (running ? Windows.main : nil) else { throw Tools.Failure(text: "Copper has no window") }
+        calls += 1
+        lastTool = name
+        let who = driver ?? .agent(caller.agent)
+        // The tab the call will land on: its own, the caller's, or the
+        // one on screen (AgentTabs). Work in a tab you are not looking at
+        // is not announced over the one you are.
+        let landing = AgentTabs.peek(arguments, in: browser, caller: caller.key)
+        let behind = AgentTabs.opensBehind(name, arguments)
+        if AgentTabs.onScreen(landing), !behind {
+            switch announce {
+            case .agent: if config.announces { browser.announce("Agent · \(name)") }
+            case .prefix(let who): browser.announce("\(who) · \(name)")
+            case .quiet: break
+            }
+        }
+        // The user pressed Stop on this driver: the call is refused with
+        // words the agent can act on, and nothing touches the page.
+        if let refusal = Drive.shared.refusal(for: caller.key) {
+            Drive.shared.refused(call: name, args: arguments, by: who, who: caller)
+            return ["content": [["type": "text", "text": refusal]], "isError": true]
+        }
+        let ticket = AgentTabs.$behind.withValue(behind) { Drive.shared.began(call: name, args: arguments, by: who, who: caller, tab: landing) }
+        // A tool may leave a one-line summary (jev_run / jev_step do:
+        // "done · 7 actions · 12.3 s · example.com"); it rides as
+        // `_meta.summary`, which the app's gateway copies into its audit.
+        let summary = Tools.SummaryBox()
+        func result(_ content: [[String: Any]], isError: Bool) -> [String: Any] {
+            var out: [String: Any] = ["content": content, "isError": isError]
+            if let line = summary.line { out["_meta"] = ["summary": line] }
+            return out
+        }
+        do {
+            let content = try await DriveCaller.$who.withValue(caller) {
+                try await Tools.$summary.withValue(summary) {
+                    try await perform(name, arguments, in: browser, announce: announce, driver: driver, caller: caller)
+                }
+            }
+            if let ticket { Drive.shared.ended(ticket, error: nil, summary: summary.line, tab: AgentTabs.peek(arguments, in: browser, caller: caller.key)) }
+            return result(content.map(\.json), isError: false)
+        } catch {
+            let text = (error as? Tools.Failure)?.text ?? error.localizedDescription
+            if let ticket { Drive.shared.ended(ticket, error: text, tab: AgentTabs.peek(arguments, in: browser, caller: caller.key)) }
+            return result([["type": "text", "text": text]], isError: true)
+        }
+    }
+
+    /// The call itself: code mode's two tools here, every other name through
+    /// `Tools.call`. copper_run and copper_types are loopback-only, like the
+    /// tools they are listed with, and a script never reaches copper_run
+    /// again — its `copper` has no such method, and this refuses the name
+    /// while a run is on, whatever a caller sends.
+    private func perform(_ name: String, _ arguments: [String: Any], in browser: Browser, announce: Announce, driver: Drive.Driver?, caller: Drive.Who) async throws -> [Tools.Content] {
+        guard CodeMode.names.contains(name) else { return try await Tools.call(name, arguments, in: browser) }
+        guard driver == nil else { throw Tools.Failure(text: "\(name) is only for agents on the person's Mac, never through an agent link") }
+        guard !MCP.inScript else { throw Tools.Failure(text: "\(name) cannot be called from a copper_run script") }
+        let tools = Tools.catalogue(jev: config.jev) + loopbackTools
+        let started = Date()
+        do {
+            let content: [Tools.Content]
+            if name == CodeMode.typesName {
+                content = CodeMode.types(for: tools)
+            } else {
+                // Each of the script's calls is bound here, in its own task:
+                // the same caller, the same announcement, and the flag that
+                // keeps copper_run out of its own scripts. The refusal is
+                // the caller's — Stop on the pane's card turns the run away.
+                content = try await CodeMode.run(arguments, tools: tools, call: { [weak self] tool, args in
+                    guard let self else { throw Tools.Failure(text: "Copper is shutting down") }
+                    return try await MCP.$inScript.withValue(true) {
+                        try await self.invoke(tool, args, announce: announce, driver: driver, caller: caller)
+                    }
+                }, refusal: { Drive.shared.refusal(for: caller.key) })
+            }
+            Breadcrumbs.tool(name, tab: nil, started: started, error: nil)
+            return content
+        } catch {
+            Breadcrumbs.tool(name, tab: nil, started: started, error: error)
+            throw error
         }
     }
 
