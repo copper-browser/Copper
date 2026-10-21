@@ -15,7 +15,7 @@
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 world="frame-$$"
-port="${FIXTURE_PORT:-8791}"
+port="${FIXTURE_PORT:-$(python3 -c "import socket; s = socket.socket(); s.bind(('127.0.0.1', 0)); print(s.getsockname()[1])")}"
 tmp="$(mktemp -d)"
 pid="" server=""
 cleanup() {
@@ -36,6 +36,7 @@ app="$root/build/Copper.app/Contents/MacOS/Copper"
 
 (cd "$root/docs/fixtures" && exec python3 -m http.server "$port" --bind 127.0.0.1) >"$tmp/http.log" 2>&1 &
 server=$!
+for _ in {1..40}; do curl -fsS -o /dev/null 2>/dev/null "http://127.0.0.1:$port/login-frame.html" && break; sleep 0.25; done
 defaults write "com.officecommun.search.test.$world" bench -bool true
 defaults write "com.officecommun.search.test.$world" welcomed -bool true
 defaults write "com.officecommun.search.test.$world" probe.keychain -string file
@@ -57,7 +58,7 @@ sleep 1.5
 # 1. The caret into the frame's email box (the frame focuses it when asked).
 rows=""
 for _ in {1..20}; do
-  bench eval "$tab" 'document.querySelector("iframe").contentWindow.postMessage("focus", "*"); 1' >/dev/null
+  bench eval "$tab" 'document.querySelector("iframe").contentWindow.postMessage("focus", "*"); 1' >/dev/null 2>&1 || true
   sleep 0.5
   rows=$(bench bw rows)
   jq -e '.rows | length > 0' <<<"$rows" >/dev/null && break

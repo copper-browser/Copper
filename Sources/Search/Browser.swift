@@ -66,6 +66,8 @@ final class Browser: NSObject, ObservableObject {
     @Published var bookmarking = false
     /// The dropdown off the button.
     @Published var bookmarksOpen = false
+    /// Fork (vault-popup): every account, searchable, off the key door or ⇧⌘Y.
+    @Published var vaultOpen = false
 
     /// ⇧⌘B. The page you are on, at the end of the list.
     func bookmarkCurrent() {

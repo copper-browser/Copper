@@ -155,6 +155,29 @@ Password managers) to route new save offers there while it is unlocked; choose
 Keychain (or leave Bitwarden locked) to keep saving to the keychain. Existing
 fills continue to include every source.
 
+## Accounts popup
+
+The key door beside Bookmarks (in the sidebar's foot, or the tab bar's end)
+and **⇧⌘Y** — the Bitwarden extension's own shortcut for its popup — open
+every account Copper can fill: keychain, Bitwarden and 1Password together.
+The search field takes every word against the name, username, host and the
+item's web addresses. The accounts this page would offer come first, marked
+*This site* — for a sign-in inside a frame, the frame's site's.
+
+On a row (hover it, or move with ↑ ↓):
+
+- **Fill** — only on this site's accounts, so a password never goes to a page
+  it isn't for. Return does the same; on any other row Return copies the
+  password.
+- **Name**, **Password**, **Code** (an account with an authenticator key) copy
+  to the pasteboard. A secret is read only when its button is pressed.
+- **Open** opens the account's first web address in a new tab.
+
+A locked or loading vault says so at the foot (*Unlock Bitwarden…*). ⌘K's
+*Search Accounts* opens it too. `docs/fixtures/vault-popup-e2e.sh` checks it
+in a probe world; `./bench bw vault open|close|rows [SEARCH]|act N fill|user|password|code|open`
+drives it from the shell.
+
 ## New passwords
 
 On a sign-up or change-password form, click the new password box and the
