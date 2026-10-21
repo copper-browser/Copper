@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Copper embedded sign-in fixture</title>
+  <style>
+    body { margin: 2rem; font: 16px/1.4 system-ui, sans-serif; color: #222; }
+    iframe { margin-top: 140px; margin-left: 90px; width: 420px; height: 260px; border: 7px solid #789; padding: 5px; }
+    label { display: block; margin: .6rem 0; }
+    input { box-sizing: border-box; width: 100%; padding: .45rem; font: inherit; }
+  </style>
+</head>
+<body>
+  <!-- Served twice by one server (docs/fixtures/autofill-frame-e2e.sh): the page
+       at 127.0.0.1 embeds this same file from localhost — another origin, the
+       way App Store Connect embeds idmsa.apple.com's sign-in. ?inner=1 is the
+       frame: a sign-in form that tells the page what it holds (the password's
+       length only) and takes the caret when the page asks. Never submitted. -->
+  <script>
+    const inner = new URLSearchParams(location.search).has('inner');
+    if (!inner) {
+      document.body.insertAdjacentHTML('beforeend', '<h1>Outer page</h1><p id="said">nothing yet</p>');
+      const frame = document.createElement('iframe');
+      frame.src = location.href.replace('127.0.0.1', 'localhost').split('?')[0] + '?inner=1';
+      document.body.appendChild(frame);
+      addEventListener('message', (e) => {
+        if (e.data && e.data.user !== undefined) document.getElementById('said').textContent = JSON.stringify(e.data);
+      });
+    } else {
+      document.body.insertAdjacentHTML('beforeend', `<form id="login" action="#">
+        <label>Email <input id="username" type="email" autocomplete="username"></label>
+        <label>Password <input id="password" type="password" autocomplete="current-password"></label>
+      </form>`);
+      const tell = () => parent.postMessage({
+        user: document.getElementById('username').value,
+        passwordLength: document.getElementById('password').value.length
+      }, '*');
+      document.addEventListener('input', tell, true);
+      document.getElementById('login').addEventListener('submit', (e) => e.preventDefault());
+      addEventListener('message', (e) => { if (e.data === 'focus') document.getElementById('username').focus(); });
+    }
+  </script>
+</body>
+</html>

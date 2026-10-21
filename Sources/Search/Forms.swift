@@ -21,6 +21,7 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
         guard let body = message.body as? [String: Any],
               let kind = body["kind"] as? String
         else { return }
+        let frame = message.frameInfo
         MainActor.assumeIsolated {
             switch kind {
             case "form":
@@ -29,13 +30,22 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
                 tab?.sentSignIn(
                     user: body["user"] as? String ?? "",
                     password: body["password"] as? String ?? "",
-                    fresh: body["fresh"] as? Bool ?? false // Fork (new-password)
+                    fresh: body["fresh"] as? Bool ?? false, // Fork (new-password)
+                    frame: frame // Fork (frame-autofill)
                 )
             case "settled":
                 tab?.settleSignIn(navigated: false)
             case "otp":
                 tab?.foundCodeBox() // Fork (auto-codes)
+            case "frame":
+                // Fork (frame-autofill): the page around an embedded frame
+                // that has the caret, saying where the frame sits.
+                guard frame.isMainFrame, let rect = body["rect"] as? [String: Double],
+                      let x = rect["x"], let y = rect["y"] else { return }
+                tab?.frameMoved(CGPoint(x: x, y: y))
             case "focus":
+                let holding = (body["typing"] as? Bool ?? false) || body["rect"] is [String: Double]
+                guard tab?.focusFrom(frame, holding: holding) == true else { return } // Fork (frame-autofill)
                 tab?.typing = body["typing"] as? Bool ?? false
                 // Which box the caret is in, and where it sits on the page —
                 // so a list of accounts or vault fields can hang from it.
@@ -67,10 +77,11 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
                     tab?.fieldFocused(
                         CGRect(x: x, y: y, width: w, height: h),
                         hint: body["hint"] as? String ?? "",
-                        field: focused
+                        field: focused,
+                        frame: frame
                     )
                 } else {
-                    tab?.fieldFocused(nil, hint: body["hint"] as? String ?? "", field: focused)
+                    tab?.fieldFocused(nil, hint: body["hint"] as? String ?? "", field: focused, frame: frame)
                 }
             case "fullscreen":
                 tab?.immersed = body["on"] as? Bool ?? false
@@ -1068,8 +1079,27 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
         return '';
       }
 
+      // This script runs in every frame. A sign-in served from another site
+      // in an iframe (App Store Connect's comes from idmsa.apple.com) speaks
+      // for its own boxes; the page around it only says where the frame is.
+      var topFrame = window === window.top;
+
       function caret() {
         var el = document.activeElement;
+        var tag = el && (el.tagName || '').toLowerCase();
+        if (topFrame && (tag === 'iframe' || tag === 'frame')) {
+          var f = el.getBoundingClientRect();
+          var cs = window.getComputedStyle(el);
+          window.webkit.messageHandlers.officeForms.postMessage({
+            kind: 'frame',
+            rect: {
+              x: f.left + el.clientLeft + (parseFloat(cs.paddingLeft) || 0),
+              y: f.top + el.clientTop + (parseFloat(cs.paddingTop) || 0),
+              w: el.clientWidth, h: el.clientHeight
+            }
+          });
+          return;
+        }
         var both = pair();
         var field = classify(el);
         var rect = null;
@@ -1117,6 +1147,8 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
           kind: 'fullscreen', on: on
         });
       }
+      // The page itself hears an embedded video's full screen too.
+      if (topFrame) {
       document.addEventListener('fullscreenchange', immersed, true);
       document.addEventListener('webkitfullscreenchange', immersed, true);
 
@@ -1132,6 +1164,7 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
             return was.apply(this, arguments);
           };
         });
+      }
 
       document.addEventListener('focusin', caret, true);
       document.addEventListener('focusout', function () { setTimeout(caret, 0); }, true);

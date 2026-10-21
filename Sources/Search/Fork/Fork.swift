@@ -296,7 +296,10 @@ enum Fork {
                 return ["started": true, "id": id]
             case "rows":
                 // The list hanging from the focused box, as the picker draws it.
-                return ["rows": (browser.suggesting?.rows ?? []).map(\.id)]
+                // Where it hangs (web view points) and whose site it offers — the frame's, for a sign-in in one.
+                let spot = browser.suggesting.map { [$0.spot.minX, $0.spot.minY, $0.spot.width, $0.spot.height] }
+                return ["rows": (browser.suggesting?.rows ?? []).map(\.id), "spot": spot ?? NSNull(),
+                        "host": browser.active?.formHost ?? NSNull()]
             case "pick":
                 guard let id = words.first else { return ["error": "bw pick ROW"] }
                 guard let row = browser.suggesting?.rows.first(where: { $0.id == id }) else {
