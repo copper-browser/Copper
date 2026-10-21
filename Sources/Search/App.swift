@@ -219,6 +219,8 @@ struct AppCommands: Commands {
             Button("Welcome…") { browser.welcoming = true }
             Button("Passwords…") { browser.managing = true }
                 .keyboardShortcut("l", modifiers: [.command, .option])
+            Button("Search Accounts…") { browser.vaultOpen.toggle() } // Fork (vault-popup): Bitwarden's own shortcut for its popup
+                .keyboardShortcut("y", modifiers: [.command, .shift])
         }
         CommandGroup(replacing: .help) {
             Button("Send Feedback…") { Links.writeFeedback() }

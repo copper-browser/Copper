@@ -53,6 +53,7 @@ enum CommandBar {
             .init(id: "downloads", name: "Downloads", glyph: "arrow.down.circle") { $0.hoarding = true },
             .init(id: "downloads-folder", name: "Open Downloads Folder", glyph: "folder") { $0.openDownloadsFolder() },
             .init(id: "passwords", name: "Passwords", glyph: "key") { $0.managing = true },
+            .init(id: "vault", name: "Search Accounts (Bitwarden, 1Password, Keychain)", glyph: "key.horizontal") { $0.vaultOpen = true }, // Fork (vault-popup)
             .init(id: "passkeys", name: "Passkeys", glyph: "person.badge.key") { $0.tuning = true },
             .init(id: "settings", name: "Settings", glyph: "gearshape") { $0.tuning = true },
             .init(id: "cloud", name: "Copper Cloud…", glyph: "icloud") { $0.openSettings(.cloud) },

@@ -294,6 +294,25 @@ enum Fork {
                 }
                 browser.choose(credential)
                 return ["started": true, "id": id]
+            case "vault":
+                // Fork (vault-popup): `bw vault open|close|rows [SEARCH…]|act N fill|user|password|code|open`
+                // — the popup's list (every source, not only Bitwarden) and its row actions.
+                switch words.first ?? "rows" {
+                case "open": browser.vaultOpen = true
+                case "close": browser.vaultOpen = false
+                case "act":
+                    let all = VaultPopup.rows(Credentials.all(), here: VaultPopup.fillable(in: browser), needle: "")
+                    guard words.count == 3, let n = Int(words[1]), all.indices.contains(n),
+                          let act = VaultPopup.Act(rawValue: words[2]) else { return ["error": "bw vault act N fill|user|password|code|open"] }
+                    VaultPopup.run(act, all[n], in: browser)
+                    return ["started": true, "id": all[n].id.string, "act": act.rawValue]
+                default: break
+                }
+                let here = VaultPopup.fillable(in: browser)
+                let rows = VaultPopup.rows(Credentials.all(), here: here, needle: words.dropFirst().joined(separator: " "))
+                return ["open": browser.vaultOpen, "rows": rows.map {
+                    ["id": $0.id.string, "label": VaultPopup.label($0), "user": $0.user, "fills": here.contains($0.id), "code": $0.hasTOTP]
+                }]
             case "rows":
                 // The list hanging from the focused box, as the picker draws it.
                 // Where it hangs (web view points) and whose site it offers — the frame's, for a sign-in in one.

@@ -116,6 +116,8 @@ struct TabBar: View {
                             DownloadsDoor(browser: browser, size: 26, arrowEdge: .bottom)
                                 .transition(.scale(scale: 0.8).combined(with: .opacity))
                         }
+                        Door(icon: "key.horizontal", help: "Accounts   ⇧⌘Y") { browser.vaultOpen.toggle() } // Fork (vault-popup)
+                            .popover(isPresented: $browser.vaultOpen, arrowEdge: .bottom) { VaultPopup(browser: browser) }
                         Door(icon: "bookmark", help: "Bookmarks") { browser.bookmarksOpen.toggle() }
                             .popover(isPresented: $browser.bookmarksOpen, arrowEdge: .bottom) {
                                 BookmarksDropdown(browser: browser, bookmarks: browser.bookmarks)

@@ -477,6 +477,11 @@ struct SideBar: View {
             .popover(isPresented: $browser.bookmarksOpen, arrowEdge: .top) {
                 BookmarksDropdown(browser: browser, bookmarks: browser.bookmarks)
             }
+            // Fork (vault-popup): every account, searchable — ⇧⌘Y.
+            Door(icon: "key.horizontal", help: "Accounts   ⇧⌘Y", size: 28, ink: tint.ink, glow: tint.hover, glyph: 14) {
+                browser.vaultOpen.toggle()
+            }
+            .popover(isPresented: $browser.vaultOpen, arrowEdge: .top) { VaultPopup(browser: browser) }
             ExtensionsDoor(browser: browser, tint: tint)
             CanvasDoor(browser: browser, tint: tint) // Fork (canvas)
         }
