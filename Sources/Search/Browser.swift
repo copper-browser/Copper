@@ -429,6 +429,14 @@ final class Browser: NSObject, ObservableObject {
             do {
                 let secret = try await Credentials.secret(credential.id)
                 guard let self, let tab else { return }
+                // Fork (frame-autofill): an embedded frame's password goes
+                // only into a frame of that site — the caret may have moved
+                // to another frame while the list was open.
+                if tab.formFrame != nil, !Credentials.candidates(for: tab.formHost ?? "").contains(where: { $0.id == credential.id }) {
+                    self.announce("That account isn't for this sign-in")
+                    self.suggesting = nil
+                    return
+                }
                 tab.fill(user: credential.user, password: secret) { worked in
                     if !worked { self.announce("Couldn't find the sign-in fields anymore") }
                 }
@@ -548,7 +556,7 @@ final class Browser: NSObject, ObservableObject {
     private func chooseNewPassword() {
         lowering?.cancel()
         guard let tab = tabs.first(where: { $0.id == suggesting?.tab }) ?? active,
-              let host = curtain.host(of: tab.address)
+              let host = tab.formHost
         else { return }
         pickedInto = tab.id
         suggesting = nil
@@ -604,7 +612,7 @@ final class Browser: NSObject, ObservableObject {
     /// report one, and would be handed the code.
     private func codeBoxAppeared(in tab: Tab) {
         guard prefs.fillsPasswords, prefs.fillsCodes, fetching == nil, codePickedInto != tab.id,
-              let host = curtain.host(of: tab.address),
+              let host = tab.formHost,
               case let (credential, stamp)? = autoCodeCredential(for: tab, host: host),
               autoCoded[tab.id] != stamp
         else { return }
@@ -1173,7 +1181,7 @@ final class Browser: NSObject, ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, let open = suggesting, let tab = tabs.first(where: { $0.id == open.tab }),
-                      let host = curtain.host(of: tab.address) else { return }
+                      let host = tab.formHost else { return }
                 let rows = suggestions(for: tab, host: host)
                 let credentials = rows.compactMap { suggestion -> Credential? in
                     guard case .credential(let credential) = suggestion else { return nil }
@@ -1901,7 +1909,7 @@ final class Browser: NSObject, ObservableObject {
             lowering?.cancel()
             guard (prefs.fillsPasswords || prefs.fillsEverything), tab.id == activeID,
                   pickedInto != tab.id || (tab.fieldFocus?.kind == .otp && codePickedInto != tab.id),
-                  let host = curtain.host(of: tab.address)
+                  let host = tab.formHost
             else { return }
             let rows = suggestions(for: tab, host: host)
             let credentials = rows.compactMap { suggestion -> Credential? in

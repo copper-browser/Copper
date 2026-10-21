@@ -138,6 +138,18 @@ trigger it, because any script on the page could fake that report and be
 handed the code. In that case click the code box and pick the *Two-step
 code* row. Codes texted or emailed to you are not read.
 
+**Sign-ins inside a frame.** Some sites show a sign-in served by another
+site in an iframe: App Store Connect's comes from `idmsa.apple.com`. Copper's
+forms script runs in every frame, so the list hangs from the box inside the
+frame and a pick fills that frame. What it offers is the **frame's** site's
+logins, matched the usual way (`idmsa.apple.com` gets `apple.com` logins),
+never the page's, so a page can't pull another site's password into a frame
+of its own. A password sent from a frame is offered for saving under the
+frame's site. Placement assumes one level of frames: for a sign-in two
+iframes deep the list hangs against the outer frame.
+`docs/fixtures/autofill-frame-e2e.sh` checks it with `login-frame.html`
+(127.0.0.1 embedding itself from localhost).
+
 Choose **Bitwarden** under **Save new passwords to** (Settings › Passwords ›
 Password managers) to route new save offers there while it is unlocked; choose
 Keychain (or leave Bitwarden locked) to keep saving to the keychain. Existing

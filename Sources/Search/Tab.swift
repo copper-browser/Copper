@@ -467,7 +467,8 @@ final class Tab: ObservableObject, Identifiable {
             WKUserScript(source: Veiling.picker, injectionTime: .atDocumentStart, forMainFrameOnly: true)
         )
         controller.addUserScript(
-            WKUserScript(source: FormRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
+            // Every frame: a sign-in can be served inside one (Fork: frame-autofill).
+            WKUserScript(source: FormRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: false)
         )
         controller.addUserScript(
             WKUserScript(source: Swipe.calm, injectionTime: .atDocumentStart, forMainFrameOnly: true)
@@ -525,15 +526,86 @@ final class Tab: ObservableObject, Identifiable {
 
     func foundCodeBox() { onCodeBox?(self) } // Fork (auto-codes)
 
+    // Fork (frame-autofill): a sign-in served from another site in an
+    // iframe — App Store Connect's comes from idmsa.apple.com. While the
+    // caret is in one, fills go into that frame, and its site's passwords
+    // are the ones offered.
+    private(set) var formFrame: WKFrameInfo?
+    /// That frame's content box on the page, and the box with the caret in
+    /// the frame's own viewport — CSS pixels, both.
+    private var frameOrigin: CGPoint?
+    private var frameField: CGRect?
+
+    /// Where the passwords for the box with the caret belong: the embedded
+    /// frame's site while the caret is in one, else the page's.
+    var formHost: String? { Self.bare(formFrame.map(\.securityOrigin.host) ?? address?.host()) }
+
+    private static func bare(_ host: String?) -> String? {
+        guard let host = host?.lowercased(), !host.isEmpty else { return nil }
+        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+    }
+
+    /// Frames come as fresh objects with every message; this says which one.
+    private static func same(_ a: WKFrameInfo, _ b: WKFrameInfo) -> Bool {
+        a.securityOrigin.protocol == b.securityOrigin.protocol && a.securityOrigin.host == b.securityOrigin.host
+            && a.securityOrigin.port == b.securityOrigin.port && a.request.url == b.request.url
+    }
+
+    /// Whether a focus message from `frame` speaks for the caret. The page
+    /// always does — it says "in a frame" another way (`frameMoved`). An
+    /// embedded frame does when it has the caret (`holding`), or lets go
+    /// after having it; every other frame on the page (ads, embeds) is
+    /// talking about nothing.
+    func focusFrom(_ frame: WKFrameInfo, holding: Bool) -> Bool {
+        if frame.isMainFrame {
+            formFrame = nil; frameOrigin = nil; frameField = nil
+            return true
+        }
+        if holding {
+            if let held = formFrame, Self.same(held, frame) { formFrame = frame; return true }
+            formFrame = frame; frameOrigin = nil; frameField = nil
+            return true
+        }
+        return formFrame.map { Self.same($0, frame) } ?? false
+    }
+
+    /// The page says the caret is in one of its frames, and where that
+    /// frame's content starts. The frame itself says which box.
+    // shortcut: one level of frames only — a sign-in nested two iframes deep is placed against the outer frame; walk frame parents if one turns up.
+    func frameMoved(_ origin: CGPoint) {
+        frameOrigin = origin
+        guard formFrame != nil else {
+            // A frame that hasn't spoken (yet, or has no box): as before, nothing to hang from.
+            typing = false
+            fieldFocused(nil)
+            return
+        }
+        if let frameField { place(frameField) }
+    }
+
     /// From the page, in CSS pixels; passed on in points. Page zoom is the
     /// only scale between the two that matters here.
-    func fieldFocused(_ rect: CGRect?, hint: String = "", field: FocusedField? = nil) {
+    func fieldFocused(_ rect: CGRect?, hint: String = "", field: FocusedField? = nil, frame: WKFrameInfo? = nil) {
         fieldHint = hint
         fieldFocus = field
+        if let frame, !frame.isMainFrame {
+            frameField = rect
+            guard let rect else { onField?(self, nil); return }
+            if frameOrigin != nil { place(rect); return }
+            // The page hears nothing when the caret goes into a frame; asked,
+            // it says where the frame is (`frameMoved`), and the list is placed then.
+            web.evaluateJavaScript("window.__officeForms && window.__officeForms.caret()")
+            return
+        }
         guard let rect else {
             onField?(self, nil)
             return
         }
+        place(rect)
+    }
+
+    private func place(_ rect: CGRect) {
+        let rect = frameOrigin.map { rect.offsetBy(dx: $0.x, dy: $0.y) } ?? rect
         let zoom = built?.pageZoom ?? 1
         onField?(self, CGRect(
             x: rect.minX * zoom, y: rect.minY * zoom,
@@ -545,15 +617,16 @@ final class Tab: ObservableObject, Identifiable {
     /// Whether the sign-in worked is only known afterwards: a page that
     /// comes back without a password box took it, one that still has the
     /// box refused it, and only the first is worth remembering.
-    private var sent: (host: String, user: String, password: String, fresh: Bool, at: Date)?
+    private var sent: (host: String, user: String, password: String, fresh: Bool, frame: WKFrameInfo?, at: Date)?
 
-    func sentSignIn(user: String, password: String, fresh: Bool = false) {
+    func sentSignIn(user: String, password: String, fresh: Bool = false, frame: WKFrameInfo? = nil) {
         // The host now, while the page is still the sign-in page: a moment
         // later it may be somewhere else entirely, and that is not where
-        // the password belongs.
-        guard let host = address?.host()?.lowercased() else { return }
-        let bare = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
-        sent = (bare, user, password, fresh, Date())
+        // the password belongs. A sign-in in an embedded frame belongs to
+        // the frame's site.
+        let embedded = frame.flatMap { $0.isMainFrame ? nil : $0 }
+        guard let bare = Self.bare(embedded.map(\.securityOrigin.host) ?? address?.host()) else { return }
+        sent = (bare, user, password, fresh, embedded, Date())
     }
 
     /// The page has moved on — a new document has loaded, or the sign-in
@@ -583,7 +656,7 @@ final class Tab: ObservableObject, Identifiable {
         // Fork (new-password): a new password took when its form went, even
         // if the page then shows a sign-in to use it on.
         let check = sent.fresh ? "hasFreshForm" : "hasPassword"
-        web.evaluateJavaScript("!!(window.__officeForms && window.__officeForms.\(check)())") { [weak self] still, _ in
+        forms("!!(window.__officeForms && window.__officeForms.\(check)())", in: sent.frame) { [weak self] still in
             MainActor.assumeIsolated {
                 guard let self, let sent = self.sent else { return }
                 // The box is still there: a refused sign-in, or the second
@@ -596,23 +669,33 @@ final class Tab: ObservableObject, Identifiable {
         }
     }
 
+    /// The forms script, run where the sign-in is: in `frame`, else the
+    /// embedded frame the caret is in, else the page.
+    private func forms(_ js: String, in frame: WKFrameInfo? = nil, done: ((Any?) -> Void)? = nil) {
+        guard let frame = frame ?? formFrame else {
+            web.evaluateJavaScript(js) { result, _ in done?(result) }
+            return
+        }
+        web.evaluateJavaScript(js, in: frame, in: .page) { done?(try? $0.get()) }
+    }
+
     /// Puts a remembered name and password where a person would have typed
     /// them. Nothing is echoed back and nothing is written down here.
     /// `done`, when given, hears back `false` for the one case worth saying
     /// something about: the sign-in fields that were there a moment ago,
     /// when this was offered, are gone by the time it actually runs.
     func fill(user: String, password: String, done: ((Bool) -> Void)? = nil) {
-        web.evaluateJavaScript(
+        forms(
             "window.__officeForms && window.__officeForms.fill(`\(escape(user))`, `\(escape(password))`)"
-        ) { result, _ in
+        ) { result in
             done?((result as? Bool) ?? false)
         }
     }
 
     func submitSignIn(done: ((Bool) -> Void)? = nil) {
-        web.evaluateJavaScript(
+        forms(
             "window.__officeForms && window.__officeForms.submit()"
-        ) { result, _ in
+        ) { result in
             done?((result as? Bool) ?? false)
         }
     }
@@ -620,13 +703,14 @@ final class Tab: ObservableObject, Identifiable {
     /// Fork (passkey-picker): the page says again where the caret is, so a
     /// list already hanging from a box can be redrawn.
     func recheckField() {
-        built?.evaluateJavaScript("window.__officeForms && window.__officeForms.caret()")
+        guard built != nil else { return }
+        forms("window.__officeForms && window.__officeForms.caret()")
     }
 
     func fillOTP(_ code: String, done: ((Bool) -> Void)? = nil) {
-        web.evaluateJavaScript(
+        forms(
             "window.__officeForms && window.__officeForms.fillOTP(`\(escape(code))`)"
-        ) { result, _ in
+        ) { result in
             done?((result as? Bool) ?? false)
         }
     }
@@ -641,9 +725,9 @@ final class Tab: ObservableObject, Identifiable {
             done?(0)
             return
         }
-        web.evaluateJavaScript(
+        forms(
             "window.__officeForms && window.__officeForms.fillValues(\(json))"
-        ) { result, _ in
+        ) { result in
             done?((result as? NSNumber)?.intValue ?? (result as? Int) ?? 0)
         }
     }
@@ -655,9 +739,9 @@ final class Tab: ObservableObject, Identifiable {
             done?(false)
             return
         }
-        web.evaluateJavaScript(
+        forms(
             "window.__officeForms && window.__officeForms.fillFocused(\(json))"
-        ) { result, _ in
+        ) { result in
             done?((result as? Bool) ?? false)
         }
     }
@@ -669,9 +753,9 @@ final class Tab: ObservableObject, Identifiable {
             done?(false)
             return
         }
-        web.evaluateJavaScript(
+        forms(
             "window.__officeForms && window.__officeForms.fillField(\(label), \(value))"
-        ) { result, _ in
+        ) { result in
             done?((result as? Bool) ?? false)
         }
     }
@@ -680,9 +764,9 @@ final class Tab: ObservableObject, Identifiable {
     /// its rules — or nil when there is none.
     func newPasswordPage() async -> NewPasswordPage? {
         await withCheckedContinuation { (continuation: CheckedContinuation<NewPasswordPage?, Never>) in
-            web.evaluateJavaScript(
+            forms(
                 "(window.__officeForms && window.__officeForms.newPasswordInfo()) || null"
-            ) { result, _ in
+            ) { result in
                 continuation.resume(returning: NewPasswordPage(result))
             }
         }
@@ -696,9 +780,9 @@ final class Tab: ObservableObject, Identifiable {
         guard let password = jsonLiteral(password) else { return 0 }
         let old = current.flatMap(jsonLiteral) ?? "null"
         return await withCheckedContinuation { (continuation: CheckedContinuation<Int, Never>) in
-            web.evaluateJavaScript(
+            forms(
                 "(window.__officeForms && window.__officeForms.fillNewPassword(\(password), \(old))) || 0"
-            ) { result, _ in
+            ) { result in
                 continuation.resume(returning: (result as? NSNumber)?.intValue ?? 0)
             }
         }
@@ -707,9 +791,9 @@ final class Tab: ObservableObject, Identifiable {
     func hasFields(_ group: FieldKind.Group) async -> Bool {
         guard let group = jsonLiteral(group.rawValue) else { return false }
         return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-            web.evaluateJavaScript(
+            forms(
                 "!!(window.__officeForms && window.__officeForms.hasFields(\(group)))"
-            ) { result, _ in
+            ) { result in
                 continuation.resume(returning: (result as? Bool) ?? false)
             }
         }
@@ -717,9 +801,9 @@ final class Tab: ObservableObject, Identifiable {
 
     func fieldsPresent() async -> [FieldKind] {
         await withCheckedContinuation { (continuation: CheckedContinuation<[FieldKind], Never>) in
-            web.evaluateJavaScript(
+            forms(
                 "(window.__officeForms && window.__officeForms.fieldsPresent()) || []"
-            ) { result, _ in
+            ) { result in
                 let raw = result as? [String] ?? []
                 continuation.resume(returning: raw.compactMap(FieldKind.init(rawValue:)))
             }
@@ -728,9 +812,9 @@ final class Tab: ObservableObject, Identifiable {
 
     func hasOTPField() async -> Bool {
         await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-            web.evaluateJavaScript(
+            forms(
                 "!!(window.__officeForms && window.__officeForms.hasOTP())"
-            ) { result, _ in
+            ) { result in
                 continuation.resume(returning: (result as? Bool) ?? false)
             }
         }
@@ -738,9 +822,9 @@ final class Tab: ObservableObject, Identifiable {
 
     func hasPasswordField() async -> Bool {
         await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-            web.evaluateJavaScript(
+            forms(
                 "!!(window.__officeForms && window.__officeForms.hasPassword())"
-            ) { result, _ in
+            ) { result in
                 continuation.resume(returning: (result as? Bool) ?? false)
             }
         }
@@ -802,6 +886,9 @@ final class Tab: ObservableObject, Identifiable {
         fieldFocus = nil
         fieldHint = ""
         immersed = false
+        formFrame = nil // Fork (frame-autofill)
+        frameOrigin = nil
+        frameField = nil
         // Sent somewhere new, a sleeping tab is simply awake again — with
         // nothing of where it was before to bring back.
         pending = nil
