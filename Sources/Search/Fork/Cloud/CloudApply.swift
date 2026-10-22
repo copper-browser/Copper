@@ -25,9 +25,19 @@ enum CloudApply {
     private static func kept(_ browser: Browser) -> [Kept] {
         let spaces = Spaces.shared
         var out: [Kept] = []
+        // Pins belong to no space: key them once, under the first space, not
+        // under whichever one the window shows — switching spaces re-keyed
+        // every pin, and a document still holding the old keys opened them
+        // all again as new pins.
+        if let anchor = spaces.all.first?.id {
+            for tab in spaces.pins {
+                guard let url = keptURL(of: tab, saved: false) else { continue }
+                out.append(Kept(tab: tab, space: anchor, pinned: true, url: url))
+            }
+        }
         for space in spaces.all {
             let row = space.id == spaces.current ? browser.tabs : (spaces.parkedRow(space.id) ?? [])
-            for tab in row {
+            for tab in row where !spaces.pins.contains(where: { $0.id == tab.id }) {
                 guard let url = keptURL(of: tab, saved: Sections.shared.isSaved(tab)) else { continue }
                 out.append(Kept(tab: tab, space: space.id, pinned: tab.pin != nil, url: url))
             }
@@ -140,6 +150,17 @@ enum CloudApply {
         // Kept tabs new in the document: open them, asleep.
         for entry in doc.tabs where localKeys[entry.key] == nil {
             guard let url = URL(string: entry.url), url.scheme?.hasPrefix("http") == true else { continue }
+            // A pin for a site already pinned here is that pin under another
+            // key (an older build keyed pins by the space on screen): adopt
+            // the key rather than pin the site a second time.
+            if entry.pinned, let host = url.host()?.lowercased(),
+               let same = shelf.pins.first(where: { tab in
+                   (tabKeys[tab.id].map { !docKeys.contains($0) } ?? true)
+                       && (tab.pending ?? tab.address)?.host()?.lowercased() == host
+               }) {
+                tabKeys[same.id] = entry.key
+                continue
+            }
             let pin = entry.pinned ? (entry.pin ?? Address.pretty(url).prefix(1).uppercased()) : nil
             if let tab = shelf.cloudOpen(url, title: entry.title, pin: pin, in: entry.space, browser: browser) {
                 tabKeys[tab.id] = entry.key
