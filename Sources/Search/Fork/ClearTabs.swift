@@ -129,9 +129,10 @@ final class ClearTabsDividerHover: ObservableObject {
     @Published var forced = false
 }
 
-/// The slim seam above Today. It is intentionally a divider first and a
-/// button second: at rest it is indistinguishable from the existing hairline;
-/// the Arc-style "↓ Clear" text appears only while the seam is hovered.
+/// The slim seam above Today. At rest it is exactly the plain hairline —
+/// same height, so a space with loose tabs doesn't push its rows down on a
+/// switch. Hovering it shows a small round button at its end, drawn over
+/// the seam rather than beside it, so nothing moves.
 struct ClearTabsDivider: View {
     @ObservedObject var browser: Browser
     let tint: SpaceTint
@@ -140,34 +141,35 @@ struct ClearTabsDivider: View {
     @State private var over = false
 
     var body: some View {
-        HStack(spacing: 6) {
-            Rectangle().fill(tint.hairline).frame(height: 1)
-            Button {
-                ClearTabs.shared.clear(in: browser)
-            } label: {
-                HStack(spacing: 3) {
+        let shown = over || hover.forced
+        Rectangle()
+            .fill(tint.hairline)
+            .frame(height: 1)
+            .padding(.horizontal, SideBar.rowInset)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+            .overlay(alignment: .trailing) {
+                Button {
+                    ClearTabs.shared.clear(in: browser)
+                } label: {
                     Image(systemName: "arrow.down")
-                        .font(.system(size: 9, weight: .semibold))
-                    Text("Clear")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(tint.muted)
+                        .frame(width: 16, height: 16)
+                        .background(tint.hover, in: Circle())
+                        .contentShape(Circle())
                 }
-                .foregroundStyle(tint.muted)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
-                .background(tint.hover.opacity(0.7), in: Capsule())
+                .buttonStyle(.plain)
+                .help("Clear \(count) tab\(count == 1 ? "" : "s")")
+                .padding(.trailing, SideBar.rowInset)
+                .opacity(shown ? 1 : 0)
+                .allowsHitTesting(shown)
+                .accessibilityHidden(!shown)
             }
-            .buttonStyle(.plain)
-            .opacity(over || hover.forced ? 1 : 0)
-            .allowsHitTesting(over || hover.forced)
-            .accessibilityHidden(!(over || hover.forced))
-            Rectangle().fill(tint.hairline).frame(height: 1)
-        }
-        .padding(.horizontal, SideBar.rowInset)
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
-        .onHover { over = $0 }
-        .accessibilityLabel("Clear \(count) tabs")
-        .accessibilityHint("Closes loose tabs in this space")
+            .onHover { over = $0 }
+            .animation(.easeOut(duration: 0.12), value: shown)
+            .accessibilityLabel("Clear \(count) tabs")
+            .accessibilityHint("Closes loose tabs in this space")
     }
 }
 
