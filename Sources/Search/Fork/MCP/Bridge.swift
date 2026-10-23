@@ -17,7 +17,11 @@ enum Bridge {
         guard CommandLine.arguments.contains("--mcp-stdio") else {
             // A real app launch: headless (Headless.swift) sets itself up
             // here, before SwiftUI builds a window.
-            MainActor.assumeIsolated { Headless.bootIfAsked() }
+            MainActor.assumeIsolated {
+                Headless.bootIfAsked()
+                // No launch ends without a browser window (Fork/LaunchWatchdog.swift).
+                LaunchWatchdog.arm()
+            }
             // Its launch line in the trail, and the reports of any crash
             // since the last one taken in (Crashes.swift), off the main thread.
             Crashes.launched()

@@ -90,9 +90,10 @@
     ./bench spaces [page [N]|page close|tap N|tap header]
                                        the Space page; tap is a click on chip N (another space
                                        switches, the current one opens its page) or the title icon
-    ./bench windows [new|open N URL|key N|space N INDEX|select N TAB|closetab N TAB|close N|dock|dockmenu|showing|saved|quit]
+    ./bench windows [new|open N URL|key N|space N INDEX|select N TAB|closetab N TAB|close N|dock|dockmenu|showing|watchdog|saved|quit]
                                        ⌘N windows; dock is the Dock icon with no window on screen, dockmenu
-                                       the Dock menu's New Window, showing whether a browser window is on screen
+                                       the Dock menu's New Window, showing whether a browser window is on screen,
+                                       watchdog what the launch watchdog last decided (no launch without a window)
     ./bench spaces [delete N|answer close|move|cancel]
                                        the Delete Space sheet, and its buttons
     ./bench spaces theme N [colors #hex[,#hex..]|intensity X|grain X|image PATH|none|blur X

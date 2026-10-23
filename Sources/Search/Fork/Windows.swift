@@ -44,10 +44,36 @@ enum Windows {
     /// The app is on its way out: windows closing now are being kept.
     static var quitting = false
 
-    /// ⌘N.
+    /// ⌘N. With no window ever made there is no `openWindow` to ask yet
+    /// (it comes from the first window's view), so the first window comes
+    /// instead of nothing (Fork/LaunchWatchdog.swift).
     static func newWindow() {
-        guard let opener else { return }
+        guard let opener else {
+            openFirst("new-window")
+            return
+        }
         opener(UUID())
+    }
+
+    /// A browser window has been attached at some point in this run — the
+    /// launch got one, whatever has been closed since.
+    private(set) static var everAttached = false
+
+    /// The first window's scene, when it has to come from nowhere: its own
+    /// `openWindow` once a window has given us one, else SwiftUI's delegate
+    /// asked for what a launch gets — what a link from another app does
+    /// (Links `summon`). The scene is a single `Window`, so asking while it is
+    /// already up brings that one forward and never makes a second. Nothing
+    /// in a headless run, whose window is parked by Fork/Headless.swift.
+    static func openFirst(_ why: String) {
+        guard !Headless.on else { return }
+        let via = primary == nil ? "untitled" : "scene"
+        if !everAttached { Breadcrumbs.note("window-recovery", [("via", why), ("opened", via)]) }
+        if let primary {
+            primary()
+        } else {
+            _ = NSApp.delegate?.applicationOpenUntitledFile?(NSApp)
+        }
     }
 
     /// The Dock icon clicked with no window on screen (Links'
@@ -74,6 +100,11 @@ enum Windows {
         }
     }
 
+    /// A browser window in the Dock (Fork/LaunchWatchdog.swift).
+    static var anyDocked: Bool {
+        (all.compactMap { window(of: $0) } + [Links.window].compactMap { $0 }).contains(where: \.isMiniaturized)
+    }
+
     /// The Dock menu's New Window: a new window beside the ones showing, or
     /// — with none showing — the closed one back first, the way a Dock click does.
     static func newWindowFromDock() {
@@ -92,7 +123,9 @@ enum Windows {
             window.makeKeyAndOrderFront(nil)
             if window.isVisible { return }
         }
-        if let primary { primary() } else { newWindow() }
+        // Closed for good, or never made at all (a launch that got no first
+        // window): the first window's scene again (Fork/LaunchWatchdog.swift).
+        openFirst("dock")
     }
 
     /// The browser for a window scene's id, made the first time it is asked for.
@@ -116,6 +149,7 @@ enum Windows {
     /// the window becomes the one in front.
     static func attach(_ window: NSWindow, to browser: Browser) {
         guard !windows.contains(where: { $0.window === window && $0.browser === browser }) else { return }
+        everAttached = true
         windows.removeAll { $0.window == nil || $0.window === window }
         windows.append(Weak(window, browser))
         let center = NotificationCenter.default
@@ -130,6 +164,8 @@ enum Windows {
         let slot = ObjectIdentifier(window)
         let close = center.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak browser] _ in
             MainActor.assumeIsolated {
+                // Closed by the person: the launch watchdog leaves it closed.
+                LaunchWatchdog.windowClosed()
                 // The first window's NSWindow is the one SwiftUI brings back
                 // after its red button (a Dock click, a link), and `attach`
                 // skips a pair it already knows: let its observers go here
@@ -404,6 +440,8 @@ extension Windows {
     /// `windows dockmenu` is the Dock menu's New Window; `windows showing`
     /// says whether a browser window is on screen (and how many windows
     /// macOS calls visible, rooms included);
+    /// `windows watchdog` is what the launch watchdog last decided
+    /// (Fork/LaunchWatchdog.swift);
     /// `windows saved` is windows.json as held; `windows quit` is ⌘Q.
     static func bench(_ request: [String: Any]) -> [String: Any] {
         let op = request["op"] as? String ?? ""
@@ -415,7 +453,8 @@ extension Windows {
         case "new": newWindow()
         case "dock": reopenFromDock()
         case "dockmenu": newWindowFromDock()
-        case "showing": return ["showing": anyShowing, "nsVisible": NSApp.windows.filter(\.isVisible).count]
+        case "showing": return ["showing": anyShowing, "nsVisible": NSApp.windows.filter(\.isVisible).count, "everAttached": everAttached]
+        case "watchdog": return LaunchWatchdog.report
         case "open":
             guard let browser = pick(), bits.count > 1, let url = URL(string: bits[1]) else { return ["error": "open N URL"] }
             _ = browser.open(url, foreground: true)

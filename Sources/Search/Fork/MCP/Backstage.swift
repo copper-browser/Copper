@@ -171,7 +171,14 @@ final class Backstage {
     /// Says it is key, and can never become key: WebKit reads `isKeyWindow`
     /// to decide whether the page's window is active, AppKit's own key
     /// window stays yours.
-    final class Window: NSWindow {
+    ///
+    /// A panel, like the Room (Fork/SpaceWarm.swift `Room.make`): AppKit
+    /// leaves panels out when it asks whether the app has a window open. As
+    /// an NSWindow, an agent's page hung here made a Dock click arrive as
+    /// "a window is showing" — so AppKit opened nothing — and, up before the
+    /// launch had decided on its first window, stopped that window from
+    /// opening at all (Fork/LaunchWatchdog.swift).
+    final class Window: NSPanel {
         override var isKeyWindow: Bool { true }
         override var canBecomeKey: Bool { false }
         override var canBecomeMain: Bool { false }
@@ -334,7 +341,22 @@ final class Backstage {
             if !window.isVisible { place(window, size: size); window.orderBack(nil) }
             return window
         }
+        let window = Backstage.built(size: size)
+        window.contentView = NSView(frame: NSRect(origin: .zero, size: size))
+        place(window, size: size)
+        // Ordered in without being brought forward: an inactive app stays
+        // inactive, your windows keep their order.
+        window.orderBack(nil)
+        self.window = window
+        return window
+    }
+
+    /// The room, made and not yet ordered in (Tests: LaunchWindowTests).
+    static func built(size: NSSize = NSSize(width: 1280, height: 800)) -> Window {
         let window = Window(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+        // A panel hides when its app stops being active; this one never
+        // does, or an agent's page would turn hidden behind your other apps.
+        window.hidesOnDeactivate = false
         window.isReleasedWhenClosed = false
         window.isExcludedFromWindowsMenu = true
         window.hasShadow = false
@@ -342,12 +364,6 @@ final class Backstage {
         window.animationBehavior = .none
         window.collectionBehavior = [.canJoinAllSpaces, .transient, .ignoresCycle, .fullScreenNone]
         window.title = "Copper backstage"
-        window.contentView = NSView(frame: NSRect(origin: .zero, size: size))
-        place(window, size: size)
-        // Ordered in without being brought forward: an inactive app stays
-        // inactive, your windows keep their order.
-        window.orderBack(nil)
-        self.window = window
         return window
     }
 
