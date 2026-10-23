@@ -1161,14 +1161,19 @@ enum Ultrafast {
             self.goal = goal
             self.tab = tab
             self.browser = browser
-            let seeing = vision ?? Vision.parse(Intelligence.shared.keys.jevVision) ?? .off
+            // Unsaid: this Mac's choice — fast (Strategy.shipped) unless
+            // Settings › Agents › Jev mode › Fast mode is off.
+            var chosenStrategy = strategy ?? (Intelligence.shared.keys.jevFast ? .shipped : Strategy())
+            // No Jev key but a model (a Claude account, say): the model picks
+            // every step, from the element table alone — it takes no picture.
+            let onModel = Intelligence.shared.jevOnModel
+            if onModel { chosenStrategy.llm = true }
+            self.strategy = chosenStrategy
+            let seeing = onModel ? Vision.off : (vision ?? Vision.parse(Intelligence.shared.keys.jevVision) ?? .off)
             self.vision = seeing
             let chosen = (model ?? "").trimmingCharacters(in: .whitespaces)
             // A Box needs Jev 1.14; say so for the run unless it named one.
             self.model = chosen.isEmpty ? (seeing.needsBox ? "jev-1.14.0" : nil) : chosen
-            // Unsaid: this Mac's choice — fast (Strategy.shipped) unless
-            // Settings › Agents › Jev mode › Fast mode is off.
-            self.strategy = strategy ?? (Intelligence.shared.keys.jevFast ? .shipped : Strategy())
         }
 
         var elapsedMs: Int { Int(Date().timeIntervalSince(started) * 1000) }
@@ -1199,7 +1204,10 @@ enum Ultrafast {
             guard !finished else { return nil }
             if stopped() { return nil }
             let keys = Intelligence.shared.effective
-            guard Intelligence.shared.jevReady else { throw Failure(text: "No Jev key — Settings › Agents › Jev mode (or Settings › Intelligence)") }
+            guard strategy.llm ? Intelligence.shared.modelReady : Intelligence.shared.jevReady else {
+                throw Failure(text: strategy.llm ? "No model set up — Settings › Intelligence › Model access (an API key or a Claude account)"
+                                                 : "No Jev key — Settings › Agents › Jev mode (or Settings › Intelligence)")
+            }
             // Awake, and painting backstage if nobody is looking at it — the
             // user may have chosen it, or left it, since the last tick.
             AgentTabs.prepare(tab)
@@ -1568,7 +1576,9 @@ enum Ultrafast {
     @MainActor
     static func call(_ name: String, _ args: [String: Any], in browser: Browser) async throws -> [Content] {
         guard MCP.shared.config.jev else { throw Failure(text: "Jev mode is off — Settings › Agents › Jev mode") }
-        guard Intelligence.shared.jevReady else { throw Failure(text: "No Jev (TypeSafe) key — Settings › Agents › Jev mode, paste the ts-… key") }
+        guard Intelligence.shared.jevUsable else {
+            throw Failure(text: "Jev needs a Jev (TypeSafe) key or a model — sign in with your Claude account (Settings › Intelligence › Model access), or paste a ts-… key in Settings › Agents › Jev mode")
+        }
         switch name {
         case "jev_observe":
             let tab = try Tools.current(browser)

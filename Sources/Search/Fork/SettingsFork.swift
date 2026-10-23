@@ -70,7 +70,9 @@ struct IntelligencePage: View {
     }
 
     private var jevDetail: String {
-        "Picks between choices and says how sure it is, in about a fifth of a second. Agents use it for quick decisions."
+        let speed = "Picks between choices and says how sure it is, in about a fifth of a second. Agents use it for quick decisions."
+        guard !brain.jevReady, brain.modelReady else { return speed }
+        return speed + " Optional: without a key, Jev runs ask the model above at each step."
     }
 
     private var footnote: String {
@@ -595,7 +597,7 @@ private struct AgentsJevSection: View {
             .settingsAnchor("agents.jev")
             if mcp.config.jev {
                 Rule()
-                Line("Jev key", brain.cloudLine("jevKey", brain.cloud?.jev?.key) ?? (brain.jevReady ? "The same Jev key as Settings › Intelligence." : "Jev mode needs a Jev key (ts-…), the same one Settings › Intelligence uses.")) {
+                Line("Jev key", brain.cloudLine("jevKey", brain.cloud?.jev?.key) ?? (brain.jevReady ? "The same Jev key as Settings › Intelligence." : brain.modelReady ? "No Jev key: runs use \(brain.accessLine) instead, one model call per step — slower than Jev, nothing else to set up. A Jev key (ts-…) makes them fast." : "Jev mode needs a Jev key (ts-…), or a model — sign in with your Claude account in Settings › Intelligence.")) {
                     KeyField(text: $brain.keys.jevKey, placeholder: brain.cloudPlaceholder("jevKey", brain.cloud?.jev?.key, otherwise: "ts-…"),
                              ready: brain.jevReady, refused: check.refused("jev"), label: "Jev key")
                 }

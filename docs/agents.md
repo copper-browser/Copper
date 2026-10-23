@@ -198,7 +198,13 @@ Model output never becomes a selector, a coordinate or JavaScript.
 
 Needs a TypeSafe key (shared with Intelligence — the Agents page has the
 field too) and, for anything that types or extracts, the model (Settings ›
-Intelligence). The picker names the model used for typing and
+Intelligence). **Without a TypeSafe key** the tools still work whenever a model
+is set up — a Claude account (Pro, Max, Team or Enterprise) is enough: each run
+uses the `llm` strategy, where the text model (Haiku unless you name one)
+picks the operation, the target and any text from the element table in one call
+per step. It takes no pictures, and its steps take a second or two instead of
+Jev's fifth of a second. `copper intelligence status` and the MCP status report
+`jevOnModel: true` while that is so. The picker names the model used for typing and
 `jev_extract`; small and fast is the point: Sonnet spends ~2.5 s writing a
 search string, a mercury-class model well under a second. DONE is the model's
 claim; the tool says so and the agent is told to check.

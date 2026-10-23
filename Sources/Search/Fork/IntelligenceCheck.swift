@@ -118,8 +118,10 @@ final class IntelligenceCheck: ObservableObject {
                 } catch {
                     out.append(Self.jevFailure(error))
                 }
+            } else if modelReady {
+                out.append(Result(lane: "jev", ok: true, text: "No Jev key — Jev runs use the model instead, one call per step. A key makes them fast."))
             } else {
-                out.append(Result(lane: "jev", ok: false, text: "Jev has no key yet — paste one below."))
+                out.append(Result(lane: "jev", ok: false, text: "Jev has no key yet — paste one below, or sign in with a Claude account above."))
             }
             let lane = keys.lane == .claude ? "claude" : "router"
             if modelReady {
