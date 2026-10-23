@@ -52,6 +52,14 @@ enum Instance {
             close(fd)
             Updates.note("instance lock: \(Store.folder.lastPathComponent) already running\(owner.map { " as pid \($0)" } ?? ""); pid \(getpid()) exiting")
             if !Headless.on, let owner, let running = NSRunningApplication(processIdentifier: owner) {
+                // The main world's second launch (`open -n`, a relaunch that
+                // raced) is a Dock click that reached the wrong process: the
+                // running Copper gets the reopen too, so one with no browser
+                // window brings one back rather than coming forward empty
+                // (Fork/LaunchWatchdog.swift). A probe's would be handed on
+                // to the main world (`reopenFromProbe`), so a probe only
+                // activates its holder, as before.
+                if Store.world == nil { reopen(owner) }
                 running.activate(options: [.activateAllWindows])
             }
             exit(0)
@@ -209,7 +217,11 @@ enum Instance {
     /// The reopen event LaunchServices itself would send, aimed at exactly
     /// that process — so LaunchServices gets no second say in which Copper
     /// it reaches.
-    @MainActor private static func sendReopen(to pid: pid_t) {
+    @MainActor private static func sendReopen(to pid: pid_t) { reopen(pid) }
+
+    /// `sendReopen`, for `acquireIfNeeded`, which runs before anything is
+    /// on the main actor's books (SearchApp.init).
+    private static func reopen(_ pid: pid_t) {
         let event = NSAppleEventDescriptor(
             eventClass: AEEventClass(kCoreEventClass), eventID: AEEventID(kAEReopenApplication),
             targetDescriptor: NSAppleEventDescriptor(processIdentifier: pid),

@@ -78,6 +78,9 @@ enum SpaceWarm {
 /// WebKit judges it again (`moved`, from PageView).
 @MainActor
 enum Room {
+    /// The room's class: a panel (see `make`).
+    final class Panel: NSPanel {}
+
     private static var window: NSWindow?
     private static var parked = Set<ObjectIdentifier>()
 
@@ -115,17 +118,35 @@ enum Room {
 
     /// Off every screen, never key or main, behind everything, never in the
     /// window list (Bench's room, the same shape).
+    ///
+    /// A panel, not a window: the room goes up while the first browser is
+    /// built, inside SwiftUI's will-finish-launching — before AppKit decides
+    /// whether to open the first window. AppKit opens none when the app
+    /// already has a window ordered in, and leaves panels out of that
+    /// question (and out of the Dock click's "a window is showing"). As a
+    /// plain NSWindow the room made every launch without saved window state
+    /// — after ⌘Q, after an update — come up with no browser window
+    /// (Fork/LaunchWatchdog.swift).
     private static func make() -> NSWindow {
-        let room = NSWindow(contentRect: NSRect(x: -20000, y: -20000, width: 1280, height: 800),
-                            styleMask: [.borderless], backing: .buffered, defer: false)
+        let room = built()
+        room.orderBack(nil)
+        window = room
+        return room
+    }
+
+    /// The room, made and not yet ordered in (Tests: LaunchWindowTests).
+    static func built() -> NSWindow {
+        let room = Panel(contentRect: NSRect(x: -20000, y: -20000, width: 1280, height: 800),
+                         styleMask: [.borderless], backing: .buffered, defer: false)
+        // A panel hides when its app stops being active; a room never does,
+        // or its page would turn hidden the moment you look elsewhere.
+        room.hidesOnDeactivate = false
         room.isReleasedWhenClosed = false
         room.isExcludedFromWindowsMenu = true
         room.collectionBehavior = [.transient, .ignoresCycle, .stationary]
         room.level = NSWindow.Level(rawValue: NSWindow.Level.normal.rawValue - 1)
         room.hasShadow = false
         room.ignoresMouseEvents = true
-        room.orderBack(nil)
-        window = room
         return room
     }
 }

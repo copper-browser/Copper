@@ -102,7 +102,8 @@ enum LinkRelay {
             if window.isMiniaturized { window.deminiaturize(nil) }
             window.makeKeyAndOrderFront(nil)
         } else {
-            _ = NSApp.delegate?.applicationOpenUntitledFile?(NSApp)
+            // No window to bring back — or none ever made (Fork/LaunchWatchdog.swift).
+            Windows.openFirst("link")
         }
         NSApp.activate(ignoringOtherApps: true)
     }

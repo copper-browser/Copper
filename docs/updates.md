@@ -164,7 +164,8 @@ descriptor for the life of the process and writes its pid into the file.
 
 - Already held (`EWOULDBLOCK` after eight 40 ms retries — a probe's momentary check must not
   read as a second Copper): log `instance lock: Copper (w) already running as pid N; pid M
-  exiting`, activate the holder unless headless, `exit(0)`.
+  exiting`, activate the holder unless headless — for the main world, after sending it a
+  reopen event, so a holder with no browser window brings one back — `exit(0)`.
 - Any other error: log and start without the lock (fail open).
 - `--cli` (the `copper` command) and `--mcp-stdio` (the stdio bridge) are clients of a running
   Copper and never take it.
@@ -172,6 +173,63 @@ descriptor for the life of the process and writes its pid into the file.
 
 `Instance.isRunning(worldFolder:)` answers "who holds this world?" with a shared non-blocking
 probe; the waiter reads the pid from the file and checks it with `kill -0`.
+
+## No launch without a window
+
+October 23 2026: v1.0.20261020.66, relaunched by the updater (`open -n`, `relaunch confirmed`),
+came up in front with its session loaded (`pulse tabs=174`) and **no browser window**; ⌘Q and a
+Dock launch did the same. CGWindowList showed only the menu bar strips, a hidden 500×500 and the
+Backstage room at (−5280, 5418). The Dock click, `open -a Copper`, the Dock menu's New Window
+and ⌘N did nothing; only `open -a Copper <url>` (Links `summon`) brought it back.
+
+Why (taken apart with lldb on a probe, then reproduced with the build stamped as a release):
+
+- A release is linked against the macOS 15.5 SDK. For such an app SwiftUI leaves the first
+  `Window` scene to AppKit: the launch's open-application event (`-[NSApplication
+  _handleAEOpenEvent:]`) calls `_doOpenUntitled` → SwiftUI's `applicationOpenUntitledFile`.
+  `./build.sh` with the Command Line Tools stamps `sdk 14.0` (`otool -l … | grep -A4
+  LC_BUILD_VERSION`); SwiftUI then also shows the window from its own did-finish-launching,
+  which is why no development or probe build ever showed the bug.
+- AppKit skips `_doOpenUntitled` when **(a)** nothing was restored and the app already has a
+  window open (`_appHasOpenNSWindow`: any NSWindow ordered in, wherever it is — NSPanels
+  excepted), or **(b)** there is window state to restore (`_launchTaskMask`) and the launch did
+  not activate the app (`open -g`, or activation refused under cooperative activation): the
+  window is left to restoration, which in a background launch after a kill brought none back
+  on probes several times (not every time).
+- Copper's first browser is built in SwiftUI's will-finish-launching (the `@StateObject`), and
+  building it starts the restored page in the `Room` (Fork/SpaceWarm.swift), an NSWindow ordered
+  in off every screen — before the open event. A clean quit leaves no window state to restore
+  (`discardAllPersistentStateAndClose`), so the next launch had no window. Measured: the old
+  code stamped `sdk 15.5`, `open -n` in the foreground → `_appHasOpenNSWindow` YES at the
+  open event, no window; the same with the Room a panel → NO, window.
+- Nothing brought one back: `reopenFromDock`, the Dock menu and ⌘N used `Windows.primary` /
+  `opener`, which the first window's own view sets — never, here; and with an agent's page in
+  the Backstage room (also an NSWindow) the Dock click arrived as `hasVisibleWindows`, so AppKit
+  opened nothing either.
+
+What holds now:
+
+- `Room.Panel` and `Backstage.Window` are `NSPanel`s (`hidesOnDeactivate` off), so neither
+  counts as an open window — for the launch, or for a Dock click.
+- `Windows.openFirst(why)` is every way back when no window was ever made: the first window's
+  `openWindow` if it has one, else `applicationOpenUntitledFile` (what a link does). The scene
+  is a single `Window`, so it never makes a second. The Dock click (`reopenFromDock`), the Dock
+  menu, ⌘N (`newWindow`), `LinkRelay.land` and a second launch of the main world (which now
+  sends the holder a reopen) all end there; the first time each fires the trail says
+  `window-recovery via=<dock|new-window|link|launch-watchdog> opened=<untitled|scene>`.
+- `LaunchWatchdog` (Fork/LaunchWatchdog.swift), armed in `Bridge.runIfAsked` for a windowed
+  launch: 1.5 s and 5 s after did-finish-launching (and when a hidden launch is unhidden, or the
+  app is activated later), a run that has never attached a browser window asks for the first one
+  and writes `launch-watchdog check=after-1.5s browser-windows=0 other-windows=N
+  action=opened-first-window`. It never activates the app (a background launch stays behind),
+  never acts once a window has been shown (closing it is yours), and is off in headless runs.
+  `./bench windows watchdog` says what it last decided; `windows showing` adds `everAttached`.
+- Test worlds only: `COPPER_TEST_BLOCK_LAUNCH_WINDOW=1` puts an ordinary window up before
+  AppKit decides (what the Room did), `COPPER_LAUNCH_WATCHDOG=off` turns the watchdog off,
+  `COPPER_LAUNCH_WATCHDOG_DELAY=S` moves its first look. `docs/fixtures/launch-window-e2e.sh`
+  stamps a copy of the build `sdk 15.5` (`vtool`) and proves each way back in its own probe
+  world, in the background; `swift test --filter LaunchWindowTests` (with the testing-macros
+  plugin, docs/settings.md) asks AppKit itself whether the rooms count.
 
 ## Probes hand reopen to the real Copper
 
