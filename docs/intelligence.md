@@ -1,6 +1,6 @@
 # Intelligence — model access and the model picker
 
-Copper keeps its model access in Settings › Intelligence. There are two lanes. Jev (TypeSafe) is a separate fast helper and is unchanged.
+Copper keeps its model access in Settings › Intelligence. There are two lanes. Jev (TypeSafe) is a separate fast helper; it is optional. Without a Jev key, Jev runs (`jev_run`, `jev_step`, the pane's Jev tools) ask the model lane for each step, so a Claude subscription alone runs everything.
 
 ## The two lanes
 

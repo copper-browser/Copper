@@ -239,6 +239,12 @@ final class Intelligence: ObservableObject {
     /// Whether the active model lane can be asked at all.
     var claudeReady: Bool { ClaudeAccount.shared.signedIn }
     var modelReady: Bool { lane == .key ? routerReady : claudeReady }
+    /// Whether Jev runs can happen: with a Jev key, or without one on the
+    /// model lane — a Claude subscription is enough — where the model picks
+    /// each step itself (Strategy.llm).
+    var jevUsable: Bool { jevReady || modelReady }
+    /// No Jev key, a model to ask: Jev runs decide with the model.
+    var jevOnModel: Bool { !jevReady && modelReady }
     var configured: Bool { jevReady || modelReady }
 
     /// resolve a tier name or pass through a full model name.
@@ -339,7 +345,7 @@ final class Intelligence: ObservableObject {
          "routerModel": keys.routerModel, "jevModel": effective.jevModel, "jevVision": keys.jevVision, "jevFast": keys.jevFast,
          "lane": effective.lane.rawValue, "laneSource": laneSource, "localLane": keys.lane.rawValue,
          "tier": tier.rawValue, "model": modelName,
-         "modelReady": modelReady, "claudeReady": claudeReady,
+         "modelReady": modelReady, "claudeReady": claudeReady, "jevOnModel": jevOnModel,
          "claudeAccount": ClaudeAccount.shared.email,
          "sources": sources]
         if let answered = answeredModel { out["answeredBy"] = answered }

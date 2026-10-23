@@ -1,3 +1,5 @@
+A Claude subscription is all Copper needs now. Sign in with your Claude account (Pro, Max, Team or Enterprise) in Settings › Intelligence, and the agent pane, Jev runs and the tools your coding agent calls all work. There's no API key or Jev key to find. Without a Jev key, Jev runs ask your Claude model for each step instead: slower than Jev, and nothing else to set up.
+
 Copper now makes your new passwords. On a sign-up or change-password form, click the new password box and choose **Suggest strong password**: Copper makes a strong one that keeps the site's rules, saves it to Bitwarden, 1Password or the keychain first — so a failed save never leaves you locked out — and fills it into the new and confirm boxes, with your current password in the old one. A password you type yourself on those forms is offered for saving to the right account, and agents can do the same with `copper autofill new-password` without ever seeing it.
 
 With every window closed, clicking Copper in the Dock brings a window back — or opens a new one when none is left. It used to do nothing.

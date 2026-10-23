@@ -340,7 +340,7 @@ final class Agent: ObservableObject {
         let asked = messages.count
         messages.append(user)
 
-        let jev = MCP.shared.config.jev && Intelligence.shared.jevReady
+        let jev = MCP.shared.config.jev && Intelligence.shared.jevUsable
         // Read once per question, so every round sends the same tool bytes.
         let tools = Agent.modelTools(Tools.catalogue(jev: jev) + Servers.shared.toolsForModel,
                                      transcript: Transcript.shared.id != nil)
