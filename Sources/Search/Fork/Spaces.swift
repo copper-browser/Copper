@@ -1112,7 +1112,9 @@ final class Spaces: ObservableObject {
             if entry.active == true || (entry.space == nil && i == saved.active) { row.active = tab.id }
             restored[id] = row
         }
-        for space in all { rows[space.id] = restored[space.id]?.tabs ?? [] }
+        // A folder's tabs come back side by side (Folders.gathered), so a row
+        // that came apart on disk is whole again and draws each folder once.
+        for space in all { rows[space.id] = Folders.gathered(restored[space.id]?.tabs ?? []) { Groups.shared.group(of: $0)?.name } }
         // Fork (space-warm): the tab each space was on when the session was
         // written is the one a switch there lands on — not whichever was
         // touched last, which right after a restore is anyone's.

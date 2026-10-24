@@ -31,6 +31,30 @@ enum Folders {
         name.count > other.count && name.hasPrefix(other + mark)
     }
 
+    /// The row with every folder's tabs side by side, nesting and all, and
+    /// nothing else moved: a folder's tabs follow its first one, in the order
+    /// they had. The column draws a header for each run of a folder's tabs,
+    /// so a folder split by other rows (an import, a hand edit, a merge)
+    /// showed up two or three times. Gathering again changes nothing.
+    static func gathered<T>(_ items: [T], name: (T) -> String?) -> [T] {
+        func gather(_ items: [(T, [String])], depth: Int) -> [T] {
+            var order: [String] = []
+            var buckets: [String: [(T, [String])]] = [:]
+            var out: [(one: T?, folder: String?)] = []
+            for item in items {
+                guard item.1.count > depth else { out.append((item.0, nil)); continue }
+                let key = item.1[depth]
+                if buckets[key] == nil { order.append(key); out.append((nil, key)) }
+                buckets[key, default: []].append(item)
+            }
+            return out.flatMap { piece -> [T] in
+                if let key = piece.folder { return gather(buckets[key] ?? [], depth: depth + 1) }
+                return piece.one.map { [$0] } ?? []
+            }
+        }
+        return gather(items.map { ($0, name($0)?.components(separatedBy: mark) ?? []) }, depth: 0)
+    }
+
     /// The name a folder made inside `parent` carries.
     static func inside(_ parent: TabGroup, named name: String) -> String {
         parent.name + mark + name.trimmingCharacters(in: .whitespaces)
