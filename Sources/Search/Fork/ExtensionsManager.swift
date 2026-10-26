@@ -69,6 +69,10 @@ final class ExtensionManager: ObservableObject {
     func close() {
         if showing { Windows.current.tuning = false }
     }
+
+    func toggle(in browser: Browser? = nil) { // `bench ext-manager toggle`
+        if showing { close() } else { open(in: browser) }
+    }
 }
 
 // MARK: - site choices that outlast a launch
