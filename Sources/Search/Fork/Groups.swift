@@ -251,6 +251,38 @@ final class Groups: ObservableObject {
         membership[tab.id] = id
     }
 
+    // MARK: - Copper Cloud
+
+    /// The folders another device sent (`CloudDocs.Folder`): each added or
+    /// edited by id, and those the document dropped since the last sync
+    /// dissolved — their tabs stay, unfiled. Open or shut stays this Mac's;
+    /// a folder new here arrives shut, as an import's do.
+    func cloudAdopt(_ folders: [CloudDocs.Folder], removed: Set<UUID>) {
+        var next: [TabGroup] = []
+        for f in folders {
+            var g = all.first(where: { $0.id == f.id }) ?? TabGroup(id: f.id, name: f.name, hue: f.hue, collapsed: true)
+            g.name = f.name
+            g.hue = f.hue
+            g.space = f.space
+            g.slot = f.slot
+            next.append(g)
+        }
+        // Folders only this Mac has (made since the sync) keep their place at the end.
+        let sent = Set(folders.map(\.id))
+        next += all.filter { !sent.contains($0.id) && !removed.contains($0.id) }
+        guard next != all else { return }
+        membership = membership.filter { !removed.contains($0.value) }
+        all = next
+        save()
+    }
+
+    /// File a kept tab where the document has it (nil: in no folder).
+    func cloudFile(_ tab: Tab, in id: UUID?) {
+        guard membership[tab.id] != id else { return }
+        if let id, !all.contains(where: { $0.id == id }) { return }
+        membership[tab.id] = id
+    }
+
     /// Tabs that no longer exist anywhere drop out of the map.
     func prune(keeping tabs: [Tab]) {
         let alive = Set(tabs.map(\.id))

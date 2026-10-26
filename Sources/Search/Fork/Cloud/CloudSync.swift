@@ -196,6 +196,7 @@ final class CloudSync: ObservableObject {
         browser.bookmarks.objectWillChange.sink { [weak self] in self?.changed(.bookmarks) }.store(in: &bag)
         browser.history.objectWillChange.sink { [weak self] in self?.changed(.history) }.store(in: &bag)
         Spaces.shared.objectWillChange.sink { [weak self] in self?.changed(.spaces) }.store(in: &bag)
+        Groups.shared.objectWillChange.sink { [weak self] in self?.changed(.spaces) }.store(in: &bag) // folders travel in the spaces document
         watch()
         guard cloud.isSignedIn, on else { return }
         // A moment after launch, not during it.
