@@ -159,7 +159,7 @@ final class Preferences: ObservableObject {
             ?? (store.string(forKey: "manner") == "side")
         let width = store.object(forKey: "sidebar.width") as? Double ?? Double(Metrics.side)
         sideWidth = min(Metrics.sideMax, max(Metrics.sideMin, CGFloat(width)))
-        glyph = store.string(forKey: "glyph").flatMap(Glyph.init) ?? .letters
+        glyph = store.string(forKey: "glyph").flatMap(Glyph.init) ?? .icons
         tabSwitching = store.string(forKey: "tabs.switching").flatMap(TabSwitching.init) ?? .row
         swipeDirection = store.string(forKey: "spaces.swipe").flatMap(SwipeDirection.init) ?? .system
         sleepsTabs = store.object(forKey: "tabs.sleep") as? Bool ?? true
