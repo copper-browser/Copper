@@ -1,7 +1,8 @@
 name: release
 
-# Builds Copper on a GitHub-hosted Mac and publishes it as a public GitHub
-# release of this repo — the one place every install path reads from:
+# Builds Copper on Copper's own Mac (the self-hosted runner labelled
+# copper-mini; runner=macos-15 uses a GitHub-hosted Mac instead) and publishes
+# it as a public GitHub release of this repo — the one place every install path reads from:
 #
 #   brew install --cask copper-browser/copper/copper     (tap bumps itself from
 #                                                         copper-version.json)
@@ -59,6 +60,14 @@ on:
         required: false
         default: true
         type: boolean
+      runner:
+        description: "Where to build: copper-mini (Copper's own Mac, no queue) or macos-15 (GitHub-hosted, when the Mac is offline)"
+        required: false
+        default: copper-mini
+        type: choice
+        options:
+          - copper-mini
+          - macos-15
 
 permissions:
   contents: write
@@ -69,8 +78,10 @@ concurrency:
 
 jobs:
   release:
-    name: Build, sign + publish (macos-15, arm64)
-    runs-on: macos-15
+    name: Build, sign + publish (${{ inputs.runner || 'copper-mini' }}, arm64)
+    # GitHub-hosted macOS arm64 runners often sit unassigned for 15 min and
+    # cancel ("not acquired by Runner of type hosted"); Copper's own Mac doesn't.
+    runs-on: ${{ inputs.runner || 'copper-mini' }}
     timeout-minutes: 60
     steps:
       - name: Publish or dry run
