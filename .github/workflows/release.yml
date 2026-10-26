@@ -129,6 +129,9 @@ jobs:
           test -d build/Copper.app/Contents/MacOS
           test "$(plutil -extract CFBundleIdentifier raw -o - build/Copper.app/Contents/Info.plist)" = com.collinrijock.copper
 
+      - name: Xos handoff validation
+        run: swift test --filter xosInsert
+
       - name: Signing keychain (this runner only)
         id: keychain
         env:

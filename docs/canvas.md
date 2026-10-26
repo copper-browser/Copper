@@ -1077,3 +1077,20 @@ the other, then `canvas_apply` on either and `canvas_read` on the other.
 `docs/fixtures/canvas-fixture.html` is a stand-in page with the same API over a plain map
 (updates are base64 JSON) — copy it over `Resources/canvas.html` to exercise the host without the
 real bundle.
+
+
+## Insert an Xos whiteboard snapshot
+
+Xos's **Insert into Copper** opens a native destination picker: Personal, a new canvas named
+for the meeting, or an existing writable canvas belonging to the account using this Copper.
+The drawing becomes a native, movable image that can be resized and commented on; the image
+is a snapshot, independent of later edits or clearing the room board. Meeting destinations
+are remembered per signed-in Copper account.
+
+The handoff is `copper://canvas/insert?source=<encoded HTTPS snapshot URL>&mode=meeting|personal|room|choose`.
+Only expiring `/api/whiteboard-exports/<token>` URLs on `xos.apps.exowatt.com` are accepted,
+with no redirects or cookies. The bounded payload contains a PNG and context, never executable
+canvas operations. A deterministic image ID prevents duplicate insertion into the same canvas.
+Xos receives an insertion receipt after the canvas checkpoint, and never receives Copper credentials.
+If Copper is not installed or this version is unavailable, Xos offers PNG, SVG, PDF and image-copy
+exports. The existing live web-frame integration remains available independently.

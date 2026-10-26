@@ -1698,6 +1698,7 @@ final class Browser: NSObject, ObservableObject {
     /// the page rather than staying behind as an empty one; otherwise the
     /// page gets a tab of its own, in front.
     func arrive(_ url: URL) {
+        if XosCanvasInsert.handle(url, in: self) { return }
         if CanvasJoinFlow.handle(url, in: self) { return }
         if let active, active.isBlank, typed.isEmpty, !active.floating {
             active.go(to: url)

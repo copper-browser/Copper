@@ -352,6 +352,7 @@ final class CanvasHost {
     ///   sent to a tab of its own; the address field, Back and Forward take the
     ///   tab with them and it stops being a canvas.
     static func decide(_ action: WKNavigationAction, url: URL, in web: WKWebView, browser: Browser) -> Bool {
+        if XosCanvasInsert.handle(url, in: browser) { return true }
         let main = action.targetFrame?.isMainFrame ?? false
         let popup = action.targetFrame == nil
         let tab = host(showing: web)?.tab ?? browser.tab(for: web) ?? (browser.primary ? Spaces.shared.parkedTabs.first { $0.built === web } : nil)
