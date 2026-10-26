@@ -239,12 +239,6 @@ final class Intelligence: ObservableObject {
     /// Whether the active model lane can be asked at all.
     var claudeReady: Bool { ClaudeAccount.shared.signedIn }
     var modelReady: Bool { lane == .key ? routerReady : claudeReady }
-    /// Whether Jev runs can happen: with a Jev key, or without one on the
-    /// model lane — a Claude subscription is enough — where the model picks
-    /// each step itself (Strategy.llm).
-    var jevUsable: Bool { jevReady || modelReady }
-    /// No Jev key, a model to ask: Jev runs decide with the model.
-    var jevOnModel: Bool { !jevReady && modelReady }
     var configured: Bool { jevReady || modelReady }
 
     /// resolve a tier name or pass through a full model name.
@@ -345,7 +339,7 @@ final class Intelligence: ObservableObject {
          "routerModel": keys.routerModel, "jevModel": effective.jevModel, "jevVision": keys.jevVision, "jevFast": keys.jevFast,
          "lane": effective.lane.rawValue, "laneSource": laneSource, "localLane": keys.lane.rawValue,
          "tier": tier.rawValue, "model": modelName,
-         "modelReady": modelReady, "claudeReady": claudeReady, "jevOnModel": jevOnModel,
+         "modelReady": modelReady, "claudeReady": claudeReady,
          "claudeAccount": ClaudeAccount.shared.email,
          "sources": sources]
         if let answered = answeredModel { out["answeredBy"] = answered }
@@ -608,6 +602,10 @@ final class Intelligence: ObservableObject {
 /// rubric) or a `noul` (how likely is this true). Text only, no streaming,
 /// one round trip — see https://docs.typesafe.ai.
 enum Jev {
+    /// Where a Jev key comes from: the user's own TypeSafe account. Every
+    /// "no Jev key" message names it — Jev has no stand-in.
+    static let keyPage = "https://console.typesafe.ai"
+
     struct Choice {
         let key: String
         let confidence: Double
@@ -672,7 +670,7 @@ enum Jev {
     /// call — `jev-1.14.0` for a Box, say, while the default stays `jev-latest`.
     static func ask(state: Any, questions: [String: Any], keys: Intelligence.Keys, timeout: TimeInterval = 4,
                     assets: [Asset] = [], model override: String? = nil) async throws -> Answer {
-        guard !keys.jevKey.isEmpty else { throw Failure(kind: "not_configured", detail: "No Jev key — Settings › Intelligence") }
+        guard !keys.jevKey.isEmpty else { throw Failure(kind: "not_configured", detail: "No Jev key — get one at \(Jev.keyPage) and paste it in Settings › Intelligence") }
         guard let url = URL(string: keys.jevEndpoint) else { throw Failure(kind: "bad_endpoint", detail: keys.jevEndpoint) }
         var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = "POST"

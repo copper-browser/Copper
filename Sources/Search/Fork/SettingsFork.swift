@@ -61,8 +61,11 @@ struct IntelligencePage: View {
 
             SettingsSection("Jev — the fast lane", note: footnote) {
                 Line("Jev", brain.cloudLine("jevKey", brain.cloud?.jev?.key) ?? jevDetail) {
-                    KeyField(text: $brain.keys.jevKey, placeholder: brain.cloudPlaceholder("jevKey", brain.cloud?.jev?.key, otherwise: "ts-…"),
-                             ready: brain.jevReady, refused: check.refused("jev"), label: "Jev key")
+                    HStack(spacing: 8) {
+                        if !brain.jevReady { JevKeyPagePill() }
+                        KeyField(text: $brain.keys.jevKey, placeholder: brain.cloudPlaceholder("jevKey", brain.cloud?.jev?.key, otherwise: "ts-…"),
+                                 ready: brain.jevReady, refused: check.refused("jev"), label: "Jev key")
+                    }
                 }
                 .settingsAnchor("intelligence.jev")
             }
@@ -71,8 +74,7 @@ struct IntelligencePage: View {
 
     private var jevDetail: String {
         let speed = "Picks between choices and says how sure it is, in about a fifth of a second. Agents use it for quick decisions."
-        guard !brain.jevReady, brain.modelReady else { return speed }
-        return speed + " Optional: without a key, Jev runs ask the model above at each step."
+        return brain.jevReady ? speed : speed + " Jev runs need a key from your own TypeSafe account — Get a key opens \(Jev.keyPage)."
     }
 
     private var footnote: String {
@@ -597,9 +599,12 @@ private struct AgentsJevSection: View {
             .settingsAnchor("agents.jev")
             if mcp.config.jev {
                 Rule()
-                Line("Jev key", brain.cloudLine("jevKey", brain.cloud?.jev?.key) ?? (brain.jevReady ? "The same Jev key as Settings › Intelligence." : brain.modelReady ? "No Jev key: runs use \(brain.accessLine) instead, one model call per step — slower than Jev, nothing else to set up. A Jev key (ts-…) makes them fast." : "Jev mode needs a Jev key (ts-…), or a model — sign in with your Claude account in Settings › Intelligence.")) {
-                    KeyField(text: $brain.keys.jevKey, placeholder: brain.cloudPlaceholder("jevKey", brain.cloud?.jev?.key, otherwise: "ts-…"),
-                             ready: brain.jevReady, refused: check.refused("jev"), label: "Jev key")
+                Line("Jev key", brain.cloudLine("jevKey", brain.cloud?.jev?.key) ?? (brain.jevReady ? "The same Jev key as Settings › Intelligence." : "Jev mode needs a Jev key (ts-…) from your own TypeSafe account — Get a key opens \(Jev.keyPage). Settings › Intelligence uses the same one.")) {
+                    HStack(spacing: 8) {
+                        if !brain.jevReady { JevKeyPagePill() }
+                        KeyField(text: $brain.keys.jevKey, placeholder: brain.cloudPlaceholder("jevKey", brain.cloud?.jev?.key, otherwise: "ts-…"),
+                                 ready: brain.jevReady, refused: check.refused("jev"), label: "Jev key")
+                    }
                 }
                 .settingsAnchor("agents.jevkey")
                 Rule()
@@ -1247,5 +1252,16 @@ enum SettingsPicture {
         guard let picture = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return nil }
         host.cacheDisplay(in: host.bounds, to: picture)
         return picture
+    }
+}
+
+/// Opens TypeSafe's console, where a Jev key is made. Shown beside the Jev
+/// key box until there is a key.
+private struct JevKeyPagePill: View {
+    var body: some View {
+        Pill("Get a key") {
+            if let url = URL(string: Jev.keyPage) { NSWorkspace.shared.open(url) }
+        }
+        .help(Jev.keyPage)
     }
 }

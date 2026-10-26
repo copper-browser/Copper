@@ -260,12 +260,12 @@ before you need it.
 Jev is the fast lane: it reads the controls on a page and picks the next
 action in about a fifth of a second, so a whole goal ("find the March invoice
 and stop when it is visible") runs in seconds instead of one round trip per
-click. It is fastest with a TypeSafe key, which a Copper Cloud with
-instance-wide keys provides; otherwise paste one under Settings › Intelligence ›
-Jev. **No key? A Claude subscription is enough:** signed in with your Claude
-account (or with a gateway key), Jev runs ask that model for each step
-instead. They're slower, a second or two a step, and there's nothing else to set up.
-For outside agents, turn on **Settings › Agents › Let the agent hand Copper a goal**.
+click. It needs a TypeSafe key, which a Copper Cloud with instance-wide keys
+provides; otherwise make your own TypeSafe account at
+[console.typesafe.ai](https://console.typesafe.ai), create a key there and paste it
+under Settings › Intelligence › Jev (**Get a key** beside the box opens the console).
+A Claude sign-in doesn't stand in for it: Jev runs need the key. For outside
+agents, turn on **Settings › Agents › Let the agent hand Copper a goal**.
 
 ## 5. Connect phi or Claude Code
 
