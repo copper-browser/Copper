@@ -12,9 +12,11 @@ rotate the certificate. Files: `build.sh`, `release/package-app.sh`,
 ```sh
 gh workflow run release.yml -R copper-browser/Copper -f ref=fork                  # publish
 gh workflow run release.yml -R copper-browser/Copper --ref <branch> -f publish=false   # dry run
+gh workflow run release.yml -R copper-browser/Copper -f ref=fork -f runner=macos-15   # on a GitHub-hosted Mac
 ```
 
-The workflow builds on a GitHub-hosted Mac (`COPPER_RELEASE=1 ./build.sh release app`), stamps
+The workflow builds on Copper's own Mac, a self-hosted runner labelled `copper-mini`
+(`COPPER_RELEASE=1 ./build.sh release app`), stamps
 `<VERSION>.<YYYYMMDD>.<run>` into the bundle, signs it with Copper's release certificate,
 checks the signature on the zipped bytes, launches the zipped app headless and asks `/health`
 for its version, and then publishes the zip, its `.sha256`, `copper-version.json`,
@@ -29,6 +31,15 @@ installer or tap reads. Only the *Create the GitHub release* step is handed a to
 when publish is exactly `true`.
 `ref` defaults to the branch the run was started from (`fork` from the Actions page). A
 publishing run refuses any ref but `fork`; dry runs build any ref.
+
+**`runner`** picks the Mac. `copper-mini` (the default) is Copper's own, always-on Mac with
+Xcode, registered to this repository as a self-hosted runner; it picks a run up at once.
+`macos-15` is a GitHub-hosted Mac, for when that Mac is offline (the run would otherwise wait
+in the queue). Hosted macOS arm64 runners are often short: a job nobody picks up is cancelled
+after 15 minutes with *not acquired by Runner of type hosted* and no steps run. Because the
+repository is public, workflows from outside contributors' pull requests wait for a
+maintainer's approval (Settings › Actions › Fork pull request workflows), and only
+`release.yml` names the `copper-mini` label.
 
 ## How a release is signed
 
