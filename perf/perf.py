@@ -9,6 +9,8 @@ Runs on the Mac, against a probe world's bench socket (see perf/README.md).
     perf.py launch APP WORLD N              N launches of APP into WORLD (FG=1: in front); `bench pace` each
     perf.py ablaunch WORLD A=APP B=APP N    launches alternating between builds, N rounds
     perf.py spaces WORLD ROUNDS             every space in turn, ROUNDS times; slide timings + pace per switch
+    perf.py tabs WORLD ROUNDS [COUNT]       the first COUNT tabs of the space on screen in turn, ROUNDS
+                                            times; pace and the process's memory per switch
     perf.py load WORLD URL N [--user]       N loads of URL in a new tab (--user: ⌘T, the address, Return)
     perf.py reload WORLD URL N              open URL, then ⌘R it N times
     perf.py quit WORLD                      SIGTERM the world's process
@@ -289,6 +291,40 @@ def spaces(world, rounds):
     return rows
 
 
+def rss_mb(world):
+    pid = pid_of(world)
+    if not pid:
+        return None
+    out = subprocess.run(["ps", "-o", "rss=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+    return round(int(out) / 1024) if out else None
+
+
+def tabs(world, rounds, count, settle=1.0):
+    """The first COUNT tabs of the space on screen, each in turn, ROUNDS times:
+    pace per switch. Round 0 wakes sleeping tabs; later rounds switch between
+    pages already loaded (unless the budget put them back to sleep)."""
+    listing = ask(world, {"do": "tabs"}).get("tabs", [])
+    space = next((t.get("space") for t in listing if t.get("active")), None)
+    ids = [t["id"] for t in listing if t.get("space") == space and not t.get("bench")][:count]
+    rows = []
+    for r in range(rounds):
+        for tid in ids:
+            before = next((t for t in ask(world, {"do": "tabs"}).get("tabs", []) if t["id"] == tid), {})
+            ask(world, {"do": "pace", "op": "reset"})
+            t0 = time.time()
+            ask(world, {"do": "select", "id": tid})
+            ack = time.time()
+            time.sleep(settle)
+            pace = ask(world, {"do": "pace"})
+            row = {"round": r, "id": tid, "ack_ms": round((ack - t0) * 1000),
+                   "was_asleep": before.get("asleep"), "was_built": bool(before.get("view")),
+                   "busy": pace.get("busy"), "longest": pace.get("longest"),
+                   "slow": len(pace.get("slow", [])), "rss_mb": rss_mb(world)}
+            rows.append(row)
+            print(json.dumps(row), flush=True)
+    return rows
+
+
 def ablaunch(apps, world, rounds):
     """Launches alternating between builds, so both see the same machine."""
     for r in range(rounds):
@@ -310,6 +346,8 @@ def main(argv):
         launch(argv[1], argv[2], int(argv[3]))
     elif verb == "spaces":
         spaces(argv[1], int(argv[2]))
+    elif verb == "tabs":
+        tabs(argv[1], int(argv[2]), int(argv[3]) if len(argv) > 3 else 12)
     elif verb == "load":
         load(argv[1], argv[2], int(argv[3]), fresh="--fresh" in argv, user="--user" in argv)
     elif verb == "ablaunch":

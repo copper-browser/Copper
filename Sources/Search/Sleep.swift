@@ -88,10 +88,12 @@ extension Browser {
             return idle
         }
         // Fork (perf): only as many as there are loaded pages over the budget,
-        // and any left past the ceiling.
+        // any left past the ceiling, and any still burning a core with nobody
+        // looking (Heat's sustained reading) — under the budget that page
+        // kept the fans going for twelve hours.
         var over = candidates.filter { $0.built != nil && !$0.asleep }.count - Browser.awakeBudget
         var chosen: [Tab] = []
-        for tab in idle where over > 0 || now.timeIntervalSince(tab.touched) >= Browser.sleepCeiling {
+        for tab in idle where over > 0 || now.timeIntervalSince(tab.touched) >= Browser.sleepCeiling || Heat.shared.isHot(tab) {
             self.sleep(tab)
             chosen.append(tab)
             over -= 1

@@ -142,6 +142,8 @@ final class Favicons {
             config.timeoutIntervalForRequest = 8
             return config
         }())
+        // Fork (perf): a session not invalidated is never freed.
+        defer { session.finishTasksAndInvalidate() }
         for candidate in candidates {
             guard let (data, response) = try? await session.data(from: candidate),
                   (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true,
