@@ -70,36 +70,8 @@ final class ExtensionManager: ObservableObject {
         if showing { Windows.current.tuning = false }
     }
 
-    func toggle(in browser: Browser? = nil) {
+    func toggle(in browser: Browser? = nil) { // `bench ext-manager toggle`
         if showing { close() } else { open(in: browser) }
-    }
-}
-
-// MARK: - the door at the foot
-
-/// The puzzle door at the column's foot, beside the library: Settings ›
-/// Extensions, one click away whatever the pointer is doing — the pill's puzzle
-/// piece only comes out under it. The foot rather than the top row: the top
-/// row already holds the lights, the fold door and back / forward / reload,
-/// and has no room left at the column's narrowest; the foot is where Arc
-/// keeps the library, and extensions are the same kind of thing — the
-/// browser's own, not the page's.
-struct ExtensionsDoor: View {
-    @ObservedObject var browser: Browser
-    let tint: SpaceTint
-
-    var body: some View {
-        if #available(macOS 15.4, *) {
-            Door(icon: "puzzlepiece.extension", help: "Extensions", size: 28, ink: tint.ink, glow: tint.hover, glyph: 14) {
-                ExtensionManager.shared.toggle(in: browser)
-            }
-            .contextMenu {
-                Button("Manage Extensions…") { ExtensionManager.shared.open(in: browser) }
-                Divider()
-                Button("Chrome Web Store…") { browser.open(Browser.webStore, foreground: true) }
-                Button("Load Unpacked…") { Extensions.shared.installFolder() }
-            }
-        }
     }
 }
 

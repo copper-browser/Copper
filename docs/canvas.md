@@ -24,7 +24,7 @@ its own, was folded into Canvas on 2026-10-01 — see [What happened to easels](
   New Canvas), right-click the **plus** at the foot (New Space / New Canvas; a click on it still
   makes a space), or **New Canvas in Space** on a space's menu (its header, its chip, ⌘K's space
   rows).
-- **Sidebar › Canvas door** (at the foot, beside Bookmarks and Extensions): Personal,
+- **Sidebar › Canvas door** (at the foot, left of the spaces): Personal,
   *Invitations* (invites waiting for your answer, with Decline / **Join**), *My canvases*, *Shared
   with me* and **New canvas**. While an invite waits the door wears a small dot in the space's ink
   (green when someone is live on a canvas) and its help says *1 invitation*. Click a row to open it. Right-click a row: Open, Open in Background, Copy Link,

@@ -199,8 +199,7 @@ struct SpaceStrip<Tools: View>: View {
     /// The column's ink as the slide mixes it (SlideInk), or nil for the
     /// current space's own.
     var tint: SpaceTint? = nil
-    /// The column's own small doors — bookmarks, extensions. They share the
-    /// strip's row, the way Arc's do.
+    /// The column's own small doors — the canvas. They share the strip's row.
     @ViewBuilder var tools: () -> Tools
     @ObservedObject private var spaces = Spaces.shared
     @Environment(\.colorScheme) private var scheme
@@ -223,7 +222,7 @@ struct SpaceStrip<Tools: View>: View {
     /// When the chips outgrow the room, the row of them scrolls sideways
     /// with the current one kept in view — no chip ever shrinks to a dot
     /// and no name is ever cut to a letter.
-    /// Arc's foot: the library door at the left, every space's icon in the
+    /// Arc's foot: the canvas door at the left, every space's icon in the
     /// middle — the current one in colour, the rest quiet — and a plus at
     /// the right.
     var body: some View {
