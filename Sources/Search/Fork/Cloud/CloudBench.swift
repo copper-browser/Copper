@@ -570,6 +570,9 @@ enum CloudSelfTest {
         check(fm.groups == [ex, exApps] && fm.tabs.first?.group == exApps.id, "spaces: folders and filing come in")
         let old = CloudMerge.spaces(base: fb, local: fb, server: CloudDocs.Spaces(spaces: [home, work], tabs: [pinA]))
         check(old.groups == [ex], "spaces: a document without folders keeps this Mac's")
+        let mineFiled = CloudDocs.Spaces(spaces: [home, work], tabs: [filed], groups: [ex, exApps])
+        let older = CloudMerge.spaces(base: mineFiled, local: mineFiled, server: CloudDocs.Spaces(spaces: [home, work], tabs: [pinA]))
+        check(older.tabs.first?.group == exApps.id, "spaces: an older build's blank filing unfiles nothing")
         let json = try? JSONDecoder().decode(CloudDocs.Spaces.self, from: Data(#"{"v":1,"spaces":[],"tabs":[]}"#.utf8))
         check(json != nil && json?.groups == nil, "spaces: a document from before folders still reads")
 

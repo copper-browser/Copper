@@ -146,8 +146,14 @@ enum CloudMerge {
         let local = base == nil ? rekeyed(local, to: server) : local
         let spaces = list(base: base?.spaces, local: local.spaces, server: server.spaces) { $0.id.uuidString }
         let alive = Set(spaces.map(\.id))
-        let tabs = list(base: base?.tabs, local: local.tabs, server: server.tabs) { $0.key }
+        var tabs = list(base: base?.tabs, local: local.tabs, server: server.tabs) { $0.key }
             .filter { alive.contains($0.space) }
+        // A server document without folders is an older build's: its blank
+        // `group`s say nothing, so each tab stays filed where it is here.
+        if server.groups == nil, local.groups != nil {
+            let mine = Dictionary(local.tabs.map { ($0.key, $0.group) }, uniquingKeysWith: { a, _ in a })
+            for i in tabs.indices where tabs[i].group == nil { tabs[i].group = mine[tabs[i].key] ?? nil }
+        }
         return CloudDocs.Spaces(spaces: spaces, tabs: tabs, groups: groups(base: base?.groups, local: local.groups, server: server.groups))
     }
 
