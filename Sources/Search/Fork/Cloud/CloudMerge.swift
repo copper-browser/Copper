@@ -19,6 +19,23 @@ enum CloudDocs {
         var v = 1
         var spaces: [Space]
         var tabs: [KeptTab]
+        /// The folders kept tabs are filed in (`Groups`), in their order.
+        /// Optional, and new: a document from a build before folders
+        /// travelled has none, and then every device keeps its own as they
+        /// are — nil never means "no folders".
+        var groups: [Folder]? = nil
+    }
+
+    /// A folder (`TabGroup`) as it travels: its name — nesting lives in the
+    /// name, ` › ` between levels — colour, and where an empty one stands.
+    /// Not whether it is open: that is each device's own business, and
+    /// syncing it would have two devices fold each other's folders.
+    struct Folder: Codable, Equatable {
+        var id: UUID
+        var name: String
+        var hue: Double?
+        var space: UUID?
+        var slot: Int?
     }
 
     /// A pinned or Saved tab. `key` is how two Macs agree it is the same
@@ -34,6 +51,9 @@ enum CloudDocs {
         var pinned: Bool
         /// The pin's letter, as the column draws it.
         var pin: String?
+        /// The folder it is filed in (`Folder.id`), or nil for none. New;
+        /// see `Spaces.groups`.
+        var group: UUID? = nil
     }
 
     /// The safe settings, by key; see `CloudSettingsKeys`.
@@ -126,9 +146,24 @@ enum CloudMerge {
         let local = base == nil ? rekeyed(local, to: server) : local
         let spaces = list(base: base?.spaces, local: local.spaces, server: server.spaces) { $0.id.uuidString }
         let alive = Set(spaces.map(\.id))
-        let tabs = list(base: base?.tabs, local: local.tabs, server: server.tabs) { $0.key }
+        var tabs = list(base: base?.tabs, local: local.tabs, server: server.tabs) { $0.key }
             .filter { alive.contains($0.space) }
-        return CloudDocs.Spaces(spaces: spaces, tabs: tabs)
+        // A server document without folders is an older build's: its blank
+        // `group`s say nothing, so each tab stays filed where it is here.
+        if server.groups == nil, local.groups != nil {
+            let mine = Dictionary(local.tabs.map { ($0.key, $0.group) }, uniquingKeysWith: { a, _ in a })
+            for i in tabs.indices where tabs[i].group == nil { tabs[i].group = mine[tabs[i].key] ?? nil }
+        }
+        return CloudDocs.Spaces(spaces: spaces, tabs: tabs, groups: groups(base: base?.groups, local: local.groups, server: server.groups))
+    }
+
+    /// The folders, merged like the spaces. A side that sent none (a build
+    /// from before folders travelled) has said nothing about them: the other
+    /// side's stand, rather than every folder reading as deleted.
+    static func groups(base: [CloudDocs.Folder]?, local: [CloudDocs.Folder]?, server: [CloudDocs.Folder]?) -> [CloudDocs.Folder]? {
+        guard let server else { return local }
+        guard let local else { return server }
+        return list(base: base, local: local, server: server) { $0.id.uuidString }
     }
 
     /// Local spaces the server doesn't know, matched by name (ignoring case)

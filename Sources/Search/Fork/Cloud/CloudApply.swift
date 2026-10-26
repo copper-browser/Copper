@@ -90,16 +90,20 @@ enum CloudApply {
         tabKeys = keyFor
         let tabs = list.compactMap { item -> CloudDocs.KeptTab? in
             guard let key = keyFor[item.tab.id] else { return nil }
+            let group = Groups.shared.membership[item.tab.id]
             if let was = baseBy[key] {
-                return CloudDocs.KeptTab(key: key, space: item.space, url: was.url, title: was.title, pinned: item.pinned, pin: item.tab.pin ?? was.pin)
+                return CloudDocs.KeptTab(key: key, space: item.space, url: was.url, title: was.title, pinned: item.pinned, pin: item.tab.pin ?? was.pin, group: group)
             }
             return CloudDocs.KeptTab(key: key, space: item.space, url: item.url.absoluteString,
-                                     title: item.tab.title, pinned: item.pinned, pin: item.tab.pin)
+                                     title: item.tab.title, pinned: item.pinned, pin: item.tab.pin, group: group)
         }
         // Sorted, not in row order: dragging a pin along the row is this
         // Mac's business, and two Macs that order a row differently must
         // not take turns sending their order back and forth.
-        return CloudDocs.Spaces(spaces: Spaces.shared.all, tabs: tabs.sorted { $0.key < $1.key })
+        let folders = Groups.shared.all.map {
+            CloudDocs.Folder(id: $0.id, name: $0.name, hue: $0.hue, space: $0.space, slot: $0.slot)
+        }
+        return CloudDocs.Spaces(spaces: Spaces.shared.all, tabs: tabs.sorted { $0.key < $1.key }, groups: folders)
     }
 
     /// Make this Mac's spaces the merged document's: spaces added, edited,
@@ -143,6 +147,19 @@ enum CloudApply {
             let pin = entry.pinned ? (entry.pin ?? Address.pretty(url).prefix(1).uppercased()) : nil
             if let tab = shelf.cloudOpen(url, title: entry.title, pin: pin, in: entry.space, browser: browser) {
                 tabKeys[tab.id] = entry.key
+            }
+        }
+
+        // Folders, then which folder each kept tab is filed in — only when
+        // the document says (one from an older build has no folders at all,
+        // and must not empty this Mac's).
+        if let folders = doc.groups {
+            let gone = Set(base?.groups?.map(\.id) ?? []).subtracting(folders.map(\.id))
+            Groups.shared.cloudAdopt(folders, removed: gone)
+            let byKey = Dictionary(doc.tabs.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
+            for item in kept(browser) {
+                guard let key = tabKeys[item.tab.id], let entry = byKey[key] else { continue }
+                Groups.shared.cloudFile(item.tab, in: entry.group)
             }
         }
 

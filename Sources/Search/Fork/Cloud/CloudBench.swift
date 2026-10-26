@@ -559,6 +559,23 @@ enum CloudSelfTest {
         check(first.spaces.map(\.id) == [homeA.id] && first.tabs.first?.space == homeA.id
               && first.tabs.first?.key.hasPrefix(homeA.id.uuidString.lowercased()) == true, "spaces: same-named spaces join on first sync")
 
+        // Folders travel with the spaces; a document without them (an older
+        // build's) leaves each side's folders alone.
+        let ex = CloudDocs.Folder(id: UUID(), name: "Exowatt", hue: 0.03, space: work.id, slot: nil)
+        let exApps = CloudDocs.Folder(id: UUID(), name: "Exowatt › Apps", hue: 0.03, space: nil, slot: nil)
+        var filed = pinA
+        filed.group = exApps.id
+        let fb = CloudDocs.Spaces(spaces: [home, work], tabs: [pinA], groups: [ex])
+        let fm = CloudMerge.spaces(base: fb, local: fb, server: CloudDocs.Spaces(spaces: [home, work], tabs: [filed], groups: [ex, exApps]))
+        check(fm.groups == [ex, exApps] && fm.tabs.first?.group == exApps.id, "spaces: folders and filing come in")
+        let old = CloudMerge.spaces(base: fb, local: fb, server: CloudDocs.Spaces(spaces: [home, work], tabs: [pinA]))
+        check(old.groups == [ex], "spaces: a document without folders keeps this Mac's")
+        let mineFiled = CloudDocs.Spaces(spaces: [home, work], tabs: [filed], groups: [ex, exApps])
+        let older = CloudMerge.spaces(base: mineFiled, local: mineFiled, server: CloudDocs.Spaces(spaces: [home, work], tabs: [pinA]))
+        check(older.tabs.first?.group == exApps.id, "spaces: an older build's blank filing unfiles nothing")
+        let json = try? JSONDecoder().decode(CloudDocs.Spaces.self, from: Data(#"{"v":1,"spaces":[],"tabs":[]}"#.utf8))
+        check(json != nil && json?.groups == nil, "spaces: a document from before folders still reads")
+
         // History de-duplication.
         let now = Date()
         check(CloudMerge.sameVisit(now, now.addingTimeInterval(0.6)) && !CloudMerge.sameVisit(now, now.addingTimeInterval(1.5)), "history: same visit within 1 s")
