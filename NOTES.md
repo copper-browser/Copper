@@ -1,3 +1,5 @@
+Xos whiteboards can now be inserted as native canvas images. Choose a meeting canvas, Personal or an existing canvas; meeting choices stay with your Copper account. Xos confirms insertion after the image is saved.
+
 A Claude subscription is all Copper needs now. Sign in with your Claude account (Pro, Max, Team or Enterprise) in Settings › Intelligence, and the agent pane, Jev runs and the tools your coding agent calls all work. There's no API key or Jev key to find. Without a Jev key, Jev runs ask your Claude model for each step instead: slower than Jev, and nothing else to set up.
 
 Copper always opens with a window. After an update, or a quit and relaunch, it could come up running with your tabs loaded and no window at all, and clicking it in the Dock, New Window and ⌘N did nothing. Now it opens its window even then, and every one of those brings it back.
