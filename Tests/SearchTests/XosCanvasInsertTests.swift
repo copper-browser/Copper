@@ -25,3 +25,12 @@ import Testing
     let huge = try JSONDecoder().decode(XosInsertSnapshot.self, from: JSONSerialization.data(withJSONObject: bomb))
     #expect(throws: (any Error).self) { try huge.image() }
 }
+
+@Test func xosInsertUsesOnlyCanvasImageProperties() throws {
+    let object: [String: Any] = ["version": 1, "id": UUID().uuidString, "title": "Sketch", "room": "zilker", "meeting_id": "", "meeting_title": "", "copper_canvas_id": "", "png": "data:image/png;base64,AAAA", "width": 1600, "height": 900]
+    let snapshot = try JSONDecoder().decode(XosInsertSnapshot.self, from: JSONSerialization.data(withJSONObject: object))
+    let shape = snapshot.shape(id: "xos-test")
+    #expect(Set(shape.keys) == Set(["id", "type", "src", "w", "h", "naturalW", "naturalH"]))
+    #expect(shape["h"] as? Double == 562.5)
+    #expect(shape["type"] as? String == "image")
+}

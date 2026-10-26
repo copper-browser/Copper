@@ -43,6 +43,13 @@ struct XosInsertSnapshot: Decodable {
         case meetingID = "meeting_id", meetingTitle = "meeting_title", copperCanvasID = "copper_canvas_id"
     }
 
+    // Image shapes accept geometry and image data only; titles belong to the picker.
+    func shape(id: String) -> [String: Any] {
+        ["id": id, "type": "image", "src": png, "w": 1000,
+         "h": Double(height) / Double(width) * 1000,
+         "naturalW": width, "naturalH": height]
+    }
+
     func image() throws -> Data {
         guard version == 1, title.count <= 200, meetingID.count <= 200, meetingTitle.count <= 200,
               room.count <= 40, width > 0, height > 0, width <= 4096, height <= 4096,
@@ -156,9 +163,7 @@ enum XosCanvasInsert {
         let shapeID = "xos-" + snapshot.id.uuidString.lowercased()
         let previous = try await host.read(["ids": [shapeID]])
         if (previous["shapes"] as? [Any] ?? []).isEmpty {
-            let result = try await host.apply([["op": "add", "shape": ["id": shapeID, "type": "image", "src": snapshot.png,
-                "w": 1000, "h": Double(snapshot.height) / Double(snapshot.width) * 1000,
-                "naturalW": snapshot.width, "naturalH": snapshot.height, "title": snapshot.title]]], as: CanvasAgent.caller("Xos whiteboard"))
+            let result = try await host.apply([["op": "add", "shape": snapshot.shape(id: shapeID)]], as: CanvasAgent.caller("Xos whiteboard"))
             guard (result["applied"] as? NSNumber)?.intValue == 1, (result["errors"] as? [Any] ?? []).isEmpty else {
                 throw Failure("Copper did not accept the image. No success was reported to Xos.")
             }
