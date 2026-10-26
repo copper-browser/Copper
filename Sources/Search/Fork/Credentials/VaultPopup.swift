@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Fork (vault-popup): every account Copper can fill — keychain, Bitwarden,
-/// 1Password — in one list you can search, from the key door beside
-/// Bookmarks or ⇧⌘Y (Bitwarden's own shortcut for its popup). What the
+/// 1Password — in one list you can search, from the key door in the
+/// address pill (beside the extensions) or ⇧⌘Y (Bitwarden's own shortcut for its popup). What the
 /// Bitwarden extension's popup is for, without the extension: copy a name,
 /// password or two-step code, open the site, or fill this page.
 ///

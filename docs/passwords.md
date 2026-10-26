@@ -157,7 +157,8 @@ fills continue to include every source.
 
 ## Accounts popup
 
-The key door beside Bookmarks (in the sidebar's foot, or the tab bar's end)
+The key door (in the sidebar's address pill under the pointer, beside the
+extensions, or at the tab bar's end)
 and **⇧⌘Y** — the Bitwarden extension's own shortcut for its popup — open
 every account Copper can fill: keychain, Bitwarden and 1Password together.
 The search field takes every word against the name, username, host and the

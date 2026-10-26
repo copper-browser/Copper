@@ -467,24 +467,11 @@ struct SideBar: View {
             .animation(Motion.quick, value: onEdge)
     }
 
-    /// The door at the foot's left, where Arc keeps its library: bookmarks.
-    /// Fork: and beside it the Extensions page's (Fork/ExtensionsManager.swift).
+    /// Fork (lean-foot): the foot is for spaces — only the canvas door
+    /// shares it. Bookmarks live in the menu bar, the Accounts key and the
+    /// extensions in the address pill, under the pointer.
     private func foot(_ tint: SpaceTint) -> some View { // Fork (space-slide): the ink is handed in
-        HStack(spacing: 2) {
-            Door(icon: "books.vertical", help: "Bookmarks", size: 28, ink: tint.ink, glow: tint.hover, glyph: 14) {
-                browser.bookmarksOpen.toggle()
-            }
-            .popover(isPresented: $browser.bookmarksOpen, arrowEdge: .top) {
-                BookmarksDropdown(browser: browser, bookmarks: browser.bookmarks)
-            }
-            // Fork (vault-popup): every account, searchable — ⇧⌘Y.
-            Door(icon: "key.horizontal", help: "Accounts   ⇧⌘Y", size: 28, ink: tint.ink, glow: tint.hover, glyph: 14) {
-                browser.vaultOpen.toggle()
-            }
-            .popover(isPresented: $browser.vaultOpen, arrowEdge: .top) { VaultPopup(browser: browser) }
-            ExtensionsDoor(browser: browser, tint: tint)
-            CanvasDoor(browser: browser, tint: tint) // Fork (canvas)
-        }
+        CanvasDoor(browser: browser, tint: tint) // Fork (canvas)
     }
 
 }
@@ -818,11 +805,11 @@ struct Door: View {
 }
 
 /// The address, at the top of the column where Arc keeps it: the site's host
-/// on a soft field, and the doors for downloads and extensions at its end.
+/// on a soft field, and the doors for downloads, accounts and extensions at its end.
 /// A click is ⌘L — the omnibox, with the whole address to change.
 ///
-/// The extensions come out only under the pointer, as Arc's do: the pinned
-/// ones, then the puzzle piece last, which goes to the Extensions page.
+/// The Accounts key and the extensions come out only under the pointer, as
+/// Arc's do: the key, the pinned ones, then the puzzle piece last, which goes to the Extensions page.
 /// The host gives them its room and truncates, rather than sitting under
 /// them. Downloads, while there are any, stay put ahead of them.
 struct SideAddress: View {
@@ -851,6 +838,14 @@ struct SideAddress: View {
                 DownloadsDoor(browser: browser, size: 24, arrowEdge: .bottom)
                     .transition(.scale(scale: 0.8).combined(with: .opacity))
             }
+            // Fork (lean-foot): the Accounts key, out with the extensions — and kept while its popup is up.
+            if hovering || bench.forced || browser.vaultOpen {
+                Door(icon: "key.horizontal", help: "Accounts   ⇧⌘Y", ink: tint.ink, glow: tint.hover) {
+                    browser.vaultOpen.toggle()
+                }
+                .popover(isPresented: $browser.vaultOpen, arrowEdge: .bottom) { VaultPopup(browser: browser) }
+                .transition(.opacity.combined(with: .offset(x: 6)))
+            }
             ExtensionSlot(edge: .bottom, reveal: hovering || bench.forced, ink: tint.ink, glow: tint.hover) {
                 browser.openSettings(.extensions)
             }
@@ -865,6 +860,7 @@ struct SideAddress: View {
         .onHover { hovering = $0 }
         .animation(Motion.quick, value: hovering)
         .animation(Motion.quick, value: bench.forced)
+        .animation(Motion.quick, value: browser.vaultOpen)
         .animation(Motion.settle, value: downloads.doorShowing)
     }
 
