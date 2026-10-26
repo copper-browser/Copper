@@ -374,10 +374,12 @@ final class History: ObservableObject {
             let now = Date()
             // A cap, so the file can't grow without end. What goes is what has
             // been visited least and longest ago.
+            // Fork (perf): each visit's score once, not twice per comparison.
             let list = self.visits.values
-                .sorted { self.frecency($0, now: now) > self.frecency($1, now: now) }
+                .map { (visit: $0, score: self.frecency($0, now: now)) }
+                .sorted { $0.score > $1.score }
                 .prefix(20_000)
-                .map { $0 }
+                .map(\.visit)
             DispatchQueue.global(qos: .utility).async {
                 guard let data = try? JSONEncoder().encode(list) else { return }
                 try? FileManager.default.createDirectory(

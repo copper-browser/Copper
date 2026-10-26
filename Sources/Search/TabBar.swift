@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// The only chrome there is. Titles, one of them in a grey pill, and the pill
@@ -672,24 +673,80 @@ struct OneClick: ViewModifier {
 
 /// An almost-closed ring, turning — the same one the canvas app uses, small
 /// enough to sit inside a tab without becoming the loudest thing in it.
-struct Ring: View {
+///
+/// Fork (perf): turned by Core Animation rather than by SwiftUI. A
+/// `repeatForever` rotation asked SwiftUI for a new frame of the whole window
+/// at the display's rate for as long as any row in the column was loading,
+/// scrolled out of sight or not, and every row's shadow was resolved again
+/// each time. A layer's animation turns in the render server and costs the
+/// main thread nothing.
+struct Ring: NSViewRepresentable {
     var size: CGFloat = 10
-    @State private var angle: Double = 0
 
-    var body: some View {
-        Circle()
-            .trim(from: 0, to: 0.78)
-            .stroke(
-                Palette.muted.opacity(0.7),
-                style: StrokeStyle(lineWidth: 1.4, lineCap: .round)
-            )
-            .frame(width: size, height: size)
-            .rotationEffect(.degrees(angle))
-            .onAppear {
-                withAnimation(.linear(duration: 0.85).repeatForever(autoreverses: false)) {
-                    angle = 360
-                }
-            }
+    func makeNSView(context: Context) -> RingView { RingView(size: size) }
+
+    func updateNSView(_ view: RingView, context: Context) { view.size = size }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: RingView, context: Context) -> CGSize? {
+        CGSize(width: size, height: size)
+    }
+}
+
+final class RingView: NSView {
+    var size: CGFloat {
+        didSet { if size != oldValue { needsLayout = true } }
+    }
+    private let ring = CAShapeLayer()
+
+    init(size: CGFloat) {
+        self.size = size
+        super.init(frame: NSRect(x: 0, y: 0, width: size, height: size))
+        wantsLayer = true
+        ring.fillColor = nil
+        ring.lineWidth = 1.4
+        ring.lineCap = .round
+        ring.strokeEnd = 0.78
+        layer?.addSublayer(ring)
+        paint()
+    }
+
+    required init?(coder: NSCoder) { fatalError("not from a nib") }
+
+    override var intrinsicContentSize: NSSize { NSSize(width: size, height: size) }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        ring.frame = CGRect(x: (bounds.width - size) / 2, y: (bounds.height - size) / 2, width: size, height: size)
+        let inset = ring.lineWidth / 2
+        ring.path = CGPath(ellipseIn: CGRect(x: 0, y: 0, width: size, height: size).insetBy(dx: inset, dy: inset), transform: nil)
+        CATransaction.commit()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        // Out of a window a layer's animation is dropped; back in one it is
+        // put on again.
+        guard window != nil, ring.animation(forKey: "turn") == nil else { return }
+        let turn = CABasicAnimation(keyPath: "transform.rotation.z")
+        turn.fromValue = 0
+        turn.toValue = -2 * Double.pi // clockwise, as SwiftUI's turned
+        turn.duration = 0.85
+        turn.repeatCount = .infinity
+        turn.isRemovedOnCompletion = false
+        ring.add(turn, forKey: "turn")
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        paint()
+    }
+
+    private func paint() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            ring.strokeColor = Palette.NS.muted.withAlphaComponent(0.7).cgColor
+        }
     }
 }
 

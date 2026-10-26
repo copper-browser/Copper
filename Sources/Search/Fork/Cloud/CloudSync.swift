@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 
@@ -154,6 +155,9 @@ final class CloudSync: ObservableObject {
         let prefs = Cloud.shared.sync
         account = Cloud.shared.account?.userId
         loadState()
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { _ in
+            CloudSync.writer.sync {}
+        }
         on = prefs.on
         enabled = CloudSync.domains(prefs, canvas: canvasSwitch)
         if let account, let owner, owner != account { resetState() }
@@ -1098,13 +1102,21 @@ final class CloudSync: ObservableObject {
         canvasSwitch = saved.canvas ?? false
     }
 
+    /// Where the state is encoded and written, in order. The whole of it —
+    /// every document's base, ~160 KB — went out on the main thread after
+    /// each push, and a tab switch is enough to make one. Drained at quit.
+    private static let writer = DispatchQueue(label: "copper.cloud-sync.state", qos: .utility)
+
     private func saveState() {
         if let account { owner = account }
-        guard let data = try? JSONEncoder().encode(Saved(owner: owner, docs: bases, remote: remote, canvas: canvasSwitch)) else { return }
+        let saved = Saved(owner: owner, docs: bases, remote: remote, canvas: canvasSwitch)
         let file = CloudSync.stateFile
-        let temporary = file.deletingLastPathComponent().appendingPathComponent(".cloud-sync.\(UUID().uuidString).tmp")
-        guard FileManager.default.createFile(atPath: temporary.path, contents: data, attributes: [.posixPermissions: 0o600]) else { return }
-        if rename(temporary.path, file.path) != 0 { try? FileManager.default.removeItem(at: temporary) }
+        CloudSync.writer.async {
+            guard let data = try? JSONEncoder().encode(saved) else { return }
+            let temporary = file.deletingLastPathComponent().appendingPathComponent(".cloud-sync.\(UUID().uuidString).tmp")
+            guard FileManager.default.createFile(atPath: temporary.path, contents: data, attributes: [.posixPermissions: 0o600]) else { return }
+            if rename(temporary.path, file.path) != 0 { try? FileManager.default.removeItem(at: temporary) }
+        }
     }
 
     private func resetState() {

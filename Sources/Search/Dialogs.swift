@@ -115,10 +115,32 @@ extension Browser {
             completionHandler(.performDefaultHandling, nil)
             return
         }
-        if SecTrustEvaluateWithError(trust, nil) {
-            completionHandler(.performDefaultHandling, nil)
-            return
+        // Fork (perf): the check is a round trip to securityd, and can go out
+        // to the network for revocation. On the main thread it held the
+        // window up for every connection a page opened — a third of the main
+        // thread's busy time while tabs woke, ahead of drawing them. So it
+        // runs on a queue of its own and only the answer comes back here.
+        Dialogs.checking.async {
+            let good = SecTrustEvaluateWithError(trust, nil)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    if good {
+                        completionHandler(.performDefaultHandling, nil)
+                    } else {
+                        self.untrusted(webView, challenge, trust, completionHandler)
+                    }
+                }
+            }
         }
+    }
+
+    /// A certificate that didn't hold up.
+    private func untrusted(
+        _ webView: WKWebView,
+        _ challenge: URLAuthenticationChallenge,
+        _ trust: SecTrust,
+        _ completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
         let host = challenge.protectionSpace.host.lowercased()
         if Dialogs.isLocal(host) || Dialogs.excused.contains(host) {
             completionHandler(.useCredential, URLCredential(trust: trust))
@@ -215,6 +237,8 @@ extension Browser {
 enum Dialogs {
     /// Sites with bad certificates that were accepted, for this launch only.
     static var excused = Set<String>()
+    /// Where certificates are checked, off the main thread (Fork: perf).
+    static let checking = DispatchQueue(label: "copper.trust", qos: .userInitiated, attributes: .concurrent)
 
     static func alert(from frame: WKFrameInfo, saying message: String) -> NSAlert {
         let alert = NSAlert()
