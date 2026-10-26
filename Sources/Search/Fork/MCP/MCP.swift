@@ -606,7 +606,7 @@ final class MCP: ObservableObject {
         default: break
         }
         return ["enabled": config.enabled, "running": running, "port": Int(port), "headless": Headless.on, "endpoint": endpoint, "calls": calls, "last": lastTool, "trouble": trouble ?? "",
-                "jev": config.jev, "jevKey": Intelligence.shared.jevReady, "jevOnModel": Intelligence.shared.jevOnModel, "jevLast": jevNote]
+                "jev": config.jev, "jevKey": Intelligence.shared.jevReady, "jevLast": jevNote]
     }
 }
 
