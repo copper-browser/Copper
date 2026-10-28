@@ -1,3 +1,5 @@
+Copper now runs on Intel Macs. Download the Intel build from the website (it picks the right one for your Mac), or install with Homebrew or the one-line installer, which choose for you. On an Intel Mac, Copper updates itself from Intel builds.
+
 Xos whiteboards can now be inserted as native canvas images. Choose a meeting canvas, Personal or an existing canvas; meeting choices stay with your Copper account. Xos confirms insertion after the image is saved.
 
 Jev needs its own key again. Last version let Jev runs fall back to your Claude model without one, which was much slower. Make a TypeSafe account at console.typesafe.ai, create a key, and paste it in Settings › Intelligence › Jev: **Get a key** there opens the page.

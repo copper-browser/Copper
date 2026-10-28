@@ -61,8 +61,14 @@ exists) and add `site.yml`.
   origin. Facts on the page come from this repo's README and `docs/`; don't invent features.
 - Install commands must match what `release.yml` publishes: the tap
   (`brew install --cask copper-browser/copper/copper`), the installer
-  (`releases/latest/download/copper-install.sh`) and the zip
-  (`releases/latest/download/copper-macos-arm64.zip`). See README › Installing.
+  (`releases/latest/download/copper-install.sh`) and the zips
+  (`releases/latest/download/copper-macos-arm64.zip` and `…/copper-macos-x86_64.zip`). See
+  README › Installing.
+- Install › *For this Mac* points its button at this Mac's zip: the CPU comes from
+  `navigator.userAgentData`'s `architecture` (Chromium), else the WebGL renderer's name (Chrome,
+  Firefox), else ASTC texture support (Safari says "Apple GPU" on every Mac; only Apple's GPUs
+  take ASTC). Unsure means Apple Silicon, with the Intel link right under it. Anything that is
+  not a Mac opens on *All downloads*, which lists every build.
 
 ### Preview and QA before pushing
 
