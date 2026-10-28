@@ -5,7 +5,8 @@
 // Local changes: `@available(macOS 15, *)` on each top-level declaration (Copper's target is macOS 14; the runner needs Core ML
 //   multifunction models); `Float` written `Swift.Float` (Copper's module has a `Float` class of its own, the picture-in-picture
 //   window); `Window` renamed `PhononWindow` (a module-level `Window` would shadow SwiftUI's `Window` scene in App.swift); this
-//   header. Code otherwise unchanged.
+//   header; 16-bit floats read and written as UInt16 bits through vImage instead of `Float16`, which Swift doesn't have on Intel
+//   Macs (Copper's x86_64 build), with the same IEEE round-to-nearest-even results. Code otherwise unchanged.
 //
 // Phonon-2 on Core ML.
 // log-mel (Accelerate) -> ONE multifunction package (exact five-value palettes; a ladder of encoder functions 3/5/10/15/25/35 s over one
@@ -191,7 +192,15 @@ public final class Transcriber {
         posCache[T3] = a; return a
     }
     static func fill(_ a: MLMultiArray, count: Int, _ f: (Int) -> Swift.Float) {
-        if a.dataType == .float16 { let p = a.dataPointer.assumingMemoryBound(to: Float16.self); for i in 0..<count { p[i] = Float16(f(i)) } }
+        if a.dataType == .float16 {
+            guard count > 0 else { return }
+            var floats = (0..<count).map(f)
+            floats.withUnsafeMutableBufferPointer { fp in
+                var src = vImage_Buffer(data: fp.baseAddress!, height: 1, width: vImagePixelCount(count), rowBytes: count * 4)
+                var dst = vImage_Buffer(data: a.dataPointer, height: 1, width: vImagePixelCount(count), rowBytes: count * 2)
+                vImageConvert_PlanarFtoPlanar16F(&src, &dst, 0)
+            }
+        }
         else { let p = a.dataPointer.assumingMemoryBound(to: Swift.Float.self); for i in 0..<count { p[i] = f(i) } }
     }
     func hostInputs(_ feats: [Swift.Float], nFrames n: Int, T: Int, model: MLModel) throws -> MLDictionaryFeatureProvider {
@@ -199,7 +208,7 @@ public final class Transcriber {
         let dt = ins["mel"]?.multiArrayConstraint?.dataType ?? .float32
         let mel = try MLMultiArray(shape: [1, 128, NSNumber(value: T)], dataType: dt)
         if dt == .float16 {
-            let mp = mel.dataPointer.assumingMemoryBound(to: Float16.self)
+            let mp = mel.dataPointer.assumingMemoryBound(to: UInt16.self)   // all-zero bits are +0.0
             mp.initialize(repeating: 0, count: 128 * T)
             feats.withUnsafeBufferPointer { fp in
                 for f in 0..<128 {
@@ -250,7 +259,11 @@ public final class Transcriber {
                         var src = vImage_Buffer(data: UnsafeMutableRawPointer(hp), height: 1, width: vImagePixelCount(n3 * 640), rowBytes: n3 * 640 * 2)
                         var dst = vImage_Buffer(data: UnsafeMutableRawPointer(ep.baseAddress!), height: 1, width: vImagePixelCount(n3 * 640), rowBytes: n3 * 640 * 4)
                         vImageConvert_Planar16FtoPlanarF(&src, &dst, 0)
-                    } else { for t in 0..<n3 { for c in 0..<640 { ep[t * 640 + c] = Swift.Float(Float16(bitPattern: hp[t * rs + c])) } } }
+                    } else {   // rows rs apart: vImage walks the strides itself
+                        var src = vImage_Buffer(data: UnsafeMutableRawPointer(hp), height: vImagePixelCount(n3), width: 640, rowBytes: rs * 2)
+                        var dst = vImage_Buffer(data: UnsafeMutableRawPointer(ep.baseAddress!), height: vImagePixelCount(n3), width: 640, rowBytes: 640 * 4)
+                        vImageConvert_Planar16FtoPlanarF(&src, &dst, 0)
+                    }
                 } else {
                     let fp = out.dataPointer.assumingMemoryBound(to: Swift.Float.self)
                     for t in 0..<n3 { for c in 0..<640 { ep[t * 640 + c] = fp[t * rs + c] } }

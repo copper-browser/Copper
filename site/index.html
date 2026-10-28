@@ -422,6 +422,38 @@ kbd {
 .links { display: flex; flex-wrap: wrap; gap: 6px 22px; list-style: none; margin: 0; padding: 0; }
 .links a { color: var(--ink); text-decoration-color: var(--line-2); text-underline-offset: 3px; }
 .links a:hover { text-decoration-color: var(--accent); }
+/* downloads: the build for this Mac, or every one */
+.dl-tabs { display: inline-flex; gap: 4px; margin-top: 36px; padding: 4px; border-radius: 999px; background: var(--sunk); }
+.dl-tabs [role="tab"] {
+  min-height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: transparent; color: var(--ink-2);
+  font: 500 14.5px/1 var(--font); cursor: pointer; transition: color .15s ease, background-color .15s ease;
+}
+.dl-tabs [role="tab"]:hover { color: var(--ink); }
+.dl-tabs [role="tab"][aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
+.dl-panel .install { margin-top: 20px; }
+.dl-note { margin-top: 16px; color: var(--ink-2); font-size: 15.5px; }
+.dl-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+.dl-seen { color: var(--ink-2); font-size: 14.5px; }
+.dl-seen strong { color: var(--ink); font-weight: 600; }
+.dl-other { font-size: 15px; color: var(--ink-2); }
+.dl-other a, .dl-row a:not(.btn) { color: var(--ink); text-decoration-color: var(--line-2); text-underline-offset: 3px; }
+.dl-other a:hover, .dl-row a:not(.btn):hover { text-decoration-color: var(--accent); }
+.dl-list { list-style: none; margin: 20px 0 0; padding: 0; border-top: 1px solid var(--line); }
+.dl-row {
+  display: grid; grid-template-columns: minmax(0, 15rem) minmax(0, 1fr) auto; align-items: center; gap: 8px 32px;
+  padding: 22px 0; border-bottom: 1px solid var(--line);
+}
+.dl-row h3 { font: 600 17px/1.3 var(--display); letter-spacing: -.01em; }
+.dl-row h3 small { display: block; margin-top: 4px; font: 500 13px/1.3 var(--font); color: var(--ink-2); letter-spacing: 0; }
+.dl-row p { color: var(--ink-2); font-size: 15px; }
+.dl-row code.inline { font-size: .88em; padding: 1px 5px; border-radius: 4px; background: var(--sunk); color: var(--ink); overflow-wrap: anywhere; }
+.dl-row.mine h3::after { content: "This Mac"; margin-left: 8px; font: 500 12px/1 var(--font); color: var(--accent); }
+.dl-row .btn { justify-self: end; }
+.dl-row .btn-ghost { min-height: 38px; font-size: 14.5px; }
+@media (max-width: 760px) {
+  .dl-row { grid-template-columns: minmax(0, 1fr); padding: 20px 0; }
+  .dl-row .btn { justify-self: start; }
+}
 
 
 /* ---------- redesign: buttons ---------- */
@@ -736,7 +768,7 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
           <button class="copy" type="button" data-copy="brew install --cask copper-browser/copper/copper" aria-label="Copy the Homebrew command"><svg class="i-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="i-check" aria-hidden="true"><use href="#i-check"/></svg><span>Copy</span></button>
         </div>
       </div>
-      <p class="meta"><span>macOS 14 or later</span><span>Apple Silicon</span><span>9 MB download</span><span>No account</span></p>
+      <p class="meta"><span>macOS 14 or later</span><span>Apple Silicon &amp; Intel</span><span>9 MB download</span><span>No account</span></p>
     </section>
 
     <section class="wrap" aria-label="Copper at a glance">
@@ -1143,8 +1175,14 @@ Jev said <span class="ok">DONE</span>, 96% sure
   <section class="sec wrap" id="install" aria-labelledby="install-title">
     <div class="sec-head">
       <h2 id="install-title">Install.</h2>
-      <p>For macOS 14 Sonoma or later, on Apple Silicon. Pick one; after that Copper updates itself.</p>
+      <p>For macOS 14 Sonoma or later, on Apple Silicon or Intel. Pick one; after that Copper updates itself.</p>
     </div>
+    <div class="dl-tabs" role="tablist" aria-label="Downloads">
+      <button type="button" role="tab" id="dl-tab-mac" aria-controls="dl-mac" aria-selected="true">For this Mac</button>
+      <button type="button" role="tab" id="dl-tab-all" aria-controls="dl-all" aria-selected="false" tabindex="-1">All downloads</button>
+    </div>
+    <p class="dl-note" id="dl-note" hidden></p>
+    <div class="dl-panel" id="dl-mac" role="tabpanel" aria-labelledby="dl-tab-mac">
     <div class="install">
       <div class="method">
         <h3>Homebrew <small>Recommended</small></h3>
@@ -1163,7 +1201,11 @@ Jev said <span class="ok">DONE</span>, 96% sure
       <div class="method">
         <h3>Download the app</h3>
         <div class="method-body">
-          <div><a class="btn" href="https://github.com/copper-browser/Copper/releases/latest/download/copper-macos-arm64.zip"><svg aria-hidden="true"><use href="#i-down"/></svg>Download for macOS</a></div>
+          <div class="dl-actions">
+            <a class="btn" id="dl-main" href="https://github.com/copper-browser/Copper/releases/latest/download/copper-macos-arm64.zip"><svg aria-hidden="true"><use href="#i-down"/></svg><span>Download for Apple Silicon</span></a>
+            <span class="dl-seen" id="dl-seen" hidden></span>
+          </div>
+          <p class="dl-other" id="dl-other">Intel Mac? <a href="https://github.com/copper-browser/Copper/releases/latest/download/copper-macos-x86_64.zip">Download for Intel</a>, or see <a href="#dl-all" data-dl-all>all downloads</a>.</p>
           <p>Unzip it and drag Copper.app to Applications.</p>
           <div class="notice">
             <p><strong>About the first launch.</strong> Copper builds are ad-hoc signed, not notarized. Homebrew and the installer clear the quarantine flag for you. After a manual download, run this once, or right-click Copper and choose Open:</p>
@@ -1171,6 +1213,41 @@ Jev said <span class="ok">DONE</span>, 96% sure
           </div>
         </div>
       </div>
+    </div>
+    </div>
+    <div class="dl-panel" id="dl-all" role="tabpanel" aria-labelledby="dl-tab-all" hidden>
+      <ul class="dl-list">
+        <li class="dl-row" data-arch="arm64">
+          <h3>macOS · Apple Silicon<small>M1 and later · macOS 14+</small></h3>
+          <p><code class="inline">copper-macos-arm64.zip</code></p>
+          <a class="btn" href="https://github.com/copper-browser/Copper/releases/latest/download/copper-macos-arm64.zip"><svg aria-hidden="true"><use href="#i-down"/></svg>Download</a>
+        </li>
+        <li class="dl-row" data-arch="x86_64">
+          <h3>macOS · Intel<small>Intel Macs · macOS 14+</small></h3>
+          <p><code class="inline">copper-macos-x86_64.zip</code></p>
+          <a class="btn" href="https://github.com/copper-browser/Copper/releases/latest/download/copper-macos-x86_64.zip"><svg aria-hidden="true"><use href="#i-down"/></svg>Download</a>
+        </li>
+        <li class="dl-row">
+          <h3>Homebrew<small>Either Mac</small></h3>
+          <p>Picks the build for your Mac: <code class="inline">brew install --cask copper-browser/copper/copper</code></p>
+          <a class="btn btn-ghost" href="https://github.com/copper-browser/homebrew-copper">Tap</a>
+        </li>
+        <li class="dl-row">
+          <h3>One-line installer<small>Either Mac</small></h3>
+          <p>Picks the build for your Mac: <code class="inline">curl -fsSL https://github.com/copper-browser/Copper/releases/latest/download/copper-install.sh | sh</code></p>
+          <a class="btn btn-ghost" href="https://github.com/copper-browser/Copper/releases/latest/download/copper-install.sh">Script</a>
+        </li>
+        <li class="dl-row">
+          <h3>Windows, Linux, iPhone<small>Not available</small></h3>
+          <p>Copper is a Mac app built on the WebKit inside macOS. The <a href="https://github.com/copper-browser/canvas-app">canvas</a> runs in any browser, and <a href="https://github.com/copper-browser/copper-cloud">Copper Cloud</a> runs on any Linux machine.</p>
+          <span></span>
+        </li>
+        <li class="dl-row">
+          <h3>Every release<small>Checksums, symbols, older versions</small></h3>
+          <p>Each release lists both zips with their <code class="inline">.sha256</code> and the dSYMs for crash reports.</p>
+          <a class="btn btn-ghost" href="https://github.com/copper-browser/Copper/releases">Releases</a>
+        </li>
+      </ul>
     </div>
     <div class="after">
       <ul class="links">
@@ -1277,6 +1354,90 @@ Jev said <span class="ok">DONE</span>, 96% sure
       }, function () { label.textContent = 'Press ⌘C'; say(live, 'Copy failed. Select the command and copy it.'); });
     });
   });
+
+  /* ---------- downloads: this Mac's build first, every build one tab away ---------- */
+  (function () {
+    var tabs = $$('.dl-tabs [role="tab"]');
+    if (!tabs.length) return;
+    var base = 'https://github.com/copper-browser/Copper/releases/latest/download/';
+    var names = { arm64: 'Apple Silicon', x86_64: 'Intel' };
+    function show(tab, focus) {
+      tabs.forEach(function (t) {
+        var on = t === tab;
+        t.setAttribute('aria-selected', String(on));
+        t.tabIndex = on ? 0 : -1;
+        $('#' + t.getAttribute('aria-controls')).hidden = !on;
+      });
+      if (focus) tab.focus();
+    }
+    tabs.forEach(function (t, i) {
+      t.addEventListener('click', function () { show(t); });
+      t.addEventListener('keydown', function (e) {
+        var j = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : null;
+        if (j === null) return;
+        e.preventDefault();
+        show(tabs[(j + tabs.length) % tabs.length], true);
+      });
+    });
+    $$('[data-dl-all]').forEach(function (a) {
+      a.addEventListener('click', function (e) { e.preventDefault(); show(tabs[1], true); });
+    });
+
+    /* Which computer is this. Copper is macOS only; the CPU picks the zip. */
+    var ua = navigator.userAgent || '';
+    var platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
+    var os = /iPhone|iPad|iPod/.test(ua) || (/Mac/.test(platform) && navigator.maxTouchPoints > 1) ? 'iOS'
+      : /Mac/.test(platform) || /Macintosh/.test(ua) ? 'mac'
+      : /Win/.test(platform) || /Windows/.test(ua) ? 'Windows'
+      : /Android/.test(ua) ? 'Android'
+      : /CrOS/.test(ua) ? 'ChromeOS'
+      : /Linux|X11/.test(platform + ua) ? 'Linux' : '';
+    var seen = $('#dl-seen');
+    if (os !== 'mac') {
+      // Not a Mac: every build, and why none of them is for this computer.
+      var note = $('#dl-note');
+      note.hidden = false;
+      note.textContent = (os ? 'This looks like ' + os + '. ' : '') + 'Copper is a Mac app: here is every build, to grab for a Mac.';
+      show(tabs[1]);
+      return;
+    }
+    function pick(arch, sure) {
+      var main = $('#dl-main'), other = arch === 'arm64' ? 'x86_64' : 'arm64';
+      main.href = base + 'copper-macos-' + arch + '.zip';
+      $('span', main).textContent = 'Download for ' + names[arch];
+      $('#dl-other').innerHTML = (other === 'x86_64' ? 'Intel Mac? ' : 'Apple Silicon Mac? ')
+        + '<a href="' + base + 'copper-macos-' + other + '.zip">Download for ' + names[other] + '</a>, or see <a href="#dl-all" data-dl-all>all downloads</a>.';
+      $('[data-dl-all]', $('#dl-other')).addEventListener('click', function (e) { e.preventDefault(); show(tabs[1], true); });
+      $$('.dl-row[data-arch]').forEach(function (row) { row.classList.toggle('mine', sure && row.dataset.arch === arch); });
+      if (sure) { seen.hidden = false; seen.innerHTML = 'Your Mac: <strong>' + names[arch] + '</strong>'; }
+    }
+    /* What the GPU says. Chrome and Firefox name it (Apple M2 / Intel Iris);
+       Safari says "Apple GPU" for every Mac, but only Apple's own GPUs take
+       ASTC textures. */
+    function fromGPU() {
+      try {
+        var gl = document.createElement('canvas').getContext('webgl');
+        if (!gl) return null;
+        var info = gl.getExtension('WEBGL_debug_renderer_info');
+        var gpu = String(info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+        if (/Apple M\d|Apple Silicon/i.test(gpu)) return 'arm64';
+        if (/Intel|AMD|Radeon|NVIDIA|GeForce/i.test(gpu)) return 'x86_64';
+        if (/Apple/i.test(gpu) && gl.getExtension('WEBGL_compressed_texture_astc')) return 'arm64';
+      } catch (e) {}
+      return null;
+    }
+    // Most Macs sold since 2020 are Apple Silicon: the default until told otherwise.
+    pick('arm64', false);
+    var hints = navigator.userAgentData && navigator.userAgentData.getHighEntropyValues;
+    var guess = function () { var a = fromGPU(); if (a) pick(a, true); };
+    if (hints) {
+      navigator.userAgentData.getHighEntropyValues(['architecture']).then(function (v) {
+        if (v.architecture === 'arm') pick('arm64', true);
+        else if (v.architecture === 'x86') pick(fromGPU() || 'x86_64', true);
+        else guess();
+      }, guess);
+    } else guess();
+  })();
 
   /* ---------- recordings: play in view, pause on request, never under reduced motion ---------- */
   var calm = window.matchMedia('(prefers-reduced-motion: reduce)');
