@@ -26,6 +26,7 @@
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="preload" as="image" href="assets/art-liquid.webp" type="image/webp">
 <script>
+  document.documentElement.classList.add('js');
   try { var t = localStorage.getItem('copper-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
   /* The captures come in two: on a warm light backdrop and on a dark one. Pick the one that matches. */
   window.copperMedia = function (el) {
@@ -432,6 +433,15 @@ kbd {
 .dl-tabs [role="tab"][aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
 .dl-panel .install { margin-top: 20px; }
 .dl-note { margin-top: 16px; color: var(--ink-2); font-size: 15.5px; }
+.cmd.ps code::before { content: "PS> "; }
+.dl-group { margin-top: 36px; font: 600 21px/1.3 var(--display); letter-spacing: -.012em; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.dl-group small { font: 500 14px/1.3 var(--font); color: var(--ink-2); letter-spacing: 0; }
+.dl-group + .dl-list { margin-top: 12px; }
+.dl-pair { display: flex; flex-wrap: wrap; gap: 8px; justify-self: end; }
+@media (max-width: 760px) { .dl-pair { justify-self: start; } }
+/* Without script the tabs can't switch: show every panel instead. */
+html:not(.js) .dl-tabs { display: none; }
+html:not(.js) .dl-panel[hidden] { display: block; }
 .dl-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
 .dl-seen { color: var(--ink-2); font-size: 14.5px; }
 .dl-seen strong { color: var(--ink); font-weight: 600; }
@@ -447,7 +457,7 @@ kbd {
 .dl-row h3 small { display: block; margin-top: 4px; font: 500 13px/1.3 var(--font); color: var(--ink-2); letter-spacing: 0; }
 .dl-row p { color: var(--ink-2); font-size: 15px; }
 .dl-row code.inline { font-size: .88em; padding: 1px 5px; border-radius: 4px; background: var(--sunk); color: var(--ink); overflow-wrap: anywhere; }
-.dl-row.mine h3::after { content: "This Mac"; margin-left: 8px; font: 500 12px/1 var(--font); color: var(--accent); }
+.dl-row h3[data-mine]::after { content: attr(data-mine); margin-left: 8px; font: 500 12px/1 var(--font); color: var(--accent); }
 .dl-row .btn { justify-self: end; }
 .dl-row .btn-ghost { min-height: 38px; font-size: 14.5px; }
 @media (max-width: 760px) {
@@ -768,7 +778,7 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
           <button class="copy" type="button" data-copy="brew install --cask copper-browser/copper/copper" aria-label="Copy the Homebrew command"><svg class="i-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="i-check" aria-hidden="true"><use href="#i-check"/></svg><span>Copy</span></button>
         </div>
       </div>
-      <p class="meta"><span>macOS 14 or later</span><span>Apple Silicon &amp; Intel</span><span>9 MB download</span><span>No account</span></p>
+      <p class="meta"><span>macOS 14 or later</span><span>Apple Silicon &amp; Intel</span><span>Windows &amp; Linux too</span><span>No account</span></p>
     </section>
 
     <section class="wrap" aria-label="Copper at a glance">
@@ -1175,14 +1185,14 @@ Jev said <span class="ok">DONE</span>, 96% sure
   <section class="sec wrap" id="install" aria-labelledby="install-title">
     <div class="sec-head">
       <h2 id="install-title">Install.</h2>
-      <p>For macOS 14 Sonoma or later, on Apple Silicon or Intel. Pick one; after that Copper updates itself.</p>
+      <p>For macOS, Windows and Linux. Pick one; on a Mac Copper updates itself after that, and on Windows and Linux the same line upgrades it.</p>
     </div>
     <div class="dl-tabs" role="tablist" aria-label="Downloads">
-      <button type="button" role="tab" id="dl-tab-mac" aria-controls="dl-mac" aria-selected="true">For this Mac</button>
+      <button type="button" role="tab" id="dl-tab-here" aria-controls="dl-mac" aria-selected="true">For this Mac</button>
       <button type="button" role="tab" id="dl-tab-all" aria-controls="dl-all" aria-selected="false" tabindex="-1">All downloads</button>
     </div>
     <p class="dl-note" id="dl-note" hidden></p>
-    <div class="dl-panel" id="dl-mac" role="tabpanel" aria-labelledby="dl-tab-mac">
+    <div class="dl-panel" id="dl-mac" role="tabpanel" aria-labelledby="dl-tab-here">
     <div class="install">
       <div class="method">
         <h3>Homebrew <small>Recommended</small></h3>
@@ -1215,15 +1225,60 @@ Jev said <span class="ok">DONE</span>, 96% sure
       </div>
     </div>
     </div>
+    <div class="dl-panel" id="dl-win" role="tabpanel" aria-labelledby="dl-tab-here" hidden>
+    <div class="install">
+      <div class="method">
+        <h3>PowerShell <small>Recommended</small></h3>
+        <div class="method-body">
+          <div class="cmd ps"><code>irm https://copper-browser.github.io/Copper/install.ps1 | iex</code><button class="copy" type="button" data-copy="irm https://copper-browser.github.io/Copper/install.ps1 | iex" aria-label="Copy the PowerShell install command"><svg class="i-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="i-check" aria-hidden="true"><use href="#i-check"/></svg><span>Copy</span></button></div>
+          <p>Picks x64 or ARM64, checks the download's SHA-256, installs Copper for your account (no admin) and opens it. Run it again to upgrade.</p>
+        </div>
+      </div>
+      <div class="method">
+        <h3>Download the installer</h3>
+        <div class="method-body">
+          <div class="dl-actions">
+            <a class="btn" id="dl-win-main" href="https://github.com/copper-browser/copper-windows/releases/latest/download/CopperSetup-x64.exe"><svg aria-hidden="true"><use href="#i-down"/></svg><span>Download for Windows (x64)</span></a>
+            <span class="dl-seen" id="dl-win-seen" hidden></span>
+          </div>
+          <p class="dl-other" id="dl-win-other">An ARM PC? <a href="https://github.com/copper-browser/copper-windows/releases/latest/download/CopperSetup-arm64.exe">Download for ARM64</a>, or see <a href="#dl-all" data-dl-all>all downloads</a>.</p>
+          <p>Windows 10 or 11. Setup installs Copper for your account, adds it to the Start menu, and gets Microsoft's WebView2 runtime if the PC doesn't have it yet.</p>
+        </div>
+      </div>
+    </div>
+    </div>
+    <div class="dl-panel" id="dl-linux" role="tabpanel" aria-labelledby="dl-tab-here" hidden>
+    <div class="install">
+      <div class="method">
+        <h3>One-line installer <small>Recommended</small></h3>
+        <div class="method-body">
+          <div class="cmd"><code>curl -fsSL https://github.com/copper-browser/copper-linux/releases/latest/download/install.sh | sh</code><button class="copy" type="button" data-copy="curl -fsSL https://github.com/copper-browser/copper-linux/releases/latest/download/install.sh | sh" aria-label="Copy the Linux install command"><svg class="i-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="i-check" aria-hidden="true"><use href="#i-check"/></svg><span>Copy</span></button></div>
+          <p>x86_64 or aarch64. On Ubuntu 24.04+ and Debian 13+ it installs the <code class="inline">.deb</code> with apt, video codecs included; everywhere else a Flatpak for your user. Run it again to upgrade.</p>
+        </div>
+      </div>
+      <div class="method">
+        <h3>Download a package</h3>
+        <div class="method-body">
+          <div class="dl-actions">
+            <a class="btn" id="dl-linux-deb" href="https://github.com/copper-browser/copper-linux/releases/latest/download/copper_amd64.deb"><svg aria-hidden="true"><use href="#i-down"/></svg><span>.deb (x86_64)</span></a>
+            <a class="btn btn-ghost" id="dl-linux-flatpak" href="https://github.com/copper-browser/copper-linux/releases/latest/download/copper-x86_64.flatpak"><svg aria-hidden="true"><use href="#i-down"/></svg><span>Flatpak (x86_64)</span></a>
+            <span class="dl-seen" id="dl-linux-seen" hidden></span>
+          </div>
+          <p class="dl-other" id="dl-linux-other">On ARM? <a href="https://github.com/copper-browser/copper-linux/releases/latest/download/copper_arm64.deb">.deb for aarch64</a> or <a href="https://github.com/copper-browser/copper-linux/releases/latest/download/copper-aarch64.flatpak">Flatpak for aarch64</a>, or see <a href="#dl-all" data-dl-all>all downloads</a>.</p>
+        </div>
+      </div>
+    </div>
+    </div>
     <div class="dl-panel" id="dl-all" role="tabpanel" aria-labelledby="dl-tab-all" hidden>
+      <h3 class="dl-group">macOS <small>14 Sonoma or later · updates itself</small></h3>
       <ul class="dl-list">
-        <li class="dl-row" data-arch="arm64">
-          <h3>macOS · Apple Silicon<small>M1 and later · macOS 14+</small></h3>
+        <li class="dl-row" data-pick="mac-arm64">
+          <h3>Apple Silicon<small>M1 and later</small></h3>
           <p><code class="inline">copper-macos-arm64.zip</code></p>
           <a class="btn" href="https://github.com/copper-browser/Copper/releases/latest/download/copper-macos-arm64.zip"><svg aria-hidden="true"><use href="#i-down"/></svg>Download</a>
         </li>
-        <li class="dl-row" data-arch="x86_64">
-          <h3>macOS · Intel<small>Intel Macs · macOS 14+</small></h3>
+        <li class="dl-row" data-pick="mac-x86_64">
+          <h3>Intel<small>Intel Macs</small></h3>
           <p><code class="inline">copper-macos-x86_64.zip</code></p>
           <a class="btn" href="https://github.com/copper-browser/Copper/releases/latest/download/copper-macos-x86_64.zip"><svg aria-hidden="true"><use href="#i-down"/></svg>Download</a>
         </li>
@@ -1237,25 +1292,70 @@ Jev said <span class="ok">DONE</span>, 96% sure
           <p>Picks the build for your Mac: <code class="inline">curl -fsSL https://github.com/copper-browser/Copper/releases/latest/download/copper-install.sh | sh</code></p>
           <a class="btn btn-ghost" href="https://github.com/copper-browser/Copper/releases/latest/download/copper-install.sh">Script</a>
         </li>
+      </ul>
+      <h3 class="dl-group">Windows <small>10 or 11 · x64 or ARM64</small></h3>
+      <ul class="dl-list">
         <li class="dl-row">
-          <h3>Windows, Linux, iPhone<small>Not available</small></h3>
-          <p>Copper is a Mac app built on the WebKit inside macOS. The <a href="https://github.com/copper-browser/canvas-app">canvas</a> runs in any browser, and <a href="https://github.com/copper-browser/copper-cloud">Copper Cloud</a> runs on any Linux machine.</p>
+          <h3>PowerShell<small>Either PC</small></h3>
+          <p>Picks the installer for your PC: <code class="inline">irm https://copper-browser.github.io/Copper/install.ps1 | iex</code></p>
+          <a class="btn btn-ghost" href="install.ps1">Script</a>
+        </li>
+        <li class="dl-row" data-pick="win-x64">
+          <h3>Installer · x64<small>Most PCs</small></h3>
+          <p><code class="inline">CopperSetup-x64.exe</code></p>
+          <a class="btn" href="https://github.com/copper-browser/copper-windows/releases/latest/download/CopperSetup-x64.exe"><svg aria-hidden="true"><use href="#i-down"/></svg>Download</a>
+        </li>
+        <li class="dl-row" data-pick="win-arm64">
+          <h3>Installer · ARM64<small>Snapdragon and other ARM PCs</small></h3>
+          <p><code class="inline">CopperSetup-arm64.exe</code></p>
+          <a class="btn" href="https://github.com/copper-browser/copper-windows/releases/latest/download/CopperSetup-arm64.exe"><svg aria-hidden="true"><use href="#i-down"/></svg>Download</a>
+        </li>
+        <li class="dl-row" data-pick="win-x64 win-arm64">
+          <h3>Portable<small>No setup</small></h3>
+          <p><code class="inline">copper.exe</code> in a zip, with its license and README.</p>
+          <div class="dl-pair"><a class="btn btn-ghost" href="https://github.com/copper-browser/copper-windows/releases/latest/download/copper-windows-x64.zip"><svg aria-hidden="true"><use href="#i-down"/></svg>x64</a><a class="btn btn-ghost" href="https://github.com/copper-browser/copper-windows/releases/latest/download/copper-windows-arm64.zip"><svg aria-hidden="true"><use href="#i-down"/></svg>ARM64</a></div>
+        </li>
+      </ul>
+      <h3 class="dl-group">Linux <small>x86_64 or aarch64</small></h3>
+      <ul class="dl-list">
+        <li class="dl-row">
+          <h3>One-line installer<small>Any distribution</small></h3>
+          <p>A <code class="inline">.deb</code> on Ubuntu 24.04+ and Debian 13+, a Flatpak elsewhere: <code class="inline">curl -fsSL https://github.com/copper-browser/copper-linux/releases/latest/download/install.sh | sh</code></p>
+          <a class="btn btn-ghost" href="https://github.com/copper-browser/copper-linux/releases/latest/download/install.sh">Script</a>
+        </li>
+        <li class="dl-row" data-pick="linux-x86_64 linux-arm64">
+          <h3>Debian and Ubuntu<small><code class="inline">.deb</code> packages</small></h3>
+          <p><code class="inline">copper_amd64.deb</code> and <code class="inline">copper_arm64.deb</code>; apt brings in WebKitGTK.</p>
+          <div class="dl-pair"><a class="btn btn-ghost" href="https://github.com/copper-browser/copper-linux/releases/latest/download/copper_amd64.deb"><svg aria-hidden="true"><use href="#i-down"/></svg>x86_64</a><a class="btn btn-ghost" href="https://github.com/copper-browser/copper-linux/releases/latest/download/copper_arm64.deb"><svg aria-hidden="true"><use href="#i-down"/></svg>aarch64</a></div>
+        </li>
+        <li class="dl-row" data-pick="linux-x86_64 linux-arm64">
+          <h3>Flatpak<small>Every other distribution</small></h3>
+          <p>The GNOME runtime comes from Flathub.</p>
+          <div class="dl-pair"><a class="btn btn-ghost" href="https://github.com/copper-browser/copper-linux/releases/latest/download/copper-x86_64.flatpak"><svg aria-hidden="true"><use href="#i-down"/></svg>x86_64</a><a class="btn btn-ghost" href="https://github.com/copper-browser/copper-linux/releases/latest/download/copper-aarch64.flatpak"><svg aria-hidden="true"><use href="#i-down"/></svg>aarch64</a></div>
+        </li>
+      </ul>
+      <h3 class="dl-group">Everything else</h3>
+      <ul class="dl-list">
+        <li class="dl-row">
+          <h3>iPhone, iPad, Android<small>Not available</small></h3>
+          <p>The <a href="https://github.com/copper-browser/canvas-app">canvas</a> runs in any browser, and <a href="https://github.com/copper-browser/copper-cloud">Copper Cloud</a> runs on any Linux machine.</p>
           <span></span>
         </li>
         <li class="dl-row">
           <h3>Every release<small>Checksums, symbols, older versions</small></h3>
-          <p>Each release lists both zips with their <code class="inline">.sha256</code> and the dSYMs for crash reports.</p>
-          <a class="btn btn-ghost" href="https://github.com/copper-browser/Copper/releases">Releases</a>
+          <p>Each release lists its files with SHA-256 sums: <a href="https://github.com/copper-browser/Copper/releases">macOS</a>, <a href="https://github.com/copper-browser/copper-windows/releases">Windows</a>, <a href="https://github.com/copper-browser/copper-linux/releases">Linux</a>.</p>
+          <span></span>
         </li>
       </ul>
     </div>
     <div class="after">
       <ul class="links">
-        <li><a href="https://github.com/copper-browser/Copper/releases">Releases</a></li>
-        <li><a href="https://github.com/copper-browser/Copper">Source</a></li>
+        <li><a href="https://github.com/copper-browser/Copper/releases">macOS releases</a></li>
+        <li><a href="https://github.com/copper-browser/copper-windows/releases">Windows releases</a></li>
+        <li><a href="https://github.com/copper-browser/copper-linux/releases">Linux releases</a></li>
         <li><a href="https://github.com/copper-browser/homebrew-copper">Homebrew tap</a></li>
       </ul>
-      <span>Pure Swift, no dependencies beyond what Apple ships.</span>
+      <span>Swift and WebKit on the Mac; Rust with WebView2 on Windows and WebKitGTK on Linux.</span>
     </div>
   </section>
 
@@ -1355,19 +1455,23 @@ Jev said <span class="ok">DONE</span>, 96% sure
     });
   });
 
-  /* ---------- downloads: this Mac's build first, every build one tab away ---------- */
+  /* ---------- downloads: this computer's build first, every build one tab away ---------- */
   (function () {
     var tabs = $$('.dl-tabs [role="tab"]');
     if (!tabs.length) return;
-    var base = 'https://github.com/copper-browser/Copper/releases/latest/download/';
-    var names = { arm64: 'Apple Silicon', x86_64: 'Intel' };
+    var here = tabs[0], every = tabs[1];
+    var feeds = {
+      mac: 'https://github.com/copper-browser/Copper/releases/latest/download/',
+      win: 'https://github.com/copper-browser/copper-windows/releases/latest/download/',
+      linux: 'https://github.com/copper-browser/copper-linux/releases/latest/download/'
+    };
     function show(tab, focus) {
       tabs.forEach(function (t) {
         var on = t === tab;
         t.setAttribute('aria-selected', String(on));
         t.tabIndex = on ? 0 : -1;
-        $('#' + t.getAttribute('aria-controls')).hidden = !on;
       });
+      $$('.dl-panel').forEach(function (p) { p.hidden = p.id !== tab.getAttribute('aria-controls'); });
       if (focus) tab.focus();
     }
     tabs.forEach(function (t, i) {
@@ -1379,37 +1483,93 @@ Jev said <span class="ok">DONE</span>, 96% sure
         show(tabs[(j + tabs.length) % tabs.length], true);
       });
     });
-    $$('[data-dl-all]').forEach(function (a) {
-      a.addEventListener('click', function (e) { e.preventDefault(); show(tabs[1], true); });
+    // "all downloads" links, including the ones rewritten below.
+    $('#install').addEventListener('click', function (e) {
+      if (e.target.closest('[data-dl-all]')) { e.preventDefault(); show(every, true); }
     });
+    function other(id, lead, links) {
+      $(id).innerHTML = lead + ' ' + links.map(function (l) { return '<a href="' + l[0] + '">' + l[1] + '</a>'; }).join(' or ')
+        + ', or see <a href="#dl-all" data-dl-all>all downloads</a>.';
+    }
+    function seen(id, html) { var el = $(id); el.hidden = false; el.innerHTML = html; }
+    function mark(pick, label) {
+      $$('.dl-row[data-pick]').forEach(function (row) {
+        var h = $('h3', row);
+        if (pick && row.dataset.pick.split(' ').indexOf(pick) >= 0) h.dataset.mine = label; else delete h.dataset.mine;
+      });
+    }
 
-    /* Which computer is this. Copper is macOS only; the CPU picks the zip. */
+    /* Which computer is this. The CPU picks the file. */
     var ua = navigator.userAgent || '';
     var platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
     var os = /iPhone|iPad|iPod/.test(ua) || (/Mac/.test(platform) && navigator.maxTouchPoints > 1) ? 'iOS'
-      : /Mac/.test(platform) || /Macintosh/.test(ua) ? 'mac'
-      : /Win/.test(platform) || /Windows/.test(ua) ? 'Windows'
       : /Android/.test(ua) ? 'Android'
       : /CrOS/.test(ua) ? 'ChromeOS'
-      : /Linux|X11/.test(platform + ua) ? 'Linux' : '';
-    var seen = $('#dl-seen');
-    if (os !== 'mac') {
-      // Not a Mac: every build, and why none of them is for this computer.
-      var note = $('#dl-note');
-      note.hidden = false;
-      note.textContent = (os ? 'This looks like ' + os + '. ' : '') + 'Copper is a Mac app: here is every build, to grab for a Mac.';
-      show(tabs[1]);
+      : /Mac/.test(platform) || /Macintosh/.test(ua) ? 'mac'
+      : /Win/.test(platform) || /Windows/.test(ua) ? 'win'
+      : /Linux|X11/.test(platform + ' ' + ua) ? 'linux' : '';
+    var hints = navigator.userAgentData && navigator.userAgentData.getHighEntropyValues
+      ? navigator.userAgentData.getHighEntropyValues(['architecture']).then(function (v) { return v.architecture || ''; }, function () { return ''; })
+      : Promise.resolve('');
+    var label = { mac: 'Download for macOS', win: 'Download for Windows', linux: 'Download for Linux' }[os] || 'Download';
+    $$('a.btn:not(.btn-sm)[href="#install"]').forEach(function (b) { b.lastChild.textContent = label; });
+
+    if (os === 'win') {
+      here.textContent = 'For this PC';
+      here.setAttribute('aria-controls', 'dl-win');
+      show(here);
+      var pickWin = function (arch, sure) {
+        var main = $('#dl-win-main'), name = arch === 'arm64' ? 'ARM64' : 'x64', alt = arch === 'arm64' ? 'x64' : 'arm64';
+        main.href = feeds.win + 'CopperSetup-' + arch + '.exe';
+        $('span', main).textContent = 'Download for Windows (' + name + ')';
+        other('#dl-win-other', alt === 'arm64' ? 'An ARM PC?' : 'An x64 PC?', [[feeds.win + 'CopperSetup-' + alt + '.exe', 'Download for ' + (alt === 'arm64' ? 'ARM64' : 'x64')]]);
+        mark(sure ? 'win-' + arch : '', 'This PC');
+        if (sure) seen('#dl-win-seen', 'Your PC: <strong>' + name + '</strong>');
+      };
+      pickWin('x64', false);
+      // Windows on ARM: Chromium says so; Firefox there reports x64 (it runs emulated or says Win64).
+      hints.then(function (a) { if (a === 'arm') pickWin('arm64', true); else if (a === 'x86') pickWin('x64', true); });
       return;
     }
+    if (os === 'linux') {
+      here.textContent = 'For Linux';
+      here.setAttribute('aria-controls', 'dl-linux');
+      show(here);
+      var pickLinux = function (arm, sure) {
+        var deb = arm ? 'arm64' : 'amd64', flat = arm ? 'aarch64' : 'x86_64', name = arm ? 'aarch64' : 'x86_64';
+        $('#dl-linux-deb').href = feeds.linux + 'copper_' + deb + '.deb';
+        $('span', $('#dl-linux-deb')).textContent = '.deb (' + name + ')';
+        $('#dl-linux-flatpak').href = feeds.linux + 'copper-' + flat + '.flatpak';
+        $('span', $('#dl-linux-flatpak')).textContent = 'Flatpak (' + name + ')';
+        other('#dl-linux-other', arm ? 'On x86_64?' : 'On ARM?', arm
+          ? [[feeds.linux + 'copper_amd64.deb', '.deb for x86_64'], [feeds.linux + 'copper-x86_64.flatpak', 'Flatpak for x86_64']]
+          : [[feeds.linux + 'copper_arm64.deb', '.deb for aarch64'], [feeds.linux + 'copper-aarch64.flatpak', 'Flatpak for aarch64']]);
+        mark(sure ? 'linux-' + (arm ? 'arm64' : 'x86_64') : '', 'This computer');
+        if (sure) seen('#dl-linux-seen', 'Yours: <strong>' + name + '</strong>');
+      };
+      var armUA = /aarch64|arm64|armv8/i.test(ua);
+      pickLinux(armUA, /aarch64|arm64|armv8|x86_64|amd64/i.test(ua));
+      hints.then(function (a) { if (a === 'arm') pickLinux(true, true); else if (a === 'x86') pickLinux(false, true); });
+      return;
+    }
+    if (os !== 'mac') {
+      // A phone, a Chromebook, or something unknown: every build, and why.
+      var note = $('#dl-note');
+      note.hidden = false;
+      note.textContent = (os ? 'This looks like ' + os + '. ' : '') + 'Copper runs on macOS, Windows and Linux: here is every build.';
+      show(every);
+      return;
+    }
+
+    /* A Mac: Apple Silicon or Intel. */
+    var names = { arm64: 'Apple Silicon', x86_64: 'Intel' };
     function pick(arch, sure) {
-      var main = $('#dl-main'), other = arch === 'arm64' ? 'x86_64' : 'arm64';
-      main.href = base + 'copper-macos-' + arch + '.zip';
+      var main = $('#dl-main'), alt = arch === 'arm64' ? 'x86_64' : 'arm64';
+      main.href = feeds.mac + 'copper-macos-' + arch + '.zip';
       $('span', main).textContent = 'Download for ' + names[arch];
-      $('#dl-other').innerHTML = (other === 'x86_64' ? 'Intel Mac? ' : 'Apple Silicon Mac? ')
-        + '<a href="' + base + 'copper-macos-' + other + '.zip">Download for ' + names[other] + '</a>, or see <a href="#dl-all" data-dl-all>all downloads</a>.';
-      $('[data-dl-all]', $('#dl-other')).addEventListener('click', function (e) { e.preventDefault(); show(tabs[1], true); });
-      $$('.dl-row[data-arch]').forEach(function (row) { row.classList.toggle('mine', sure && row.dataset.arch === arch); });
-      if (sure) { seen.hidden = false; seen.innerHTML = 'Your Mac: <strong>' + names[arch] + '</strong>'; }
+      other('#dl-other', alt === 'x86_64' ? 'Intel Mac?' : 'Apple Silicon Mac?', [[feeds.mac + 'copper-macos-' + alt + '.zip', 'Download for ' + names[alt]]]);
+      mark(sure ? 'mac-' + arch : '', 'This Mac');
+      if (sure) seen('#dl-seen', 'Your Mac: <strong>' + names[arch] + '</strong>');
     }
     /* What the GPU says. Chrome and Firefox name it (Apple M2 / Intel Iris);
        Safari says "Apple GPU" for every Mac, but only Apple's own GPUs take
@@ -1428,15 +1588,11 @@ Jev said <span class="ok">DONE</span>, 96% sure
     }
     // Most Macs sold since 2020 are Apple Silicon: the default until told otherwise.
     pick('arm64', false);
-    var hints = navigator.userAgentData && navigator.userAgentData.getHighEntropyValues;
-    var guess = function () { var a = fromGPU(); if (a) pick(a, true); };
-    if (hints) {
-      navigator.userAgentData.getHighEntropyValues(['architecture']).then(function (v) {
-        if (v.architecture === 'arm') pick('arm64', true);
-        else if (v.architecture === 'x86') pick(fromGPU() || 'x86_64', true);
-        else guess();
-      }, guess);
-    } else guess();
+    hints.then(function (a) {
+      if (a === 'arm') pick('arm64', true);
+      else if (a === 'x86') pick(fromGPU() || 'x86_64', true);
+      else { var g = fromGPU(); if (g) pick(g, true); }
+    });
   })();
 
   /* ---------- recordings: play in view, pause on request, never under reduced motion ---------- */
