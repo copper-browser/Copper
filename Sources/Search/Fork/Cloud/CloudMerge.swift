@@ -140,14 +140,33 @@ enum CloudMerge {
         return out
     }
 
+    /// Which site a kept tab is on: its host, lowercased.
+    static func site(_ url: String) -> String {
+        URL(string: url)?.host()?.lowercased() ?? url.lowercased()
+    }
+
+    /// One pin per site: of the pinned entries on one host, the one with the
+    /// lowest key stays (the same choice on every device). Two Macs that
+    /// each opened the other's copy of a pin, or an older build that keyed
+    /// pins by the space on screen, otherwise send every copy round again.
+    // shortcut: two pins on one host (two Google accounts, say) sync as one; key by host+path prefix if that is ever wanted.
+    static func onePinPerSite(_ tabs: [CloudDocs.KeptTab]) -> [CloudDocs.KeptTab] {
+        var keep: [String: String] = [:]
+        for tab in tabs where tab.pinned {
+            let site = site(tab.url)
+            if keep[site].map({ tab.key < $0 }) ?? true { keep[site] = tab.key }
+        }
+        return tabs.filter { !$0.pinned || keep[site($0.url)] == $0.key }
+    }
+
     static func spaces(base: CloudDocs.Spaces?, local: CloudDocs.Spaces, server: CloudDocs.Spaces) -> CloudDocs.Spaces {
         // The first sync of a second Mac: both have a "Home" (each made its
         // own on first launch). Same name, never synced here — the same space.
         let local = base == nil ? rekeyed(local, to: server) : local
         let spaces = list(base: base?.spaces, local: local.spaces, server: server.spaces) { $0.id.uuidString }
         let alive = Set(spaces.map(\.id))
-        var tabs = list(base: base?.tabs, local: local.tabs, server: server.tabs) { $0.key }
-            .filter { alive.contains($0.space) }
+        var tabs = onePinPerSite(list(base: base?.tabs, local: local.tabs, server: server.tabs) { $0.key }
+            .filter { alive.contains($0.space) })
         // A server document without folders is an older build's: its blank
         // `group`s say nothing, so each tab stays filed where it is here.
         if server.groups == nil, local.groups != nil {

@@ -225,6 +225,30 @@ struct SavedCloseTests {
         #expect(afterCross.tabs.map(\.key) == [kept("closed").key])
     }
 
+    @Test("Pins sync one per site: copies under other keys or spaces fold into the lowest key")
+    func onePinPerSite() {
+        let casual = Space(name: "Casual"), work = Space(name: "Work")
+        func pin(_ space: Space, _ url: String, _ n: String = "") -> CloudDocs.KeptTab {
+            let host = URL(string: url)?.host() ?? ""
+            return CloudDocs.KeptTab(key: "\(space.id.uuidString.lowercased())|pin|\(host)|\(url)\(n)", space: space.id,
+                                     url: url, title: host, pinned: true, pin: "X")
+        }
+        let saved = CloudDocs.KeptTab(key: "\(casual.id.uuidString.lowercased())|saved|x.com|https://x.com/a", space: casual.id,
+                                      url: "https://x.com/a", title: "a", pinned: false, pin: nil)
+        let x = pin(casual, "https://x.com/home"), y = pin(casual, "https://www.youtube.com/watch?v=1")
+        let tabs = [pin(work, "https://x.com/home"), x, pin(casual, "https://x.com/home", "#2"), y,
+                    pin(casual, "https://www.youtube.com/watch?v=1", "#3"), saved]
+        let kept = CloudMerge.onePinPerSite(tabs)
+        let low = [x, pin(work, "https://x.com/home")].map(\.key).min()!
+        #expect(kept.filter(\.pinned).count == 2)
+        #expect(kept.contains { $0.key == low })
+        #expect(kept.contains { $0.key == y.key })
+        #expect(kept.contains(saved)) // a Saved row on a pinned site stays
+        // The merge folds too, whatever either side sent.
+        let doc = CloudDocs.Spaces(spaces: [casual, work], tabs: tabs)
+        #expect(CloudMerge.spaces(base: nil, local: doc, server: doc).tabs.filter(\.pinned).count == 2)
+    }
+
     @Test("Reopen Closed Tab brings a removed Saved row back into Saved, in its folder")
     func reopenIntoSaved() {
         let sections = Sections.shared

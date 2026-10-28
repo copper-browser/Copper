@@ -39,7 +39,10 @@ enum CloudApply {
             let row = space.id == spaces.current ? browser.tabs : (spaces.parkedRow(space.id) ?? [])
             for tab in row where !spaces.pins.contains(where: { $0.id == tab.id }) {
                 guard let url = keptURL(of: tab, saved: Sections.shared.isSaved(tab)) else { continue }
-                out.append(Kept(tab: tab, space: space.id, pinned: tab.pin != nil, url: url))
+                // A pin another Mac sent waits in its row until the window
+                // next lays out its pins; it is still a pin, keyed as one.
+                let pinned = tab.pin != nil
+                out.append(Kept(tab: tab, space: pinned ? (spaces.all.first?.id ?? space.id) : space.id, pinned: pinned, url: url))
             }
         }
         return out
@@ -62,6 +65,9 @@ enum CloudApply {
     /// This Mac's spaces document. `base` is the last one synced: a tab it
     /// already had keeps that entry's key, address and title.
     static func spaces(_ browser: Browser, base: CloudDocs.Spaces?) -> CloudDocs.Spaces {
+        // Pins sync one per site (CloudMerge.onePinPerSite); copies an older
+        // build opened here close before this Mac says what it has.
+        Spaces.shared.cloudFoldPins(browser: browser)
         let list = kept(browser)
         let baseBy = Dictionary((base?.tabs ?? []).map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
         var used = Set<String>()
@@ -113,7 +119,7 @@ enum CloudApply {
         let folders = Groups.shared.all.map {
             CloudDocs.Folder(id: $0.id, name: $0.name, hue: $0.hue, space: $0.space, slot: $0.slot)
         }
-        return CloudDocs.Spaces(spaces: Spaces.shared.all, tabs: tabs.sorted { $0.key < $1.key }, groups: folders)
+        return CloudDocs.Spaces(spaces: Spaces.shared.all, tabs: CloudMerge.onePinPerSite(tabs).sorted { $0.key < $1.key }, groups: folders)
     }
 
     /// Make this Mac's spaces the merged document's: spaces added, edited,
@@ -121,6 +127,8 @@ enum CloudApply {
     /// neighbour); kept tabs opened, asleep, or closed.
     static func apply(spaces doc: CloudDocs.Spaces, base: CloudDocs.Spaces?, in browser: Browser) {
         guard browser.primary else { return }
+        var doc = doc
+        doc.tabs = CloudMerge.onePinPerSite(doc.tabs)
         let shelf = Spaces.shared
         let wanted = Set(doc.spaces.map(\.id))
         // A space this Mac made and never synced, named like one in the
@@ -157,13 +165,17 @@ enum CloudApply {
             // A pin for a site already pinned here is that pin under another
             // key (an older build keyed pins by the space on screen): adopt
             // the key rather than pin the site a second time.
-            if entry.pinned, let host = url.host()?.lowercased(),
-               let same = shelf.pins.first(where: { tab in
-                   (tabKeys[tab.id].map { !docKeys.contains($0) } ?? true)
-                       && (tab.pending ?? tab.address)?.host()?.lowercased() == host
-               }) {
-                tabKeys[same.id] = entry.key
-                continue
+            // Never a second pin for a site: it takes the key if it has none
+            // the document still holds.
+            if entry.pinned {
+                let site = CloudMerge.site(entry.url)
+                let same = kept(browser).filter { $0.pinned && CloudMerge.site($0.url.absoluteString) == site }.map(\.tab)
+                if !same.isEmpty {
+                    if let free = same.first(where: { tab in tabKeys[tab.id].map { !docKeys.contains($0) } ?? true }) {
+                        tabKeys[free.id] = entry.key
+                    }
+                    continue
+                }
             }
             let pin = entry.pinned ? (entry.pin ?? Address.pretty(url).prefix(1).uppercased()) : nil
             if let tab = shelf.cloudOpen(url, title: entry.title, pin: pin, in: entry.space, browser: browser) {

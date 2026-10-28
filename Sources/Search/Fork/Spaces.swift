@@ -1474,6 +1474,22 @@ extension Spaces {
         return tab
     }
 
+    /// Pins sync one per site (CloudMerge.onePinPerSite): a second pin for a
+    /// site already pinned — a copy an older build opened from another
+    /// Mac's document — closes; the first in the row stays.
+    @discardableResult
+    func cloudFoldPins(browser: Browser) -> Int {
+        guard browser.primary else { return 0 }
+        let waiting = rows.values.joined().filter { tab in tab.pin != nil && !pins.contains { $0.id == tab.id } }
+        var seen = Set<String>()
+        let extra = (pins + waiting).filter { tab in
+            guard let url = tab.pending ?? tab.address, url.scheme?.hasPrefix("http") == true else { return false }
+            return !seen.insert(CloudMerge.site(url.absoluteString)).inserted
+        }
+        for tab in extra { cloudClose(tab, browser: browser) }
+        return extra.count
+    }
+
     /// A kept tab gone from another Mac: closed here too, pinned or not,
     /// in whichever row it is. A window showing it closes it the ordinary
     /// way (so it lands on another tab); a row nobody is looking at loses
