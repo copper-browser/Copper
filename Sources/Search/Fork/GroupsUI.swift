@@ -90,7 +90,7 @@ struct GroupedRows: View {
                         .padding(.leading, CGFloat(depth) * Folders.step)
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { SideHand.frames[tab.id] = $0 }
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SavedDrop.space)) } action: { frame in
-                            if dragging != tab.id || block == .saved { drag.rows[tab.id] = frame }
+                            if dragging != tab.id { drag.rows[tab.id] = frame } // in the hand its frame rides the offset: its home stays put
                         }
                         // A hair of the folder's colour down the middle of
                         // its header's glyph, under the rows it holds. The
