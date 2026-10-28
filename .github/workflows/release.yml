@@ -160,6 +160,9 @@ jobs:
           set -euo pipefail
           ./build.sh release app
           test "$(lipo -archs build/x86_64/Copper.app/Contents/MacOS/Copper)" = x86_64
+          # The resources the arm64 app carries (backdrop, canvas, addons bridge).
+          diff <(ls build/Copper.app/Contents/Resources) <(ls build/x86_64/Copper.app/Contents/Resources)
+          test -d build/x86_64/Copper.app/Contents/Resources/Search_Search.bundle
           test "$(plutil -extract CFBundleIdentifier raw -o - build/x86_64/Copper.app/Contents/Info.plist)" = com.collinrijock.copper
 
       - name: Signing keychain (this runner only)

@@ -98,7 +98,8 @@ fi
 if [ -n "$ARCH" ]; then
   # The oldest macOS goes into the triple too, as it is in the plist.
   swift build -c "$CONFIG" --triple "$ARCH-apple-macosx$MINIMUM"
-  PRODUCTS=".build/$ARCH-apple-macosx/$CONFIG"
+  # Where depends on the build system SwiftPM picked for the triple, so ask.
+  PRODUCTS="$(swift build -c "$CONFIG" --triple "$ARCH-apple-macosx$MINIMUM" --show-bin-path)"
 else
   swift build -c "$CONFIG"
   PRODUCTS=".build/$CONFIG"
