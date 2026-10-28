@@ -523,7 +523,11 @@ private struct PinSquare: View {
     var width: CGFloat = 34
     var height: CGFloat = 34
 
-    @State private var hovering = false
+    @State private var pointing = false
+    @ObservedObject private var benchHover = SideRowHover.shared // Fork (calendar-peek): `bench sections hover ID` peeks too
+    private var hovering: Bool { pointing || benchHover.forced == tab.id }
+    @State private var peeking = false // Fork (calendar-peek)
+    @State private var overCard = false
 
     private var radius: CGFloat { min(12, min(width, height) * 0.28) }
     /// A mark big enough to recognise at a glance, and no bigger than the
@@ -560,12 +564,31 @@ private struct PinSquare: View {
         .modifier(OneClick(double: live) {
             if live { browser.editLetter(tab) } else { browser.select(tab) }
         })
-        .onHover { hovering = $0 }
+        .onHover { pointing = $0 }
+        // Fork (calendar-peek): a Calendar pin shows the next meetings while
+        // the pointer rests on it or on the card.
+        .task(id: hovering || overCard) { await settlePeek() }
+        .popover(isPresented: $peeking, arrowEdge: .trailing) {
+            CalendarPeekCard(browser: browser).onHover { overCard = $0 }
+        }
         .contextMenu { TabMenu(browser: browser, tab: tab, close: { browser.close(tab) }) }
         .anchorPreference(key: SideTargets.self, value: .bounds) { SideTargets(pins: [tab.id: $0]) } // Fork: wheel click closes, see SideBar
-        .help(tab.label)
+        .help(CalendarPeek.peeks(tab.pending ?? tab.address) ? "" : tab.label)
         .animation(Motion.quick, value: hovering)
         .transition(.scale(scale: 0.8).combined(with: .opacity))
+    }
+
+    /// Open the card once the pointer has rested half a second (passing over
+    /// the grid opens nothing); close it a moment after the pointer leaves
+    /// both the pin and the card, so it can cross the gap between them.
+    private func settlePeek() async {
+        guard CalendarPeek.peeks(tab.pending ?? tab.address), browser.editingPin != tab.id else { return }
+        let resting = hovering || overCard
+        guard resting != peeking else { return }
+        try? await Task.sleep(for: .milliseconds(resting ? 500 : 250))
+        guard !Task.isCancelled else { return }
+        if resting { CalendarPeek.shared.refresh() }
+        peeking = resting
     }
 }
 

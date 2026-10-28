@@ -189,6 +189,11 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <string>Websites you visit can ask to use your camera. Copper asks you first, every time, for each site.</string>
   <key>NSMicrophoneUsageDescription</key>
   <string>Copper uses your microphone when you dictate to the agent, and when a website you allow asks for it. Speech is turned into text on this Mac.</string>
+  <!-- The Calendar pin's card lists your next meetings (Fork/CalendarPeek.swift). -->
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>Copper shows your next meetings when you rest the pointer on a Google Calendar pin. They are read on this Mac and never sent anywhere.</string>
+  <key>NSCalendarsUsageDescription</key>
+  <string>Copper shows your next meetings when you rest the pointer on a Google Calendar pin. They are read on this Mac and never sent anywhere.</string>
   <key>NSDownloadsFolderUsageDescription</key>
   <string>Files you download are saved to your Downloads folder.</string>
 </dict>

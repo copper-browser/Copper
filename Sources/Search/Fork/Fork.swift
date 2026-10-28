@@ -57,6 +57,7 @@ enum Fork {
         switch verb {
         case "flow": return Flow.shared.bench(request, in: browser)
         case "pace": return Pace.bench(request) // Fork/Pace.swift
+        case "calendar": return CalendarPeek.bench(request) // Fork/CalendarPeek.swift
         case "stage": return StageReport.report() // Fork/StageBench.swift
         case "history": return Flow.shared.bench(request, in: browser)
         case "spaces": return Spaces.shared.bench(request, in: browser)

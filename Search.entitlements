@@ -6,5 +6,7 @@
        app says up front that pages may ask for them. -->
   <key>com.apple.security.device.camera</key><true/>
   <key>com.apple.security.device.audio-input</key><true/>
+  <!-- The Calendar pin's card reads your next meetings (Fork/CalendarPeek.swift). -->
+  <key>com.apple.security.personal-information.calendars</key><true/>
 </dict>
 </plist>
