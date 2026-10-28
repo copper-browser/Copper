@@ -4,7 +4,7 @@ A small, fast, quiet web browser for the Mac, by Collin and Felipe. Built on Sea
 
 ![Copper, with its tabs down the left and a page taking the rest of the window](.github/screenshot.png)
 
-**[Download for macOS →](https://github.com/copper-browser/Copper/releases/latest/download/copper-macos-arm64.zip)** · `brew install --cask copper-browser/copper/copper` · macOS 14 or later · Apple Silicon · free
+**[Download for macOS →](https://copper-browser.github.io/Copper/#install)** (picks Apple Silicon or Intel for you) · `brew install --cask copper-browser/copper/copper` · macOS 14 or later · Apple Silicon or Intel · free
 
 New to Copper? **[Getting started](docs/onboarding.md)** — install, move in from Arc, Chrome or Safari, link a Copper Cloud, use the agent.
 
@@ -73,11 +73,11 @@ brew install --cask copper-browser/copper/copper      # Homebrew (tap: copper-br
 curl -fsSL https://github.com/copper-browser/Copper/releases/latest/download/copper-install.sh | sh
 ```
 
-Or download [`copper-macos-arm64.zip`](https://github.com/copper-browser/Copper/releases/latest/download/copper-macos-arm64.zip) from the [latest release](https://github.com/copper-browser/Copper/releases/latest), move `Copper.app` to `/Applications` and run `xattr -cr /Applications/Copper.app` once — builds are signed with Copper's own certificate, not notarized, and Homebrew and the installer clear the quarantine flag for you. Because every release carries the same signature, the permissions you give Copper (Full Disk Access, Files & Folders, the keychain's Always Allow) survive updates. Apple Silicon, macOS 14 or later.
+Or download [`copper-macos-arm64.zip`](https://github.com/copper-browser/Copper/releases/latest/download/copper-macos-arm64.zip) (Apple Silicon) or [`copper-macos-x86_64.zip`](https://github.com/copper-browser/Copper/releases/latest/download/copper-macos-x86_64.zip) (Intel) from the [latest release](https://github.com/copper-browser/Copper/releases/latest), move `Copper.app` to `/Applications` and run `xattr -cr /Applications/Copper.app` once — builds are signed with Copper's own certificate, not notarized, and Homebrew and the installer clear the quarantine flag for you. Because every release carries the same signature, the permissions you give Copper (Full Disk Access, Files & Folders, the keychain's Always Allow) survive updates. Apple Silicon or Intel, macOS 14 or later; Homebrew and the installer pick the right build.
 
 `brew upgrade --cask copper` (by name) still works as a manual path; the cask declares `auto_updates` so a plain `brew upgrade` leaves the app to update itself. Re-running the curl installer is the other manual path.
 
-Releases are cut by `.github/workflows/release.yml` (`gh workflow run release.yml -R copper-browser/Copper -f ref=fork`): it builds on a GitHub-hosted Mac, stamps `<VERSION>.<YYYYMMDD>.<run>` into the bundle, signs it with Copper's release certificate (docs/releasing.md; `-f publish=false` is a dry run that keeps the signed zip as the run's artifact), and attaches the zip, its `.sha256`, `copper-version.json` and `copper-install.sh` to a `v<version>` release. The tap bumps its cask from that manifest.
+Releases are cut by `.github/workflows/release.yml` (`gh workflow run release.yml -R copper-browser/Copper -f ref=fork`): it builds on a GitHub-hosted Mac, stamps `<VERSION>.<YYYYMMDD>.<run>` into the bundle, signs it with Copper's release certificate (docs/releasing.md; `-f publish=false` is a dry run that keeps the signed zip as the run's artifact), and attaches the zips (`arm64` built natively, `x86_64` cross-built for Intel), their `.sha256`, `copper-version.json` and `copper-install.sh` to a `v<version>` release. The tap bumps its cask from that manifest.
 
 The installer accepts `COPPER_NO_LAUNCH=1` / `--no-launch` for scripts that want to relaunch separately. For the bench: `./bench updates status|check|stub URL|stage|dry-run on|off|upgrade` — `stub` points a test world at a local manifest, `stage` downloads and verifies now, `dry-run on` makes `upgrade` stop after the checks and the session backup and log what it would have swapped.
 

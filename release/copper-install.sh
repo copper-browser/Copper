@@ -36,7 +36,8 @@ FEED="${COPPER_FEED:-https://github.com/copper-browser/Copper/releases/latest/do
 FEED="${FEED%/}"
 INSTALL_DIR="${COPPER_INSTALL_DIR:-/Applications}"
 APP="$INSTALL_DIR/Copper.app"
-ZIP_NAME="copper-macos-arm64.zip"
+# Set by check_platform: copper-macos-arm64.zip or copper-macos-x86_64.zip.
+ZIP_NAME=""
 SUPPORT_DIR="$HOME/Library/Application Support/Copper"
 QUIT_TIMEOUT=15
 
@@ -83,11 +84,13 @@ app_version() {
 check_platform() {
 	[ "$(uname -s)" = "Darwin" ] || die "Copper is a macOS app; this is $(uname -s)"
 	arch="$(uname -m)"
+	# A terminal running under Rosetta says x86_64 on Apple Silicon; the Mac
+	# itself still gets the Apple Silicon build.
+	if [ "$arch" = x86_64 ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)" = 1 ]; then
+		arch=arm64
+	fi
 	case "$arch" in
-	arm64) ;;
-	x86_64)
-		die "only Apple Silicon (arm64) builds of Copper are published for now; this Mac is x86_64."
-		;;
+	arm64 | x86_64) ZIP_NAME="copper-macos-$arch.zip" ;;
 	*) die "unsupported CPU architecture: $arch" ;;
 	esac
 }

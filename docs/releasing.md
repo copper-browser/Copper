@@ -23,6 +23,20 @@ for its version, and then publishes the zip, its `.sha256`, `copper-version.json
 `copper-install.sh` and the dSYM as a `v<version>` release. The updater, the curl installer and
 the Homebrew tap all read that release.
 
+**Two CPUs.** Every release is built twice on the same Apple Silicon runner: natively for
+`arm64`, and cross-built for Intel with `COPPER_ARCH=x86_64 ./build.sh release app`
+(`swift build --triple x86_64-apple-macosx14.0`, into `build/x86_64/Copper.app`). Both are
+stamped and signed the same way (`release/package-app.sh … <arch>`, which refuses a binary that
+isn't that CPU), both are checked, and both are launched — the Intel one through Rosetta, when
+the runner has it (`softwareupdate --install-rosetta --agree-to-license`; without it the run
+warns and skips only that launch). Each CPU gets `copper-<version>-macos-<arch>.zip`, its stable
+`copper-macos-<arch>.zip` name, the `.sha256`s and a dSYM. `copper-version.json` lists both under
+`archives`; its top-level `zip`, `sha256` and `archiveUrl` stay arm64's, which is all a Copper
+from before the Intel build reads. The updater (`Fork/Updates.swift`) takes its own CPU's archive
+— an Intel Copper never falls back to the arm64 one — and checks the unpacked bundle's
+architecture before the swap. The curl installer picks by `uname -m` (arm64 under a Rosetta
+shell), and the tap's cask switches with Homebrew's `arch` stanza.
+
 **`publish=false`** is a dry run: everything up to and including the launch check, then the zip,
 its `.sha256`, `copper-version.json` and the dSYM are kept as the run's artifact (7 days) and
 nothing else happens — no tag, no GitHub release, no asset upload, nothing the updater,

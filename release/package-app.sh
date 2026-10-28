@@ -3,11 +3,11 @@
 # release certificate, and zip it.
 #
 #   COPPER_SIGN_IDENTITY=<sha1> [COPPER_SIGN_KEYCHAIN=<path>] \
-#     release/package-app.sh <path/to/Copper.app> <version> <out-dir>
+#     release/package-app.sh <path/to/Copper.app> <version> <out-dir> [arm64|x86_64]
 #
-# Writes to <out-dir>:
-#   copper-<version>-macos-arm64.zip          ditto --keepParent archive
-#   copper-<version>-macos-arm64.zip.sha256   "<hex>  <zip name>" (shasum format)
+# Writes to <out-dir>, for <arch> (default arm64, the CPU the binary must be):
+#   copper-<version>-macos-<arch>.zip          ditto --keepParent archive
+#   copper-<version>-macos-<arch>.zip.sha256   "<hex>  <zip name>" (shasum format)
 # and prints `has_cli=true|false` on stdout (whether the bundle ships the
 # `copper` CLI shim at Contents/Resources/bin/copper — the cask renders its
 # `binary` stanza only when it does).
@@ -36,6 +36,7 @@ set -euo pipefail
 app="${1:?usage: package-app.sh <Copper.app> <version> <out-dir>}"
 version="${2:?version}"
 out="${3:?out-dir}"
+arch="${4:-arm64}"
 here="$(cd "$(dirname "$0")" && pwd)"
 
 [ -d "$app/Contents" ] || { echo "not an app bundle: $app" >&2; exit 1; }
@@ -43,6 +44,13 @@ case "$version" in
   [0-9]*.[0-9]*.[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9].[0-9]*) ;;
   *) echo "version must look like 1.0.20260924.3, got: $version" >&2; exit 1 ;;
 esac
+case "$arch" in
+  arm64 | x86_64) ;;
+  *) echo "arch must be arm64 or x86_64, got: $arch" >&2; exit 1 ;;
+esac
+# The zip's name promises a CPU; the binary inside has to keep it.
+built="$(lipo -archs "$app/Contents/MacOS/Copper")"
+[ "$built" = "$arch" ] || { echo "$app is built for $built, not $arch" >&2; exit 1; }
 
 plist="$app/Contents/Info.plist"
 requirement="$(tr -d '\n' < "$here/designated-requirement.txt")"
@@ -88,7 +96,7 @@ fi
 if [ -x "$app/Contents/Resources/bin/copper" ]; then has_cli=true; else has_cli=false; fi
 
 mkdir -p "$out"
-zip="$out/copper-${version}-macos-arm64.zip"
+zip="$out/copper-${version}-macos-${arch}.zip"
 rm -f "$zip" "$zip.sha256"
 ditto -c -k --keepParent "$app" "$zip"
 ( cd "$out" && shasum -a 256 "$(basename "$zip")" > "$(basename "$zip").sha256" )

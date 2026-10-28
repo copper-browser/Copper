@@ -17,7 +17,7 @@ your team runs, your spaces, bookmarks, history and settings follow you
 between Macs, and shared canvases are live. Nothing leaves the Mac until you
 turn it on.
 
-Requirements: Apple Silicon, macOS 14 or later.
+Requirements: macOS 14 or later, on Apple Silicon or Intel.
 
 ## 1. Install
 

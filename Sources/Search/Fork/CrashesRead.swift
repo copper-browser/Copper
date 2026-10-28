@@ -224,7 +224,8 @@ extension Crashes {
         let shelf = data.appendingPathComponent("dsyms/\(version)", isDirectory: true)
         var lines = ["No dSYM with UUID \(binary.uuid) on this Mac." + (mismatched.isEmpty ? "" : " (Not these, their UUIDs differ: \(mismatched.joined(separator: ", ")).)")]
         if isRelease(version) {
-            let asset = "copper-\(version)-macos-arm64.dSYM.zip"
+            // One dSYM per CPU from the first Intel release on; the crashed binary says which.
+            let asset = "copper-\(version)-macos-\(binary.arch == "x86_64" ? "x86_64" : "arm64").dSYM.zip"
             lines.append("It is a release asset of \(process) \(version) (published from the release workflow on; earlier releases kept none):")
             lines.append("  \(releases)/download/v\(version)/\(asset)")
             lines.append("Put it here, then run this again:")

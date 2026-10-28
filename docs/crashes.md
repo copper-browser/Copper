@@ -66,7 +66,9 @@ crash: <when>, <what>* with Reveal in Finder and Copy Report — only when there
 
 Release builds ship stripped, so Copper's own frames are bare offsets. The release workflow
 attaches `copper-<version>-macos-arm64.dSYM.zip` to each release (from the first release made
-with this change on — earlier ones kept none). `--symbolicate` looks for a dSYM whose UUID is
+with this change on — earlier ones kept none), and `copper-<version>-macos-x86_64.dSYM.zip` for the
+Intel build from the first release that had one; `--symbolicate` names the one for the crashed
+binary's CPU. `--symbolicate` looks for a dSYM whose UUID is
 the crashed binary's in `dsyms/<version>/`, beside the app (`build/Copper.app.dSYM` for a
 worktree build) and in `./build/`, and runs `atos` with the load address from the report.
 Without one it prints the asset's URL and the `ditto` line that puts it in place; it never
