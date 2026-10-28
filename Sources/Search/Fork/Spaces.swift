@@ -159,7 +159,7 @@ final class Spaces: ObservableObject {
     /// URL identity used when old per-space pins or an import is folded into
     /// the global set. Scheme and host are case-insensitive; fragments are
     /// not a different favourite page.
-    private func pinKey(_ url: URL?) -> String? {
+    nonisolated static func pinKey(_ url: URL?) -> String? {
         guard let url else { return nil }
         guard var components = URLComponents(url: url, resolvingAgainstBaseURL: true) else { return url.absoluteString }
         components.scheme = components.scheme?.lowercased()
@@ -168,7 +168,20 @@ final class Spaces: ObservableObject {
         return components.url?.absoluteString ?? url.absoluteString
     }
 
-    private func pinKey(_ tab: Tab) -> String? { pinKey(tab.pending ?? tab.address) }
+    private func pinKey(_ tab: Tab) -> String? { Self.pinKey(tab.pending ?? tab.address) }
+
+    /// Pinned entries in a file's rows that its `pins` list lacks, once each:
+    /// Copper 1.0.20261028.87 and older put a pin another Mac sent into a
+    /// space's row, and a launch that read only `pins` lost it — and the
+    /// next sync then deleted it on every Mac. (The rows' other pinned
+    /// entries are the older builds' copy of `pins`, already in it.)
+    nonisolated static func strayPins(_ saved: Session.Shape) -> [(index: Int, entry: Session.Entry)] {
+        var known = Set((saved.pins ?? []).compactMap { URL(string: $0.url).flatMap(pinKey) })
+        return saved.tabs.filter { entry in
+            guard entry.pin != nil, let key = URL(string: entry.url).flatMap(pinKey) else { return false }
+            return known.insert(key).inserted
+        }.map { (index: -1, entry: $0) }
+    }
 
     /// The space to build a pin's web view for: the one it was made in, while
     /// that space still exists, else the one being restored into.
@@ -900,7 +913,7 @@ final class Spaces: ObservableObject {
         for entry in entries {
             // Fork (canvas-hooks): an easel's address is its canvas's now; one that never moved is dropped.
             guard let url = URL(string: entry.url).flatMap(CanvasImport.restored) else { made.append(nil); continue }
-            if entry.pin != nil, let key = pinKey(url), let known = pins.first(where: { pinKey($0) == key }) {
+            if entry.pin != nil, let key = Self.pinKey(url), let known = pins.first(where: { pinKey($0) == key }) {
                 made.append(known)
                 continue
             }
@@ -1062,13 +1075,13 @@ final class Spaces: ObservableObject {
                 // Stable: within a space, the order the row had.
                 .enumerated().sorted { a, b in (rank(a.element.entry), a.offset) < (rank(b.element.entry), b.offset) }
                 .map(\.element)
-            : (saved.pins ?? []).enumerated().map { (index: -1, entry: $0.element) }
+            : (saved.pins ?? []).map { (index: -1, entry: $0) } + Self.strayPins(saved)
         var kept: [String: Tab] = [:]
         var boards = Set<String>() // Fork (canvas-hooks): one tab per canvas, even from a file that had two
         for (i, entry) in sources {
             guard let url = URL(string: entry.url).flatMap(CanvasImport.restored) else { continue } // Fork (canvas-hooks): easels → canvases
             if let board = CanvasLinks.id(from: url), !boards.insert(board).inserted { continue }
-            let key = pinKey(url) ?? url.absoluteString
+            let key = Self.pinKey(url) ?? url.absoluteString
             // Upstream's file has no `active` flag — its `active` index does.
             let wasActive = entry.active == true || (legacy && entry.space == nil && i == saved.active)
             // Only the merge folds two addresses into one: a `pins` list is
