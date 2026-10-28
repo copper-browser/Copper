@@ -23,8 +23,8 @@ A tab crosses the seam three ways:
 
 - drag it — a Today row, or a trail's page with Trails on — onto the New
   Tab row or anything above it, and let go: it is saved where it was let go
-  (below); drag a Saved row below Saved's last row and let go: it is
-  unsaved;
+  (below); drag a Saved row past the middle of the New Tab row and let
+  go: it is unsaved;
 - **Save** / **Unsave** on the row's context menu;
 - `./bench sections save ID` / `./bench sections unsave ID`.
 
@@ -49,8 +49,18 @@ From then on (`Fork/SavedDrop.swift`):
   the hairline, the New Tab row — is the end of Saved at the top level.
 
 Back over Today the room shuts at once and the row reorders inside Today as
-it always has. A Saved row is over Today once the pointer is below Saved's
-last row; the room opens at the top of Today, where an unsaved row goes.
+it always has. A Saved row moved inside Saved gets the same room and lands
+the same way — into a folder, out of one, or between two — and over its own
+place none opens. (It used to reorder by counting rows, so a shut folder's
+hidden rows counted and a row dragged out of one folder fell into the
+next.) Between Saved's last row and the middle of the New Tab row is the end
+of Saved at the top level, which is how a row leaves a folder that ends the
+block. Past the middle of New Tab a Saved row is over Today; the room opens
+at the top of Today, where an unsaved row goes.
+
+Any row carried up above the column, over the favourites, opens a place at
+the end of the grid (shown even when there are no pins yet); let go there
+and it is pinned.
 
 With Trails on, Today's pages are dragged with a system drag (their own
 type, so a page can move between trails); the column is a drop target for

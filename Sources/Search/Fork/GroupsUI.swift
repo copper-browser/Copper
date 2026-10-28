@@ -90,7 +90,7 @@ struct GroupedRows: View {
                         .padding(.leading, CGFloat(depth) * Folders.step)
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { SideHand.frames[tab.id] = $0 }
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SavedDrop.space)) } action: { frame in
-                            if dragging != tab.id { drag.rows[tab.id] = frame }
+                            if dragging != tab.id || block == .saved { drag.rows[tab.id] = frame }
                         }
                         // A hair of the folder's colour down the middle of
                         // its header's glyph, under the rows it holds. The
@@ -155,7 +155,9 @@ struct GroupedRows: View {
                 }
                 travel = value.translation.height
                 drag.move(to: value.location.y, in: browser)
-                guard drag.target == nil else { return }
+                // Saved places a row by the gap it opens (SavedDrop.target),
+                // never by counting rows past folders.
+                guard drag.target == nil, block != .saved else { return }
                 let moved = Int((travel / step).rounded())
                 let target = min(max(0, from + moved), loose.count - 1)
                 if target != index {
@@ -350,10 +352,10 @@ struct GroupMenu: View {
                     }
                 }
             }
-            if groups.group(of: tab) != nil {
-                Divider()
-                Button("Remove from Group") { groups.remove(tab) }
-            }
+        }
+        // Out of a folder in one click, not two menus deep.
+        if groups.group(of: tab) != nil {
+            Button("Remove from Folder") { withAnimation(Motion.settle) { groups.takeOut(tab, in: browser) } }
         }
     }
 }
@@ -373,7 +375,7 @@ struct GroupCommands: Commands {
             .keyboardShortcut("g", modifiers: [.control, .shift])
             .disabled(browser.active?.isBlank ?? true)
             Button("Remove from Group") {
-                if let tab = browser.active { groups.remove(tab) }
+                if let tab = browser.active { groups.takeOut(tab, in: browser) }
             }
             .disabled(browser.active.map { groups.group(of: $0) == nil } ?? true)
             if !groups.all.isEmpty {

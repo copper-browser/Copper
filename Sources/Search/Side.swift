@@ -76,7 +76,7 @@ struct SideBar: View {
 
             // Fork (global-pins): the favourites are the same in every space,
             // so they stay put when the space changes, as Arc's do.
-            if browser.pinnedCount > 0 {
+            if browser.pinnedCount > 0 || drag.target == .pins { // Fork (saved-drag): a row carried up opens the grid's next place
                 pinned
                     .padding(.horizontal, SideBar.inset)
                     .padding(.bottom, 8)
@@ -235,6 +235,10 @@ struct SideBar: View {
                 .shadow(color: .black.opacity(held ? 0.16 : 0), radius: 10, y: 3)
                 .gesture(pinReorder(tab: tab, index: index, columns: cols, width: width, height: height))
             }
+            // Fork (saved-drag): where a row carried up over the favourites lands.
+            if drag.target == .pins, let id = drag.carrying, let tab = browser.tabs.first(where: { $0.id == id }) {
+                PinDropGhost(browser: browser, tab: tab, tint: tint, width: width, height: height)
+            }
         } }
         .coordinateSpace(name: "pins")
     }
@@ -338,6 +342,7 @@ struct SideBar: View {
                 // in the hand, and the column's drop target for a trail's
                 // page (Fork/SavedDrop.swift).
                 .coordinateSpace(name: SavedDrop.space)
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { drag.contentTop = $0 } // Fork (saved-drag)
                 .overlay(alignment: .topLeading) { SavedDropMark(drag: drag, tint: tint) }
                 .overlay(alignment: .topLeading) { SideDragCard(drag: drag, browser: browser, tint: tint) }
                 .onDrop(of: [Trails.dragType], delegate: SavedTrailDrop(browser: browser, drag: drag))
@@ -349,6 +354,7 @@ struct SideBar: View {
             }
             .scrollBounceBehavior(.always, axes: .vertical)
             .frame(maxHeight: .infinity)
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { drag.pinLine = $0 } // Fork (saved-drag): above it, the favourites
             .mask(SideBar.fade)
             // Fork: the rows are only under the pointer inside the scroll —
             // one scrolled off the top still has a frame, under the favourites.
@@ -508,6 +514,28 @@ struct RowMark: View {
         }
         .transition(.opacity)
         .animation(Motion.quick, value: icon == nil)
+    }
+}
+
+/// Fork (saved-drag): the place a row carried up over the favourites will
+/// take, ringed in the space's colour as a folder lit for a drop is.
+private struct PinDropGhost: View {
+    @ObservedObject var browser: Browser
+    @ObservedObject var tab: Tab
+    let tint: SpaceTint
+    let width: CGFloat
+    let height: CGFloat
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: min(12, min(width, height) * 0.28), style: .continuous)
+        SideGlyphMark(prefs: browser.prefs, icon: tab.icon, letter: tab.monogram, tint: tint,
+                      size: max(14, min(20, height * 0.46)))
+            .opacity(0.7)
+            .frame(width: width, height: height)
+            .background(shape.fill(tint.hover))
+            .overlay(shape.strokeBorder(tint.bar, lineWidth: 1.5))
+            .transition(.opacity)
+            .allowsHitTesting(false)
     }
 }
 

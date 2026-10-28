@@ -149,6 +149,21 @@ final class Groups: ObservableObject {
         membership[tab.id] = nil
     }
 
+    /// Remove from Folder: out of every folder, onto the line just under the
+    /// outermost one it was in. Left where it stood, it would split that
+    /// folder in two around it.
+    func takeOut(_ tab: Tab, in browser: Browser) {
+        guard let name = group(of: tab)?.name else { return }
+        let root = name.components(separatedBy: Folders.mark)[0]
+        membership[tab.id] = nil
+        let last = browser.tabs.lastIndex { other in
+            guard other.pin == nil, let n = group(of: other)?.name else { return false }
+            return n == root || Folders.below(n, root)
+        }
+        guard let last, let here = browser.tabs.firstIndex(where: { $0.id == tab.id }), last > here else { return }
+        browser.move(tab, to: last)
+    }
+
     /// Renaming a folder renames the folders inside it, since the nesting
     /// lives in the names: `Misc` → `Odds` takes `Misc › lula` with it. Not
     /// when two folders share the name, though — then there is no telling
