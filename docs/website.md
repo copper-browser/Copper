@@ -64,6 +64,14 @@ exists) and add `site.yml`.
   (`releases/latest/download/copper-install.sh`) and the zips
   (`releases/latest/download/copper-macos-arm64.zip` and `…/copper-macos-x86_64.zip`). See
   README › Installing.
+- Install covers all three platforms. The first tab is this computer's: a Mac gets the Mac
+  methods, a Windows PC the PowerShell line (`irm https://copper-browser.github.io/Copper/install.ps1
+  | iex`, served from `site/install.ps1`: latest `CopperSetup-<x64|arm64>.exe` from
+  copper-browser/copper-windows, checked against its `SHA256SUMS`, run with `--silent`, then
+  Copper opened; `COPPER_NO_LAUNCH=1` skips that) and the installer for its CPU, Linux the
+  copper-linux `install.sh` line and the `.deb`/Flatpak for its CPU. *All downloads* lists every
+  build of all three; phones and unknown systems open on it. Windows and Linux files come from
+  those repos' `releases/latest/download/`, so a release there needs no change here.
 - Install › *For this Mac* points its button at this Mac's zip: the CPU comes from
   `navigator.userAgentData`'s `architecture` (Chromium), else the WebGL renderer's name (Chrome,
   Firefox), else ASTC texture support (Safari says "Apple GPU" on every Mac; only Apple's GPUs
