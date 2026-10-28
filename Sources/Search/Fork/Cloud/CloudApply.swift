@@ -153,7 +153,11 @@ enum CloudApply {
         // Only ones the base had: a tab kept here since the last sync is new,
         // not deleted, and never closed by a document that hasn't seen it.
         let baseKeys = Set(base?.tabs.map(\.key) ?? [])
-        for (key, _) in localKeys where !docKeys.contains(key) && baseKeys.contains(key) {
+        // A pin whose site the document still pins under another key is not
+        // gone: it takes that key below rather than closing and reopening.
+        let docPinSites = Set(doc.tabs.filter(\.pinned).map { CloudMerge.site($0.url) })
+        for (key, entry) in localKeys where !docKeys.contains(key) && baseKeys.contains(key)
+            && !(entry.pinned && docPinSites.contains(CloudMerge.site(entry.url))) {
             if let id = byKey[key], let tab = live[id] { shelf.cloudClose(tab, browser: browser) }
         }
         // Kept tabs new in the document: open them, asleep.

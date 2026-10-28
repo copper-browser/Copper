@@ -130,6 +130,20 @@ enum SavedChecks {
         if !shelf.pins.contains(where: { $0.id == sent.id }) { fail("folding closed the first pin, not the copy") }
         if folded.tabs.filter({ $0.pinned && $0.url.hasPrefix(site) }).count != 1 { fail("the folded document lists the site's pin more than once") }
 
+        // Another device's merge kept the site's pin under another key: the
+        // pin here takes that key and stays, never closed and reopened.
+        var rekeyed = folded
+        if let i = rekeyed.tabs.firstIndex(where: { $0.pinned && $0.url.hasPrefix(site) }) {
+            rekeyed.tabs[i].key = "00000000-0000-4000-8000-000000000000|pin|pin-check.example.net|\(rekeyed.tabs[i].url)"
+            CloudApply.apply(spaces: rekeyed, base: folded, in: browser)
+            if !shelf.pins.contains(where: { $0.id == sent.id }) { fail("a pin another device re-keyed was closed and reopened") }
+            if shelf.pins.filter({ ($0.pending ?? $0.address)?.absoluteString.hasPrefix(site) == true }).count != 1 {
+                fail("a pin another device re-keyed came back twice")
+            }
+        } else {
+            fail("the folded document lost the site's pin")
+        }
+
         // Tidy up: the pins are as they were.
         shelf.cloudClose(sent, browser: browser)
         if shelf.pins.map(\.id) != pinsBefore { fail("the pins did not come back to how they were") }
