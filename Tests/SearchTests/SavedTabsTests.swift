@@ -249,6 +249,20 @@ struct SavedCloseTests {
         #expect(CloudMerge.spaces(base: nil, local: doc, server: doc).tabs.filter(\.pinned).count == 2)
     }
 
+    @Test("A launch keeps a pin written only in a row, once, and not the rows' copy of the pins")
+    func strayPinsComeBack() {
+        func entry(_ url: String, _ pin: String?) -> Session.Entry { Session.Entry(url: url, title: url, pin: pin) }
+        let github = entry("https://github.com/", "G")
+        let rows = [github, entry("https://mail.google.com/mail/u/0/#inbox", "M"),
+                    entry("https://mail.google.com/mail/u/0/#sent", "M"), entry("https://example.com/", nil)]
+        // github.com is the rows' copy of `pins`; #inbox and #sent are one
+        // pin (pinKey drops the fragment); example.com is no pin at all.
+        let shape = Session.Shape(tabs: rows, active: 0, pins: [github])
+        #expect(Spaces.strayPins(shape).map(\.entry.url) == ["https://mail.google.com/mail/u/0/#inbox"])
+        #expect(Spaces.strayPins(Session.Shape(tabs: rows, active: 0, pins: [])).map(\.entry.url)
+            == ["https://github.com/", "https://mail.google.com/mail/u/0/#inbox"])
+    }
+
     @Test("Reopen Closed Tab brings a removed Saved row back into Saved, in its folder")
     func reopenIntoSaved() {
         let sections = Sections.shared
