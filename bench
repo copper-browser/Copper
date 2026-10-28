@@ -31,6 +31,9 @@
     ./bench probe                      the window's own state: panels, modal, windows
     ./bench stage                      every window's stage: the active tab, what the stage holds, where
                                        the active tab's view is and whether it can be seen (visible)
+    ./bench calendar [state|stage|key|picture PATH]
+                                       the Calendar pin's card: what it lists; staged meetings (test
+                                       worlds); the key window while it is open; the card to a PNG
     ./bench pace [reset]               launch milestones (ms since the process started) and the main
                                        thread since the last reset: busy, longest pass, passes over 16 ms
     ./bench extensions                 installed extensions, loaded or not, with their warnings
@@ -602,8 +605,8 @@ def main(argv):
         words = [a for a in args if a != "--table"]
         request["op"] = words[0] if words else "state"
         request["arg"] = " ".join(words[1:]) if len(words) > 1 else ""
-    elif verb in ("spaces", "groups", "sections", "agent", "ai", "updates", "bw", "op", "downloads", "drive", "ext-manager", "windows", "flight", "trails", "pace"):
-        request["op"] = args[0] if args else ("status" if verb in ("updates", "bw", "op", "drive", "pace") else "list")
+    elif verb in ("spaces", "groups", "sections", "agent", "ai", "updates", "bw", "op", "downloads", "drive", "ext-manager", "windows", "flight", "trails", "pace", "calendar"):
+        request["op"] = args[0] if args else ("status" if verb in ("updates", "bw", "op", "drive", "pace") else "state" if verb == "calendar" else "list")
         request["arg"] = " ".join(args[1:]) if len(args) > 1 else ""
     elif verb == "history":
         if not args or args[0] != "import" or len(args) < 2:
