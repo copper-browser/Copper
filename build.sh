@@ -13,6 +13,10 @@
 #                                build/appcast.json, signed with Developer ID
 #                                if there is one in the keychain
 #   ./build.sh release ship    + both notarised, the DMG stapled
+#   COPPER_ARCH=x86_64 ./build.sh release app
+#                              the Intel app, cross-built on Apple Silicon, in
+#                                build/x86_64/ beside the arm64 one: a release
+#                                carries both (.github/workflows/release.yml)
 #
 # Same shape as the one next door: SwiftPM builds the executable, and a macOS
 # app bundle is just a folder with a plist and the binary in the right place.
@@ -52,6 +56,14 @@ cd "$(dirname "$0")"
 CONFIG="${1:-release}"
 STEP="${2:-app}"
 APP="build/Copper.app"
+# Fork (intel): another CPU's app gets a folder of its own, so building it
+# never replaces this Mac's. Only the app step: the disk image, the ZIP and
+# the appcast are this Mac's alone.
+ARCH="${COPPER_ARCH:-}"
+if [ -n "$ARCH" ]; then
+  [ "$STEP" = app ] || { echo "COPPER_ARCH builds the app step only" >&2; exit 1; }
+  APP="build/$ARCH/Copper.app"
+fi
 NAME="Copper"
 VERSION="$(tr -d '[:space:]' < VERSION)"
 # A build number that only ever goes up, so the updater can tell newer from
@@ -83,8 +95,15 @@ if [ -f Canvas/dist/canvas.html ] && [ Canvas/dist/canvas.html -nt "$CANVAS_PAGE
   cp Canvas/dist/canvas.html "$CANVAS_PAGE"
 fi
 
-swift build -c "$CONFIG"
-BINARY=".build/$CONFIG/Search"
+if [ -n "$ARCH" ]; then
+  # The oldest macOS goes into the triple too, as it is in the plist.
+  swift build -c "$CONFIG" --triple "$ARCH-apple-macosx$MINIMUM"
+  PRODUCTS=".build/$ARCH-apple-macosx/$CONFIG"
+else
+  swift build -c "$CONFIG"
+  PRODUCTS=".build/$CONFIG"
+fi
+BINARY="$PRODUCTS/Search"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Resources/bin"
@@ -93,8 +112,8 @@ cp bin/copper "$APP/Contents/Resources/bin/copper"
 chmod 755 "$APP/Contents/Resources/bin/copper"
 # SwiftPM's resource bundle (the animated backdrop's page and three.js),
 # under the name Bundle.module and Fork/AnimatedBackdrop.swift both look for.
-if [ -d ".build/$CONFIG/Search_Search.bundle" ]; then
-  cp -R ".build/$CONFIG/Search_Search.bundle" "$APP/Contents/Resources/"
+if [ -d "$PRODUCTS/Search_Search.bundle" ]; then
+  cp -R "$PRODUCTS/Search_Search.bundle" "$APP/Contents/Resources/"
 fi
 # Fork (voice): the vendored speech runner's Apache-2.0 LICENSE and NOTICE
 # travel with the binary it is compiled into (Settings › Voice credits it).

@@ -8,20 +8,25 @@ name: release
 #                                                         copper-version.json)
 #   curl -fsSL https://github.com/copper-browser/Copper/releases/latest/download/copper-install.sh | sh
 #   https://github.com/copper-browser/Copper/releases/latest/download/copper-macos-arm64.zip
+#   https://github.com/copper-browser/Copper/releases/latest/download/copper-macos-x86_64.zip  (Intel)
 #   Copper's own updater (Fork/Updates.swift → latest/download/copper-version.json)
 #
 # Version scheme: <VERSION file>.<YYYYMMDD>.<run_number>, e.g. 1.0.20261001.1 —
 # monotonic for Homebrew and the updater even when `fork` is rebased; stamped
 # into CFBundleShortVersionString so About / MCP serverInfo.version match.
 #
-# Assets per release (tag v<version>):
-#   copper-<version>-macos-arm64.zip(.sha256)  immutable, what the cask pins
-#   copper-macos-arm64.zip(.sha256)            stable name → releases/latest/download/…
-#   copper-version.json                        manifest for the updater + the tap's bump job
-#   copper-install.sh                          the curl installer
-#   copper-<version>-macos-arm64.dSYM.zip      the symbols build.sh strips out of the app, for
-#                                              `copper crashes show N --symbolicate` (atos);
-#                                              nothing installs or downloads it on its own
+# Assets per release (tag v<version>), one set per CPU — <arch> is arm64 (Apple
+# Silicon, built natively) and x86_64 (Intel, cross-built on the same Mac):
+#   copper-<version>-macos-<arch>.zip(.sha256)  immutable, what the cask pins
+#   copper-macos-<arch>.zip(.sha256)            stable name → releases/latest/download/…
+#   copper-version.json                         manifest for the updater + the tap's bump job;
+#                                               `archives` has one entry per CPU, and the
+#                                               top-level zip/sha256/archiveUrl stay arm64's
+#                                               for Coppers from before the Intel build
+#   copper-install.sh                           the curl installer (picks the CPU's zip)
+#   copper-<version>-macos-<arch>.dSYM.zip      the symbols build.sh strips out of the app, for
+#                                               `copper crashes show N --symbolicate` (atos);
+#                                               nothing installs or downloads it on its own
 #
 # Signing (docs/releasing.md): every release is signed with Copper's own
 # certificate (release/copper-release-signing.cer; the p12 is the
@@ -78,7 +83,7 @@ concurrency:
 
 jobs:
   release:
-    name: Build, sign + publish (${{ inputs.runner || 'copper-mini' }}, arm64)
+    name: Build, sign + publish (${{ inputs.runner || 'copper-mini' }}, arm64 + x86_64)
     # GitHub-hosted macOS arm64 runners often sit unassigned for 15 min and
     # cancel ("not acquired by Runner of type hosted"); Copper's own Mac doesn't.
     runs-on: ${{ inputs.runner || 'copper-mini' }}
@@ -118,6 +123,7 @@ jobs:
             echo "version=${version}"
             echo "tag=v${version}"
             echo "zip_name=copper-${version}-macos-arm64.zip"
+            echo "x86_64_zip_name=copper-${version}-macos-x86_64.zip"
             echo "published_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> "$GITHUB_OUTPUT"
           echo "Building ${GITHUB_REPOSITORY}@${commit} as Copper ${version}"
@@ -142,6 +148,19 @@ jobs:
 
       - name: Xos handoff validation
         run: swift test --filter xosInsert
+
+      - name: ./build.sh release app (x86_64, Intel)
+        env:
+          COPPER_RELEASE: "1"
+          # The same sources and resources, cross-built for Intel Macs into
+          # build/x86_64/Copper.app (build.sh › COPPER_ARCH).
+          COPPER_ARCH: x86_64
+          SEARCH_SIGN_IDENTITY: ""
+        run: |
+          set -euo pipefail
+          ./build.sh release app
+          test "$(lipo -archs build/x86_64/Copper.app/Contents/MacOS/Copper)" = x86_64
+          test "$(plutil -extract CFBundleIdentifier raw -o - build/x86_64/Copper.app/Contents/Info.plist)" = com.collinrijock.copper
 
       - name: Signing keychain (this runner only)
         id: keychain
@@ -193,20 +212,29 @@ jobs:
         env:
           VERSION: ${{ steps.meta.outputs.version }}
           ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
+          X86_64_ZIP_NAME: ${{ steps.meta.outputs.x86_64_zip_name }}
           COPPER_SIGN_IDENTITY: ${{ steps.keychain.outputs.identity }}
           COPPER_SIGN_KEYCHAIN: ${{ steps.keychain.outputs.keychain }}
         run: |
           set -euo pipefail
           out="${RUNNER_TEMP}/upload"
-          bash release/package-app.sh build/Copper.app "$VERSION" "$out" >> "$GITHUB_OUTPUT"
+          bash release/package-app.sh build/Copper.app "$VERSION" "$out" arm64 >> "$GITHUB_OUTPUT"
           sha="$(cut -d' ' -f1 < "$out/$ZIP_NAME.sha256")"
           echo "sha256=${sha}" >> "$GITHUB_OUTPUT"
           # Stable-name copy for releases/latest/download/… (installer, site).
           cp "$out/$ZIP_NAME" "$out/copper-macos-arm64.zip"
           printf '%s  copper-macos-arm64.zip\n' "$sha" > "$out/copper-macos-arm64.zip.sha256"
+          # Intel: the same stamp and signature; has_cli is the arm64 bundle's
+          # (the same shim), so this one's stdout is not an output.
+          bash release/package-app.sh build/x86_64/Copper.app "$VERSION" "$out" x86_64 > /dev/null
+          x86_64_sha="$(cut -d' ' -f1 < "$out/$X86_64_ZIP_NAME.sha256")"
+          echo "x86_64_sha256=${x86_64_sha}" >> "$GITHUB_OUTPUT"
+          cp "$out/$X86_64_ZIP_NAME" "$out/copper-macos-x86_64.zip"
+          printf '%s  copper-macos-x86_64.zip\n' "$x86_64_sha" > "$out/copper-macos-x86_64.zip.sha256"
           cp release/copper-install.sh "$out/copper-install.sh"
           echo "dir=${out}" >> "$GITHUB_OUTPUT"
           plutil -p build/Copper.app/Contents/Info.plist | grep -E 'CFBundle(ShortVersionString|Version|Identifier)'
+          plutil -p build/x86_64/Copper.app/Contents/Info.plist | grep -E 'CFBundle(ShortVersionString|Version|Identifier)'
 
       - name: Delete the signing keychain
         if: always() && steps.keychain.outputs.keychain != ''
@@ -217,34 +245,40 @@ jobs:
           rm -f "$KEYCHAIN" "${RUNNER_TEMP}/copper-signing.p12"
           security list-keychains -d user
 
-      - name: Check the signature (the shipped zip)
+      - name: Check the signature (the shipped zips)
         env:
           OUT: ${{ steps.package.outputs.dir }}
           VERSION: ${{ steps.meta.outputs.version }}
-          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
         run: |
           set -euo pipefail
           req="$(tr -d '\n' < release/designated-requirement.txt)"
-          check="${RUNNER_TEMP}/check"
-          rm -rf "$check" && mkdir -p "$check"
-          ditto -x -k "$OUT/$ZIP_NAME" "$check"
-          app="$check/Copper.app"
-          test "$(plutil -extract CFBundleIdentifier raw -o - "$app/Contents/Info.plist")" = com.collinrijock.copper
-          test "$(plutil -extract CFBundleShortVersionString raw -o - "$app/Contents/Info.plist")" = "$VERSION"
-          # The designated requirement macOS will file grants under: the same
-          # text for every release.
-          dr="$(codesign -d -r- "$app" 2>/dev/null | sed -n 's/^designated => //p')"
-          echo "designated => ${dr}"
-          [ "$dr" = "$req" ] || { echo "::error::designated requirement is '${dr}', expected '${req}'"; exit 1; }
-          # What an installed Copper from before signing checks (Updates.swift
-          # stage + reverify): integrity alone. The first signed update must pass it.
-          codesign --verify --deep --strict "$app"
-          # What every Copper from now on checks before it swaps.
-          codesign --verify --deep --strict -R="$req" "$app"
-          codesign -dvv "$app" 2>&1 | grep -E '^(Identifier|Format|CodeDirectory|Authority|Signature|TeamIdentifier|Runtime)' || true
-          entitlements="$(codesign -d --entitlements - "$app" 2>/dev/null || true)"
-          [ -z "$entitlements" ] || { echo "::error::entitlements appeared; releases carry none"; echo "$entitlements"; exit 1; }
-          echo "cdhash $(codesign -dvvv "$app" 2>&1 | sed -n 's/^CDHash=//p' | head -1)"
+          # Each CPU's zip, unpacked where the launch step looks for it:
+          # check/ (arm64) and check-x86_64/.
+          for arch in arm64 x86_64; do
+            echo "--- ${arch}"
+            check="${RUNNER_TEMP}/check"
+            [ "$arch" = arm64 ] || check="${RUNNER_TEMP}/check-${arch}"
+            rm -rf "$check" && mkdir -p "$check"
+            ditto -x -k "$OUT/copper-${VERSION}-macos-${arch}.zip" "$check"
+            app="$check/Copper.app"
+            test "$(plutil -extract CFBundleIdentifier raw -o - "$app/Contents/Info.plist")" = com.collinrijock.copper
+            test "$(plutil -extract CFBundleShortVersionString raw -o - "$app/Contents/Info.plist")" = "$VERSION"
+            test "$(lipo -archs "$app/Contents/MacOS/Copper")" = "$arch"
+            # The designated requirement macOS will file grants under: the same
+            # text for every release, and for both CPUs.
+            dr="$(codesign -d -r- "$app" 2>/dev/null | sed -n 's/^designated => //p')"
+            echo "designated => ${dr}"
+            [ "$dr" = "$req" ] || { echo "::error::${arch}: designated requirement is '${dr}', expected '${req}'"; exit 1; }
+            # What an installed Copper from before signing checks (Updates.swift
+            # stage + reverify): integrity alone. The first signed update must pass it.
+            codesign --verify --deep --strict "$app"
+            # What every Copper from now on checks before it swaps.
+            codesign --verify --deep --strict -R="$req" "$app"
+            codesign -dvv "$app" 2>&1 | grep -E '^(Identifier|Format|CodeDirectory|Authority|Signature|TeamIdentifier|Runtime)' || true
+            entitlements="$(codesign -d --entitlements - "$app" 2>/dev/null || true)"
+            [ -z "$entitlements" ] || { echo "::error::${arch}: entitlements appeared; releases carry none"; echo "$entitlements"; exit 1; }
+            echo "cdhash $(codesign -dvvv "$app" 2>&1 | sed -n 's/^CDHash=//p' | head -1)"
+          done
 
       - name: Launch the shipped app (headless, this runner)
         env:
@@ -278,6 +312,42 @@ jobs:
             *) echo "::error::/health does not report ${VERSION}"; exit 1 ;;
           esac
 
+      - name: Launch the shipped Intel app (Rosetta, this runner)
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          # The x86_64 bundle, the same way, translated by Rosetta. A runner
+          # without Rosetta still checked its signature and CPU above.
+          app="${RUNNER_TEMP}/check-x86_64/Copper.app"
+          if ! /usr/bin/arch -x86_64 /usr/bin/true 2>/dev/null; then
+            echo "::warning::Rosetta is not installed on this runner, so the Intel app was checked but not launched (softwareupdate --install-rosetta --agree-to-license)"
+            exit 0
+          fi
+          world=release-check-x86
+          port=4198
+          defaults write "com.officecommun.search.test.${world}" welcomed -bool true
+          open -n -g --stderr "${RUNNER_TEMP}/launch-x86_64.log" \
+            --env SEARCH_PROBE="$world" --env SEARCH_HEADLESS=1 --env SEARCH_MCP_PORT="$port" "$app"
+          health=""
+          for _ in $(seq 1 120); do
+            health="$(curl -fsS --max-time 2 "http://127.0.0.1:${port}/health" 2>/dev/null || true)"
+            [ -n "$health" ] && break
+            sleep 1
+          done
+          pid="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null | head -1 || true)"
+          [ -n "$pid" ] && kill "$pid" || true
+          if [ -z "$health" ]; then
+            echo "::error::the signed Intel app did not answer /health on ${port} within 120 s"
+            cat "${RUNNER_TEMP}/launch-x86_64.log" || true
+            exit 1
+          fi
+          echo "$health"
+          case "$health" in
+            *"$VERSION"*) ;;
+            *) echo "::error::Intel /health does not report ${VERSION}"; exit 1 ;;
+          esac
+
       - name: Zip the dSYM
         env:
           OUT: ${{ steps.package.outputs.dir }}
@@ -289,19 +359,24 @@ jobs:
           # the shipped binary's (strip and the ad-hoc re-sign keep LC_UUID) —
           # a dSYM that doesn't match would only mislead. Missing is a warning,
           # not a failed release: build.sh treats it the same way.
-          dsym=build/Copper.app.dSYM
-          if [ ! -d "$dsym" ]; then
-            echo "::warning::no $dsym — this release's crash reports won't symbolicate"
-            exit 0
-          fi
-          app_uuid="$(dwarfdump --uuid build/Copper.app/Contents/MacOS/Copper | awk '{print $2}')"
-          dsym_uuid="$(dwarfdump --uuid "$dsym" | awk '{print $2}')"
-          echo "binary ${app_uuid} · dSYM ${dsym_uuid}"
-          if [ -z "$app_uuid" ] || [ "$app_uuid" != "$dsym_uuid" ]; then
-            echo "::warning::dSYM UUID ${dsym_uuid} is not the binary's ${app_uuid}; not attaching it"
-            exit 0
-          fi
-          ditto -c -k --keepParent "$dsym" "$OUT/copper-${VERSION}-macos-arm64.dSYM.zip"
+          # One per CPU: arm64's beside build/Copper.app, Intel's in build/x86_64/.
+          for arch in arm64 x86_64; do
+            app=build/Copper.app
+            [ "$arch" = arm64 ] || app="build/${arch}/Copper.app"
+            dsym="${app}.dSYM"
+            if [ ! -d "$dsym" ]; then
+              echo "::warning::no $dsym — this release's ${arch} crash reports won't symbolicate"
+              continue
+            fi
+            app_uuid="$(dwarfdump --uuid "$app/Contents/MacOS/Copper" | awk '{print $2}')"
+            dsym_uuid="$(dwarfdump --uuid "$dsym" | awk '{print $2}')"
+            echo "${arch}: binary ${app_uuid} · dSYM ${dsym_uuid}"
+            if [ -z "$app_uuid" ] || [ "$app_uuid" != "$dsym_uuid" ]; then
+              echo "::warning::${arch}: dSYM UUID ${dsym_uuid} is not the binary's ${app_uuid}; not attaching it"
+              continue
+            fi
+            ditto -c -k --keepParent "$dsym" "$OUT/copper-${VERSION}-macos-${arch}.dSYM.zip"
+          done
 
       - name: Write copper-version.json
         env:
@@ -311,6 +386,8 @@ jobs:
           COMMIT: ${{ steps.meta.outputs.commit }}
           SHA256: ${{ steps.package.outputs.sha256 }}
           ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
+          X86_64_SHA256: ${{ steps.package.outputs.x86_64_sha256 }}
+          X86_64_ZIP_NAME: ${{ steps.meta.outputs.x86_64_zip_name }}
           HAS_CLI: ${{ steps.package.outputs.has_cli }}
           PUBLISHED_AT: ${{ steps.meta.outputs.published_at }}
         run: |
@@ -343,6 +420,23 @@ jobs:
               hasCli: e.HAS_CLI === "true",
               archiveUrl: `${base}/download/${e.TAG}/${e.ZIP_NAME}`,
               latestUrl: `${base}/latest/download/copper-macos-arm64.zip`,
+              // One per CPU. The fields above stay those of the arm64 archive:
+              // every Copper from before the Intel build reads only them
+              // (Fork/Updates.swift).
+              archives: {
+                arm64: {
+                  zip: e.ZIP_NAME,
+                  sha256: e.SHA256,
+                  archiveUrl: `${base}/download/${e.TAG}/${e.ZIP_NAME}`,
+                  latestUrl: `${base}/latest/download/copper-macos-arm64.zip`,
+                },
+                x86_64: {
+                  zip: e.X86_64_ZIP_NAME,
+                  sha256: e.X86_64_SHA256,
+                  archiveUrl: `${base}/download/${e.TAG}/${e.X86_64_ZIP_NAME}`,
+                  latestUrl: `${base}/latest/download/copper-macos-x86_64.zip`,
+                },
+              },
               installer: "copper-install.sh",
               notes,
             };
@@ -357,7 +451,7 @@ jobs:
         if: steps.mode.outputs.publish != 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: copper-${{ steps.meta.outputs.version }}-macos-arm64-dry-run
+          name: copper-${{ steps.meta.outputs.version }}-macos-dry-run
           path: ${{ steps.package.outputs.dir }}
           if-no-files-found: error
           retention-days: 7
@@ -372,6 +466,8 @@ jobs:
           COMMIT: ${{ steps.meta.outputs.commit }}
           SHA256: ${{ steps.package.outputs.sha256 }}
           ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
+          X86_64_SHA256: ${{ steps.package.outputs.x86_64_sha256 }}
+          X86_64_ZIP_NAME: ${{ steps.meta.outputs.x86_64_zip_name }}
           PRERELEASE: ${{ inputs.prerelease }}
         run: |
           set -euo pipefail
@@ -391,17 +487,20 @@ jobs:
           curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/copper-install.sh | sh
           \`\`\`
 
-          or download \`${ZIP_NAME}\` below, unzip, move Copper.app to /Applications and run \`xattr -cr /Applications/Copper.app\` once (signed with Copper's own certificate, not notarized).
+          or download the zip for your Mac below — \`${ZIP_NAME}\` for Apple Silicon, \`${X86_64_ZIP_NAME}\` for Intel — unzip, move Copper.app to /Applications and run \`xattr -cr /Applications/Copper.app\` once (signed with Copper's own certificate, not notarized).
 
-          macOS 14 Sonoma or later, Apple Silicon. Already installed? Copper updates itself — Settings › Updates.
+          macOS 14 Sonoma or later, Apple Silicon or Intel. Already installed? Copper updates itself — Settings › Updates.
 
-          sha256 \`${SHA256}\`
+          sha256 \`${SHA256}\` (arm64)
+          sha256 \`${X86_64_SHA256}\` (x86_64)
           EOF
           flags=(--latest)
           [ "$PRERELEASE" = "true" ] && flags=(--prerelease --latest=false)
-          # Present only when the dSYM step made it (it warns when it can't).
-          dsym_zip="$OUT/copper-${VERSION}-macos-arm64.dSYM.zip"
-          [ -f "$dsym_zip" ] || dsym_zip=""
+          # Present only when the dSYM step made them (it warns when it can't).
+          dsym_zips=()
+          for arch in arm64 x86_64; do
+            [ -f "$OUT/copper-${VERSION}-macos-${arch}.dSYM.zip" ] && dsym_zips+=("$OUT/copper-${VERSION}-macos-${arch}.dSYM.zip")
+          done
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$COMMIT" \
@@ -410,8 +509,10 @@ jobs:
             "${flags[@]}" \
             "$OUT/$ZIP_NAME" "$OUT/$ZIP_NAME.sha256" \
             "$OUT/copper-macos-arm64.zip" "$OUT/copper-macos-arm64.zip.sha256" \
+            "$OUT/$X86_64_ZIP_NAME" "$OUT/$X86_64_ZIP_NAME.sha256" \
+            "$OUT/copper-macos-x86_64.zip" "$OUT/copper-macos-x86_64.zip.sha256" \
             "$OUT/copper-version.json" "$OUT/copper-install.sh" \
-            ${dsym_zip:+"$dsym_zip"}
+            ${dsym_zips[@]+"${dsym_zips[@]}"}
 
       - name: Verify the published bytes
         if: steps.mode.outputs.publish == 'true'
@@ -419,13 +520,19 @@ jobs:
           TAG: ${{ steps.meta.outputs.tag }}
           ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
           SHA256: ${{ steps.package.outputs.sha256 }}
+          X86_64_ZIP_NAME: ${{ steps.meta.outputs.x86_64_zip_name }}
+          X86_64_SHA256: ${{ steps.package.outputs.x86_64_sha256 }}
         run: |
           set -euo pipefail
-          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ZIP_NAME}"
-          curl -fsSL --retry 5 --retry-delay 3 -o "${RUNNER_TEMP}/verify.zip" "$url"
-          actual="$(shasum -a 256 "${RUNNER_TEMP}/verify.zip" | cut -d' ' -f1)"
-          [ "$actual" = "$SHA256" ] || { echo "::error::$url serves $actual, expected $SHA256" >&2; exit 1; }
-          echo "OK $url"
+          for pair in "${ZIP_NAME}=${SHA256}" "${X86_64_ZIP_NAME}=${X86_64_SHA256}"; do
+            name="${pair%%=*}"
+            want="${pair#*=}"
+            url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${name}"
+            curl -fsSL --retry 5 --retry-delay 3 -o "${RUNNER_TEMP}/verify.zip" "$url"
+            actual="$(shasum -a 256 "${RUNNER_TEMP}/verify.zip" | cut -d' ' -f1)"
+            [ "$actual" = "$want" ] || { echo "::error::$url serves $actual, expected $want" >&2; exit 1; }
+            echo "OK $url"
+          done
 
       - name: Run summary
         if: always()
@@ -434,6 +541,7 @@ jobs:
           TAG: ${{ steps.meta.outputs.tag }}
           COMMIT: ${{ steps.meta.outputs.commit }}
           SHA256: ${{ steps.package.outputs.sha256 }}
+          X86_64_SHA256: ${{ steps.package.outputs.x86_64_sha256 }}
           HAS_CLI: ${{ steps.package.outputs.has_cli }}
           PUBLISH: ${{ steps.mode.outputs.publish }}
         run: |
@@ -443,10 +551,11 @@ jobs:
             if [ "$PUBLISH" = "true" ]; then
               echo "- release: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
             else
-              echo "- dry run: nothing published (no tag, no release); the signed zip is this run's artifact"
+              echo "- dry run: nothing published (no tag, no release); the signed zips are this run's artifact"
             fi
             echo "- source: https://github.com/${GITHUB_REPOSITORY}/commit/${COMMIT}"
-            echo "- sha256: \`${SHA256}\`"
+            echo "- sha256 (arm64): \`${SHA256}\`"
+            echo "- sha256 (x86_64): \`${X86_64_SHA256}\`"
             echo "- signed: \`$(cat release/designated-requirement.txt 2>/dev/null)\`"
             echo "- CLI shim in bundle: \`${HAS_CLI}\`"
             if [ "$PUBLISH" = "true" ]; then

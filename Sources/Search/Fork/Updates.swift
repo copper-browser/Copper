@@ -68,7 +68,23 @@ final class Updates: ObservableObject {
         let sha256: String?
         let archiveUrl: String?
         let notes: String?
+        /// One archive per CPU, keyed `arm64` and `x86_64` — releases from the
+        /// first Intel build on. The top-level `sha256` and `archiveUrl` are
+        /// the arm64 archive's, for every Copper from before there was another.
+        let archives: [String: Archive]?
     }
+
+    private struct Archive: Decodable {
+        let sha256: String?
+        let archiveUrl: String?
+    }
+
+    /// The CPU this Copper was built for, as the manifest's `archives` key it.
+    #if arch(x86_64)
+    nonisolated static let arch = "x86_64"
+    #else
+    nonisolated static let arch = "arm64"
+    #endif
 
     private struct Saved: Codable {
         var checkedAt: Date?
@@ -276,9 +292,16 @@ final class Updates: ObservableObject {
                   !manifest.version.isEmpty, !manifest.releaseId.isEmpty
             else { return .failure("The update feed didn’t name a Copper release — try again later") }
             let notes = manifest.notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+            // This Mac's archive. Only arm64 falls back to the top-level fields
+            // (they have always been arm64's): an Intel Copper handed a feed
+            // with no x86_64 archive gets none, and staging says so, rather
+            // than swapping in a bundle this Mac can't run.
+            let own = manifest.archives?[arch]
+            let fallback = arch == "arm64"
             return .success(Latest(version: manifest.version, releaseId: manifest.releaseId,
                                    commit: manifest.commit, publishedAt: manifest.publishedAt,
-                                   sha256: manifest.sha256, archiveUrl: manifest.archiveUrl,
+                                   sha256: own?.sha256 ?? (fallback ? manifest.sha256 : nil),
+                                   archiveUrl: own?.archiveUrl ?? (fallback ? manifest.archiveUrl : nil),
                                    notes: notes?.isEmpty == false ? notes : nil))
         } catch is URLError {
             return .failure("Couldn’t reach the update feed — check the connection, then Check now")
@@ -440,6 +463,12 @@ final class Updates: ObservableObject {
         }
         guard shortVersion == version else {
             return .failure("The download says it is \(shortVersion.isEmpty ? "no version" : shortVersion), not \(version).")
+        }
+        // Built for this CPU: an arm64 bundle swapped in on an Intel Mac
+        // would never open again, and nothing could update it from there.
+        let wanted = arch == "x86_64" ? NSBundleExecutableArchitectureX86_64 : NSBundleExecutableArchitectureARM64
+        guard let built = Bundle(url: app)?.executableArchitectures?.map(\.intValue), built.contains(wanted) else {
+            return .failure("The download of Copper \(version) isn’t built for this Mac’s processor (\(arch)).")
         }
         let signature = run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app.path])
         guard signature.status == 0 else {
