@@ -1464,25 +1464,41 @@ extension Spaces {
         tab.restore(url: url, title: title)
         tab.pin = pin
         Sections.shared.restore(tab, saved: true, seen: nil)
-        var row = rows[id] ?? []
-        let at = pin == nil ? row.count : row.lastIndex(where: { $0.pin != nil }).map { $0 + 1 } ?? 0
-        row.insert(tab, at: at)
-        rows[id] = row
-        publish(id)
+        if pin != nil {
+            // Into the pins, not the row: the session writes and restores
+            // pins from `pins` only, and every window shows them.
+            pins.append(tab)
+            pinHome[tab.id] = id
+            publishAll()
+        } else {
+            rows[id, default: []].append(tab)
+            publish(id)
+        }
         objectWillChange.send()
         keep()
         return tab
     }
 
-    /// Pins sync one per site (CloudMerge.onePinPerSite): a second pin for a
-    /// site already pinned — a copy an older build opened from another
-    /// Mac's document — closes; the first in the row stays.
+    /// Pins sync one per site (CloudMerge.onePinPerSite). Repairs what older
+    /// builds left: a pin another Mac sent was put in a space's row, where
+    /// the session dropped it at the next launch and the next sync opened
+    /// it again — it joins the pins; then a second pin for a site already
+    /// pinned closes, the first in the row staying.
     @discardableResult
     func cloudFoldPins(browser: Browser) -> Int {
         guard browser.primary else { return 0 }
-        let waiting = rows.values.joined().filter { tab in tab.pin != nil && !pins.contains { $0.id == tab.id } }
+        var moved = false
+        for (id, row) in rows where row.contains(where: { $0.pin != nil }) {
+            for tab in row where tab.pin != nil && !pins.contains(where: { $0.id == tab.id }) {
+                pins.append(tab)
+                pinHome[tab.id] = id
+            }
+            rows[id] = row.filter { $0.pin == nil }
+            moved = true
+        }
+        if moved { publishAll(); keep() }
         var seen = Set<String>()
-        let extra = (pins + waiting).filter { tab in
+        let extra = pins.filter { tab in
             guard let url = tab.pending ?? tab.address, url.scheme?.hasPrefix("http") == true else { return false }
             return !seen.insert(CloudMerge.site(url.absoluteString)).inserted
         }

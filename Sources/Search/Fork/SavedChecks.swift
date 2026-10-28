@@ -98,6 +98,41 @@ enum SavedChecks {
         for tab in [a, back].compactMap({ $0 }) where index(tab) != nil { sections.closeForGood(tab, in: browser) }
         groups.dissolve(folder.id)
         if let was, let tab = browser.tabs.first(where: { $0.id == was }) { browser.select(tab) }
+        return failures + pinChecks(in: browser)
+    }
+
+    /// A pin another Mac sends is a pin here — in the pins, written to the
+    /// session's pins (the only ones a launch restores) — and a second copy
+    /// of a pinned site, however it got in, folds away on the next sync.
+    private static func pinChecks(in browser: Browser) -> [String] {
+        var failures: [String] = []
+        func fail(_ what: String) { failures.append(what) }
+        let shelf = Spaces.shared
+        let space = shelf.current(in: browser)
+        let site = "https://pin-check.example.net/"
+        let pinsBefore = shelf.pins.map(\.id)
+        guard let sent = shelf.cloudOpen(URL(string: site + "a")!, title: "pin check", pin: "P", in: space, browser: browser) else {
+            return ["cloudOpen made no tab for a pin from another Mac"]
+        }
+        if !shelf.pins.contains(where: { $0.id == sent.id }) { fail("a pin from another Mac is not among the pins") }
+        if shelf.row(space).contains(where: { $0.id == sent.id }) { fail("a pin from another Mac sits in the space's row") }
+        let written = shelf.shape(visible: browser.tabs, active: browser.activeID).pins ?? []
+        if !written.contains(where: { $0.url == site + "a" }) { fail("a pin from another Mac is not in the session's pins") }
+        let doc = CloudApply.spaces(browser, base: nil)
+        if doc.tabs.filter({ $0.pinned && $0.url.hasPrefix(site) }).count != 1 { fail("the cloud document does not list the pin once") }
+
+        // A second pin on the same site (what older builds opened): the next
+        // document closes it and keeps the first.
+        let copy = shelf.cloudOpen(URL(string: site + "b")!, title: "pin check copy", pin: "P", in: space, browser: browser)
+        if copy == nil { fail("cloudOpen made no tab for the copy") }
+        let folded = CloudApply.spaces(browser, base: doc)
+        if let copy, shelf.pins.contains(where: { $0.id == copy.id }) { fail("a second pin for a pinned site was kept") }
+        if !shelf.pins.contains(where: { $0.id == sent.id }) { fail("folding closed the first pin, not the copy") }
+        if folded.tabs.filter({ $0.pinned && $0.url.hasPrefix(site) }).count != 1 { fail("the folded document lists the site's pin more than once") }
+
+        // Tidy up: the pins are as they were.
+        shelf.cloudClose(sent, browser: browser)
+        if shelf.pins.map(\.id) != pinsBefore { fail("the pins did not come back to how they were") }
         return failures
     }
 }

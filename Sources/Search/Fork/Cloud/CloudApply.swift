@@ -39,10 +39,7 @@ enum CloudApply {
             let row = space.id == spaces.current ? browser.tabs : (spaces.parkedRow(space.id) ?? [])
             for tab in row where !spaces.pins.contains(where: { $0.id == tab.id }) {
                 guard let url = keptURL(of: tab, saved: Sections.shared.isSaved(tab)) else { continue }
-                // A pin another Mac sent waits in its row until the window
-                // next lays out its pins; it is still a pin, keyed as one.
-                let pinned = tab.pin != nil
-                out.append(Kept(tab: tab, space: pinned ? (spaces.all.first?.id ?? space.id) : space.id, pinned: pinned, url: url))
+                out.append(Kept(tab: tab, space: space.id, pinned: tab.pin != nil, url: url))
             }
         }
         return out
