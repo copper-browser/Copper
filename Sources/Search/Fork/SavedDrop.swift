@@ -8,10 +8,11 @@ import UniformTypeIdentifiers
 // New Tab row or anything above it. A row's room opens where it would land —
 // between two rows, or inside a folder, stepped in like the folder's rows —
 // or, onto a folder's line, the folder lights up; the row rides above it on
-// a card, and letting go there saves it at that place. A Saved row is over
-// Today as soon as the pointer is below Saved's last row, and the room opens
-// at the top of Today. Inside its own block a row reorders exactly as
-// before.
+// a card, and letting go there saves it at that place. A Saved row moved
+// inside Saved gets the same room (none over its own place); past the middle
+// of the New Tab row it is over Today, and the room opens at the top of
+// Today. Inside Today a row reorders exactly as before. Any row carried up
+// over the favourites becomes a pin.
 //
 // It used to be decided only on release, by counting rows: a row had to be
 // let go a whole row and a half past the edge of its own block — past the
@@ -86,10 +87,15 @@ enum SavedDrop {
         case saved(Spot)
         /// The top of Today, where an unsaved row goes.
         case today(y: CGFloat)
+        /// Up over the favourites: it becomes a pin, at the end of them.
+        case pins
     }
 
     /// Where the row in the hand would go if let go with the pointer at `y`.
-    /// Nil inside its own block, where it simply reorders.
+    /// Nil inside Today, where it simply reorders. Inside Saved it lands
+    /// where the gap opens, as a Today row does: counting rows moved a
+    /// row out of a folder by index, and a shut folder's hidden rows
+    /// still counted, so it fell into whichever folder was next.
     static func target(y: CGFloat, from: Block, in layout: Layout) -> Target? {
         switch from {
         case .today:
@@ -97,11 +103,23 @@ enum SavedDrop {
             guard y < layout.seamBottom else { return nil }
             return .saved(spot(y: y, in: layout))
         case .saved:
-            // Down out of Saved: past the block's last row, onto the hairline,
-            // the New Tab row, or Today itself.
-            guard y > layout.bottom + layout.gap else { return nil }
+            // Down out of Saved: past the middle of the New Tab row, the seam,
+            // as a Today row crosses up onto it. Between Saved's last row and
+            // there is the end of Saved at the top level: the one place to
+            // leave a folder that ends the block.
+            guard y > (layout.seamTop + layout.seamBottom) / 2 else { return .saved(spot(y: y, in: layout)) }
             return .today(y: layout.seamBottom + layout.gap / 2)
         }
+    }
+
+    /// A Saved row let go at `spot` would stay where it is (same folder,
+    /// same place): no gap opens for it, and it is carried as it was.
+    static func stays(_ spot: Spot, moving: Tab.ID, in group: UUID?,
+                      row: [(id: Tab.ID, pinned: Bool, saved: Bool)],
+                      inFolder: (Tab.ID, UUID) -> Bool) -> Bool {
+        if spot.anchor == .before(moving) || spot.anchor == .after(moving) { return true }
+        guard spot.group == group, let here = row.firstIndex(where: { $0.id == moving }) else { return false }
+        return index(for: spot.anchor, moving: moving, row: row, inFolder: inFolder) == here
     }
 
     /// The place in Saved nearest the pointer.
@@ -175,6 +193,7 @@ enum SavedDrop {
         guard let target else { return ["block": "own"] }
         switch target {
         case .today(let y): return ["block": "today", "y": y]
+        case .pins: return ["block": "pins"]
         case .saved(let spot):
             var out: [String: Any] = ["block": "saved", "depth": spot.depth, "y": spot.y,
                                       "group": spot.group.flatMap { Groups.shared.group($0)?.name } ?? ""]
@@ -232,6 +251,11 @@ final class SideDrag: ObservableObject {
     var header: CGRect = .zero
     var seam: CGRect = .zero
     var slotFrame: CGRect = .zero
+    /// In the window's space: the top of the scrolling column (above it are
+    /// the favourites) and the top of its content, to tell from a pointer
+    /// in the column's space whether it has gone up over the favourites.
+    var pinLine: CGFloat = 0
+    var contentTop: CGFloat = 0
 
     private var closing: DispatchWorkItem?
 
@@ -262,7 +286,17 @@ final class SideDrag: ObservableObject {
         hand.y = y
         guard let from else { return }
         let layout = layout(in: browser)
-        let next = SavedDrop.target(y: y, from: from, in: layout)
+        var next = SavedDrop.target(y: y, from: from, in: layout)
+        if let id = carrying, let tab = browser.tabs.first(where: { $0.id == id }) {
+            if y + contentTop < pinLine {
+                next = tab.pin == nil && !tab.isBlank ? .pins : nil
+            } else if case .saved(let spot)? = next, from == .saved,
+                      SavedDrop.stays(spot, moving: id, in: Groups.shared.membership[id],
+                                      row: browser.tabs.map { (id: $0.id, pinned: $0.pin != nil, saved: Sections.shared.isSaved($0)) },
+                                      inFolder: Sections.shared.inFolder) {
+                next = nil
+            }
+        }
         guard next != target else { return }
         if next == nil {
             target = nil
@@ -313,7 +347,8 @@ final class SideDrag: ObservableObject {
                 }
                 open.append(group.id)
             case .tab(let tab, _, _, let depth):
-                guard tab.id != carrying, let frame = rows[tab.id] else { continue }
+                // A Saved row in the hand keeps its own line: over it, it stays.
+                guard tab.id != carrying || from == .saved, let frame = rows[tab.id] else { continue }
                 lines.append(.init(kind: .tab(tab.id), top: frame.minY, bottom: frame.maxY,
                                    depth: depth, group: groups.membership[tab.id]))
             }
@@ -328,6 +363,7 @@ final class SideDrag: ObservableObject {
         switch target {
         case .saved(let spot): Sections.shared.place(tab, at: spot, in: browser)
         case .today: Sections.shared.set(tab, saved: false, in: browser)
+        case .pins: browser.pin(tab)
         }
     }
 

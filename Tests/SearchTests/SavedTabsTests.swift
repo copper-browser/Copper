@@ -106,12 +106,49 @@ struct SavedDropTargetTests {
         #expect(SavedDrop.target(y: 140, from: .today, in: empty) == nil)
     }
 
-    @Test("A Saved row is over Today once it is past Saved's last row")
+    @Test("A Saved row is over Today once it is past the middle of New Tab")
     func savedCrossesDown() {
-        #expect(SavedDrop.target(y: 200, from: .saved, in: saved) == nil)
-        #expect(SavedDrop.target(y: 238, from: .saved, in: saved) == nil)
-        #expect(SavedDrop.target(y: 245, from: .saved, in: saved) == .today(y: 299))
+        // Inside Saved it lands at the gap, as a Today row does.
+        #expect(spot(SavedDrop.target(y: 200, from: .saved, in: saved))?.anchor == .before(d))
+        #expect(spot(SavedDrop.target(y: 238, from: .saved, in: saved))?.anchor == .end)
+        #expect(spot(SavedDrop.target(y: 270, from: .saved, in: saved))?.anchor == .end)
+        #expect(SavedDrop.target(y: 280, from: .saved, in: saved) == .today(y: 299))
         #expect(SavedDrop.target(y: 400, from: .saved, in: saved) == .today(y: 299))
+    }
+}
+
+@Suite("Saved: a row moved inside Saved")
+struct SavedDropOwnBlockTests {
+    let row: [(id: Tab.ID, pinned: Bool, saved: Bool)] = [(a, false, true), (b, false, true), (c, false, true), (d, false, true)]
+    func inWork(_ id: Tab.ID, _ group: UUID) -> Bool { group == work && (id == c || id == d) }
+
+    @Test("Out of a folder: just under its last row is the top level")
+    func outOfAFolder() {
+        // d, the folder's last row, dragged a little down past its own line.
+        let out = spot(SavedDrop.target(y: 240, from: .saved, in: saved))
+        #expect(out?.anchor == .end)
+        #expect(out?.group == nil)
+        #expect(out.map { SavedDrop.stays($0, moving: d, in: work, row: row, inFolder: inWork) } == false)
+        // c dragged up above the folder's line: out, before it.
+        let above = spot(SavedDrop.target(y: 118, from: .saved, in: saved))
+        #expect(above?.anchor == .beforeFolder(work))
+        #expect(above?.group == nil)
+        #expect(above.map { SavedDrop.stays($0, moving: c, in: work, row: row, inFolder: inWork) } == false)
+    }
+
+    @Test("Over its own place a row stays put: no gap opens")
+    func ownPlace() {
+        // d over its own line, either half.
+        #expect(spot(SavedDrop.target(y: 205, from: .saved, in: saved)).map {
+            SavedDrop.stays($0, moving: d, in: work, row: row, inFolder: inWork) } == true)
+        #expect(spot(SavedDrop.target(y: 225, from: .saved, in: saved)).map {
+            SavedDrop.stays($0, moving: d, in: work, row: row, inFolder: inWork) } == true)
+        // c's lower half is the gap above d: the same place.
+        #expect(spot(SavedDrop.target(y: 185, from: .saved, in: saved)).map {
+            SavedDrop.stays($0, moving: c, in: work, row: row, inFolder: inWork) } == true)
+        // a over b's lower half moves.
+        #expect(spot(SavedDrop.target(y: 105, from: .saved, in: saved)).map {
+            SavedDrop.stays($0, moving: a, in: nil, row: row, inFolder: inWork) } == false)
     }
 }
 

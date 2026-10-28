@@ -119,17 +119,20 @@ final class Sections: ObservableObject {
     /// Let go over Saved (Fork/SavedDrop.swift): saved, at that place, in
     /// that folder. Unlike `set`, the column does not scroll to it — it is
     /// already where the pointer is.
+    /// Whether a tab is in `folder`, or in a folder inside it.
+    func inFolder(_ id: Tab.ID, _ folder: UUID) -> Bool {
+        let groups = Groups.shared
+        guard let mine = groups.membership[id] else { return false }
+        guard mine != folder else { return true }
+        guard let outer = groups.group(folder), let inner = groups.group(mine) else { return false }
+        return Folders.below(inner.name, outer.name)
+    }
+
     func place(_ tab: Tab, at spot: SavedDrop.Spot, in browser: Browser) {
         guard tab.pin == nil, !tab.isBlank else { return }
         saved.insert(tab.id)
         seen[tab.id] = seen[tab.id] ?? Date()
         let groups = Groups.shared
-        func inFolder(_ id: Tab.ID, _ folder: UUID) -> Bool {
-            guard let mine = groups.membership[id] else { return false }
-            guard mine != folder else { return true }
-            guard let outer = groups.group(folder), let inner = groups.group(mine) else { return false }
-            return Folders.below(inner.name, outer.name)
-        }
         // The folder first, so the session written by the move has it.
         if let folder = spot.group, groups.group(folder) != nil {
             groups.restore(tab, group: folder)

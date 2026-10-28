@@ -7,11 +7,15 @@ a group moves the tab to the end of that group's run.
 
 ## By hand
 
-- Right-click a tab › **Group** › an existing group, *New Group from Tab*,
-  or *Remove from Group*.
+- Right-click a tab › **Group** › an existing group or *New Group from Tab*;
+  a tab in a folder also has **Remove from Folder** right on its menu, which
+  puts it just under the folder (never left in the middle, splitting it).
 - **⌃⇧G** — new group from the active tab.
 - Drag a tab between two tabs of a group and it joins; drag it clear and it
-  leaves.
+  leaves. In Saved the drag shows where it lands: a room opens there, stepped
+  in when that is inside a folder (docs/sections.md › Dragging into Saved).
+- Drag a row up over the favourites and a place opens at the end of the
+  grid; let go and it is pinned there, as **Pin** on its menu does.
 - Click a header to fold the group; right-click it to rename, recolour,
   ungroup (label goes, tabs stay) or close every tab in it.
 - Groups survive restart: `groups.json` holds the groups and each session
