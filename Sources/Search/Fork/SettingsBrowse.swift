@@ -80,7 +80,7 @@ enum DownloadAsk {
 ///   prefs            the Browsing pages' values as Settings shows them
 ///   glyph letters|icons  Tabs show, as its choice sets it
 ///   picture PAGE PATH [WIDTH] [light|dark]  the whole page at a column width
-///     (spaces, extensions, voice, cloud, updates, intelligence, agents, labs)
+///     (spaces, extensions, voice, cloud, updates, intelligence, agents, addons)
 ///   scroll [top|bottom|next|PX]  the open page's scroll, and whether it is wider than its column
 @MainActor
 enum SettingsBrowseBench {
@@ -127,9 +127,8 @@ enum SettingsBrowseBench {
             case "updates": png = picture(UpdatesPage(browser: browser), width: column, dark: dark)
             case "intelligence": png = picture(IntelligencePage(browser: browser), width: column, dark: dark)
             case "agents": png = picture(AgentsPage(browser: browser), width: column, dark: dark)
-            case "labs": png = picture(LabsPage(browser: browser), width: column, dark: dark)
             case "addons": png = picture(AddonsPage(browser: browser), width: column, dark: dark) // Fork (addons)
-            default: return ["error": "picture spaces|extensions|voice|cloud|updates|intelligence|agents|labs|addons"]
+            default: return ["error": "picture spaces|extensions|voice|cloud|updates|intelligence|agents|addons"]
             }
             guard let data = png?.representation(using: .png, properties: [:]) else { return ["error": "no picture"] }
             let path = (rest[1] as NSString).expandingTildeInPath

@@ -60,7 +60,7 @@ extension SettingsPanel.Page {
     var blurb: String {
         switch self {
         case .general: return "The default browser, how Copper looks, downloads, and moving in."
-        case .tabs: return "The sidebar, switching tabs, what happens to tabs you leave, and previews."
+        case .tabs: return "The sidebar, switching between tabs, and what happens to tabs you leave."
         case .spaces: return "Each space's name, look, icon and profile. Drag the chips to reorder."
         case .intelligence: return "The model behind the agent pane, Jev's fast lane, and voice."
         case .agents: return "Let MCP clients, linked agent apps and terminal agents use this browser."
@@ -76,8 +76,7 @@ extension SettingsPanel.Page {
     var keywords: [String] {
         switch self {
         case .general: return ["preferences", "basics", "options", "downloads", "files", "download folder"]
-        case .tabs: return ["tab bar", "vertical tabs", "sidebar",
-                            "labs", "experiments", "experimental", "flights", "beta", "beta features", "preview", "previews"]
+        case .tabs: return ["tab bar", "vertical tabs", "sidebar"]
         case .spaces: return ["workspaces", "profiles", "space look"]
         case .intelligence: return ["ai", "model", "llm", "claude", "anthropic", "openai", "gpt", "keys",
                                     "voice", "dictation", "dictate", "speech", "transcription", "push to talk", "hold to talk",
@@ -124,7 +123,7 @@ enum SettingsIndex {
     // A list joined rather than a chain of `+`: long chains are slow for
     // older type checkers (the release runner's).
     static let rows: [SettingsEntry] = [
-        general, downloads, tabs, labs, spaces, intelligence, voice, agents, cloud,
+        general, downloads, tabs, spaces, intelligence, voice, agents, cloud,
         extensions, passwords, privacy, updates, about,
         AddonSettingsIndex.entries, // Fork (addons): Fork/Addons/AddonUI.swift — last, so Copper's own update rows win a tie
     ].flatMap { $0 }
@@ -451,21 +450,6 @@ enum SettingsIndex {
           ["clear cookies", "sign out everywhere", "sign out of everything", "sign out of every site", "log out everywhere", "log out of everything", "site data", "storage", "local storage"], "privacy.cookies"),
         e(.privacy, "Clear browsing data", "Cache", "Only what was fetched to draw pages",
           ["clear cache", "cached files", "empty cache"], "privacy.cache"),
-    ]
-
-    // MARK: labs
-
-    private static let labs: [SettingsEntry] = [
-        e(.tabs, "Previews", "Trails", "Tabs by what you were doing, shown in the sidebar — a search or an address, and every page opened from it",
-          ["trails", "flights", "experiments", "preview", "beta", "organise tabs", "organize tabs", "intent", "grouping",
-           "trails off", "trails on", "turn off trails", "sidebar trails"], "labs.trails",
-          // Trails are drawn only in the sidebar: from search, as on the
-          // page, they can be turned off anywhere but on only there.
-          toggle: { browser in Binding(get: { Flights.shared.trails }, set: { on in
-              if !on || browser.prefs.sidebar { Flights.shared.trails = on }
-          }) }),
-        e(.tabs, "Previews", "Tide", "Trails left alone this long drift under Earlier, quieter",
-          ["drift", "earlier", "fade", "age", "timeout", "how long", "trails fade", "how long until trails fade", "older trails"], "labs.tide"),
     ]
 
     // MARK: about

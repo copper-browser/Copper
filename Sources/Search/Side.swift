@@ -19,7 +19,6 @@ struct SideBar: View {
     @ObservedObject private var sections = Sections.shared
     @ObservedObject private var downloads = Downloads.shared
     @ObservedObject private var clearTabs = ClearTabs.shared
-    @ObservedObject private var flights = Flights.shared // Fork (trails)
     @ObservedObject private var drag: SideDrag // Fork (saved-drag): the row in the hand, and where it would land
 
     init(browser: Browser, prefs: Preferences) { // Fork (saved-drag): picks up this window's drag
@@ -329,23 +328,15 @@ struct SideBar: View {
                     newTab
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SavedDrop.space)) } action: { SideDrag.of(browser).seam = $0 } // Fork (saved-drag)
                     TodayDropGap(drag: drag, tint: tint) // Fork (saved-drag): a Saved row on its way out lands here
-                    // Fork (trails): with the flight on, Today is drawn as
-                    // trails (Fork/Trails/); off, exactly as before.
-                    if flights.trails {
-                        TrailsColumn(browser: browser, prefs: prefs, tint: tint, pill: pill, tabs: today.map(\.tab))
-                    } else {
-                        rows(today, block: .today)
-                    }
+                    rows(today, block: .today)
                 }
                 // Fork (saved-drag): one space for every frame a drop is
-                // worked out from, a folder lit for a drop onto it, the card
-                // in the hand, and the column's drop target for a trail's
-                // page (Fork/SavedDrop.swift).
+                // worked out from, a folder lit for a drop onto it, and the
+                // card in the hand (Fork/SavedDrop.swift).
                 .coordinateSpace(name: SavedDrop.space)
                 .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { drag.contentTop = $0 } // Fork (saved-drag)
                 .overlay(alignment: .topLeading) { SavedDropMark(drag: drag, tint: tint) }
                 .overlay(alignment: .topLeading) { SideDragCard(drag: drag, browser: browser, tint: tint) }
-                .onDrop(of: [Trails.dragType], delegate: SavedTrailDrop(browser: browser, drag: drag))
                 .padding(.horizontal, SideBar.inset)
                 .padding(.top, 2)
                 .padding(.bottom, 12)

@@ -34,7 +34,7 @@ While Settings is open, the app's key monitor asks `SettingsKeys.take`
 
 | Group | Pages, in rail order | Drawn in |
 |---|---|---|
-| Browsing | General (with Downloads), Tabs (with Labs' previews), Spaces, Extensions (with Addons) | `Settings.swift` (`general`, `downloads`, `tabs`) with `Fork/Trails/Flights.swift` (`LabsPage`); `Fork/SpacePage.swift`; `ExtensionsUI.swift` with `Fork/ExtensionsManager.swift` and `Fork/Addons/AddonUI.swift` (`AddonsPage`) |
+| Browsing | General (with Downloads), Tabs, Spaces, Extensions (with Addons) | `Settings.swift` (`general`, `downloads`, `tabs`); `Fork/SpacePage.swift`; `ExtensionsUI.swift` with `Fork/ExtensionsManager.swift` and `Fork/Addons/AddonUI.swift` (`AddonsPage`) |
 | AI & agents | Intelligence (with Voice), Agents | `Fork/SettingsFork.swift` (`IntelligencePage`, `AgentsPage`); `Fork/Voice/VoiceSettings.swift` (`VoicePage`) |
 | Data & privacy | Passwords, Privacy | `Settings.swift` (`passwords`, `privacy`) with `Fork/CredentialsSettings.swift` and `Fork/PrivacySettings.swift` |
 | Copper | Cloud, About (with Updates) | `Fork/Cloud/CloudSettings.swift`; `Settings.swift` (`about`) with `Fork/SettingsFork.swift` (`UpdatesPage`) |

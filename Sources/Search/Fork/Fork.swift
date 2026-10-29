@@ -64,8 +64,6 @@ enum Fork {
         case "ext-manager": return ExtensionManager.shared.bench(request, in: browser)
         case "groups": return Groups.shared.bench(request, in: browser)
         case "sections": return Sections.shared.bench(request, in: browser)
-        case "flight": return Flights.shared.bench(request) // Fork/Trails/Flights.swift
-        case "trails": return Trails.shared.bench(request, in: browser) // Fork/Trails/TrailsBench.swift
         case "storage": return StorageImport.shared.bench(request, in: browser)
         case "passkeys": return PasskeysBench.handle(request)
         case "passwords": return PasswordsBench.handle(request, in: browser) // Fork/Credentials/PasswordsBench.swift

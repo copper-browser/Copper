@@ -1,10 +1,8 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 // Dragging a row into Saved, and out of it.
 //
-// A row picked up out of Today (GroupedRows' own drag) or a trail's page
-// (Trails' system drag) is over Saved as soon as the pointer is over the
+// A row picked up out of Today (GroupedRows' own drag) is over Saved as soon as the pointer is over the
 // New Tab row or anything above it. A row's room opens where it would land —
 // between two rows, or inside a folder, stepped in like the folder's rows —
 // or, onto a folder's line, the folder lights up; the row rides above it on
@@ -17,8 +15,7 @@ import UniformTypeIdentifiers
 // It used to be decided only on release, by counting rows: a row had to be
 // let go a whole row and a half past the edge of its own block — past the
 // middle of the New Tab row — and then landed at the bottom of Saved
-// wherever it was dropped, with nothing on screen to say any of that. With
-// Trails on, a page could not be dropped into Saved at all.
+// wherever it was dropped, with nothing on screen to say any of that.
 //
 // The geometry is worked out by `SavedDrop.target`, a pure function of the
 // pointer and the column's frames, so it can be tested without a window.
@@ -561,43 +558,5 @@ struct SavedDropSlot: View {
         .animation(Motion.quick, value: over)
         .transition(.opacity)
         .accessibilityLabel("Drop here to save")
-    }
-}
-
-/// Trails draws Today's pages with a system drag (`Trails.dragType`); this
-/// is the column's drop target for one, so a page let go over Saved is
-/// saved where the gap is. Over a trail, the trail's own target wins.
-struct SavedTrailDrop: DropDelegate {
-    let browser: Browser
-    let drag: SideDrag
-
-    func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: [Trails.dragType]) }
-
-    func dropEntered(info: DropInfo) {
-        drag.carry(nil, from: .today, in: browser)
-        drag.move(to: info.location.y, in: browser)
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        if !drag.active { drag.carry(nil, from: .today, in: browser) }
-        drag.move(to: info.location.y, in: browser)
-        return DropProposal(operation: drag.target == nil ? .forbidden : .move)
-    }
-
-    func dropExited(info: DropInfo) { drag.end(soon: true) }
-
-    func performDrop(info: DropInfo) -> Bool {
-        guard let target = drag.target, case .saved = target else {
-            drag.end()
-            return false
-        }
-        let took = Trails.dropped(info.itemProviders(for: [Trails.dragType]), in: browser) { tab in
-            withAnimation(Motion.settle) {
-                drag.end()
-                drag.drop(tab, at: target, in: browser)
-            }
-        }
-        if !took { drag.end() }
-        return took
     }
 }
