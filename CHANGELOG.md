@@ -11,6 +11,7 @@ in [ROADMAP.md](ROADMAP.md).
 
 ## Unreleased
 
+- **Settings › Spaces fits on one screen.** A space's icon, colours, picture and sliders open under **Customize…**; name, look, profile and the preview stay up top. Picking Picture or Animated opens it, and so does searching for one of its rows.
 - **Advanced settings fold away.** On Agents the port and bearer token, Jev's text model, Fast mode and What Jev sees, and the ⌘E agent's tool-call rounds sit under an **Advanced** row; on Intelligence, the model names. Searching for one opens its fold.
 - **About ends sooner.** Keyboard shortcuts are one row with **Show**; the twenty keystrokes open under it, and searching for one opens them.
 - **The Jev key has one home.** It is set in Settings › Intelligence › Jev; Agents › Jev mode no longer has its own key field, and while the key is missing it says so with **Add key**, which takes you there.
