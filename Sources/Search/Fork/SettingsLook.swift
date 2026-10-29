@@ -53,6 +53,12 @@ private struct SettingsFlashKey: EnvironmentKey {
     static let defaultValue: String? = nil
 }
 
+/// Fork (settings-merge): the anchor a search is on its way to, so a fold
+/// holding it opens before the page scrolls.
+private struct SettingsPendingKey: EnvironmentKey {
+    static let defaultValue: String? = nil
+}
+
 extension EnvironmentValues {
     /// True inside the Settings panel: `Line`, `Card` and `Caption` take
     /// Settings' metrics and greys (Plate.swift reads it).
@@ -65,6 +71,39 @@ extension EnvironmentValues {
     var settingsFlash: String? {
         get { self[SettingsFlashKey.self] }
         set { self[SettingsFlashKey.self] = newValue }
+    }
+
+    var settingsPending: String? {
+        get { self[SettingsPendingKey.self] }
+        set { self[SettingsPendingKey.self] = newValue }
+    }
+}
+
+/// Fork (settings-merge): rows most people never touch, folded at the foot
+/// of a card under one Advanced row. Each folded row's index entry falls
+/// back to `anchor`; a search for one of `holds` opens the fold first.
+struct SettingsAdvanced<Content: View>: View {
+    let anchor: String
+    let holds: Set<String>
+    @ViewBuilder let content: () -> Content
+    @State private var open = false
+    @Environment(\.settingsPending) private var pending
+
+    init(_ anchor: String, holds: Set<String>, @ViewBuilder content: @escaping () -> Content) {
+        self.anchor = anchor
+        self.holds = holds
+        self.content = content
+    }
+
+    var body: some View {
+        Rule()
+        Line("Advanced", open ? "" : "\(holds.count) more setting\(holds.count == 1 ? "" : "s")") {
+            Pill(open ? "Hide" : "Show") { withAnimation(Motion.settle) { open.toggle() } }
+                .accessibilityLabel(open ? "Hide advanced settings" : "Show advanced settings")
+        }
+        .settingsAnchor(anchor)
+        .task(id: pending) { if let pending, holds.contains(pending) { open = true } }
+        if open { content() }
     }
 }
 

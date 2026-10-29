@@ -38,13 +38,6 @@ struct IntelligencePage: View {
                 }
                 .settingsAnchor("intelligence.tier")
                 Rule()
-                Line("Model names", brain.lane == .claude
-                     ? "What Haiku, Sonnet and Opus are called for your Claude account. Leave one empty for Copper's own."
-                     : "What Haiku, Sonnet and Opus are called on your gateway. Leave one empty for the plain name.") {
-                    modelNames
-                }
-                .settingsAnchor("intelligence.names")
-                Rule()
                 Line("Check", check.line ?? "Asks Jev and the model one small question each, so you know they answer.") {
                     if check.running {
                         HStack(spacing: 6) {
@@ -57,6 +50,15 @@ struct IntelligencePage: View {
                     }
                 }
                 .settingsAnchor("intelligence.check")
+                SettingsAdvanced("intelligence.more", holds: ["intelligence.names"]) { // Fork (settings-merge)
+                Rule()
+                Line("Model names", brain.lane == .claude
+                     ? "What Haiku, Sonnet and Opus are called for your Claude account. Leave one empty for Copper's own."
+                     : "What Haiku, Sonnet and Opus are called on your gateway. Leave one empty for the plain name.") {
+                    modelNames
+                }
+                .settingsAnchor("intelligence.names")
+                }
             }
 
             SettingsSection("Jev", note: footnote) {
@@ -501,12 +503,14 @@ private struct AgentsServerSection: View {
                 Switch(on: $mcp.config.announces)
             }
             .settingsAnchor("agents.announce")
-            Rule()
-            portRow
-                .settingsAnchor("agents.port")
-            Rule()
-            AgentsTokenRow() // Fork (settings-merge): was a section of its own, "The key"
-                .settingsAnchor("agents.token")
+            SettingsAdvanced("agents.server.more", holds: ["agents.port", "agents.token"]) { // Fork (settings-merge)
+                Rule()
+                portRow
+                    .settingsAnchor("agents.port")
+                Rule()
+                AgentsTokenRow() // Fork (settings-merge): was a section of its own, "The key"
+                    .settingsAnchor("agents.token")
+            }
         }
     }
 
@@ -572,7 +576,12 @@ private struct AgentsJevSection: View {
                 }
                 .settingsAnchor("agents.jevkey")
             }
+            if !mcp.jevNote.isEmpty, mcp.config.jev {
+                Rule()
+                Line("Last run", mcp.jevNote) { EmptyView() }
+            }
             if mcp.config.jev {
+              SettingsAdvanced("agents.jev.more", holds: ["agents.textmodel", "agents.jevfast", "agents.jevvision"]) { // Fork (settings-merge)
                 Rule()
                 Line("Text model", brain.modelReady ? "Writes what Jev types and answers jev_extract. Small and fast is the point; empty uses \(brain.modelName)." : "Typing text and jev_extract need a model — set one up in Intelligence.") {
                     HStack(spacing: 8) {
@@ -599,10 +608,7 @@ private struct AgentsJevSection: View {
                     Segmented(options: Tools.Ultrafast.Vision.offered.map { ($0, $0.title) }, selection: jevVision)
                 }
                 .settingsAnchor("agents.jevvision")
-                if !mcp.jevNote.isEmpty {
-                    Rule()
-                    Line("Last run", mcp.jevNote) { EmptyView() }
-                }
+              }
             }
         }
     }
@@ -642,9 +648,6 @@ private struct AgentsPaneSection: View {
             }
             .settingsAnchor("agents.context")
             Rule()
-            turnsRow
-                .settingsAnchor("agents.turns")
-            Rule()
             Line("Your other MCP servers", serversLine) {
                 HStack(spacing: 8) {
                     Pill("Open mcp.json") {
@@ -660,6 +663,11 @@ private struct AgentsPaneSection: View {
             ForEach(servers.all) { server in
                 Rule()
                 ServerRow(server: server)
+            }
+            SettingsAdvanced("agents.pane.more", holds: ["agents.turns"]) { // Fork (settings-merge)
+                Rule()
+                turnsRow
+                    .settingsAnchor("agents.turns")
             }
         }
     }

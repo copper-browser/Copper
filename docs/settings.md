@@ -65,6 +65,9 @@ list, the Downloads panel).
   control at the right. In Settings, a control too wide to sit beside its words goes under them
   (`ViewThatFits`), and a detail is never cut off. A `Line` also hands its title to the control
   inside it as `controlLabel`, which is how a switch gets its name.
+- **`SettingsAdvanced(anchor, holds:)`** (`Fork/SettingsLook.swift`) folds rows most people never
+  touch at the foot of a card. Each folded row's index entry takes `fallback: anchor`, and a search
+  for one of `holds` opens the fold before the page scrolls (`settingsPending`).
 - **`Rule()`** between rows, **`SettingsNote`** for a sentence under a section,
   **`SettingsHeader`** for the page title and blurb.
 - **Colours and sizes:** `SettingsInk` (rail, content, card, edge, secondary text) and
