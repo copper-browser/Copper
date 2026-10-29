@@ -342,20 +342,18 @@ struct SettingsPanel: View {
                     Segmented(options: TabSwitching.allCases.map { ($0, $0.title) }, selection: $prefs.tabSwitching)
                 }
                 .settingsAnchor("tabs.switching")
-                Rule()
                 // Fork (swipe-direction): here rather than on the Spaces page,
                 // which is the editor for one space at a time; this is how the
                 // column itself answers the trackpad, like ⌃Tab above it.
-                // Fork (settings-browse): the swipe lives over the sidebar's
-                // column, so with the strip it has nothing to act on.
-                Line("Swipe between spaces", prefs.sidebar
-                     ? "Two fingers across the sidebar. Natural moves it with your fingers, Inverted the other way; Like scrolling follows the Mac's own setting."
-                     : "Needs tabs in a sidebar — the swipe is two fingers across it.") {
-                    Segmented(options: SwipeDirection.allCases.map { ($0, $0.title) }, selection: $prefs.swipeDirection)
-                        .disabled(!prefs.sidebar)
-                        .opacity(prefs.sidebar ? 1 : 0.45)
+                // Fork (settings-merge): only with the sidebar — the swipe
+                // lives over its column, so with the strip there is nothing to set.
+                if prefs.sidebar {
+                    Rule()
+                    Line("Swipe between spaces", "Two fingers across the sidebar. Natural moves it with your fingers, Inverted the other way; Like scrolling follows the Mac's own setting.") {
+                        Segmented(options: SwipeDirection.allCases.map { ($0, $0.title) }, selection: $prefs.swipeDirection)
+                    }
+                    .settingsAnchor("tabs.swipe")
                 }
-                .settingsAnchor("tabs.swipe")
             }
             SettingsSection("Tabs you leave") {
                 Line("Sleep tabs you aren't using",  "When many pages are open or memory runs short, the tabs you left longest sleep and come back where you were. Pinned tabs, sound, calls and anything typed stay awake.") {
