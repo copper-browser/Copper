@@ -94,9 +94,11 @@ a row (Show, Copy, Remove), lives in `Plate.swift`. The shared pieces are in
   (`settingsFocusable`, or `settingsFocusRing` for a `Button`, which is focusable already).
 - **The focus ring** is Settings' own (`SettingsFocusRing`): the control's shape, 3 points
   outside it, in ink, and nothing while unfocused. The system's blue halo is turned off.
-- **A control that does nothing is `.disabled`**, with the reason in the row's detail (for
-  example Swipe between spaces with tabs across the top). Disabled, not `.allowsHitTesting(false)`,
-  so Tab and VoiceOver skip it too.
+- **A row that can't apply here is not drawn** (Swipe between spaces with tabs across the top,
+  Voice's options while voice is off); search lands on the row that brings it, through the
+  entry's `fallback`. A control that is shown but can't act right now (set by Copper Cloud, a
+  test run) is `.disabled`, with the reason in the row's detail. Disabled, not
+  `.allowsHitTesting(false)`, so Tab and VoiceOver skip it too.
 - **The close button** is named "Close Settings". Icon-only buttons carry a label.
 
 Each of these controls also writes itself into `SettingsControlLedger` as it draws — kind, page,

@@ -158,7 +158,7 @@ enum SettingsIndex {
         e(.tabs, "Switching", "⌃Tab switches to", "Whether Control-Tab follows the row or your most recent tabs",
           ["control tab", "ctrl tab", "mru", "most recent", "recent tabs", "cycle tabs", "tab switching", "switch tabs"], "tabs.switching"),
         e(.tabs, "Switching", "Swipe between spaces", "Two fingers across the sidebar: natural, inverted, or like scrolling",
-          ["trackpad", "gesture", "swipe", "natural scrolling", "inverted", "two fingers", "direction"], "tabs.swipe"),
+          ["trackpad", "gesture", "swipe", "natural scrolling", "inverted", "two fingers", "direction"], "tabs.swipe", fallback: "tabs.sidebar"),
         e(.tabs, "Tabs you leave", "Sleep tabs you aren't using", "Only when more pages are open than this Mac keeps easily, or memory runs short",
           ["memory", "suspend", "discard", "energy", "battery", "idle", "performance", "hibernate"], "tabs.sleep",
           toggle: pref(\.sleepsTabs)),

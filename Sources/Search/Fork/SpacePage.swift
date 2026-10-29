@@ -591,11 +591,10 @@ struct SpacePage: View {
         VStack(alignment: .leading, spacing: 10) {
             slider("Intensity", value: look.intensity, range: 0.2...1) { v in set { $0.intensity = v } }
             slider("Grain", value: look.grain, range: 0...1) { v in set { $0.grain = v } }
-            // Blur has nothing to soften on a flat colour or a gradient.
-            slider("Blur", value: look.blur, range: 0...1) { v in set { $0.blur = v } }
-                .disabled(kind == .colour || kind == .gradient)
-                .opacity(kind == .colour || kind == .gradient ? 0.45 : 1)
-                .help(kind == .colour || kind == .gradient ? "Blur softens a picture or a scene" : "")
+            // Blur has nothing to soften on a flat colour or a gradient, so it isn't offered there.
+            if kind != .colour && kind != .gradient {
+                slider("Blur", value: look.blur, range: 0...1) { v in set { $0.blur = v } }
+            }
             tone
         }
     }
