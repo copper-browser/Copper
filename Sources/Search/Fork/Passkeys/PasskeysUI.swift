@@ -6,22 +6,21 @@ struct PasskeysSettings: View {
     @State private var rows: [PasskeyStore.Credential] = []
 
     var body: some View {
-        // Settings' own lines (UX pass 2026-10-07): the empty state spans the
-        // card like every other row, and Forget is a pill like every other
-        // action, not a grey word.
-        Card {
-            if rows.isEmpty {
-                Line("No passkeys yet", "When a site offers to make one, Copper keeps it here and Touch ID signs you in with it") {
-                    EmptyView()
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                ForEach(rows) { credential in
-                    Line(credential.rpId, "\(credential.label) · \(detail(credential))") {
-                        Pill("Forget") { forget(credential) }
-                            .accessibilityLabel("Forget the passkey for \(credential.rpId)")
+        // Forget is a pill like every other action. No passkeys, no section:
+        // Offer passkeys above already says where they go (settings-merge).
+        Group {
+            if !rows.isEmpty {
+                SettingsSection("Passkeys", carded: false) {
+                    Card {
+                        ForEach(rows) { credential in
+                            Line(credential.rpId, "\(credential.label) · \(detail(credential))") {
+                                Pill("Forget") { forget(credential) }
+                                    .accessibilityLabel("Forget the passkey for \(credential.rpId)")
+                            }
+                            if credential.id != rows.last?.id { Rule() }
+                        }
                     }
-                    if credential.id != rows.last?.id { Rule() }
+                    .settingsAnchor("passwords.passkeylist", card: true)
                 }
             }
         }
