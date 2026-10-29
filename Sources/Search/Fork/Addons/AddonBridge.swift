@@ -113,6 +113,9 @@ enum AddonBridge {
             try need(.agent)
             Agent.shared.clear()
             return true
+        case "voice.state", "voice.start", "voice.stop", "voice.cancel":
+            // Dictation for the slot's own composer, on the agent capability (AddonVoice.swift).
+            return try AddonVoice.call(method, granted: granted, slot: host)
         default:
             throw AddonBridgeError("bad_request", "No bridge method \"\(method)\"")
         }

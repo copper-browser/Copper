@@ -4,7 +4,10 @@ import Combine
 import Foundation
 import os
 
-// Dictation into the agent composer: the one place voice reaches in v1.
+// Dictation into the agent composer: the one place voice reaches in v1 —
+// or, while an addon owns the Agent sidebar, into the addon's composer,
+// which takes the words as a DictationSink (DictationSink.swift,
+// Fork/Addons/AddonVoice.swift) and never touches the native draft.
 //
 // A press of ⌃⇧D (or the composer's mic) starts one dictation — a microphone
 // capture feeding one LiveSession, which hears the whole hold and decodes it
@@ -58,7 +61,8 @@ final class Voice: ObservableObject {
     }
 
     /// Who started a dictation, so only the same one can end a hold.
-    enum Hand: String { case key, button, bench }
+    /// `addon`: the sidebar addon's mic, through the bridge.
+    enum Hand: String { case key, button, bench, addon }
 
     /// What the composer's mic shows.
     enum Mic: Equatable {
@@ -105,6 +109,13 @@ final class Voice: ObservableObject {
     private(set) weak var window: NSWindow?
     /// The current dictation's number. Bumped by every start and cancel.
     private(set) var session = 0
+    /// Who the current dictation (or the last, or the press that was turned
+    /// away) is for. Kept after it ends, as `browser` is, so a note it leaves
+    /// goes to the same place.
+    private(set) var target: Target = .composer
+    /// The sink, when `target` is one. Weak: a sink that goes away mid-way
+    /// takes the words with it — they never fall back into the draft.
+    private(set) weak var sink: DictationSink?
 
     nonisolated static let denied = "Microphone access is off. Open System Settings to allow Copper, then try again."
     nonisolated static let privacyPane = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
@@ -174,6 +185,8 @@ final class Voice: ObservableObject {
     private(set) var timeline: [(ms: Int, event: String, count: Int?)] = []
     private(set) var lastInsert: ComposerInsert.Landed?
     private(set) var lastSent: String?
+    /// The words the last dictation handed to a sink.
+    private(set) var lastDelivered: String?
     private(set) var partials = 0
     private(set) var announced: [String] = []
     private var origin = Date()
@@ -306,33 +319,60 @@ final class Voice: ObservableObject {
         if on { focused.insert(ObjectIdentifier(browser)) } else { focused.remove(ObjectIdentifier(browser)) }
     }
 
-    /// Whether this browser's pane shows the current dictation's line.
-    func shows(in browser: Browser) -> Bool { self.browser == nil || self.browser === browser }
+    /// Whether this browser's pane shows the current dictation's line. Never
+    /// a sink's: its composer draws its own.
+    func shows(in browser: Browser) -> Bool {
+        guard target == .composer else { return false }
+        return self.browser == nil || self.browser === browser
+    }
+
+    /// Whether the current (or last) dictation is for `sink` — nil being
+    /// the pane's own composer.
+    func aimed(at sink: DictationSink?) -> Bool {
+        guard let sink else { return target == .composer }
+        return target == .sink && self.sink === sink
+    }
+
+    /// A dictation is under way for `sink`.
+    func serves(_ sink: DictationSink) -> Bool { active && aimed(at: sink) }
+
+    private func aim(at sink: DictationSink?) {
+        target = sink == nil ? .composer : .sink
+        self.sink = sink
+    }
 
     // MARK: - gestures
 
-    /// ⌃⇧D down, the mic pressed (or clicked), or the bench.
-    func press(_ hand: Hand, in browser: Browser, window: NSWindow?) {
-        // A note this press brings up shows in this window's pane.
+    /// ⌃⇧D down, the mic pressed (or clicked), or the bench. `sink`: the
+    /// press is for the sidebar addon's composer (⌃⇧D while it owns the
+    /// sidebar), not the pane's.
+    func press(_ hand: Hand, in browser: Browser, window: NSWindow?, for sink: DictationSink? = nil) {
+        // One dictation at a time, for one composer: a press meant for the
+        // other one leaves it alone.
+        if active, !aimed(at: sink) { return }
+        // A note this press brings up shows in this window's pane (or its sink).
         if !active {
             self.browser = browser
             self.window = window ?? Windows.window(of: browser)
+            aim(at: sink)
         }
-        // Whether one can start; one under way can always be stopped.
+        // Whether one can start; one under way can always be stopped. A sink
+        // talks to its own service, so Copper's agent being set up is not a
+        // condition for it.
         if !active {
-            switch mic(agentReady: Agent.shared.ready) {
+            switch mic(agentReady: sink == nil ? Agent.shared.ready : true) {
             case .unavailable(let why) where why == Listen.blocksDictation:
-                if hand == .key { show(note: why, for: 2.5) }
+                if hand == .key { tell(why, code: "busy", for: 2.5) }
                 return
             case .hidden, .unavailable:
                 return
             case .waiting(let why):
-                if hand == .button { browser.openSettings(.intelligence, at: "voice.enabled") } else { show(note: why, for: 2.5) }
+                if hand == .button { browser.openSettings(.intelligence, at: "voice.enabled") } else { tell(why, code: "not_ready", for: 2.5) }
                 return
             case .preparing:
                 // No capture: nothing could be heard into words for a while yet.
                 refusedPreparing += 1
-                show(note: Voice.preparingNote, for: 3)
+                tell(Voice.preparingNote, code: "not_ready", for: 3)
                 announce("Preparing speech model")
                 return
             case .ready:
@@ -367,7 +407,7 @@ final class Voice: ObservableObject {
             mark("release")
             if Date().timeIntervalSince(pressedAt) < Voice.holdThreshold {
                 cancel("tap")
-                show(note: "Hold to talk", for: 1.6)
+                tell("Hold to talk", code: "hold", for: 1.6)
             } else {
                 finish("release")
             }
@@ -379,14 +419,52 @@ final class Voice: ObservableObject {
     /// VoiceOver's press of the mic: start or stop, without a held chord.
     func accessibilityActivate(in browser: Browser) {
         let window = Windows.window(of: browser)
+        // The pane's mic never ends the sidebar addon's dictation.
+        if active, !aimed(at: nil) { return }
         if phase == .dictating { finish("stop"); return }
         guard !active else { return }
         if case .ready = mic(agentReady: Agent.shared.ready) {
             // No hold to let go of: the next activation stops it.
+            aim(at: nil)
             start(.button, in: browser, window: window, held: false)
         } else {
             press(.button, in: browser, window: window)
         }
+    }
+
+    // MARK: - the sidebar addon's mic (bridge `copper.voice`)
+
+    /// `voice.start()`: a dictation for `sink`, started outright — whether
+    /// one may start was the bridge's to answer (AddonVoice.refusal), as a
+    /// press's is `press`'s. Hold or toggle alike, its own `stop` ends it.
+    func begin(for sink: DictationSink, in browser: Browser, window: NSWindow?) {
+        guard !active else { return }
+        self.browser = browser
+        self.window = window ?? Windows.window(of: browser)
+        aim(at: sink)
+        start(.addon, in: browser, window: window)
+    }
+
+    /// `voice.stop()`: as letting go of the pane's mic in hold mode (a tap
+    /// under a quarter of a second is "Hold to talk", nothing heard), else
+    /// as pressing it again. Only the sink's own dictation.
+    func stop(for sink: DictationSink) {
+        guard serves(sink) else { return }
+        if prefs.trigger == .hold, hand == .addon {
+            lift(.addon)
+            return
+        }
+        switch phase {
+        case .dictating: finish("stop")
+        case .arming: cancel("pressed again")
+        default: break
+        }
+    }
+
+    /// `voice.cancel()`: thrown away, as Escape throws it away.
+    func cancel(for sink: DictationSink) {
+        guard serves(sink) else { return }
+        cancel("addon")
     }
 
     /// The line's ✕, or an error dismissed.
@@ -416,11 +494,15 @@ final class Voice: ObservableObject {
         timeline = []
         lastInsert = nil
         lastSent = nil
+        lastDelivered = nil
         partials = 0
         announced = []
         preview = ""
         let draft = Agent.shared.draft
-        if let range = benchRange {
+        if target == .sink {
+            // The sink keeps its own caret; the pane's draft isn't looked at.
+            anchor = nil
+        } else if let range = benchRange {
             anchor = ComposerInsert.Anchor(draft: draft, range: ComposerInsert.clamp(range, in: draft), editor: nil, window: self.window)
         } else {
             anchor = ComposerInsert.capture(in: self.window, draft: draft)
@@ -477,8 +559,8 @@ final class Voice: ObservableObject {
                     if self.releasedWhileArming { self.mark("released during the prompt") }
                     self.mark("not started: hold again")
                     self.end(nil)
-                    let button = hand == .button
-                    self.show(note: button ? Voice.allowedHoldButton : Voice.allowedHoldKey, for: 6)
+                    let button = hand == .button || hand == .addon
+                    self.tell(button ? Voice.allowedHoldButton : Voice.allowedHoldKey, code: "hold", for: 6)
                     self.announce(button ? "Microphone allowed. Hold the mic button to talk."
                                          : "Microphone allowed. Hold Control-Shift-D to talk.")
                 } else {
@@ -569,6 +651,25 @@ final class Voice: ObservableObject {
             return
         }
         defer { end(nil) }
+        if target == .sink {
+            // Someone else's composer: the words are handed over once and
+            // that is all — never into the draft, never sent from here. No
+            // words, no hand-over: a sink set to send must not send its
+            // draft for a dictation that heard nothing.
+            guard !words.isEmpty else {
+                mark("empty")
+                return
+            }
+            guard let sink else {
+                mark("dropped: sink gone")
+                return
+            }
+            lastDelivered = words
+            sink.dictation(final: words, finish: prefs.finish)
+            mark("delivered", count: words.split(whereSeparator: \.isWhitespace).count)
+            Voice.log.info("dictation: \(self.partials) partials, \(words.split(whereSeparator: \.isWhitespace).count) words, handed to the sidebar addon")
+            return
+        }
         guard !words.isEmpty, let anchor else {
             mark("empty")
             return
@@ -624,10 +725,10 @@ final class Voice: ObservableObject {
             cancel("capture stopped")
         case .deviceLost:
             cancel("device lost")
-            phase = .error("The microphone was disconnected — try again")
+            failed("The microphone was disconnected — try again")
         case .failed:
             cancel("capture failed")
-            phase = .error("The microphone stopped — try again")
+            failed("The microphone stopped — try again")
         }
     }
 
@@ -637,7 +738,10 @@ final class Voice: ObservableObject {
         case .partial(let text):
             guard phase == .dictating || phase == .finishing else { return }
             partials += 1
+            // The same guess again (the room after the last word) is no news to a sink.
+            let news = text != preview
             preview = text
+            if target == .sink, news { sink?.dictation(partial: text) }
             mark("partial", count: text.split(whereSeparator: \.isWhitespace).count)
         case .final:
             mark("final")
@@ -664,7 +768,15 @@ final class Voice: ObservableObject {
         slowStart = false
         phase = error.map(Phase.error) ?? .idle
         if error == nil { mark("idle") }
+        if let error, target == .sink { sink?.dictation(error: Voice.code(for: error), message: error) }
         scheduleUnload()
+    }
+
+    /// An error after the dictation has already ended (the capture lost):
+    /// on the composer's line, or said to the sink.
+    private func failed(_ message: String) {
+        phase = .error(message)
+        if target == .sink { sink?.dictation(error: Voice.code(for: message), message: message) }
     }
 
     private func stopTimers() {
@@ -690,11 +802,22 @@ final class Voice: ObservableObject {
         note = nil
     }
 
+    /// A brief line for whoever the press was for: the composer's note, or
+    /// the sink's `error` (it draws its own line; the pane's isn't on screen).
+    private func tell(_ text: String, code: String, for seconds: TimeInterval) {
+        if target == .sink {
+            mark("told:\(code)")
+            sink?.dictation(error: code, message: text)
+        } else {
+            show(note: text, for: seconds)
+        }
+    }
+
     /// VoiceOver, once per change of state — never for a partial.
     private func announce(_ text: String) {
         announced.append(text)
         mark("announce:\(text)")
-        guard let element = window ?? NSApp.keyWindow ?? NSApp.mainWindow else { return }
+        guard let element = window ?? NSApp?.keyWindow ?? NSApp?.mainWindow else { return }
         NSAccessibility.post(element: element, notification: .announcementRequested,
                              userInfo: [.announcement: text, .priority: NSAccessibilityPriorityLevel.high.rawValue])
     }
@@ -716,8 +839,11 @@ final class Voice: ObservableObject {
 
     /// The pane is open with voice ready: load the model now (a third of a
     /// second once this Mac has prepared it), so the first dictation doesn't wait.
+    /// The sidebar addon that dictates (AddonVoice.wantsWarm) needs no agent
+    /// of Copper's, so it warms the model without one.
     func warm() {
-        guard #available(macOS 15, *), VoicePrefs.supported, prefs.enabled, Agent.shared.open, Agent.shared.ready,
+        guard #available(macOS 15, *), VoicePrefs.supported, prefs.enabled, Agent.shared.open,
+              Agent.shared.ready || AddonVoice.wantsWarm,
               seededModel == nil, ModelStore.shared.state == .ready, let dir = ModelStore.shared.modelDir else { return }
         startWarm(dir)
     }
@@ -833,6 +959,7 @@ final class Voice: ObservableObject {
         seededWarming = false
         self.browser = browser
         self.window = Windows.window(of: browser)
+        aim(at: nil)
         let words = "open the Copper agent pane, check the API logs on the staging server and file a bug for the failing Swift build"
         switch scenario {
         case "idle", "idle-with-mic": phase = .idle; preview = ""
@@ -863,6 +990,7 @@ final class Voice: ObservableObject {
             "announced": announced, "partials": partials, "engine": engineState.rawValue, "engineSlow": engineSlow,
             "refusedPreparing": refusedPreparing, "undoFollowed": ComposerInsert.followed,
             "listen": Listen.name(Listen.shared.phase),
+            "target": target.rawValue,
             "timeline": timeline.map { row -> [String: Any] in
                 var r: [String: Any] = ["ms": row.ms, "event": row.event]
                 if let n = row.count { r["n"] = n }
@@ -886,7 +1014,38 @@ final class Voice: ObservableObject {
         if let lastInsert { out["inserted"] = lastInsert.piece; out["insertedVia"] = lastInsert.via; out["caret"] = lastInsert.caret }
         out["sendCalled"] = lastSent != nil
         if let lastSent { out["sent"] = lastSent }
+        if let lastDelivered { out["delivered"] = lastDelivered }
         return out
+    }
+
+    /// Tests and the bench: a dictation that has just been let go, landing
+    /// `text` exactly as a decode's words land — handed to `sink`, or, with
+    /// none, put in the composer at `range` of the draft (its end when nil).
+    /// No microphone, no model, no window. With `sendReady` false a "Send
+    /// right away" is held back as an agent that isn't set up holds it.
+    func benchLand(_ text: String, for sink: DictationSink?, range: NSRange? = nil, sendReady: Bool = false) {
+        cancel("bench")
+        stopTimers()
+        session += 1
+        aim(at: sink)
+        timeline = []
+        lastInsert = nil
+        lastSent = nil
+        lastDelivered = nil
+        origin = Date()
+        if sink == nil {
+            let draft = Agent.shared.draft
+            let at = range ?? NSRange(location: (draft as NSString).length, length: 0)
+            anchor = ComposerInsert.Anchor(draft: draft, range: ComposerInsert.clamp(at, in: draft), editor: nil, window: nil)
+        } else {
+            anchor = nil
+        }
+        let saved = benchAgentReady
+        benchAgentReady = sendReady
+        defer { benchAgentReady = saved }
+        live = nil
+        phase = .finishing
+        land(text, decodeFailed: false, session: session)
     }
 
     static func name(_ phase: Phase) -> String {

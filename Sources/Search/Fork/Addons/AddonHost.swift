@@ -205,6 +205,16 @@ final class AddonSlotHost: NSObject, ObservableObject, WKNavigationDelegate, WKU
         all.values.first { $0.web === web }
     }
 
+    /// A window's host for a slot, only if the slot has made one.
+    static func existing(for browser: Browser, slot: AddonSlot) -> AddonSlotHost? {
+        all[Key(browser: ObjectIdentifier(browser), slot: slot)].flatMap { $0.browser === browser ? $0 : nil }
+    }
+
+    /// Some open window's slot page has asked for voice (AddonVoice.wantsWarm).
+    static var voiceAwareHosts: Bool {
+        all.values.contains { $0.browser != nil && $0.voiceAware && $0.failed == nil && $0.web != nil }
+    }
+
     /// The front window's host for a slot, if it has one yet.
     static func front(_ slot: AddonSlot) -> AddonSlotHost? {
         all[Key(browser: ObjectIdentifier(Windows.current), slot: slot)]
@@ -253,6 +263,11 @@ final class AddonSlotHost: NSObject, ObservableObject, WKNavigationDelegate, WKU
     private var lastAgent: Data?
     private var pageTimer: Timer?
     private var lastPage: Data?
+    private var voiceDue = false
+    private var lastVoice: Data?
+    /// The page has called a `voice.*` method since it loaded: it draws a
+    /// mic, so ⌃⇧D dictates into it (AddonVoice.keyTarget).
+    private(set) var voiceAware = false
     /// `copper.oauth.authorize` windows this page opened.
     var oauth: [AddonOAuth] = []
 
@@ -295,6 +310,7 @@ final class AddonSlotHost: NSObject, ObservableObject, WKNavigationDelegate, WKU
 
     private func load(_ next: AddonInstalled) {
         cancelOAuth()
+        forgetVoice()
         entry = next
         failed = nil
         loaded = false
@@ -349,6 +365,7 @@ final class AddonSlotHost: NSObject, ObservableObject, WKNavigationDelegate, WKU
     /// Let the page go: the slot shows its own view again.
     func unload() {
         cancelOAuth()
+        forgetVoice()
         watches.removeAll()
         pageTimer?.invalidate()
         pageTimer = nil
@@ -409,6 +426,13 @@ final class AddonSlotHost: NSObject, ObservableObject, WKNavigationDelegate, WKU
             Agent.shared.objectWillChange.merge(with: Intelligence.shared.objectWillChange)
                 .sink { [weak self] _ in self?.agentChanged() }
                 .store(in: &watches)
+            // Voice's state (AddonVoice.swift): the prefs, the model, a
+            // dictation's phase, Listen taking the microphone. Sent only when
+            // what `voice.state()` says has changed.
+            Voice.shared.objectWillChange
+                .merge(with: VoicePrefs.shared.objectWillChange, ModelStore.shared.objectWillChange, Listen.shared.objectWillChange)
+                .sink { [weak self] _ in self?.voiceChanged() }
+                .store(in: &watches)
         }
         if granted.contains(.page) {
             browser?.objectWillChange
@@ -433,6 +457,28 @@ final class AddonSlotHost: NSObject, ObservableObject, WKNavigationDelegate, WKU
             self.lastAgent = data
             self.emit("agent", state)
         }
+    }
+
+    private func voiceChanged() {
+        guard !voiceDue else { return }
+        voiceDue = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self else { return }
+            self.voiceDue = false
+            guard self.loaded else { return }
+            let event = AddonVoice.stateEvent(AddonVoice.snapshot(for: self))
+            guard let data = try? JSONSerialization.data(withJSONObject: event, options: [.sortedKeys]), data != self.lastVoice else { return }
+            self.lastVoice = data
+            self.emit("voice", event)
+        }
+    }
+
+    /// A page going (or replaced): its dictation goes with it, and the next
+    /// page has to ask for voice again before ⌃⇧D is its.
+    private func forgetVoice() {
+        Voice.shared.cancel(for: self)
+        voiceAware = false
+        lastVoice = nil
     }
 
     private func pageMaybeChanged() {
@@ -547,6 +593,7 @@ final class AddonSlotHost: NSObject, ObservableObject, WKNavigationDelegate, WKU
     /// the slot is given back to its own view rather than flickering.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         loaded = false
+        forgetVoice()
         let now = Date()
         crashes = crashes.filter { now.timeIntervalSince($0) < 60 } + [now]
         if crashes.count >= 3 {
@@ -587,5 +634,36 @@ final class AddonSlotHost: NSObject, ObservableObject, WKNavigationDelegate, WKU
         let open = oauth
         oauth = []
         for window in open { window.finish(.failure(AddonBridgeError("cancelled", "The addon's page went away"))) }
+    }
+}
+
+// MARK: - dictation (AddonVoice.swift)
+
+/// The slot's page takes a dictation's words as `voice` events: partials
+/// to preview, the final words once, and why one couldn't listen.
+extension AddonSlotHost: VoiceSlot {
+    func voiceAsked() {
+        guard !voiceAware else { return }
+        voiceAware = true
+        // A page that dictates wants the model loaded while it shows, as the
+        // pane's composer has it on opening.
+        Voice.shared.warm()
+    }
+
+    func voiceActed() {
+        lastVoice = nil
+        voiceChanged()
+    }
+
+    func dictation(partial text: String) {
+        emit("voice", ["type": "partial", "text": text])
+    }
+
+    func dictation(final text: String, finish: VoiceFinish) {
+        emit("voice", ["type": "final", "text": text, "finish": finish.rawValue])
+    }
+
+    func dictation(error code: String, message: String) {
+        emit("voice", ["type": "error", "code": code, "message": message])
     }
 }

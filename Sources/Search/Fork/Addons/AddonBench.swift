@@ -163,6 +163,10 @@ enum AddonBench {
     await t("agent.setModel.refused", () => c.agent.setModel("no-such-model"));
     await t("agent.send.refused", () => c.agent.send(""));
     await t("agent.stop", () => c.agent.stop());
+    // Dictation's state, and a cancel with nothing under way: nothing that
+    // would open a microphone.
+    await t("voice.state", () => c.voice ? c.voice.state() : Promise.reject({code: "missing", message: "no copper.voice"}));
+    await t("voice.cancel", () => c.voice.cancel());
     out.secureContext = window.isSecureContext;
     out.origin = location.origin;
     out.cspBlocksNetwork = await fetch("https://example.com/").then(() => false, () => true);

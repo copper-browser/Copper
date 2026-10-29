@@ -109,6 +109,8 @@
     await check("agent.setModel(unknown)", "bad_request", function () { return c.agent.setModel("no-such-model"); });
     await check("agent.send('')", "bad_request", function () { return c.agent.send(""); });
     await check("agent.stop()", "ok", function () { return c.agent.stop(); });
+    await check("voice.state()", "ok", function () { return c.voice.state(); });
+    await check("voice.cancel() with nothing under way", "ok", function () { return c.voice.cancel(); });
     await check("window.open() is refused", "ok", function () {
       var w = window.open("https://example.com/");
       if (w !== null) throw Object.assign(new Error("a window opened"), { code: "opened" });
@@ -145,7 +147,7 @@
   function listen() {
     var c = window.copper;
     if (!c) return;
-    ["visibility", "theme", "settings", "agent", "page"].forEach(function (name) {
+    ["visibility", "theme", "settings", "agent", "page", "voice"].forEach(function (name) {
       c.on(name, function (payload) {
         log(name, name === "agent" ? { busy: payload.busy, model: payload.model, items: payload.items.length } : payload);
         if (name === "theme") document.documentElement.classList.toggle("dark", !!payload.dark);
@@ -158,6 +160,12 @@
     var footer = document.querySelector("footer");
     [["Open example.com", function () { return window.copper.openUrl("https://example.com/"); }],
      ["Clear the agent", function () { return window.copper.agent.clear(); }],
+     // Press to start, press again to stop, whatever Settings says: a check
+     // by hand that the words come back as a `final` event.
+     ["Dictate / stop", function () {
+       var v = window.copper.voice;
+       return v.state().then(function (s) { return s.active ? v.stop() : v.start(); });
+     }],
      ["Close the sidebar", function () { return window.copper.ui.close(); }]].forEach(function (pair) {
       var b = document.createElement("button");
       b.type = "button";
