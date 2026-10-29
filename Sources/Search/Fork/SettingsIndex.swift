@@ -414,14 +414,14 @@ enum SettingsIndex {
           ["agents", "ai", "automation", "share logins", "bot sign in", "agent access"], "passwords.agents"),
         e(.passwords, "Agent access", "Accounts, identities and cards agents may use", "Allow each saved account, Bitwarden or 1Password identity or card on its own",
           ["allow agent", "per account", "identities", "cards", "agent permissions"], "passwords.agents"),
-        e(.passwords, "Import and export", "Bring yours in", "From Dia, Chrome, Arc, Brave or Edge on this Mac — nothing leaves it",
-          ["import passwords", "chrome", "arc", "brave", "edge", "dia", "migrate", "transfer passwords"], "passwords.import"),
+        e(.passwords, "Saved passwords", "Import passwords", "From Dia, Chrome, Arc, Brave or Edge on this Mac, in the Passwords window",
+          ["import passwords", "bring yours in", "chrome", "arc", "brave", "edge", "dia", "migrate", "transfer passwords"], "passwords.list"),
         e(.passwords, "Import and export", "From a CSV file", "A passwords export from Chrome, Safari, Apple Passwords or a password manager",
           ["csv", "import csv", "apple passwords", "icloud keychain", "safari passwords", "chrome passwords", "password manager export", "import file"], "passwords.csv"),
         e(.passwords, "Import and export", "Export to a CSV file", "Every password Copper keeps, after Touch ID",
           ["export passwords", "export csv", "backup passwords", "download passwords", "save passwords to file"], "passwords.export"),
         e(.passwords, "Passkeys", "Copper passkeys", "The passkeys Copper keeps, and forgetting one",
-          ["passkeys", "forget passkey", "webauthn credentials"], "passwords.passkeylist"),
+          ["passkeys", "forget passkey", "webauthn credentials"], "passwords.passkeylist", fallback: "passwords.passkeys"),
     ]
 
     // MARK: downloads

@@ -523,7 +523,7 @@ struct AgentAccessCard: View {
         let _ = SettingsPerf.tick("agentAccess") // Fork (settings-perf)
         let _ = listRevision
         Card {
-            Line("Share every saved account with agents", "Agents can use saved sign-ins in Copper without receiving the password") {
+            Line("Share every saved account with agents", shareAll ? "Agents can use every saved sign-in in Copper without receiving the password" : "Off, agents use only the accounts you allow, and never receive the password") {
                 Switch(on: Binding(
                     get: { shareAll },
                     set: {
@@ -533,11 +533,14 @@ struct AgentAccessCard: View {
                     }
                 ))
             }
+            // Fork (settings-merge): sharing everything needs no list, and an
+            // empty kind (no identities, no cards) draws nothing.
+            if !shareAll, !(list.isEmpty && identities.isEmpty && cards.isEmpty) {
             Rule()
             VStack(alignment: .leading, spacing: 10) {
                 Hunt(text: $hunt, prompt: "Search saved accounts", focus: $huntFocused)
                 if filtered.isEmpty {
-                    Nothing("Nothing kept yet — sign in somewhere or connect Bitwarden or 1Password.")
+                    Nothing("No saved account matches.")
                 } else {
                     ScrollView(showsIndicators: false) {
                         // Lazy (settings-perf): a whole 1Password vault is
@@ -561,11 +564,9 @@ struct AgentAccessCard: View {
                     .frame(maxHeight: 400)
                 }
 
-                Rule(inset: 0)
-                Caption("Identities")
-                if filteredIdentities.isEmpty {
-                    Nothing("No identities kept yet.")
-                } else {
+                if !filteredIdentities.isEmpty {
+                    Rule(inset: 0)
+                    Caption("Identities")
                     VStack(spacing: 0) {
                         ForEach(Array(filteredIdentities.enumerated()), id: \.element.id) { index, identity in
                             if index > 0 { Rule(inset: 0) }
@@ -585,11 +586,9 @@ struct AgentAccessCard: View {
                     }
                 }
 
-                Rule(inset: 0)
-                Caption("Cards")
-                if filteredCards.isEmpty {
-                    Nothing("No cards kept yet.")
-                } else {
+                if !filteredCards.isEmpty {
+                    Rule(inset: 0)
+                    Caption("Cards")
                     VStack(spacing: 0) {
                         ForEach(Array(filteredCards.enumerated()), id: \.element.id) { index, card in
                             if index > 0 { Rule(inset: 0) }
@@ -611,6 +610,7 @@ struct AgentAccessCard: View {
             }
             .padding(12)
             .id(policyRevision)
+            }
         }
         .onAppear {
             shareAll = AgentAccess.shareAll
@@ -774,6 +774,12 @@ final class AgentAccessList {
     func forget() {
         all = nil
         last = nil
+    }
+
+    /// Nothing saved at all, whatever the search says.
+    var isEmpty: Bool {
+        if all == nil { all = Credentials.all() }
+        return all?.isEmpty ?? true
     }
 
     func filtered(_ hunt: String) -> [Credential] {

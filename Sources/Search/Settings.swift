@@ -382,7 +382,7 @@ struct SettingsPanel: View {
     private var passwords: some View {
         Group {
             SettingsSection("Saved passwords") {
-                Line("Your passwords", "In the macOS keychain, shown with Touch ID") {
+                Line("Your passwords", "In the macOS keychain, shown with Touch ID — bring yours in from Dia, Chrome, Arc, Brave or Edge there") { // Fork (settings-merge): was also an Import… row that opened the same window
                     Pill("Open…") {
                         browser.tuning = false
                         browser.managing = true
@@ -439,19 +439,9 @@ struct SettingsPanel: View {
                     .settingsAnchor("passwords.agents", card: true)
             }
             SettingsSection("Import and export") { // Fork (password-csv): CSV in and out — Fork/Credentials/PasswordCSV.swift
-                Line("Bring yours in", "From Dia, Chrome, Arc, Brave or Edge on this Mac — nothing leaves it") {
-                    Pill("Import…") {
-                        browser.tuning = false
-                        browser.managing = true
-                    }
-                }
-                .settingsAnchor("passwords.import")
                 PasswordCSVLines(browser: browser)
             }
-            SettingsSection("Passkeys", carded: false) {
-                PasskeysSettings()
-                    .settingsAnchor("passwords.passkeylist", card: true)
-            }
+            PasskeysSettings() // Fork (settings-merge): its own section, only once there are passkeys
         }
     }
 
