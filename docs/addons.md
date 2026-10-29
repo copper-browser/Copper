@@ -97,6 +97,9 @@ returns a Promise. A refusal rejects with an `Error` carrying `code`:
 | `timeout` | took longer than allowed |
 | `network` | no connection, or the answer was too big |
 | `unavailable` | this platform doesn't have it, or the window went away |
+| `disabled` | `voice.start()`: Voice is off in Settings › Intelligence › Voice, or this Mac can't have it |
+| `busy` | `voice.start()`: Listen has the microphone, or another composer is dictating |
+| `not_ready` | `voice.start()`: the speech model isn't ready yet |
 | `internal` | Copper's fault |
 
 | Method | Needs | On the Mac |
@@ -114,6 +117,8 @@ returns a Promise. A refusal rejects with an `Error` carrying `code`:
 | `agent.setModel(id)` | agent | `haiku`, `sonnet` or `opus` (the ids `agent.state()` lists); the same as Settings › Intelligence |
 | `agent.send(text)` | agent | asks the agent, as typing in the pane would. `bad_request` while it is still answering |
 | `agent.stop()` / `agent.clear()` | agent | Stop (nothing when the agent is idle) / New chat |
+| `voice.state()` | agent | Copper's dictation, for the addon's own mic: `{available, enabled, mic, reason, trigger, finish, active, phase}` (see *Voice*) |
+| `voice.start()` / `voice.stop()` / `voice.cancel()` | agent | start a dictation whose words come back to the addon / finish it (the words arrive as a `final` event) / throw it away. Each answers `{ok: true}` |
 
 Agent items are `{id, role, text, at, busy?, detail?}`:
 
@@ -134,6 +139,50 @@ Agent items are `{id, role, text, at, busy?, detail?}`:
 | `settings` | the new settings object | the cloud changed this addon's settings |
 | `agent` | as `agent.state()` | the conversation changes, at most ten a second (needs agent) |
 | `page` | `{url, title}` or `null` | the tab in front, or its address or title, changes (needs page) |
+| `voice` | `{type: "state", …}`, `{type: "partial", text}`, `{type: "final", text, finish}`, `{type: "error", code, message}` | dictation (needs agent; see *Voice*) |
+
+### Voice
+
+While an addon owns the Agent sidebar, the agent pane's composer isn't on screen, and neither is
+its mic. The addon draws a mic in its own composer and lends Copper's dictation through
+`copper.voice`: the same on-device model, the same Settings › Intelligence › Voice, the same
+⌃⇧D ([voice.md](voice.md)). The words come back to the addon as events. Copper never writes them
+into its own composer and never sends anything for the addon.
+
+- **The gate is `agent`.** There is no `voice` capability: an unknown capability fails
+  manifest validation on every Copper that doesn't know it. A Copper (or a platform) without
+  dictation answers `voice.*` with `bad_request`, and the addon leaves its mic out.
+- **`voice.state()`.** `available`: this Copper on this Mac can dictate at all (macOS 15).
+  `enabled`: Voice is on. `mic`: `hidden`, `unavailable`, `waiting`, `preparing` or `ready`,
+  as the pane's mic would show (minus the agent's sign-in, which the addon doesn't need), with
+  `reason` for every one but `hidden` and `ready` — *Stop Listen to dictate*, *Finish the other
+  dictation first*, *Speech model downloading · 42%*. `trigger`: `hold` or `toggle`. `finish`:
+  `insert` or `send`. `active`: a dictation for this page is under way, and `phase` says how far
+  (`idle`, `dictating`, `finishing`). Show the mic when `mic != "hidden"`.
+- **`voice.start()`.** Behaves as a press of the pane's mic. The first time, macOS asks for the
+  microphone; in hold mode nothing starts once it is answered, and an `error` with code `hold`
+  says to hold again. While the model isn't ready, Settings › Intelligence › Voice opens and the
+  call rejects with `not_ready` (while it is being prepared on this Mac, only `not_ready`). Listen
+  holding the microphone, or a dictation for another composer, rejects with `busy`; Voice off
+  with `disabled`. Starting a dictation that is already this page's answers `{ok: true}`.
+- **`voice.stop()`.** Ends it. In hold mode it is the mic let go: under a quarter of a second it
+  is a tap, nothing is heard, and an `error` with code `hold` says *Hold to talk*. Otherwise the
+  last decode runs (`phase: "finishing"`) and the words arrive as one `final` event. Nothing heard
+  sends no `final`, only the `state` that ends it. **`voice.cancel()`** throws it away.
+- **Events.** `state` (the fields of `voice.state()`) whenever any of them changes — a pref, the
+  model, a dictation starting or ending, Listen taking the microphone. `partial` carries the
+  newest guess while you talk: show it as a preview, never in the draft. `final` carries the
+  words and `finish`: put them at the caret of your composer, and with `finish: "send"` send the
+  draft. `error` carries `code` and `message`: `mic_denied`, `mic_failed`, `model_failed`,
+  `unavailable` (headless, or a test world's microphone), `not_ready`, `busy`, `hold`.
+- **⌃⇧D and Escape.** With the sidebar open in the window you are typing in, ⌃⇧D dictates into
+  the addon exactly as into the pane: hold, or press to start and stop, as Settings says. Escape
+  cancels. The same events arrive, so the mic shows a dictation the keyboard started. This needs
+  the page to have called a `voice.*` method since it loaded; until it does, ⌃⇧D goes on to the
+  page, since nothing on screen would show the dictation.
+- **What ends one.** Everything that ends the pane's: closing the sidebar or the window,
+  switching apps while talking, sleep, the microphone failing, two minutes. And the addon's page
+  going away (reloaded, replaced, its process gone).
 
 **Secure context.** `copper-addon:` is a custom scheme. Check `window.isSecureContext` (the
 self-test reports it) before relying on `crypto.subtle`. For PKCE without it, compute the
@@ -234,6 +283,9 @@ addons/
   `AddonSlotHost.sync()` makes every window follow `AddonSync`.
 - **`AddonBridge`** (`AddonBridge.swift`) holds the methods, `AddonStorage`, `AddonFetch` and
   `AddonOAuth`.
+- **`AddonVoice`** (`AddonVoice.swift`) is `copper.voice`: the state, the refusals, ⌃⇧D's
+  target. `AddonSlotHost` is the dictation's `DictationSink` (`Fork/Voice/DictationSink.swift`):
+  Voice hands it the words instead of putting them in the composer.
 - **`AgentSlot`** (`AddonUI.swift`) is what `Split.swift` puts where `AgentPane` was.
   `AddonPillSlot` sits beside the update pill. `AddonsPage`, `AddonUpdatesSection` and
   `AddonCommands` are the rest of the UI.
@@ -241,4 +293,5 @@ addons/
   `UpdatePill.swift`, `Updates.swift`, `SettingsFork.swift`, `CommandBar.swift`,
   `SettingsIndex.swift`, `MCP.swift`, and the upstream `Settings.swift` and `Package.swift`
   (PATCHES.md `addons-settings`, `addons-resource`).
-- **Tests** are in `Tests/SearchTests/AddonsTests.swift`.
+- **Tests** are in `Tests/SearchTests/AddonsTests.swift` and, for `copper.voice`,
+  `Tests/SearchTests/AddonVoiceTests.swift`.

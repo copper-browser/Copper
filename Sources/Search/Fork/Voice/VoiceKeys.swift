@@ -4,6 +4,11 @@ import AppKit
 // lives: a browser window whose agent pane is open, with Settings › Intelligence › Voice on.
 // Anywhere else the keys go on untouched (with voice off, every key does).
 //
+// Where an addon owns the Agent sidebar, its composer is the one on screen:
+// ⌃⇧D dictates into it (AddonVoice.keyTarget) once its page has asked for
+// voice, and goes on to the page when it never has. Where its page couldn't
+// be shown, the pane is back, and so is its composer.
+//
 // Hold to talk: D down starts, D up — or ⌃ or ⇧ let go — ends. Press to
 // start and stop: each D down is one press. The chord's own key events are
 // kept from the page and the composer either way, so no "D" is typed, and a
@@ -45,7 +50,9 @@ enum VoiceKeys {
                 return true
             }
             guard chord(event) else { return false }
-            guard let browser = Windows.owner(of: event.window), Agent.shared.open else {
+            let browser = Agent.shared.open ? Windows.owner(of: event.window) : nil
+            let target = browser.map(AddonVoice.keyTarget(in:)) ?? .neither
+            guard let browser, !target.isNeither else {
                 if counted.map({ $0.0 != event.timestamp || $0.1 != event.keyCode }) ?? true {
                     counted = (event.timestamp, event.keyCode)
                     passed += 1
@@ -55,7 +62,7 @@ enum VoiceKeys {
             consumed += 1
             if event.isARepeat { return true }
             down = true
-            voice.press(.key, in: browser, window: event.window)
+            voice.press(.key, in: browser, window: event.window, for: target.sink)
             return true
         case .keyUp:
             guard down, isD(event) else { return false }

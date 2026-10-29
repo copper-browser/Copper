@@ -9,7 +9,8 @@ runner, `ModelStore.swift` the download).*
 
 ## What it does
 
-Voice lives in one place: the **⌘E agent pane**. Its composer gets a mic between the `/jev` button and
+Voice lives in one place: the **⌘E agent pane** (or, when an addon owns that sidebar, the addon's
+composer: see *In an addon's Agent sidebar*). Its composer gets a mic between the `/jev` button and
 Send, and **⌃⇧D** dictates while the pane is open in the window you are typing in. The words go into the
 agent's message — never into a web page, never into another app, never anywhere while the pane is closed.
 The D in ⌃⇧D is the key that types a d (wherever a layout such as Dvorak puts it); on a layout without
@@ -35,6 +36,21 @@ going to sleep or the microphone failing cancel too — leaving the window or th
 still talking: once you have let go (*Finishing…*), the words land as usual. A dictation stops by itself
 after **2 minutes**. If the speech model can't load or can't make out the audio, the line says *Speech
 model failed to load — try again* rather than ending quietly.
+
+## In an addon's Agent sidebar
+
+When a Copper Cloud addon owns the Agent sidebar ([addons.md](addons.md)), the pane's composer and its
+mic aren't on screen. Voice is lent to the addon instead: it draws a mic in its own composer and asks
+Copper to listen through `copper.voice` (needs its `agent` capability). It is the same dictation — the
+same model, the same Settings › Intelligence › Voice, hold or press to start and stop as set there, the
+same microphone question the first time, two minutes at most — and **⌃⇧D** and **Escape** work in the
+sidebar as they do in the pane. The addon shows the words heard so far as its own preview; when you
+stop, it gets the final words once, puts them at its own caret and, with *Send right away*, sends its
+own message. The pane's draft is never touched and Copper never sends anything for the addon. A
+dictation is for one composer from start to end: the pane's mic and ⌃⇧D for the pane never stop the
+addon's, and the other way round. Copper's own agent needn't be set up: the addon talks to its own
+service. Until the addon's page has asked for voice, ⌃⇧D goes on to the page. The details are
+[addons.md › Voice](addons.md#voice); `DictationSink.swift` is where the words change hands.
 
 ## Listen — a live transcript
 
@@ -188,6 +204,15 @@ open -n -g --env SEARCH_PROBE=$W --env SEARCH_HEADLESS=1 \
 ./bench --world $W voice listen close-pane|sleep|lock|device-lost           # what pauses it, as it arrives
 ./bench --world $W voice listen state --last 5                             # phase, reason, count, last lines, live, partial
 ./bench --world $W voice seed listening|listen-expanded|listen-paused|listen-stopped   # the card, for pictures
+
+# The sidebar addon's dictation (addons.md › Voice), with the self-test addon in the slot
+# (addons.md › Bench); each eval's answer comes from `agent addons result`.
+./bench --world $W voice source clip.wav
+./bench --world $W agent addons eval 'window.__ev = []; copper.on("voice", e => __ev.push(e)); return await copper.voice.start()'
+./bench --world $W agent addons eval 'return await copper.voice.stop()'
+./bench --world $W agent addons eval 'return __ev'          # state, partials, final, state; the draft untouched
+./bench --world $W voice dictate clip.wav --keys d --finish send --draft "Note:"   # ⌃⇧D into the addon:
+                                       # target sink, draftUnchanged, delivered, sendCalled false
 ```
 
 `--undo` presses ⌘Z and then ⇧⌘Z the way the Edit menu sends them, a key press's worth of event loop after

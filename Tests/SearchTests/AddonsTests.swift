@@ -56,7 +56,7 @@ private func temporaryFolder() throws -> URL {
 @Suite struct AddonsRulesTests {
     @Test func theBridgeShimIsTheCanonicalBytes() throws {
         let data = try Data(contentsOf: repo.appendingPathComponent("Sources/Search/Fork/Addons/Resources/bridge.js"))
-        #expect(Addons.sha256(data) == "4e1defd4d199d38c57aa061b9d48e2f52c81e1559c569657705552cb70cb8676")
+        #expect(Addons.sha256(data) == "fff9196744c69f90bea87b10062024953017b0c9dea1d3fab37800601ef2235e")
     }
 
     @Test func ids() {
