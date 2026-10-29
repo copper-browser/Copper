@@ -15,14 +15,14 @@ the Mac's side of them.*
   - at launch (once the cloud link is ready),
   - whenever you link, unlink, sign in or sign out,
   - every six hours,
-  - with every update check (Settings › Updates › Check now included),
+  - with every update check (Settings › About › Updates › Check now included),
   - and when the cloud says something changed.
 
   A new addon, or a new version, is downloaded and verified. Copper then offers it in the same
   places as its own update:
   - **Install <name>** in the update pill at the foot of the sidebar (or in the toolbar when the
     sidebar is folded), under Copper's own update, which keeps first place;
-  - a card on **Settings › Updates**;
+  - a card on **Settings › About › Updates**;
   - an **Install <name> <version> for the Agent sidebar** row in ⌘K.
 
   Click it and the addon is in place at once, with no relaunch. An update to an addon you
@@ -32,8 +32,8 @@ the Mac's side of them.*
   (`agent.paneWidth`, 340–620 pt, dragged from its leading edge as the pane is). Closing it
   with ⌘E only hides it. The page keeps running, so a conversation in it is still there next
   time. If the page can't be shown (it failed to load, or its process stopped three times in a
-  minute), ⌘E shows the agent pane instead, and Settings › Addons says why.
-- **Settings › Addons** lists:
+  minute), ⌘E shows the agent pane instead, and Settings › Extensions › Addons says why.
+- **Settings › Extensions › Addons** lists:
   - what is installed (name, version, slot, where it came from) and what waits to be
     installed;
   - **Use in Agent sidebar** for each addon. Off shows the agent pane there instead; the addon
@@ -145,7 +145,7 @@ SHA-256 in plain JavaScript.
   `manifest.json`) and start a test-world Copper (`SEARCH_PROBE=1`, or a dev build). The folder
   takes the slot ahead of anything installed and is read live, so a reload shows edits. The
   same works at run time with `./bench agent addons dev /absolute/folder` (and `dev off`).
-  Settings › Addons shows the folder with a Reload button.
+  Settings › Extensions › Addons shows the folder with a Reload button.
 - **Packing.** `docs/fixtures/addons/pack.py FOLDER OUT.json` writes the served bundle format (one
   JSON document with every file base64'd, sorted by path) and prints its SHA-256. Copper Cloud
   builds the same thing from an uploaded `.copperaddon` zip.

@@ -2,7 +2,7 @@ import AppKit
 import Combine
 import SwiftUI
 
-// Trails (a flight — Settings › Labs, docs/trails.md).
+// Trails (a flight — Settings › Tabs › Previews, docs/trails.md).
 //
 // Arc made tabs spatial; a trail makes them intentional. A trail is one line
 // of intent: it starts where something was typed — a search, an address, a

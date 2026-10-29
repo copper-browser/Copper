@@ -10,7 +10,7 @@ import os
 // capture feeding one LiveSession, which hears the whole hold and decodes it
 // once at the end. Its partials are shown under the composer, never put in
 // the draft; when it stops, the final text goes into the composer at the
-// caret it had when it started (ComposerInsert), and with Settings › Voice ›
+// caret it had when it started (ComposerInsert), and with Settings › Intelligence › Voice ›
 // "Send right away" the message is sent the way Return sends it.
 //
 //   idle → arming → dictating → finishing → idle
@@ -66,7 +66,7 @@ final class Voice: ObservableObject {
         case hidden
         /// The agent can't take a message: disabled, with why.
         case unavailable(String)
-        /// The speech model isn't ready: dimmed, with why; a click opens Settings › Voice.
+        /// The speech model isn't ready: dimmed, with why; a click opens Settings › Intelligence › Voice.
         case waiting(String)
         /// The model is installed and loading, and the load has taken over a
         /// second (the Neural Engine preparing it): dimmed; a press says so.
@@ -327,7 +327,7 @@ final class Voice: ObservableObject {
             case .hidden, .unavailable:
                 return
             case .waiting(let why):
-                if hand == .button { browser.openSettings(.voice) } else { show(note: why, for: 2.5) }
+                if hand == .button { browser.openSettings(.intelligence, at: "voice.enabled") } else { show(note: why, for: 2.5) }
                 return
             case .preparing:
                 // No capture: nothing could be heard into words for a while yet.

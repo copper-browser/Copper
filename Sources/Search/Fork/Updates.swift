@@ -41,7 +41,7 @@ final class Updates: ObservableObject {
         let at: Date
     }
 
-    /// What the last update left behind, kept so Settings › Updates can say
+    /// What the last update left behind, kept so Settings › About › Updates can say
     /// why an update did not land instead of a toast that is gone in two
     /// seconds. `detail` is the version on success, the reason otherwise.
     struct Outcome: Codable, Equatable {
@@ -352,7 +352,7 @@ final class Updates: ObservableObject {
                 if saved.readyAnnounced != done.version {
                     saved.readyAnnounced = done.version
                     persist()
-                    browser?.announce("Copper \(done.version) is ready — ⌘K “Update Copper” or Settings › Updates")
+                    browser?.announce("Copper \(done.version) is ready — ⌘K “Update Copper” or Settings › About › Updates")
                 }
             case .failure(let why), .unsigned(let why):
                 stageError = why
@@ -363,9 +363,9 @@ final class Updates: ObservableObject {
                     saved.troubleAnnounced = want.version
                     persist()
                     if case .unsigned = result {
-                        browser?.announce("Copper \(want.version) isn’t signed as a Copper release — see Settings › Updates")
+                        browser?.announce("Copper \(want.version) isn’t signed as a Copper release — see Settings › About › Updates")
                     } else {
-                        browser?.announce("Couldn’t download Copper \(want.version) — see Settings › Updates")
+                        browser?.announce("Couldn’t download Copper \(want.version) — see Settings › About › Updates")
                     }
                 }
             }
@@ -881,7 +881,7 @@ final class Updates: ObservableObject {
                 let why = "\(pending.version) was put in place, but this is \(current) — the bundle at \(Bundle.main.bundleURL.path) is not the one that was installed."
                 record(Outcome(ok: false, detail: why, at: Date()))
                 Self.note("launched as \(current) after installing \(pending.version)")
-                browser?.announce("Update did not take — see Settings › Updates")
+                browser?.announce("Update did not take — see Settings › About › Updates")
             }
             persist()
         }

@@ -34,10 +34,15 @@ While Settings is open, the app's key monitor asks `SettingsKeys.take`
 
 | Group | Pages, in rail order | Drawn in |
 |---|---|---|
-| Browsing | General, Tabs, Spaces, Downloads, Extensions | `Settings.swift` (`general`, `tabs`, `downloads`); `Fork/SpacePage.swift`; `ExtensionsUI.swift` with `Fork/ExtensionsManager.swift` |
-| AI & agents | Intelligence, Agents, Voice | `Fork/SettingsFork.swift` (`IntelligencePage`, `AgentsPage`); `Fork/Voice/VoiceSettings.swift` |
-| Data & privacy | Passwords, Privacy, Cloud | `Settings.swift` (`passwords`, `privacy`) with `Fork/CredentialsSettings.swift` and `Fork/PrivacySettings.swift`; `Fork/Cloud/CloudSettings.swift` |
-| Copper | Labs, Updates, About | `Fork/Trails/Flights.swift` (`LabsPage`); `Fork/SettingsFork.swift` (`UpdatesPage`); `Settings.swift` (`about`) |
+| Browsing | General (with Downloads), Tabs (with Labs' previews), Spaces, Extensions (with Addons) | `Settings.swift` (`general`, `downloads`, `tabs`) with `Fork/Trails/Flights.swift` (`LabsPage`); `Fork/SpacePage.swift`; `ExtensionsUI.swift` with `Fork/ExtensionsManager.swift` and `Fork/Addons/AddonUI.swift` (`AddonsPage`) |
+| AI & agents | Intelligence (with Voice), Agents | `Fork/SettingsFork.swift` (`IntelligencePage`, `AgentsPage`); `Fork/Voice/VoiceSettings.swift` (`VoicePage`) |
+| Data & privacy | Passwords, Privacy | `Settings.swift` (`passwords`, `privacy`) with `Fork/CredentialsSettings.swift` and `Fork/PrivacySettings.swift` |
+| Copper | Cloud, About (with Updates) | `Fork/Cloud/CloudSettings.swift`; `Settings.swift` (`about`) with `Fork/SettingsFork.swift` (`UpdatesPage`) |
+
+Downloads, Labs, Voice, Addons and Updates were pages of their own until October 2026; a stored
+`settings.page` naming one opens General. To open Settings at a section of a page, use
+`browser.openSettings(.intelligence, at: "voice.enabled")`: the anchor is landed on as a search
+result is.
 
 Each page has a title, an icon, a one-line `blurb` under its title, and page-level `keywords`
 for search (`Fork/SettingsIndex.swift`).

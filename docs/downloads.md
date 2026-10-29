@@ -47,7 +47,7 @@ once it has landed, or `Failed at 2.6 MB`. A 2 pt bar runs under an active row.
 - If Copper is not the active app when a download finishes, the Dock icon
   bounces once (`requestUserAttention(.informationalRequest)`). No
   notifications, no badges.
-- Settings › Downloads still chooses the folder and whether to ask where to
+- Settings › General › Downloads still chooses the folder and whether to ask where to
   save each file; the save panel flow is unchanged.
 
 ## Bench

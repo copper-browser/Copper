@@ -8,7 +8,7 @@ import SwiftUI
 
 /// The mic: a 28 pt circle like Send. `mic` at rest, `mic.fill` on ink while
 /// it listens; dimmed while the speech model isn't ready (a click opens
-/// Settings › Voice) or is being prepared on this Mac (a press says so),
+/// Settings › Intelligence › Voice) or is being prepared on this Mac (a press says so),
 /// greyed while the agent can't take a message.
 struct MicButton: View {
     let browser: Browser

@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Settings › Voice: the switch, the speech model it needs, how a dictation
+// Settings › Intelligence › Voice: the switch, the speech model it needs, how a dictation
 // starts and ends, and whose model it is. Drawn with Settings' own sections,
 // lines and pills, so it reads as part of the same panel. Every row carries
 // the anchor `SettingsIndex` lists for it (Fork/SettingsIndex.swift).
@@ -18,8 +18,9 @@ struct VoicePage: View {
     var body: some View {
         let _ = SettingsPerf.tick("voicePage") // Fork (settings-perf)
         VStack(alignment: .leading, spacing: 26) {
-            SettingsSection("Voice on this Mac") {
-                Line("Voice", enableDetail) {
+            // Fork (settings-merge): one card on Intelligence; how you talk shows once voice is on.
+            SettingsSection("Voice") {
+                Line("Talk to the agent", enableDetail) {
                     Switch(on: Binding(
                         get: { prefs.enabled },
                         set: { on in
@@ -40,28 +41,23 @@ struct VoicePage: View {
                     VoiceModelRow(store: store, voiceOn: live)
                         .settingsAnchor("voice.model")
                 }
-            }
-
-            SettingsSection("Talking to the agent") {
-                Line("Talk", triggerDetail) {
-                    Segmented(options: VoiceTrigger.allCases.map { ($0, $0.title) }, selection: $prefs.trigger)
+                if live {
+                    Rule()
+                    Line("Talk", triggerDetail) {
+                        Segmented(options: VoiceTrigger.allCases.map { ($0, $0.title) }, selection: $prefs.trigger)
+                    }
+                    .settingsAnchor("voice.trigger")
+                    Rule()
+                    Line("When you stop", finishDetail) {
+                        Segmented(options: VoiceFinish.allCases.map { ($0, $0.title) }, selection: $prefs.finish)
+                    }
+                    .settingsAnchor("voice.finish")
+                    Rule()
+                    Line("Let agents read the Listen transcript", shareDetail) {
+                        Switch(on: $prefs.shareTranscript) // named by its `Line`, like the Voice switch
+                    }
+                    .settingsAnchor("voice.shareTranscript")
                 }
-                .modifier(VoiceDimmed(on: live))
-                .settingsAnchor("voice.trigger")
-                Rule()
-                Line("When you stop", finishDetail) {
-                    Segmented(options: VoiceFinish.allCases.map { ($0, $0.title) }, selection: $prefs.finish)
-                }
-                .modifier(VoiceDimmed(on: live))
-                .settingsAnchor("voice.finish")
-            }
-
-            SettingsSection("Listen") {
-                Line("Let agents on this Mac read the Listen transcript", shareDetail) {
-                    Switch(on: $prefs.shareTranscript) // named by its `Line`, like the Voice switch
-                }
-                .modifier(VoiceDimmed(on: live))
-                .settingsAnchor("voice.shareTranscript")
             }
 
             credits
@@ -71,7 +67,7 @@ struct VoicePage: View {
 
     private var enableDetail: String {
         guard VoicePrefs.supported else { return "Voice needs macOS 15 or later." }
-        return "Talk to the agent in the ⌘E pane. Speech is turned into text on this Mac; audio is never saved or sent."
+        return "In the ⌘E pane. Speech becomes text on this Mac; audio is never saved or sent."
     }
 
     private var triggerDetail: String {
@@ -140,19 +136,6 @@ struct VoicePage: View {
         line += runner
         line += AttributedString(" by Fermion Research · Apache-2.0")
         return line
-    }
-}
-
-/// Faded and out of reach while voice is off, the way Labs fades a flight's
-/// own settings.
-private struct VoiceDimmed: ViewModifier {
-    let on: Bool
-    func body(content: Content) -> some View {
-        content
-            .opacity(on ? 1 : 0.4)
-            .allowsHitTesting(on)
-            .disabled(!on)
-            .animation(Motion.quick, value: on)
     }
 }
 

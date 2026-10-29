@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 // Where addons show in the window: the agent sidebar slot, the update pill
-// beside Copper's own, Settings › Addons (and a card on Settings ›
+// beside Copper's own, Settings › Extensions › Addons (and a card on Settings ›
 // Updates), and ⌘K's rows. Everything here reads AddonSync and the slot's
 // AddonSlotHost; nothing here downloads, verifies or decides.
 
@@ -221,7 +221,7 @@ struct AddonPill: View {
             Divider()
             Button("Remind Me Later") { AddonSync.shared.snoozed = entry.sha256 }
             Divider()
-            Button("Settings…") { browser.openSettings(.addons) }
+            Button("Settings…") { browser.openSettings(.extensions, at: "addons.installed") }
         }
         .animation(Motion.quick, value: hovering)
     }
@@ -255,13 +255,13 @@ enum AddonCommands {
                 Task { await AddonSync.shared.check() }
             })
         }
-        list.append(.init(id: "addons", name: "Addons…", glyph: "puzzlepiece.extension") { $0.openSettings(.addons) })
+        list.append(.init(id: "addons", name: "Addons…", glyph: "puzzlepiece.extension") { $0.openSettings(.extensions, at: "addons.installed") })
     }
 }
 
 // MARK: - Settings
 
-/// Settings › Addons: what the cloud assigned, what waits to be installed,
+/// Settings › Extensions › Addons: what the cloud assigned, what waits to be installed,
 /// the per-addon "Use in Agent sidebar" switch, Remove, and the check.
 struct AddonsPage: View {
     @ObservedObject var browser: Browser
@@ -270,9 +270,10 @@ struct AddonsPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 26) {
-            SettingsSection("Addons", note: "Addons are small web apps a Copper Cloud admin assigns. Each runs on its own, away from your browsing, and asks Copper for only what its manifest lists.") {
+            // Fork (settings-merge): a section of Extensions; the note only once a cloud can send some.
+            SettingsSection("Addons", note: cloud.isLinked ? "Small web apps a Copper Cloud admin assigns. Each runs on its own, away from your browsing, and asks Copper for only what its manifest lists." : nil) {
                 if !cloud.isLinked && sync.installedList.isEmpty && sync.pendingList.isEmpty && sync.development == nil {
-                    Line("Addons come from your Copper Cloud", "Link one in Settings › Cloud.") {
+                    Line("Addons come from a Copper Cloud", "Web apps an admin assigns, like the Agent sidebar's") {
                         Pill("Open Cloud") { browser.openSettings(.cloud) }
                     }
                 } else if sync.installedList.isEmpty && sync.pendingList.isEmpty && sync.development == nil {
@@ -284,15 +285,17 @@ struct AddonsPage: View {
                     if index > 0 { Rule() }
                     row.view
                 }
+                // Fork (settings-merge): one card with the addons, no section of its own.
+                if cloud.isLinked || sync.fake != nil {
+                    Rule()
+                    Line("Check for addon updates", checkedLine) {
+                        Pill(sync.checking ? "Checking…" : "Check now") { Task { await sync.check() } }
+                            .disabled(sync.checking || (!cloud.isSignedIn && sync.fake == nil))
+                    }
+                    .settingsAnchor("addons.check")
+                }
             }
             .settingsAnchor("addons.installed")
-            SettingsSection("Updates") {
-                Line("Check for addon updates", checkedLine) {
-                    Pill(sync.checking ? "Checking…" : "Check now") { Task { await sync.check() } }
-                        .disabled(sync.checking || (!cloud.isSignedIn && sync.fake == nil))
-                }
-                .settingsAnchor("addons.check")
-            }
             if let problem = sync.lastError {
                 SettingsNote(problem)
             }
@@ -357,7 +360,7 @@ struct AddonsPage: View {
     }
 }
 
-/// On Settings › Updates, under Copper's own: an addon that waits for its
+/// On Settings › About › Updates, under Copper's own: an addon that waits for its
 /// Install, said the same way the pill says it.
 struct AddonUpdatesSection: View {
     @ObservedObject var browser: Browser
@@ -379,21 +382,21 @@ struct AddonUpdatesSection: View {
     }
 }
 
-/// Settings › Addons, as search finds it (SettingsIndex.rows).
+/// Settings › Extensions › Addons, as search finds it (SettingsIndex.rows).
 enum AddonSettingsIndex {
     static let entries: [SettingsEntry] = [
-        SettingsEntry(page: .addons, section: "Addons", title: "Installed addons",
+        SettingsEntry(page: .extensions, section: "Addons", title: "Installed addons",
                       subtitle: "What your Copper Cloud assigned you, and where each shows",
                       keywords: ["addon", "add-on", "agent sidebar", "web app", "cloud addons"], anchor: "addons.installed"),
-        SettingsEntry(page: .addons, section: "Addons", title: "Use in Agent sidebar",
+        SettingsEntry(page: .extensions, section: "Addons", title: "Use in Agent sidebar",
                       subtitle: "Show the addon, or Copper's own agent pane, in the sidebar ⌘E opens",
                       keywords: ["disable addon", "turn off addon", "agent pane", "sidebar"], anchor: "addons.use",
                       fallback: "addons.installed"),
-        SettingsEntry(page: .addons, section: "Addons", title: "Remove an addon",
+        SettingsEntry(page: .extensions, section: "Addons", title: "Remove an addon",
                       subtitle: "On this Mac, until your cloud next changes what you're assigned",
                       keywords: ["uninstall addon", "delete addon"], anchor: "addons.remove", fallback: "addons.installed"),
-        SettingsEntry(page: .addons, section: "Updates", title: "Check for addon updates",
+        SettingsEntry(page: .extensions, section: "Addons", title: "Check for addon updates",
                       subtitle: "Ask your Copper Cloud now; new versions install with one click, no restart",
-                      keywords: ["addon update", "refresh addons"], anchor: "addons.check"),
+                      keywords: ["addon update", "refresh addons"], anchor: "addons.check", fallback: "addons.installed"),
     ]
 }

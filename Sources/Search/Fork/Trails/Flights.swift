@@ -1,7 +1,7 @@
 import SwiftUI
 
 // Flights: features that ship inside the build but stay off until someone
-// opts in from Settings › Labs. One home for all of them, so the next preview
+// opts in from Settings › Tabs › Previews. One home for all of them, so the next preview
 // has a switch to hang from without inventing its own key, page or bench verb.
 //
 // Each flight is one key under `flights.` in `Store.settings` — a probe
@@ -85,7 +85,7 @@ enum Tide: String, CaseIterable, Identifiable {
     }
 }
 
-/// Settings › Labs: the flights, each a switch with what it does in a line,
+/// Settings › Tabs › Previews: the flights, each a switch with what it does in a line,
 /// and whatever it can be tuned by greyed out until it is on.
 struct LabsPage: View {
     /// Not observed: the rows watch the preferences they read, and the

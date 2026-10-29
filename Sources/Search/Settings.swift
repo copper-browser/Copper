@@ -41,8 +41,7 @@ struct SettingsPanel: View {
     }
 
     enum Page: String, CaseIterable, Identifiable {
-        case general, tabs, spaces, intelligence, agents, voice, cloud, updates, extensions, passwords, downloads, privacy, labs, about // Fork: spaces, intelligence, agents, voice, cloud, updates, labs
-        case addons // Fork (addons): Fork/Addons/AddonUI.swift
+        case general, tabs, spaces, intelligence, agents, cloud, extensions, passwords, privacy, about // Fork: spaces, intelligence, agents, cloud (settings-merge: downloads → General, labs → Tabs, voice → Intelligence, addons → Extensions, updates → About)
         var id: String { rawValue }
         var title: String {
             switch self {
@@ -51,15 +50,10 @@ struct SettingsPanel: View {
             case .spaces: return "Spaces" // Fork
             case .intelligence: return "Intelligence" // Fork
             case .agents: return "Agents" // Fork
-            case .voice: return "Voice" // Fork (voice)
             case .cloud: return "Cloud" // Fork
-            case .updates: return "Updates" // Fork
             case .extensions: return "Extensions"
             case .passwords: return "Passwords"
-            case .downloads: return "Downloads"
             case .privacy: return "Privacy"
-            case .labs: return "Labs" // Fork (trails): flights
-            case .addons: return "Addons" // Fork (addons)
             case .about: return "About"
             }
         }
@@ -70,15 +64,10 @@ struct SettingsPanel: View {
             case .spaces: return "square.stack" // Fork
             case .intelligence: return "sparkles" // Fork
             case .agents: return "cpu" // Fork
-            case .voice: return "waveform" // Fork (voice)
             case .cloud: return "icloud" // Fork
-            case .updates: return "arrow.triangle.2.circlepath" // Fork
             case .extensions: return "puzzlepiece.extension"
             case .passwords: return "key"
-            case .downloads: return "arrow.down.circle"
             case .privacy: return "hand.raised"
-            case .labs: return "flask" // Fork (trails)
-            case .addons: return "puzzlepiece" // Fork (addons)
             case .about: return "info.circle"
             }
         }
@@ -233,17 +222,16 @@ struct SettingsPanel: View {
                         case .general: general
                         case .tabs: tabs
                         case .spaces: SpacesSettingsPage(browser: browser) // Fork
-                        case .intelligence: IntelligencePage(browser: browser) // Fork
+                        case .intelligence:
+                            IntelligencePage(browser: browser) // Fork
+                            VoicePage(browser: browser) // Fork (settings-merge): Fork/Voice/VoiceSettings.swift
                         case .agents: AgentsPage(browser: browser) // Fork
-                        case .voice: VoicePage(browser: browser) // Fork (voice): Fork/Voice/VoiceSettings.swift
                         case .cloud: CloudPage(browser: browser) // Fork
-                        case .updates: UpdatesPage(browser: browser) // Fork
-                        case .extensions: ExtensionsPage(browser: browser)
+                        case .extensions:
+                            ExtensionsPage(browser: browser)
+                            AddonsPage(browser: browser) // Fork (settings-merge): Fork/Addons/AddonUI.swift
                         case .passwords: passwords
-                        case .downloads: downloads
                         case .privacy: privacy
-                        case .labs: LabsPage(browser: browser) // Fork (trails): Fork/Trails/Flights.swift
-                        case .addons: AddonsPage(browser: browser) // Fork (addons): Fork/Addons/AddonUI.swift
                         case .about: about
                         }
                     }
@@ -313,6 +301,7 @@ struct SettingsPanel: View {
                 }
                 .settingsAnchor("general.autocorrect")
             }
+            downloads // Fork (settings-merge): was its own page
             SettingsSection("Moving in") {
                 FlowSettingsLine(browser: browser)
                     .settingsAnchor("general.flow")
@@ -321,7 +310,7 @@ struct SettingsPanel: View {
                     .settingsAnchor("general.history")
             }
             SettingsSection("Developer") {
-                Line("Let a script drive Copper", "A local socket for testing. Its tabs open beside yours with a flask on them and never take over — see ./bench") {
+                Line("Let a script drive Copper", "A local socket for testing; its tabs carry a flask — see ./bench") {
                     Switch(on: $prefs.bench)
                 }
                 .settingsAnchor("general.bench")
@@ -349,7 +338,7 @@ struct SettingsPanel: View {
                 .settingsAnchor("tabs.glyph")
             }
             SettingsSection("Switching") {
-                Line("⌃Tab switches to", "Choose whether Control-Tab follows the row or your most recent tabs") {
+                Line("⌃Tab switches to", "The next tab in the row, or the one you used last") {
                     Segmented(options: TabSwitching.allCases.map { ($0, $0.title) }, selection: $prefs.tabSwitching)
                 }
                 .settingsAnchor("tabs.switching")
@@ -369,7 +358,7 @@ struct SettingsPanel: View {
                 .settingsAnchor("tabs.swipe")
             }
             SettingsSection("Tabs you leave") {
-                Line("Sleep tabs you aren't using",  "Only when more pages are open than this Mac keeps easily, or memory runs short: the ones you left longest go first, and come back where you left them. Pinned tabs, sound, calls and anything typed stay awake.") {
+                Line("Sleep tabs you aren't using",  "When many pages are open or memory runs short, the tabs you left longest sleep and come back where you were. Pinned tabs, sound, calls and anything typed stay awake.") {
                     Switch(on: $prefs.sleepsTabs)
                 }
                 .settingsAnchor("tabs.sleep")
@@ -377,6 +366,7 @@ struct SettingsPanel: View {
                 ArchiveLine() // Fork: sections
                     .settingsAnchor("tabs.archive")
             }
+            LabsPage(browser: browser) // Fork (settings-merge): Labs was its own page — Fork/Trails/Flights.swift
         }
     }
 
@@ -469,7 +459,7 @@ struct SettingsPanel: View {
     // MARK: - downloads
 
     private var downloads: some View {
-        SettingsSection(nil) { // Fork (settings-browse): the page is already called Downloads
+        SettingsSection("Downloads") { // Fork (settings-merge): a section of General
             Line("Save to", prefs.downloads.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")) {
                 Pill("Change…") { chooseFolder() }
             }
@@ -533,7 +523,7 @@ struct SettingsPanel: View {
                     Text(Fork.name)
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(Palette.ink)
-                    Text(verbatim: "by Collin and Felipe · version \(Updater.version) · build \(Updater.build)")
+                    Text(verbatim: "by Collin and Felipe") // Fork (settings-merge): the version is the Updates row below
                         .font(.system(size: 12.5))
                         .foregroundStyle(SettingsInk.detail)
                         .textSelection(.enabled)
@@ -548,10 +538,9 @@ struct SettingsPanel: View {
             .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(SettingsInk.cardEdge, lineWidth: 1))
             .settingsAnchor("about.identity", card: true)
 
-            SettingsSection("Version") {
-                AboutUpdatesLine(browser: browser) // Fork (about-updates): Copper's updater, not upstream's — Fork/SettingsFork.swift
-                    .settingsAnchor("about.version")
-                Rule()
+            UpdatesPage(browser: browser) // Fork (settings-merge): Updates was its own page — Fork/SettingsFork.swift
+
+            SettingsSection("Help") {
                 Line("Found something wrong?", "Opens a new issue on Copper’s page, with the version already in it") { // Fork (feedback)
                     Pill("Send Feedback") { Links.writeFeedback() }
                 }

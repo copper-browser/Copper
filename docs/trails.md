@@ -1,4 +1,4 @@
-# Trails (a preview, in Settings › Labs)
+# Trails (a preview, in Settings › Tabs › Previews)
 
 Arc made tabs spatial. Trails makes them intentional: you stop managing
 tabs, and the column keeps the story of what you were doing.
@@ -9,7 +9,7 @@ open pages from it. A page opened from a page belongs to that page's trail,
 under it. Today's forty rows become a handful of trails.
 
 Trails is a **flight**: built in, off by default, and switched on per Mac in
-**Settings › Labs › Trails — organise tabs by what you were doing
+**Settings › Tabs › Previews › Trails — organise tabs by what you were doing
 (preview)**. Turned off, nothing of it runs and the column is exactly what it
 was; turned on or off, the column redraws at once, no restart.
 
@@ -59,7 +59,7 @@ on lands you on the next trail down.
 
 ## Tide
 
-Trails left alone longer than the **Tide** setting (Settings › Labs: 6h,
+Trails left alone longer than the **Tide** setting (Settings › Tabs › Previews: 6h,
 **12h**, 24h, Never) drift under a quiet **Earlier** divider, grouped
 *Today*, *Yesterday*, *This Week* and *Older*, as single slim rows at less
 emphasis. When a trail first drifts there its pages may sleep — through

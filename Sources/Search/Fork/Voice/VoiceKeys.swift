@@ -1,7 +1,7 @@
 import AppKit
 
 // ⌃⇧D, and Escape while dictating — and nothing else, and only where voice
-// lives: a browser window whose agent pane is open, with Settings › Voice on.
+// lives: a browser window whose agent pane is open, with Settings › Intelligence › Voice on.
 // Anywhere else the keys go on untouched (with voice off, every key does).
 //
 // Hold to talk: D down starts, D up — or ⌃ or ⇧ let go — ends. Press to

@@ -3,7 +3,7 @@ import Foundation
 // Voice's three choices, kept with every other setting in `Store.settings`
 // (a probe world's own suite, never the real browser's): whether voice is on,
 // how a dictation is started, and what happens to the words when it stops.
-// Settings › Voice draws them (VoiceSettings.swift); the agent pane reads them.
+// Settings › Intelligence › Voice draws them (VoiceSettings.swift); the agent pane reads them.
 
 /// How a dictation is started and stopped.
 enum VoiceTrigger: String, CaseIterable, Sendable {

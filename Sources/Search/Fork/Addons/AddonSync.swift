@@ -12,7 +12,7 @@ import Foundation
 // once; new settings for the same bundle reach the page at once. A new addon
 // or version is downloaded through the same authenticated, pinned client as
 // everything else Cloud-shaped, verified, and kept in staging — then offered
-// the way a new Copper is (the sidebar pill, Settings › Updates, ⌘K) and
+// the way a new Copper is (the sidebar pill, Settings › About › Updates, ⌘K) and
 // installed only when the person says so, with no relaunch.
 //
 // Cloud.request takes no headers of its own, so there is no If-None-Match:

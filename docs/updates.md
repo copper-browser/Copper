@@ -23,10 +23,10 @@ certificate's SHA-1>"`; for any other id (a development build, a test copy), `id
 "<that id>"`. The updater checks it twice:
 
 - **Staging** (`fetchAndStage`), after the checksum, identity, version and `codesign --verify
-  --deep --strict`. A bundle that doesn't satisfy it is not staged. Settings › Updates shows
+  --deep --strict`. A bundle that doesn't satisfy it is not staged. Settings › About › Updates shows
   "Copper X isn't signed with Copper's release certificate, so it won't replace this one.
   Download it from github.com/copper-browser/Copper/releases instead.", and once per version
-  the window says "Copper X isn't signed as a Copper release — see Settings › Updates". The pill
+  the window says "Copper X isn't signed as a Copper release — see Settings › About › Updates". The pill
   is Retry Update, with the reason in its tooltip.
 - **Just before the swap** (`reverify`), on what is on disk now, in case the staged copy changed
   since it was checked. A failure refuses the swap and leaves the running Copper as it is: "The
@@ -82,7 +82,7 @@ folded column peeking out or a redraw does not replay it (`UpdatePill.introduced
 Right-click: the click's own action, **What's New…** (a popover with the feed's `notes` — the
 first paragraph of `NOTES.md`, written into `copper-version.json` by `release.yml` — and Full
 Changelog, `CHANGELOG.md` at the release's commit), **Remind Me Later** (hidden for that version
-until the next launch; a newer version brings it back) and **Settings…** (Settings › Updates).
+until the next launch; a newer version brings it back) and **Settings…** (Settings › About › Updates).
 
 A test world on the real feed shows no pill (`Updates.quietHere`, the same rule that keeps it
 from staging real releases), so probe-world screenshots stay clean; a world the bench pointed at
@@ -148,7 +148,7 @@ real log:
    confirm again.
 6. The last line is `relaunch confirmed` or `relaunch not confirmed: <why>`. Only the latter
    writes `update-result.txt`; the next launch turns it into *The last update didn't finish*
-   in Settings › Updates with **Open log**.
+   in Settings › About › Updates with **Open log**.
 
 A normal relaunch is back in about a second (open → lock held ≈ 0.1–0.5 s after LaunchServices
 lets go). Measured end to end (`upgrade` → `/health` answers the new version) on macOS 27:

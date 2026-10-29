@@ -61,7 +61,7 @@ updates). Only then does a pill appear at the foot of the sidebar (or
 beside the downloads button with tabs across the top): **Update Copper**, then
 **Restart to Update**. The restart backs up your tabs, swaps the new Copper in
 and relaunches in a few seconds. It never restarts without your click.
-Settings › Updates has **Check now** and, if something fails, the reason and
+Settings › About › Updates has **Check now** and, if something fails, the reason and
 **Open log**. Plain `brew upgrade` leaves Copper alone because it updates
 itself; `brew upgrade --cask copper` still works if you want it.
 
@@ -365,7 +365,7 @@ Settings.** The switch can belong to an older, unsigned Copper (see *Updates
 are automatic*). Turn Copper off and on again in Privacy & Security › Files &
 Folders (Chrome) or Full Disk Access (Safari), then come back to Copper.
 
-**An update did not finish.** Settings › Updates shows the reason and **Open
+**An update did not finish.** Settings › About › Updates shows the reason and **Open
 log** (`~/Library/Logs/Copper/update.log`). Re-running the curl installer is
 the manual path.
 
