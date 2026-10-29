@@ -150,6 +150,9 @@ struct SpacePage: View {
     /// The preview's appearance when it is not the window's — to see the
     /// space in the other mode without switching the whole Mac.
     @State private var previewNight: Bool?
+    /// Fork (settings-merge): icon, colours, picture and sliders fold behind Customize.
+    @State private var customizing = false
+    @Environment(\.settingsPending) private var pending
     @FocusState private var focus: Field?
 
     private enum Field { case name, emoji, profile }
@@ -231,10 +234,18 @@ struct SpacePage: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                controls(space)
+                Card {
+                    Line("Icon, colours and picture", "The glyph on its chip, the column's colour or picture, and its grain and tone") {
+                        Pill(customizing ? "Done" : "Customize…") { withAnimation(Motion.settle) { customizing.toggle() } }
+                            .accessibilityLabel(customizing ? "Done customizing" : "Customize the space")
+                    }
+                }
+                .settingsAnchor("spaces.customize", card: true)
+                if customizing { controls(space) }
                 footer
             }
             .onAppear { draft = space.name }
+            .task(id: pending) { if let pending, ["spaces.icon", "spaces.colours", "spaces.adjust"].contains(pending) { customizing = true } }
         }
     }
 
@@ -418,6 +429,7 @@ struct SpacePage: View {
     /// one it had.
     private func choose(kind new: Kind) {
         picked = nil
+        if new == .picture || new == .animated { customizing = true } // its pictures and scenes are in the fold
         switch new {
         case .colour:
             set { $0.motion = nil; $0.image = nil; $0.colors = Array($0.colors.prefix(1)) }
