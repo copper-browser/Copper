@@ -176,6 +176,66 @@ enum CloudMerge {
         return CloudDocs.Spaces(spaces: spaces, tabs: tabs, groups: groups(base: base?.groups, local: local.groups, server: server.groups))
     }
 
+    // MARK: - what this device may say
+
+    /// This Mac's spaces document as it may go out: what it changed by hand
+    /// (`CloudIntents`), and the synced copy's word for everything else. A
+    /// tab the base has keeps the base's folder unless it was filed or
+    /// unfiled here; a kept tab or folder the base has and this Mac lacks
+    /// stays unless it was removed here. A Mac whose live state merely
+    /// drifted — a copied session, folders made on another Mac and never
+    /// applied here — otherwise "won" the merge and unfiled every tab on
+    /// every device (2026-10-28). What the base never had is new, and goes
+    /// as it is.
+    static func intended(_ local: CloudDocs.Spaces, base: CloudDocs.Spaces?, tabs: Set<String>, folders: Set<UUID>) -> CloudDocs.Spaces {
+        guard let base else { return local }
+        var out = local
+        let baseBy = Dictionary(base.tabs.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
+        for i in out.tabs.indices where !tabs.contains(out.tabs[i].key) {
+            if let was = baseBy[out.tabs[i].key] { out.tabs[i].group = was.group }
+        }
+        // Only into spaces still here: a space deleted here takes its tabs.
+        let here = Set(out.tabs.map(\.key)), alive = Set(out.spaces.map(\.id))
+        out.tabs += base.tabs.filter { !here.contains($0.key) && !tabs.contains($0.key) && alive.contains($0.space) }
+        out.tabs = onePinPerSite(out.tabs).sorted { $0.key < $1.key }
+        if let was = base.groups, let mine = out.groups {
+            let ids = Set(mine.map(\.id))
+            out.groups = mine + was.filter { !ids.contains($0.id) && !folders.contains($0.id) }
+        }
+        return out
+    }
+
+    /// What one copy of the spaces document takes away from another: kept
+    /// tabs it unfiles, kept tabs it drops, and folders it drops that still
+    /// held tabs.
+    struct Losses: Equatable {
+        var unfiled: [String] = []
+        var removed: [String] = []
+        var folders: [UUID] = []
+
+        var tabs: Int { unfiled.count + removed.count }
+        /// More than one publish, or one apply, should do without asking.
+        var big: Bool { tabs > CloudMerge.brake || !folders.isEmpty }
+    }
+
+    // shortcut: a fixed ten kept tabs; make it a share of the kept tabs if real use trips it.
+    static let brake = 10
+
+    static func losses(from was: CloudDocs.Spaces, to now: CloudDocs.Spaces) -> Losses {
+        let nowBy = Dictionary(now.tabs.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
+        var out = Losses()
+        for tab in was.tabs {
+            guard let after = nowBy[tab.key] else { out.removed.append(tab.key); continue }
+            if tab.group != nil, after.group == nil { out.unfiled.append(tab.key) }
+        }
+        // A document without folders (an older build's) drops none.
+        if let before = was.groups, let after = now.groups {
+            let kept = Set(after.map(\.id)), held = Set(was.tabs.compactMap(\.group))
+            out.folders = before.map(\.id).filter { !kept.contains($0) && held.contains($0) }
+        }
+        return out
+    }
+
     /// The folders, merged like the spaces. A side that sent none (a build
     /// from before folders travelled) has said nothing about them: the other
     /// side's stand, rather than every folder reading as deleted.

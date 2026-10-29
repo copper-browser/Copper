@@ -577,6 +577,7 @@ final class Spaces: ObservableObject {
     func pin(_ tab: Tab, in browser: Browser) {
         guard tab.pin == nil, !pins.contains(where: { $0.id == tab.id }),
               let from = spaceID(of: tab) else { return }
+        CloudIntents.shared.touched(tab)
         tab.pin = tab.monogram
         rows[from]?.removeAll { $0.id == tab.id }
         pins.append(tab)
@@ -592,6 +593,7 @@ final class Spaces: ObservableObject {
     /// would if the tab had closed under it.
     func unpin(_ tab: Tab, in browser: Browser) {
         guard let index = pins.firstIndex(where: { $0.id == tab.id }) else { return }
+        CloudIntents.shared.touched(tab)
         for window in browsers where window.editingPin == tab.id { window.editingPin = nil }
         pins.remove(at: index)
         pinHome.removeValue(forKey: tab.id)
@@ -672,6 +674,9 @@ final class Spaces: ObservableObject {
         // Where a window standing on this space goes: to the tabs, when they
         // were kept; otherwise to the neighbour the sheet named.
         let landing = kept ?? neighbour(of: id)?.id ?? all[i == 0 ? 1 : i - 1].id
+        // Deleting a space is asked for: the cloud's brake lets it through.
+        CloudIntents.shared.touched(rows[id] ?? [])
+        CloudIntents.shared.confirm()
         let row = rows.removeValue(forKey: id) ?? []
         // Windows on the space leave it before anything in its row closes,
         // so no stage is holding a view that is being torn down.
@@ -708,6 +713,7 @@ final class Spaces: ObservableObject {
     /// A tab closed for good wherever its row is — a deleted canvas's tab in
     /// a space no window is showing (Fork/Canvas).
     func drop(_ tab: Tab) {
+        CloudIntents.shared.touched(tab)
         for (id, row) in rows where row.contains(where: { $0 === tab }) {
             rows[id] = row.filter { $0 !== tab }
             publish(id)
@@ -726,6 +732,7 @@ final class Spaces: ObservableObject {
         // until the tab is unpinned.
         guard tab.pin == nil,
               let from = spaceID(of: tab), id != from, all.contains(where: { $0.id == id }) else { return }
+        CloudIntents.shared.touched(tab)
         rows[from]?.removeAll { $0.id == tab.id }
         rows[id, default: []].append(tab)
         // Every window on either row, the mover included: the one that was
@@ -878,6 +885,9 @@ final class Spaces: ObservableObject {
         // Out of the rows and pins first and every window told, so none is
         // left showing a tab as it closes; then they close.
         let added = Set(adoption.addedTabs)
+        // Asked for, and before they leave their rows (their keys are found there).
+        CloudIntents.shared.touched(rows.values.joined().filter { added.contains($0.id) } + pins.filter { adoption.addedPins.contains($0.id) })
+        CloudIntents.shared.confirm()
         var leaving: [Tab] = []
         for (id, row) in rows where row.contains(where: { added.contains($0.id) }) {
             leaving += row.filter { added.contains($0.id) }
@@ -1521,6 +1531,11 @@ extension Spaces {
     /// way (so it lands on another tab); a row nobody is looking at loses
     /// it directly.
     func cloudClose(_ tab: Tab, browser: Browser) {
+        // Not the person's doing: never a change of this Mac's to send.
+        CloudIntents.shared.quietly { cloudClosing(tab, browser: browser) }
+    }
+
+    private func cloudClosing(_ tab: Tab, browser: Browser) {
         if let viewer = browsers.first(where: { $0.tabs.contains { $0.id == tab.id } }) {
             if tab.pin != nil { viewer.unpin(tab) }
             // Gone from another Mac is gone: out of Saved, not put down.

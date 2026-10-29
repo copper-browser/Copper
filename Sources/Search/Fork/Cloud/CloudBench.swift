@@ -27,6 +27,8 @@ import Foundation
 //   cloud devices                    other devices' open tabs
 //   cloud doc DOMAIN                 this Mac's document for DOMAIN, as it would be pushed
 //   cloud log                        the last lines of the log
+//   cloud hold out|in N | clear      test worlds only: show the spaces brake's prompt for N kept
+//                                    tabs (its answers are the real ones), or take it away
 //   cloud history-limits [ENTRY BATCH]
 //                                    what a history push believes the cloud takes; with numbers
 //                                    (test worlds only) believe those until /v1/info is read again
@@ -168,6 +170,17 @@ enum CloudBench {
             answer(["log": sync.log.suffix(60).map { "\(CloudSync.stamp($0.at)) \($0.text)" }])
         case "selftest":
             Task { answer(await CloudSelfTest.run()) }
+        case "hold":
+            guard Store.testing else { return answer(["error": "test worlds only"]) }
+            let n = words.count > 1 ? Int(words[1]) ?? 12 : 12
+            let losses = CloudMerge.Losses(unfiled: (0..<n).map { "bench|\($0)" })
+            switch words.first {
+            case "out": sync.benchHold(.outgoing(losses))
+            case "in": sync.benchHold(.incoming(losses, version: 0, payload: Data()))
+            case "clear": sync.benchHold(nil)
+            default: return answer(["error": "usage: cloud hold out|in [N] | clear"])
+            }
+            answer(status())
         case "history-limits":
             // A stale belief, on purpose: the push then meets the cloud's own
             // refusals (400 at most N / entry I exceeds N) and must learn from them.

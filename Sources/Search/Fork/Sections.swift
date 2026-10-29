@@ -102,6 +102,7 @@ final class Sections: ObservableObject {
     /// unsaving puts it at the top of Today, where the newest rows are.
     func set(_ tab: Tab, saved on: Bool, in browser: Browser) {
         guard tab.pin == nil else { return }
+        if isSaved(tab) != on { CloudIntents.shared.touched(tab) }
         if on {
             saved.insert(tab.id)
         } else {
@@ -130,6 +131,7 @@ final class Sections: ObservableObject {
 
     func place(_ tab: Tab, at spot: SavedDrop.Spot, in browser: Browser) {
         guard tab.pin == nil, !tab.isBlank else { return }
+        CloudIntents.shared.touched(tab)
         saved.insert(tab.id)
         seen[tab.id] = seen[tab.id] ?? Date()
         let groups = Groups.shared
@@ -203,6 +205,7 @@ final class Sections: ObservableObject {
     /// Closed for good, Saved or not, with no way back into Saved — the
     /// ordinary close's Reopen Closed Tab entry is all it leaves.
     func closeForGood(_ tab: Tab, in browser: Browser) {
+        CloudIntents.shared.touched(tab)
         forGood.insert(tab.id)
         defer { forGood.remove(tab.id) }
         browser.close(tab)
@@ -233,6 +236,7 @@ final class Sections: ObservableObject {
     /// Before the column next draws, so it never counts as a new Today row.
     func reopened(_ ghost: UUID, as tab: Tab) {
         guard let place = removed.removeValue(forKey: ghost) else { return }
+        CloudIntents.shared.touched(tab)
         saved.insert(tab.id)
         seen[tab.id] = Date()
         Groups.shared.restore(tab, group: place.group)

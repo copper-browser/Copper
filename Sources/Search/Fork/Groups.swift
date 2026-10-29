@@ -135,6 +135,7 @@ final class Groups: ObservableObject {
     /// pinned tab keeps its place in the pin block and is only labelled.
     func assign(_ tab: Tab, to group: TabGroup, in browser: Browser) {
         guard all.contains(where: { $0.id == group.id }) else { return }
+        if membership[tab.id] != group.id { CloudIntents.shared.touched(tab) }
         membership[tab.id] = group.id
         if let i = all.firstIndex(where: { $0.id == group.id }), all[i].collapsed { all[i].collapsed = false; save() }
         guard tab.pin == nil, let here = browser.tabs.firstIndex(where: { $0.id == tab.id }) else { return }
@@ -146,6 +147,7 @@ final class Groups: ObservableObject {
     }
 
     func remove(_ tab: Tab) {
+        if membership[tab.id] != nil { CloudIntents.shared.touched(tab) }
         membership[tab.id] = nil
     }
 
@@ -155,6 +157,7 @@ final class Groups: ObservableObject {
     func takeOut(_ tab: Tab, in browser: Browser) {
         guard let name = group(of: tab)?.name else { return }
         let root = name.components(separatedBy: Folders.mark)[0]
+        CloudIntents.shared.touched(tab)
         membership[tab.id] = nil
         let last = browser.tabs.lastIndex { other in
             guard other.pin == nil, let n = group(of: other)?.name else { return false }
@@ -230,6 +233,12 @@ final class Groups: ObservableObject {
 
     /// The label goes; the tabs stay where they are.
     func dissolve(_ id: UUID) {
+        // Asked for by name, from a menu, an agent or the bench: the cloud's
+        // brake lets a big one through.
+        let intents = CloudIntents.shared
+        intents.touched(AgentTabs.all.filter { membership[$0.id] == id })
+        intents.dissolved(id)
+        intents.confirm()
         membership = membership.filter { $0.value != id }
         all.removeAll { $0.id == id }
         save()
@@ -253,8 +262,10 @@ final class Groups: ObservableObject {
         let after = here + 1 < loose.count ? membership[loose[here + 1].id] : nil
         let mine = membership[tab.id]
         if let before, before == after, before != mine {
+            CloudIntents.shared.touched(tab)
             membership[tab.id] = before
         } else if let mine, before != mine, after != mine {
+            CloudIntents.shared.touched(tab)
             membership[tab.id] = nil
         }
     }

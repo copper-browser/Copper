@@ -1,3 +1,5 @@
+Folders can no longer be undone by another device. Each Mac now syncs only the changes you make on it, so a Mac or PC that is out of step can't take your tabs out of their folders everywhere. If one sync would unfile or remove more than ten tabs at once, Copper asks first in the sidebar.
+
 Settings is shorter again. Advanced options fold away on Agents and Intelligence, a space's icon and colours open under Customize, Passwords drops its empty sections, and About's shortcuts are one row. Trails and Tide, the Labs preview, are gone.
 
 Settings is simpler: ten pages instead of fifteen. Downloads is now on General, Labs' previews on Tabs, Voice on Intelligence, Addons on Extensions, and Updates on About. Agents is shorter, with the token in the MCP server card and one row of Copy buttons.

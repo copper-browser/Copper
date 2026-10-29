@@ -441,6 +441,7 @@ struct ContentView: View {
             .overlay(alignment: .leading) { Fold(browser: browser, prefs: browser.prefs) }
             // Fork (update-pill): the folded column's update badge.
             .overlay(alignment: .bottomLeading) { UpdateCorner(browser: browser, prefs: browser.prefs) }
+            .overlay(alignment: .bottomLeading) { CloudHoldCorner(browser: browser, prefs: browser.prefs) } // Fork (cloud): the spaces brake's prompt with no column
             .overlay(alignment: .bottom) { bars }
             .overlay { field }
             .overlay { panels }

@@ -251,6 +251,43 @@ this Mac's, the server's:
 - not in the base → new, kept. With no base at all (the first sync) it is a
   plain union, the server winning where both have the same thing.
 
+**Spaces: a device only sends what was changed on it.** The spaces document a
+Mac sends is not simply its live state (`CloudMerge.intended`). It notes the
+person's own edits as *intents* (`Fork/Cloud/CloudIntents.swift`, kept in
+`cloud-intents.json` so an offline edit still goes later): filing, unfiling
+or taking a tab out of a folder, a drag that files or unfiles, a Saved drop,
+saving, unsaving, removing, pinning, unpinning or moving a kept tab, a
+folder dissolved or closed, a space deleted, the MCP and bench group tools.
+For anything the synced copy (the base) already has:
+
+- a kept tab's folder is this Mac's only if it was filed or unfiled here;
+  otherwise the base's;
+- a kept tab missing here stays in the document unless it was removed here
+  (applying it then opens the tab again here);
+- a folder missing here stays unless it was dissolved here.
+
+What the base never had is new and goes as it is. An intent is let go once
+the server took the document it was built into (or kept its own over it).
+The first spaces sync of a run, and after every reconnect, pulls and
+*applies* the server's copy before anything goes up, even at the same
+version, so a launch's difference is never published. This answers
+2026-10-28, when a device whose live state lacked the folders "won" the merge
+and unfiled 36 Saved tabs on every Mac.
+
+**The brake.** One spaces publish that would unfile or remove more than ten
+kept tabs on every device, or drop a folder that still holds tabs, is held:
+the column (or, with no column on screen, the window's bottom-left corner)
+says *This Mac is about to unfile N tabs on all your devices* — **Undo
+here** (drop this Mac's edits and take the server's copy) or **Sync it**. A
+bulk change already asked for by name (dissolving or closing a folder,
+deleting a space, undoing an import) goes through. The same holds an
+incoming document that would unfile or remove more than ten of this Mac's
+kept tabs — *Another device unfiled N tabs* — **Keep mine** (those tabs
+become this Mac's edits, and go up) or **Accept**; it protects against
+devices on older builds. The threshold is `CloudMerge.brake`. Every spaces
+publish and apply, held or not, is a line in `logs/trail.log`:
+`cloud publish doc=spaces v=12 unfiled=0 removed=0 folders-=0 held=no`.
+
 Bookmarks merge node by node (id, parent folder, title, address); a node whose
 folder is gone surfaces at the top level rather than disappearing. Space order
 follows the server unless only this Mac reordered.
@@ -452,7 +489,8 @@ fingerprint the server showed as `seen`). `cloud picture … CODE` draws the pag
 with CODE already in the Connect field, to see what it makes of it.
 
 Also `cloud signin EMAIL PW`, `signout`, `disconnect`, `sync off|now`,
-`sync set DOMAIN on|off`, `log`, `history-limits` (what a history push
+`sync set DOMAIN on|off`, `log`, `hold out|in [N]|clear` (test worlds only:
+the spaces brake's prompt for N tabs, for a look at it), `history-limits` (what a history push
 believes the cloud takes; `history-limits ENTRY_BYTES BATCH`, in test worlds
 only, plants a stale belief so a push meets the cloud's own refusals), and — in test worlds only — `bookmark URL
 [TITLE]`, `pin URL` and `open URL` to make something worth syncing. The bench
