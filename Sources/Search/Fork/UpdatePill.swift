@@ -383,6 +383,7 @@ struct UpdatePillSlot: View {
                 .transition(still ? .opacity : .offset(y: 14).combined(with: .opacity).combined(with: .scale(scale: 0.96, anchor: .bottom)))
             }
             AddonPillSlot(browser: browser) // Fork (addons): an addon waiting for Install, under Copper's own
+            CloudHoldSlot(browser: browser) // Fork (cloud): a spaces sync held by the brake (Fork/Cloud/CloudHoldSlot.swift)
         }
         .animation(still ? .easeOut(duration: 0.2) : Motion.glide, value: cue == nil)
     }

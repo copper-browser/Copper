@@ -292,6 +292,7 @@ final class CloudSync: ObservableObject {
         if value { next.insert(domain) } else { next.remove(domain) }
         guard next != enabled else { return }
         let wasOn = active(domain)
+        if value { pulled.remove(domain) }
         store(next, on: on)
         note("\(domain.title): \(value ? "on" : "off")")
         guard cloud.isSignedIn, on else { return }
@@ -301,6 +302,7 @@ final class CloudSync: ObservableObject {
 
     /// "Turn on sync": these domains, and a first sync of each.
     func turnOn(_ domains: Set<Domain>) async {
+        pulled = []
         store(domains, on: true)
         note("Sync on: \(Domain.allCases.filter(domains.contains).map(\.rawValue).joined(separator: ", "))")
         await syncNow()
@@ -352,7 +354,9 @@ final class CloudSync: ObservableObject {
         let mine = cloud.account?.deviceId.uuidString.lowercased()
         switch type {
         case "ready", "resync":
-            // Connected again: anything may have been missed meanwhile.
+            // Connected again: anything may have been missed meanwhile, and
+            // the spaces are taken from the server before anything goes up.
+            pulled = []
             Task { await pullAll() }
         case "doc":
             guard let domain = event["domain"] as? String else { return }
@@ -421,7 +425,7 @@ final class CloudSync: ObservableObject {
             let list: [Meta] = try await self.cloud.requestJSON("GET", "/v1/sync/docs")
             for d in [Domain.spaces, .settings, .bookmarks] where self.active(d) {
                 let server = list.first { $0.domain == d.rawValue }
-                if server?.version != self.bases[d.rawValue]?.version || server == nil {
+                if server?.version != self.bases[d.rawValue]?.version || server == nil || (d == .spaces && !self.pulled.contains(d)) {
                     await self.pull(d)
                 }
             }
@@ -524,7 +528,11 @@ final class CloudSync: ObservableObject {
         guard let browser else { return }
         switch domain {
         case .spaces:
-            if active(.spaces) {
+            // Never a launch's (or a reconnect's) difference: the server's
+            // copy comes first, and only what was changed by hand goes up.
+            if active(.spaces), !pulled.contains(.spaces) {
+                await pull(.spaces)
+            } else if active(.spaces) {
                 await pushDoc(domain, as: CloudDocs.Spaces.self, build: { CloudApply.spaces(browser, base: $0) },
                               merge: CloudMerge.spaces, apply: { CloudApply.apply(spaces: $0, base: $1, in: browser) })
             }
@@ -573,7 +581,7 @@ final class CloudSync: ObservableObject {
     /// Apply a merged document here without it counting as a change.
     private func applying(_ body: () -> Void) {
         applyingRemote = true
-        body()
+        CloudIntents.shared.quietly(body)
         // Publishers fire synchronously, the session write lands a beat
         // later: its push finds nothing new against the base set after this.
         applyingRemote = false
@@ -618,21 +626,30 @@ final class CloudSync: ObservableObject {
                 } catch let failure as Cloud.Failure where failure.status == 404 {
                     // Nothing there yet: this Mac's copy goes up as the first.
                     self.bases[domain.rawValue] = nil
+                    self.pulled.insert(domain)
                     self.saveState()
                     return
                 }
                 guard self.active(domain) else { return }
-                if doc.version == self.bases[domain.rawValue]?.version { return }
+                // The first spaces pull of a run (or of a connection) applies
+                // the server's copy even when the version is the one known:
+                // this Mac's live state may have drifted from it since.
+                let first = domain == .spaces && !self.pulled.contains(domain)
+                if doc.version == self.bases[domain.rawValue]?.version, !first { return }
                 guard let server = self.decode(T.self, base64: doc.payload) else {
                     throw Cloud.Failure(status: 0, code: "decode", message: "The cloud's \(domain.rawValue) didn't read — left alone")
                 }
+                let mark = CloudIntents.shared.tick
                 let base = self.base(domain, as: T.self)
                 let local = self.normalized(build(base))
                 let merged: T
                 if let base, local == base { merged = server } else { merged = merge(base, local, server) }
-                if merged != local { self.applying { apply(merged, base) } }
+                if self.holds(domain, from: local, to: merged, version: doc.version, server: server) { return }
+                if merged != local || first { self.applying { apply(merged, base) } }
+                self.pulled.insert(domain)
                 self.bases[domain.rawValue] = Base(version: doc.version, payload: try self.encode(server))
                 self.saveState()
+                self.applied(domain, version: doc.version, from: local, to: merged, through: merged == server ? mark : nil)
                 self.note("Pulled \(domain.rawValue) v\(doc.version)\(merged == local ? "" : " — applied")")
                 if merged != server { try await self.put(domain, merged, build: build, merge: merge, apply: apply) }
             }
@@ -648,7 +665,10 @@ final class CloudSync: ObservableObject {
         await serialized(domain.rawValue) {
             let base = self.base(domain, as: T.self)
             let local = self.normalized(build(base))
-            if let base, local == base { return }
+            if let base, local == base {
+                if domain == .spaces, case .outgoing? = self.hold { self.hold = nil } // nothing left to send
+                return
+            }
             await self.work(domain.rawValue) {
                 try await self.put(domain, local, build: build, merge: merge, apply: apply)
             }
@@ -667,6 +687,17 @@ final class CloudSync: ObservableObject {
         for _ in 0..<3 {
             guard active(domain) else { return }
             let version = bases[domain.rawValue]?.version ?? 0
+            let mark = CloudIntents.shared.tick
+            let losses = spacesLosses(domain, from: base(domain, as: T.self), to: doc)
+            // The brake: one publish that would unfile or remove more than a
+            // handful of kept tabs everywhere, or drop a folder that still
+            // holds some, waits for the person — unless they asked for it.
+            if let losses, losses.big, !letThrough, CloudIntents.shared.confirmed == nil {
+                hold = .outgoing(losses)
+                trail("publish", version: version, losses, held: true)
+                note("Held spaces: sending them would unfile \(losses.unfiled.count) and remove \(losses.removed.count) kept tabs on every device")
+                return
+            }
             let payload = try encode(doc)
             do {
                 let answer: Put = try await cloud.requestJSON("PUT", "/v1/sync/docs/\(domain.rawValue)", json: [
@@ -675,6 +706,11 @@ final class CloudSync: ObservableObject {
                 bases[domain.rawValue] = Base(version: answer.version, payload: payload)
                 saveState()
                 note("Pushed \(domain.rawValue) v\(answer.version)")
+                if let losses {
+                    trail("publish", version: answer.version, losses, held: false)
+                    CloudIntents.shared.clear(through: mark)
+                    if case .outgoing? = hold { hold = nil }
+                }
                 return
             } catch let failure as Cloud.Failure where failure.status == 409 {
                 // The 409 carries the server's copy; read it again if not.
@@ -687,18 +723,133 @@ final class CloudSync: ObservableObject {
                     bases[domain.rawValue] = nil
                     continue
                 }
+                let mark = CloudIntents.shared.tick
                 let base = self.base(domain, as: T.self)
                 let local = normalized(build(base))
                 let merged = merge(base, local, server)
+                if holds(domain, from: local, to: merged, version: current.version, server: server) { return }
                 if merged != local { applying { apply(merged, base) } }
                 bases[domain.rawValue] = Base(version: current.version, payload: try encode(server))
                 saveState()
+                applied(domain, version: current.version, from: local, to: merged, through: merged == server ? mark : nil)
                 note("Merged \(domain.rawValue) with v\(current.version) from another device")
                 if merged == server { return }
                 doc = merged
             }
         }
         throw Cloud.Failure(status: 409, code: "conflict", message: "\(domain.title) kept changing elsewhere — will try again")
+    }
+
+    // MARK: - the spaces brake
+
+    /// A spaces document waiting for the person (the column's prompt,
+    /// `CloudHoldSlot`): too much taken away in one go to just happen.
+    enum Hold: Equatable {
+        /// This Mac's next publish would take this away on every device.
+        case outgoing(CloudMerge.Losses)
+        /// Another device's document, `version`, would take this away here.
+        case incoming(CloudMerge.Losses, version: Int64, payload: Data)
+
+        var losses: CloudMerge.Losses {
+            switch self { case .outgoing(let l), .incoming(let l, _, _): return l }
+        }
+
+        /// What the prompt says.
+        var text: String {
+            let l = losses
+            func tabs(_ n: Int) -> String { n == 1 ? "1 tab" : "\(n) tabs" }
+            var parts: [String] = []
+            if !l.unfiled.isEmpty { parts.append("unfile \(tabs(l.unfiled.count))") }
+            if !l.removed.isEmpty { parts.append("remove \(tabs(l.removed.count))") }
+            if !l.folders.isEmpty { parts.append(l.folders.count == 1 ? "delete a folder" : "delete \(l.folders.count) folders") }
+            let what = parts.joined(separator: " and ")
+            switch self {
+            case .outgoing: return "This Mac is about to \(what) on all your devices"
+            case .incoming:
+                let past = what.replacingOccurrences(of: "unfile", with: "unfiled")
+                    .replacingOccurrences(of: "remove", with: "removed").replacingOccurrences(of: "delete", with: "deleted")
+                return "Another device \(past)"
+            }
+        }
+    }
+
+    @Published private(set) var hold: Hold?
+    /// The person said yes to what was held: once past the brake.
+    private var letThrough = false
+    /// Domains pulled since launch or since the stream last connected
+    /// (only spaces asks): until then nothing of them goes up.
+    private var pulled: Set<Domain> = []
+
+    /// The synced spaces document, for `CloudIntents`.
+    var spacesBase: CloudDocs.Spaces? { base(.spaces, as: CloudDocs.Spaces.self) }
+
+    private func spacesLosses<T>(_ domain: Domain, from was: T?, to now: T) -> CloudMerge.Losses? {
+        guard domain == .spaces, let now = now as? CloudDocs.Spaces else { return nil }
+        guard let was = was as? CloudDocs.Spaces else { return CloudMerge.Losses() }
+        return CloudMerge.losses(from: was, to: now)
+    }
+
+    /// The brake on another device's document: one that would unfile or
+    /// remove more than a handful of this Mac's kept tabs, or drop a folder
+    /// still holding some, is not applied until the person says. The base
+    /// stays where it was, so nothing here counts it as seen.
+    private func holds<T: Encodable>(_ domain: Domain, from local: T, to merged: T, version: Int64, server: T) -> Bool {
+        guard !letThrough, let losses = spacesLosses(domain, from: local, to: merged), losses.big else { return false }
+        hold = .incoming(losses, version: version, payload: (try? encode(server)) ?? Data())
+        trail("apply", version: version, losses, held: true)
+        note("Held spaces v\(version) from another device: it would unfile \(losses.unfiled.count) and remove \(losses.removed.count) kept tabs here")
+        return true
+    }
+
+    /// A spaces document applied here: in the trail, an incoming hold it
+    /// replaces gone, and — when the server's copy stood as it was — what
+    /// was noted by `mark` let go (it was said, or overruled).
+    private func applied<T>(_ domain: Domain, version: Int64, from local: T, to merged: T, through mark: Int?) {
+        guard let losses = spacesLosses(domain, from: local, to: merged) else { return }
+        trail("apply", version: version, losses, held: false)
+        if case .incoming? = hold { hold = nil }
+        if let mark { CloudIntents.shared.clear(through: mark) }
+    }
+
+    /// One line in logs/trail.log per spaces publish and apply, held or not.
+    private func trail(_ op: String, version: Int64, _ losses: CloudMerge.Losses, held: Bool) {
+        Breadcrumbs.note("cloud \(op)", [
+            ("doc", "spaces"), ("v", String(version)), ("unfiled", String(losses.unfiled.count)),
+            ("removed", String(losses.removed.count)), ("folders-", String(losses.folders.count)), ("held", held ? "yes" : "no"),
+        ])
+    }
+
+    /// `cloud hold` on the bench: the prompt, without a cloud to cause it.
+    func benchHold(_ held: Hold?) { hold = held }
+
+    /// Sync it, or Accept: what was held goes through, once.
+    func letHeldThrough() async {
+        guard let held = hold else { return }
+        hold = nil
+        letThrough = true
+        defer { letThrough = false }
+        note("Held spaces let through")
+        if case .outgoing = held { await push(.spaces) } else { await pull(.spaces) }
+    }
+
+    /// Undo here: this Mac's changes are dropped and it takes the server's
+    /// spaces. Keep mine: the tabs another device would take away stay as
+    /// they are here — noted as this Mac's own — and that goes up instead.
+    func keepHeldBack() async {
+        guard let held = hold else { return }
+        hold = nil
+        switch held {
+        case .outgoing:
+            note("Held spaces undone here")
+            CloudIntents.shared.reset()
+        case .incoming(let losses, let version, let payload):
+            note("Kept this Mac's spaces over v\(version)")
+            CloudIntents.shared.keep(losses.unfiled + losses.removed)
+            bases[Domain.spaces.rawValue] = Base(version: version, payload: payload)
+            saveState()
+        }
+        pulled.remove(.spaces)
+        await pull(.spaces)
     }
 
     // MARK: - open tabs
@@ -1121,6 +1272,9 @@ final class CloudSync: ObservableObject {
 
     private func resetState() {
         bases = [:]
+        pulled = []
+        hold = nil
+        CloudIntents.shared.reset()
         remote = [:]
         owner = account
         var prefs = cloud.sync
@@ -1140,6 +1294,8 @@ final class CloudSync: ObservableObject {
             "busy": busy,
             "lastSync": lastSync.map { CloudSync.stamp($0) } ?? NSNull(),
             "versions": bases.mapValues { $0.version },
+            "intents": CloudIntents.shared.keys.count + CloudIntents.shared.folders.count,
+            "hold": hold.map { $0.text } ?? NSNull(),
             "historyPushedThrough": cloud.sync.pushedThrough ?? NSNull(),
             "historyRetryAt": historyHold.map { CloudSync.stamp($0.until) } ?? NSNull(),
             "historyPulledSeq": cloud.sync.pulledSeq,

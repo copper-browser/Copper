@@ -59,9 +59,31 @@ enum CloudApply {
         "\(space.uuidString.lowercased())|\(pinned ? "pin" : "saved")|\(url.host()?.lowercased() ?? "")"
     }
 
-    /// This Mac's spaces document. `base` is the last one synced: a tab it
-    /// already had keeps that entry's key, address and title.
+    /// The key `tab` is kept under now, or nil: this run's, else the synced
+    /// document's entry at its address — or at its site, when the document
+    /// keeps only one there. For `CloudIntents`, before an edit changes it.
+    static func key(of tab: Tab, base: @autoclosure () -> CloudDocs.Spaces?) -> String? {
+        if let key = tabKeys[tab.id] { return key }
+        let pinned = tab.pin != nil
+        guard let space = pinned ? Spaces.shared.all.first?.id : Spaces.shared.spaceID(of: tab),
+              let url = keptURL(of: tab, saved: Sections.shared.isSaved(tab)) else { return nil }
+        let s = stem(space: space, pinned: pinned, url: url)
+        let entries = base()?.tabs.filter { $0.key.hasPrefix(s + "|") } ?? []
+        return (entries.first { $0.url == url.absoluteString } ?? (entries.count == 1 ? entries[0] : nil))?.key
+    }
+
+    /// This Mac's spaces document as it may be sent: its live state, held to
+    /// what was changed here by hand (`CloudMerge.intended`).
     static func spaces(_ browser: Browser, base: CloudDocs.Spaces?) -> CloudDocs.Spaces {
+        let doc = live(browser, base: base)
+        let intents = CloudIntents.shared
+        intents.resolve(tabKeys)
+        return CloudMerge.intended(doc, base: base, tabs: Set(intents.keys.keys), folders: Set(intents.folders.keys))
+    }
+
+    /// This Mac's spaces document, as it is here. `base` is the last one
+    /// synced: a tab it already had keeps that entry's key, address and title.
+    static func live(_ browser: Browser, base: CloudDocs.Spaces?) -> CloudDocs.Spaces {
         // Pins sync one per site (CloudMerge.onePinPerSite); copies an older
         // build opened here close before this Mac says what it has.
         Spaces.shared.cloudFoldPins(browser: browser)
@@ -140,7 +162,9 @@ enum CloudApply {
                 }
             }
         }
-        let local = spaces(browser, base: base)
+        // As it is here, not as it may be sent: a kept tab missing here
+        // that the document still has opens again.
+        let local = live(browser, base: base)
         let localKeys = Dictionary(local.tabs.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
         let docKeys = Set(doc.tabs.map(\.key))
 
