@@ -1,3 +1,5 @@
+Settings is simpler: ten pages instead of fifteen. Downloads is now on General, Labs' previews on Tabs, Voice on Intelligence, Addons on Extensions, and Updates on About. Agents is shorter, with the token in the MCP server card and one row of Copy buttons.
+
 Copper now runs on Intel Macs. Download the Intel build from the website (it picks the right one for your Mac), or install with Homebrew or the one-line installer, which choose for you. On an Intel Mac, Copper updates itself from Intel builds.
 
 Xos whiteboards can now be inserted as native canvas images. Choose a meeting canvas, Personal or an existing canvas; meeting choices stay with your Copper account. Xos confirms insertion after the image is saved.
