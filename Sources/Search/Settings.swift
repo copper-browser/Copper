@@ -197,6 +197,7 @@ struct SettingsPanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .environment(\.settingsFlash, finder.flashing)
+        .environment(\.settingsPending, finder.pending?.anchor) // Fork (settings-merge): opens an Advanced fold a search is headed for
     }
 
     private var close: some View {
