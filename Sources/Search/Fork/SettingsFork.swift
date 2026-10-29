@@ -471,7 +471,7 @@ struct AgentsPage: View {
         let _ = SettingsPerf.tick("agentsPage") // Fork (settings-perf)
         VStack(alignment: .leading, spacing: 26) {
             AgentsServerSection()
-            AgentsJevSection()
+            AgentsJevSection(browser: browser)
             AgentsLinksSection()
             AgentsPaneSection()
             AgentsTerminalSection()
@@ -548,9 +548,9 @@ private struct AgentsServerSection: View {
 
 /// Jev mode: the switch, and — while it is on — the key and the text model.
 private struct AgentsJevSection: View {
+    let browser: Browser
     @ObservedObject var mcp = MCP.shared
     @ObservedObject var brain = Intelligence.shared
-    @ObservedObject var check = IntelligenceCheck.shared
 
     /// The saved word as a mode, and back; an unknown word reads as off.
     private var jevVision: Binding<Tools.Ultrafast.Vision> {
@@ -564,20 +564,17 @@ private struct AgentsJevSection: View {
                 Switch(on: $mcp.config.jev)
             }
             .settingsAnchor("agents.jev")
-            if mcp.config.jev, !brain.jevReady { // Fork (settings-merge): once set, the key is Intelligence's row
+            // Fork (settings-merge): the key has one home, Intelligence › Jev; this only points there.
+            if mcp.config.jev, !brain.jevReady {
                 Rule()
-                Line("Jev key", brain.cloudLine("jevKey", brain.cloud?.jev?.key) ?? "Jev mode needs a key from your TypeSafe account — the same one as Intelligence › Jev.") {
-                    SettingsFlow(spacing: 8) { // Fork (settings-merge): the pill goes above the field in a narrow column
-                        if !brain.jevReady { JevKeyPagePill() }
-                        KeyField(text: $brain.keys.jevKey, placeholder: brain.cloudPlaceholder("jevKey", brain.cloud?.jev?.key, otherwise: "ts-…"),
-                                 ready: brain.jevReady, refused: check.refused("jev"), label: "Jev key")
-                    }
+                Line("Jev key", "Jev mode needs a key from your TypeSafe account. It goes in Intelligence › Jev.") {
+                    Pill("Add key", filled: true) { browser.openSettings(.intelligence, at: "intelligence.jev") }
                 }
                 .settingsAnchor("agents.jevkey")
             }
             if mcp.config.jev {
                 Rule()
-                Line("Text model", brain.modelReady ? "Writes what Jev types and answers jev_extract. Small and fast is the point; empty uses \(brain.modelName)." : "Typing text and jev_extract need a model — set one up in Settings › Intelligence.") {
+                Line("Text model", brain.modelReady ? "Writes what Jev types and answers jev_extract. Small and fast is the point; empty uses \(brain.modelName)." : "Typing text and jev_extract need a model — set one up in Intelligence.") {
                     HStack(spacing: 8) {
                         Circle().fill(brain.modelReady ? Color.green.opacity(0.8) : Color.orange.opacity(0.8)).frame(width: 8, height: 8)
                             .help(brain.modelReady ? "A model is set up" : "No model is set up")

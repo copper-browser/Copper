@@ -237,7 +237,7 @@ enum SettingsIndex {
           ["port number", "4123", "listen port"], "agents.port"),
         e(.agents, "Jev mode", "Let the agent hand Copper a goal", "Adds jev_run, jev_step, jev_observe and jev_extract: Jev drives this window towards a goal",
           ["jev", "ultrafast", "jev_run", "browser-use", "goal", "fast mode"], "agents.jev", toggle: mcpJev),
-        e(.agents, "Jev mode", "Jev key", "A Jev key, shared with Settings › Intelligence",
+        e(.agents, "Jev mode", "Jev key", "Kept in Intelligence › Jev; Jev mode points there while it is missing",
           ["typesafe", "ts key"], "agents.jevkey", fallback: "agents.jev"),
         e(.agents, "Jev mode", "Text model", "Writes what gets typed and answers jev_extract",
           ["type text", "extract model", "small model", "typing model"], "agents.textmodel", fallback: "agents.jev"),
