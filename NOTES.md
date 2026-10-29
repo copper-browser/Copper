@@ -1,3 +1,5 @@
+Settings is shorter again. Advanced options fold away on Agents and Intelligence, a space's icon and colours open under Customize, Passwords drops its empty sections, and About's shortcuts are one row. Trails and Tide, the Labs preview, are gone.
+
 Settings is simpler: ten pages instead of fifteen. Downloads is now on General, Labs' previews on Tabs, Voice on Intelligence, Addons on Extensions, and Updates on About. Agents is shorter, with the token in the MCP server card and one row of Copy buttons.
 
 Copper now runs on Intel Macs. Download the Intel build from the website (it picks the right one for your Mac), or install with Homebrew or the one-line installer, which choose for you. On an Intel Mac, Copper updates itself from Intel builds.
