@@ -1138,8 +1138,8 @@ enum CLI {
             let supported = status["supported"] as? Bool ?? false
             let enabled = status["enabled"] as? Bool ?? false
             let shared = status["share_allowed"] as? Bool ?? false
-            print("Voice: " + (!supported ? "needs macOS 15 or later" : (enabled ? "on" : "off (Copper Settings › Voice)")))
-            print("Agents may read the transcript: " + (shared ? "yes" : "no (the person allows it in Copper Settings › Voice)"))
+            print("Voice: " + (!supported ? "needs macOS 15 or later" : (enabled ? "on" : "off (Copper Settings › Intelligence › Voice)")))
+            print("Agents may read the transcript: " + (shared ? "yes" : "no (the person allows it in Copper Settings › Intelligence › Voice)"))
             guard supported, enabled, shared else { return 0 }
             guard let transcript = status["transcript"] as? [String: Any], let id = transcript["id"] as? String else {
                 print("Transcript: none yet — the person starts Listen from the waveform button in Copper's ⌘E pane")
@@ -1274,7 +1274,7 @@ enum CLI {
     Usage: copper [--json] listen [status]
 
     Whether Voice is on, whether the person lets agents on this Mac read the
-    Listen transcript (Copper Settings › Voice), and — when they do — whether
+    Listen transcript (Copper Settings › Intelligence › Voice), and — when they do — whether
     Listen is live and how far the transcript goes. Never prints words.
 
     Agents can't start or stop Listen: the person does that from the waveform
@@ -1289,7 +1289,7 @@ enum CLI {
 
     The Listen transcript the person started in Copper: finalized speech, one
     segment per line as [HH:MM:SS] text, oldest first. Only while they allow
-    agents on this Mac to read it (Copper Settings › Voice).
+    agents on this Mac to read it (Copper Settings › Intelligence › Voice).
 
       --since SEQ     only segments after SEQ (default 0: from the start)
       --wait MS       with nothing newer, wait up to MS (0–20000) for it

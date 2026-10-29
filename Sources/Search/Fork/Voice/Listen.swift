@@ -7,7 +7,7 @@ import os
 // Listen: a live transcript someone starts from the ⌘E agent pane, which the
 // pane's agent can read (Agent.swift: the "Live transcript" chip and the
 // pane-private `transcript_read` tool) — and, only when the person allows it
-// in Settings › Voice, agents on this Mac (docs/agents.md).
+// in Settings › Intelligence › Voice, agents on this Mac (docs/agents.md).
 //
 // One microphone capture feeds one LiveSession in `.listen` mode, which
 // finalizes a line each time the speaker pauses (0.7 s) or at 14.95 s of
@@ -175,7 +175,7 @@ final class Listen: ObservableObject {
         case on(String)
         /// A dictation has the microphone: disabled.
         case busy(String)
-        /// The speech model isn't ready: dimmed; a click opens Settings › Voice.
+        /// The speech model isn't ready: dimmed; a click opens Settings › Intelligence › Voice.
         case waiting(String)
         case ready
     }
@@ -199,11 +199,11 @@ final class Listen: ObservableObject {
     }
 
     /// The door clicked: Listen starts (or, paused or stopped, listens on into
-    /// the same transcript); the speech model not ready opens Settings › Voice.
+    /// the same transcript); the speech model not ready opens Settings › Intelligence › Voice.
     func doorPressed(in browser: Browser) {
         switch door {
         case .hidden, .on, .busy: return
-        case .waiting: browser.openSettings(.voice)
+        case .waiting: browser.openSettings(.intelligence, at: "voice.enabled")
         case .ready: start(in: browser)
         }
     }

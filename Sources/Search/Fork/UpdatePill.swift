@@ -617,7 +617,7 @@ struct UpdatePillView: View {
         }
         Button("Remind Me Later") { pill.later() }
         Divider()
-        Button("Settings…") { browser.openSettings(.updates) }
+        Button("Settings…") { browser.openSettings(.about, at: "updates.check") }
     }
 
     /// The first time this version reaches this step in this run — and only

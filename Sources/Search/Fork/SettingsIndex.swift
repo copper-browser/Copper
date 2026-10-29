@@ -40,64 +40,54 @@ extension SettingsPanel.Page {
 
     var group: Group {
         switch self {
-        case .general, .tabs, .spaces, .downloads, .extensions: return .browsing
-        case .addons: return .browsing // Fork (addons)
-        case .intelligence, .agents, .voice: return .copper
-        case .passwords, .privacy, .cloud: return .data
-        case .labs, .updates, .about: return .about
+        case .general, .tabs, .spaces, .extensions: return .browsing
+        case .intelligence, .agents: return .copper
+        case .passwords, .privacy: return .data
+        case .cloud, .about: return .about // Fork (settings-merge): Copper Cloud beside About
         }
     }
 
     /// The rail's order inside each group. `allCases` keeps upstream's order
     /// (and the stored `settings.page` values); this is only how it is drawn.
     static let railOrder: [SettingsPanel.Page] = [
-        .general, .tabs, .spaces, .downloads, .extensions,
-        .addons, // Fork (addons): beside Extensions
-        .intelligence, .agents, .voice,
-        .passwords, .privacy, .cloud,
-        .labs, .updates, .about,
+        .general, .tabs, .spaces, .extensions,
+        .intelligence, .agents,
+        .passwords, .privacy,
+        .cloud, .about,
     ]
 
     /// What the page is for, in a line under its title.
     var blurb: String {
         switch self {
-        case .general: return "The default browser, how Copper looks, and moving in from another browser."
-        case .tabs: return "The sidebar, switching between tabs, and what happens to tabs you leave."
+        case .general: return "The default browser, how Copper looks, downloads, and moving in."
+        case .tabs: return "The sidebar, switching tabs, what happens to tabs you leave, and previews."
         case .spaces: return "Each space's name, look, icon and profile. Drag the chips to reorder."
-        case .intelligence: return "The model behind the agent pane and Ask on page, and Jev's fast lane."
+        case .intelligence: return "The model behind the agent pane, Jev's fast lane, and voice."
         case .agents: return "Let MCP clients, linked agent apps and terminal agents use this browser."
-        case .voice: return "Dictation in the agent pane: the speech model, and how you talk to it."
         case .cloud: return "Connect, sign in, then choose what follows you between Macs."
-        case .updates: return "Which Copper you have, and getting the next one."
-        case .extensions: return "Chrome extensions: add, pin, allow on sites, and remove."
+        case .extensions: return "Chrome extensions, and the addons your Copper Cloud assigns."
         case .passwords: return "Saved sign-ins, password managers, passkeys and what agents may use."
-        case .downloads: return "Where downloaded files go."
         case .privacy: return "Blocking ads and trackers, site permissions, and clearing what sites keep."
-        case .labs: return "Previews of what Copper is trying next. Each is off until you turn it on."
-        case .addons: return "Web addons your Copper Cloud assigns you, like the Agent sidebar's." // Fork (addons)
-        case .about: return "Version, feedback and the keyboard shortcuts."
+        case .about: return "Updates, feedback and the keyboard shortcuts."
         }
     }
 
     /// Other words for the page as a whole.
     var keywords: [String] {
         switch self {
-        case .general: return ["preferences", "basics", "options"]
-        case .tabs: return ["tab bar", "vertical tabs", "sidebar"]
+        case .general: return ["preferences", "basics", "options", "downloads", "files", "download folder"]
+        case .tabs: return ["tab bar", "vertical tabs", "sidebar",
+                            "labs", "experiments", "experimental", "flights", "beta", "beta features", "preview", "previews"]
         case .spaces: return ["workspaces", "profiles", "space look"]
-        case .intelligence: return ["ai", "model", "llm", "claude", "anthropic", "openai", "gpt", "keys"]
+        case .intelligence: return ["ai", "model", "llm", "claude", "anthropic", "openai", "gpt", "keys",
+                                    "voice", "dictation", "dictate", "speech", "transcription", "push to talk", "hold to talk",
+                                    "microphone", "mic", "talk", "conversational", "speech model"]
         case .agents: return ["mcp", "proxy", "bot", "bots", "automation", "agent"]
-        case .voice: return ["voice", "dictation", "dictate", "speech", "transcription", "push to talk", "hold to talk",
-                             "microphone", "mic", "talk", "conversational", "speech model"]
         case .cloud: return ["sync", "account", "canvas", "devices", "backup"]
-        case .updates: return ["update", "upgrade", "version", "release"]
-        case .extensions: return ["add-ons", "addons", "plugins", "chrome web store"]
+        case .extensions: return ["add-ons", "addons", "addon", "plugins", "chrome web store", "agent sidebar", "web app"]
         case .passwords: return ["pw", "pwd", "logins", "keychain", "autofill", "credentials", "password manager"]
-        case .downloads: return ["files", "download folder"]
         case .privacy: return ["security", "tracking", "data", "clear"]
-        case .labs: return ["experiments", "experimental", "flights", "beta", "beta features", "preview", "previews", "labs"]
-        case .addons: return ["addon", "add-on", "agent sidebar", "sidebar app", "web app"] // Fork (addons)
-        case .about: return ["version", "credits", "help", "shortcuts"]
+        case .about: return ["version", "credits", "help", "shortcuts", "update", "updates", "upgrade", "release"]
         }
     }
 
@@ -134,9 +124,9 @@ enum SettingsIndex {
     // A list joined rather than a chain of `+`: long chains are slow for
     // older type checkers (the release runner's).
     static let rows: [SettingsEntry] = [
-        general, tabs, spaces, intelligence, agents, voice, cloud,
-        updates, extensions, passwords, downloads, privacy, labs, about,
-        AddonSettingsIndex.entries, // Fork (addons): Fork/Addons/AddonUI.swift
+        general, downloads, tabs, labs, spaces, intelligence, voice, agents, cloud,
+        extensions, passwords, privacy, updates, about,
+        AddonSettingsIndex.entries, // Fork (addons): Fork/Addons/AddonUI.swift — last, so Copper's own update rows win a tie
     ].flatMap { $0 }
 
     // MARK: general
@@ -216,7 +206,7 @@ enum SettingsIndex {
           ["model id", "alias", "model mapping", "custom model", "rename model"], "intelligence.names"),
         e(.intelligence, "Model access", "Check", "Asks Jev and the model one small question each, so you know they answer",
           ["test", "test key", "test connection", "ping", "verify", "diagnose", "is my key working", "key not working", "check key"], "intelligence.check"),
-        e(.intelligence, "Jev — the fast lane", "Jev", "Picks between choices in about a fifth of a second, for agents' quick decisions",
+        e(.intelligence, "Jev", "Jev key", "Picks between choices in about a fifth of a second, for agents' quick decisions",
           ["jev key", "typesafe", "ts key", "system one", "fast lane"], "intelligence.jev"),
     ]
 
@@ -256,15 +246,15 @@ enum SettingsIndex {
           ["turbo", "speed", "faster", "quick", "burst", "glide"], "agents.jevfast", fallback: "agents.jev"),
         e(.agents, "Jev mode", "What Jev sees", "Text only, a picture of the page, the picture with numbers, or a Box",
           ["screenshot", "image", "picture", "vision", "marks", "box", "set of marks", "bounding box"], "agents.jevvision", fallback: "agents.jev"),
-        e(.agents, "Your agents", "Connect an agents app", "Linked agent apps get these tools for the bots you grant",
+        e(.agents, "Agents apps", "Connect an agents app", "Linked agent apps get these tools for the bots you grant",
           ["agent link", "linked app", "bots", "grant", "personal token", "remote", "agents app"], "agents.links"),
-        e(.agents, "Your agents", "Add an agents app", "Paste its address and a personal token",
+        e(.agents, "Agents apps", "Add an agents app", "Paste its address and a personal token",
           ["new link", "add app", "connect app"], "agents.add"),
-        e(.agents, "The agent in the window", "Page in front of every question", "The current tab's address, title and text go with each question in the agent pane (⌘E)",
+        e(.agents, "The ⌘E agent", "Page in front of every question", "The current tab's address, title and text go with each question in the agent pane (⌘E)",
           ["context", "ask on page", "agent pane", "cmd e", "page text"], "agents.context", toggle: pageContext),
-        e(.agents, "The agent in the window", "Tool-call rounds per question", "How many times the agent may use its tools before it stops and asks",
+        e(.agents, "The ⌘E agent", "Tool-call rounds per question", "How many times the agent may use its tools before it stops and asks",
           ["max turns", "turns", "rounds", "tool calls", "limit", "budget", "stopped after", "steps", "max steps", "iterations"], "agents.turns"),
-        e(.agents, "The agent in the window", "Your other MCP servers", "mcp.json servers — http with headers, or a command to run",
+        e(.agents, "The ⌘E agent", "Your other MCP servers", "mcp.json servers — http with headers, or a command to run",
           ["mcp.json", "servers", "tools", "stdio", "mcp client"], "agents.servers"),
         e(.agents, "Terminal agents", "phi", "Adds Copper to phi (~/.pi/agent/mcp.json) and a /jev prompt",
           ["pi", "set up phi", "terminal", "setup", "connect phi"], "agents.phi"),
@@ -273,14 +263,14 @@ enum SettingsIndex {
         e(.agents, "Terminal agents", "copper CLI", "Puts the copper command in your PATH",
           ["command line", "install cli", "shell", "path", "terminal"], "agents.cli"),
         e(.agents, "Terminal agents", "Copy /jev", "A goal-first command for the agent in your terminal",
-          ["slash command", "jev command"], "agents.copyjev"),
+          ["slash command", "jev command", "copy for another agent"], "agents.copy"),
         e(.agents, "Terminal agents", "Copy prompt", "How to use Copper, for any agent — with the address and token",
-          ["system prompt", "instructions", "agent prompt"], "agents.prompt"),
+          ["system prompt", "instructions", "agent prompt"], "agents.copy"),
         e(.agents, "Terminal agents", "Copy config", "The MCP server's JSON, for a client set up by hand",
-          ["json config", "client config", "http config"], "agents.config"),
+          ["json config", "client config", "http config"], "agents.copy"),
         e(.agents, "Terminal agents", "Copy install command", "The one line that installs the copper CLI on another Mac",
-          ["install", "brew", "homebrew", "curl"], "agents.install"),
-        e(.agents, "The key", "Bearer token", "Every request must carry it. A new token stops every client that has the old one",
+          ["install", "brew", "homebrew", "curl"], "agents.copy"),
+        e(.agents, "MCP server", "Bearer token", "Every request must carry it. A new token stops every client that has the old one",
           ["token", "secret", "rotate", "rotate token", "new token", "reset token", "auth", "authentication", "api key", "mcp token"], "agents.token"),
     ]
 
@@ -294,25 +284,25 @@ enum SettingsIndex {
     }
 
     private static let voice: [SettingsEntry] = [
-        e(.voice, "Voice on this Mac", "Voice", "Talk to the agent in the ⌘E pane. Speech is turned into text on this Mac; audio is never saved or sent",
+        e(.intelligence, "Voice", "Talk to the agent", "Voice in the ⌘E pane. Speech is turned into text on this Mac; audio is never saved or sent",
           ["voice", "dictation", "dictate", "speech", "speech to text", "transcription", "mic", "talk",
            "push to talk", "hold to talk", "agent pane", "cmd e"], "voice.enabled", toggle: voiceEnabled),
         // Drawn while voice is on or a model is on disk; until then search
         // lands on the switch that brings it.
-        e(.voice, "Voice on this Mac", "Speech model", "Phonon-2, a one-time 345 MB download kept on this Mac until you remove it",
+        e(.intelligence, "Voice", "Speech model", "Phonon-2, a one-time 345 MB download kept on this Mac until you remove it",
           ["speech model", "phonon", "remove model", "delete model", "free space", "disk space", "model size",
            "transcription", "on device", "offline"], "voice.model", fallback: "voice.enabled"),
-        e(.voice, "Talking to the agent", "Talk", "Hold to talk, or press to start and stop — ⌃⇧D or the mic button",
+        e(.intelligence, "Voice", "Talk", "Hold to talk, or press to start and stop — ⌃⇧D or the mic button",
           ["push to talk", "hold to talk", "ptt", "toggle", "press to talk", "shortcut", "control shift d", "mic button",
-           "dictate", "dictation", "talk"], "voice.trigger"),
-        e(.voice, "Talking to the agent", "When you stop", "Insert the words into the message, or send it right away",
+           "dictate", "dictation", "talk"], "voice.trigger", fallback: "voice.enabled"),
+        e(.intelligence, "Voice", "When you stop", "Insert the words into the message, or send it right away",
           ["send", "auto send", "send right away", "insert", "conversational", "conversation", "dictation", "review before sending"],
-          "voice.finish"),
-        e(.voice, "Listen", "Let agents on this Mac read the Listen transcript",
+          "voice.finish", fallback: "voice.enabled"),
+        e(.intelligence, "Voice", "Let agents read the Listen transcript",
           "phi, Claude Code and other agents connected to Copper can read what Listen writes down while this is on. They can't start Listen or hear audio",
           ["transcript", "listen", "mcp", "agents", "share", "share transcript", "read transcript", "phi", "claude code",
-           "terminal agents", "voice_transcript", "copper transcript", "live transcript"], "voice.shareTranscript"),
-        e(.voice, "Credits", "Speech model credits", "Phonon-2 by Fermion Research, derived from NVIDIA Parakeet TDT 0.6B v3 · CC BY 4.0; runtime phonon-coreml · Apache-2.0",
+           "terminal agents", "voice_transcript", "copper transcript", "live transcript"], "voice.shareTranscript", fallback: "voice.enabled"),
+        e(.intelligence, "Voice", "Speech model credits", "Phonon-2 by Fermion Research, derived from NVIDIA Parakeet TDT 0.6B v3 · CC BY 4.0; runtime phonon-coreml · Apache-2.0",
           ["license", "licence", "attribution", "credits", "fermion", "nvidia", "parakeet", "cc by", "phonon", "speech model",
            "phonon-coreml", "apache", "speech runtime", "notice"],
           "voice.credits"),
@@ -347,13 +337,13 @@ enum SettingsIndex {
     // MARK: updates
 
     private static let updates: [SettingsEntry] = [
-        e(.updates, "Updates", "Check for updates", "Which Copper you have and whether a newer one is out",
-          ["check now", "version", "latest", "new version", "upgrade", "release"], "updates.check"),
-        e(.updates, "Updates", "Install the update", "Downloads, verifies, backs up your tabs and relaunches",
+        e(.about, "Updates", "Check for updates", "Which Copper you have and whether a newer one is out",
+          ["check for updates", "check now", "version", "latest", "new version", "upgrade", "release"], "updates.check"),
+        e(.about, "Updates", "Install the update", "Downloads, verifies, backs up your tabs and relaunches",
           ["update", "relaunch", "install update", "download update", "restart"], "updates.install", fallback: "updates.check"),
-        e(.updates, "Updates", "What's new", "What the newer Copper brings, before you update",
+        e(.about, "Updates", "What's new", "What the newer Copper brings, before you update",
           ["release notes", "changelog", "what's new", "whats new", "notes", "new features"], "updates.notes", fallback: "updates.check"),
-        e(.updates, "Updates", "Where updates come from", "The feed, and whether Homebrew manages this copy",
+        e(.about, "Updates", "Where updates come from", "The feed, and whether Homebrew manages this copy",
           ["feed", "homebrew", "brew", "source", "last checked", "update channel", "channel", "release channel", "nightly"], "updates.source"),
     ]
 
@@ -438,9 +428,9 @@ enum SettingsIndex {
     // MARK: downloads
 
     private static let downloads: [SettingsEntry] = [
-        e(.downloads, "Downloads", "Save to", "The folder downloads go to",
+        e(.general, "Downloads", "Save to", "The folder downloads go to",
           ["downloads folder", "download location", "directory", "path", "save location", "destination"], "downloads.folder"),
-        e(.downloads, "Downloads", "Ask where to save each file", "A save panel for every download",
+        e(.general, "Downloads", "Ask where to save each file", "A save panel for every download",
           ["save as", "prompt", "choose location", "ask", "ask before download", "confirm download", "save dialog"],
           "downloads.ask", toggle: pref(\.asksWhereToSave)),
     ]
@@ -466,7 +456,7 @@ enum SettingsIndex {
     // MARK: labs
 
     private static let labs: [SettingsEntry] = [
-        e(.labs, "Previews", "Trails", "Tabs by what you were doing, shown in the sidebar — a search or an address, and every page opened from it",
+        e(.tabs, "Previews", "Trails", "Tabs by what you were doing, shown in the sidebar — a search or an address, and every page opened from it",
           ["trails", "flights", "experiments", "preview", "beta", "organise tabs", "organize tabs", "intent", "grouping",
            "trails off", "trails on", "turn off trails", "sidebar trails"], "labs.trails",
           // Trails are drawn only in the sidebar: from search, as on the
@@ -474,18 +464,16 @@ enum SettingsIndex {
           toggle: { browser in Binding(get: { Flights.shared.trails }, set: { on in
               if !on || browser.prefs.sidebar { Flights.shared.trails = on }
           }) }),
-        e(.labs, "Previews", "Tide", "Trails left alone this long drift under Earlier, quieter",
+        e(.tabs, "Previews", "Tide", "Trails left alone this long drift under Earlier, quieter",
           ["drift", "earlier", "fade", "age", "timeout", "how long", "trails fade", "how long until trails fade", "older trails"], "labs.tide"),
     ]
 
     // MARK: about
 
     private static let about: [SettingsEntry] = [
-        e(.about, "Copper", "Copper", "Version, build, and who made it",
+        e(.about, "Copper", "Copper", "Who made it, and what it is built on",
           ["version", "build", "credits", "collin", "felipe", "search", "office commun"], "about.identity"),
-        e(.about, "Version", "Updates", "Whether a newer Copper is out — Copper looks every six hours on its own",
-          ["check for updates", "update", "latest version", "check now"], "about.version"),
-        e(.about, "Version", "Send Feedback", "Opens a new issue on Copper’s page, with the version already in it",
+        e(.about, "Help", "Send Feedback", "Opens a new issue on Copper’s page, with the version already in it",
           ["feedback", "bug", "report a problem", "issue", "file an issue", "new issue", "contact", "support"], "about.feedback"),
         // Drawn only after a crash; until then search lands on Send Feedback.
         e(.about, "Diagnostics", "Last crash", "When Copper last quit unexpectedly, and what it was",

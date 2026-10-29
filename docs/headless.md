@@ -176,7 +176,7 @@ launchctl bootout gui/$(id -u)/com.example.copper          # stop (SIGTERM → c
 - `KeepAlive {SuccessfulExit: false}`: a crash is restarted; a SIGTERM quit (exit 0) is not.
 - Data: Copper's default folder, `~/Library/Application Support/Copper/`. The daemon JSON-merges
   `links: [{id, enabled, api, token, name: "copper", announces: false}]` into `agent.json` (0600).
-- Updates (Settings › Updates / `updates upgrade`): Copper sees it is this job (parent launchd,
+- Updates (Settings › About › Updates / `updates upgrade`): Copper sees it is this job (parent launchd,
   `XPC_SERVICE_NAME` = the label), quits, gives launchd 3 s to restart it, then
   `launchctl kickstart gui/<uid>/<label>` — `SuccessfulExit: false` does not restart a clean
   quit — so the new version comes back under launchd. Every step is in

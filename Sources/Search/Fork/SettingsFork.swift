@@ -59,9 +59,9 @@ struct IntelligencePage: View {
                 .settingsAnchor("intelligence.check")
             }
 
-            SettingsSection("Jev — the fast lane", note: footnote) {
-                Line("Jev", brain.cloudLine("jevKey", brain.cloud?.jev?.key) ?? jevDetail) {
-                    HStack(spacing: 8) {
+            SettingsSection("Jev", note: footnote) {
+                Line("Jev key", brain.cloudLine("jevKey", brain.cloud?.jev?.key) ?? jevDetail) {
+                    SettingsFlow(spacing: 8) { // Fork (settings-merge): the pill goes above the field in a narrow column
                         if !brain.jevReady { JevKeyPagePill() }
                         KeyField(text: $brain.keys.jevKey, placeholder: brain.cloudPlaceholder("jevKey", brain.cloud?.jev?.key, otherwise: "ts-…"),
                                  ready: brain.jevReady, refused: check.refused("jev"), label: "Jev key")
@@ -73,8 +73,8 @@ struct IntelligencePage: View {
     }
 
     private var jevDetail: String {
-        let speed = "Picks between choices and says how sure it is, in about a fifth of a second. Agents use it for quick decisions."
-        return brain.jevReady ? speed : speed + " Jev runs need a key from your own TypeSafe account — Get a key opens \(Jev.keyPage)."
+        let speed = "Quick decisions for agents, in about a fifth of a second."
+        return brain.jevReady ? speed : speed + " Needs a key from your TypeSafe account."
     }
 
     private var footnote: String {
@@ -383,7 +383,7 @@ struct UpdatesPage: View {
     var body: some View {
         let _ = SettingsPerf.tick("updatesPage") // Fork (settings-perf)
         VStack(alignment: .leading, spacing: 10) {
-            SettingsSection("This Copper") {
+            SettingsSection("Updates") {
                 Line(currentLine, latestLine) {
                     // One pill in both states: the row neither jumps nor
                     // loses its button while the feed is read.
@@ -457,46 +457,6 @@ struct UpdatesPage: View {
     }
 }
 
-/// Settings › About › Updates: Copper's own updater (`Updates`), the same
-/// one Settings › Updates and the sidebar pill read. It used to read
-/// upstream's `Updater`, which Copper never runs — a different feed, a
-/// "checked once a day" that never happened, and "This is the latest one"
-/// beside an Updates page offering a newer Copper.
-struct AboutUpdatesLine: View {
-    let browser: Browser
-    @ObservedObject private var updates = Updates.shared
-
-    private var title: String {
-        guard updates.available, let version = updates.latest?.version else { return "Updates" }
-        return updates.ready ? "Copper \(version) is ready to install" : "Copper \(version) is out"
-    }
-
-    /// A newer Copper already known outranks a failed re-check: the title
-    /// says it is out, so the line under it says where it is, not that the
-    /// feed couldn't be reached.
-    private var detail: String {
-        if updates.checking { return "Checking…" }
-        if updates.available { return "Settings › Updates has what’s new and the Update button" }
-        if let error = updates.error { return error }
-        guard updates.latest != nil, let checked = updates.checkedAt else {
-            return "Copper looks for a newer version every six hours on its own"
-        }
-        return "Up to date · checked \(checked.formatted(.relative(presentation: .named)))"
-    }
-
-    var body: some View {
-        Line(title, detail) {
-            if updates.available {
-                Pill("Show", filled: true) { browser.openSettings(.updates) }
-                    .accessibilityLabel("Show the update")
-            } else {
-                Pill(updates.checking ? "Checking…" : "Check now") { updates.check(force: true) }
-                    .disabled(updates.checking)
-            }
-        }
-    }
-}
-
 // MARK: - Agents
 
 struct AgentsPage: View {
@@ -515,7 +475,6 @@ struct AgentsPage: View {
             AgentsLinksSection()
             AgentsPaneSection()
             AgentsTerminalSection()
-            AgentsKeySection()
         }
     }
 }
@@ -525,8 +484,8 @@ private struct AgentsServerSection: View {
     @ObservedObject var mcp = MCP.shared
 
     var body: some View {
-        SettingsSection("MCP server") {
-            Line("Let agents drive this window", "An MCP server on this Mac only (127.0.0.1). Agents in your terminal or editor see your open tabs and act in them, in the browser you're already signed in to.") {
+        SettingsSection("MCP server", note: note) {
+            Line("Let agents drive this window", "An MCP server on this Mac only (127.0.0.1). Agents in your terminal or editor see your tabs and act in them, signed in as you.") {
                 Switch(on: $mcp.config.enabled)
             }
             .settingsAnchor("agents.server")
@@ -545,7 +504,15 @@ private struct AgentsServerSection: View {
             Rule()
             portRow
                 .settingsAnchor("agents.port")
+            Rule()
+            AgentsTokenRow() // Fork (settings-merge): was a section of its own, "The key"
+                .settingsAnchor("agents.token")
         }
+    }
+
+    private var note: String {
+        let calls = mcp.calls > 0 ? "\(mcp.calls) tool call\(mcp.calls == 1 ? "" : "s") this session — last: \(mcp.lastTool). " : ""
+        return calls + "Agents act as you: whatever you are signed in to, they are too. Turn the server off when you don't need it."
     }
 
     private var status: String {
@@ -592,21 +559,23 @@ private struct AgentsJevSection: View {
     }
 
     var body: some View {
-        SettingsSection("Jev mode — ultrafast") {
-            Line("Let the agent hand Copper a goal", "Adds jev_run, jev_step, jev_observe and jev_extract. Jev picks the next click or key about every 200 ms and Copper does it in this window, until the goal is done — seconds, not a round trip per step.") {
+        SettingsSection("Jev mode") {
+            Line("Let the agent hand Copper a goal", "Adds jev_run, jev_step, jev_observe and jev_extract: Jev clicks and types in this window about every 200 ms until the goal is done.") {
                 Switch(on: $mcp.config.jev)
             }
             .settingsAnchor("agents.jev")
-            if mcp.config.jev {
+            if mcp.config.jev, !brain.jevReady { // Fork (settings-merge): once set, the key is Intelligence's row
                 Rule()
-                Line("Jev key", brain.cloudLine("jevKey", brain.cloud?.jev?.key) ?? (brain.jevReady ? "The same Jev key as Settings › Intelligence." : "Jev mode needs a Jev key (ts-…) from your own TypeSafe account — Get a key opens \(Jev.keyPage). Settings › Intelligence uses the same one.")) {
-                    HStack(spacing: 8) {
+                Line("Jev key", brain.cloudLine("jevKey", brain.cloud?.jev?.key) ?? "Jev mode needs a key from your TypeSafe account — the same one as Intelligence › Jev.") {
+                    SettingsFlow(spacing: 8) { // Fork (settings-merge): the pill goes above the field in a narrow column
                         if !brain.jevReady { JevKeyPagePill() }
                         KeyField(text: $brain.keys.jevKey, placeholder: brain.cloudPlaceholder("jevKey", brain.cloud?.jev?.key, otherwise: "ts-…"),
                                  ready: brain.jevReady, refused: check.refused("jev"), label: "Jev key")
                     }
                 }
                 .settingsAnchor("agents.jevkey")
+            }
+            if mcp.config.jev {
                 Rule()
                 Line("Text model", brain.modelReady ? "Writes what Jev types and answers jev_extract. Small and fast is the point; empty uses \(brain.modelName)." : "Typing text and jev_extract need a model — set one up in Settings › Intelligence.") {
                     HStack(spacing: 8) {
@@ -624,12 +593,12 @@ private struct AgentsJevSection: View {
                 }
                 .settingsAnchor("agents.textmodel")
                 Rule()
-                Line("Fast mode", "Jev types the values your goal quotes without asking a model, fills a whole form in one go, and waits only as long as the page does — about twice the actions a minute. The pointer still glides when the tab is in front of you. Off runs the original loop.") {
+                Line("Fast mode", "Types the values your goal quotes without a model and fills a whole form in one go — about twice the actions a minute. Off runs the original loop.") {
                     Switch(on: $brain.keys.jevFast)
                 }
                 .settingsAnchor("agents.jevfast")
                 Rule()
-                Line("What Jev sees", "Auto sends Jev the element table, and a picture of the page with each element's number drawn on it only when the table can't tell controls apart — icon-only buttons, rows of identical ones. Or always text, always a picture, the numbered picture, or the picture with Jev 1.14 pointing at the target (Box). Pictures are a TypeSafe preview.") {
+                Line("What Jev sees", "Auto sends the element table, and a numbered picture of the page only when the table can't tell controls apart. Pictures are a TypeSafe preview.") {
                     Segmented(options: Tools.Ultrafast.Vision.offered.map { ($0, $0.title) }, selection: jevVision)
                 }
                 .settingsAnchor("agents.jevvision")
@@ -647,7 +616,7 @@ private struct AgentsLinksSection: View {
     @ObservedObject var links = AgentLinks.shared
 
     var body: some View {
-        SettingsSection("Your agents — let them use this browser", carded: false) {
+        SettingsSection("Agents apps", carded: false) {
             ForEach(links.all) { link in
                 LinkCard(link: link)
             }
@@ -670,8 +639,8 @@ private struct AgentsPaneSection: View {
     @ObservedObject var servers = Servers.shared
 
     var body: some View {
-        SettingsSection("The agent in the window — ⌘E") {
-            Line("Page in front of every question", "The current tab's address, title and the first 3000 characters of its text. Off, it still has the tools to look.") {
+        SettingsSection("The ⌘E agent") {
+            Line("Page in front of every question", "The tab's address, title and first 3000 characters. Off, it can still look with its tools.") {
                 Switch(on: $chat.config.pageContext)
             }
             .settingsAnchor("agents.context")
@@ -704,7 +673,7 @@ private struct AgentsPaneSection: View {
         let cloud = brain.cloudMaxTurns
         let turns = Binding(get: { cloud ?? chat.config.maxTurns }, set: { chat.config.maxTurns = $0 })
         return Line("Tool-call rounds per question", cloud.map { "Set by your Copper Cloud to \($0). Yours (\(chat.config.maxTurns)) is back when you sign out of it." }
-                    ?? "How many times the agent may use its tools on one question before it stops and asks you to continue. Default \(Agent.Config.defaultMaxTurns).") {
+                    ?? "How often it may use its tools on one question before it asks to go on. Default \(Agent.Config.defaultMaxTurns).") {
             HStack(spacing: 6) {
                 TextField("\(Agent.Config.defaultMaxTurns)", value: turns, format: .number.grouping(.never))
                     .textFieldStyle(.plain)
@@ -756,27 +725,18 @@ private struct AgentsTerminalSection: View {
             terminalRow(.cli)
                 .settingsAnchor("agents.cli")
             Rule()
-            Line("Copy /jev", "A goal-first command for the agent in your terminal") {
-                Pill(copied == "jev" ? "Copied" : "Copy /jev") { copy(MCP.jevCommand(goal: nil), "jev") }
-            }
-            .settingsAnchor("agents.copyjev")
-            Rule()
-            Line("Copy prompt", mcp.config.jev ? "How to use Copper with Jev, for any agent — with the address and token" : "How to use Copper, for any agent — with the address and token") {
-                Pill(copied == "prompt" ? "Copied" : "Copy prompt") {
-                    copy(mcp.config.jev ? mcp.jevPrompt : mcp.agentPrompt, "prompt")
-                }
-            }
-            .settingsAnchor("agents.prompt")
-            Rule()
-            Line("Copy config", "The MCP server's JSON, for a client set up by hand") {
-                Pill(copied == "http" ? "Copied" : "Copy config") { copy(mcp.clientConfig, "http") }
-            }
-            .settingsAnchor("agents.config")
-            Rule()
+            // Fork (settings-merge): the four copies were four rows.
             VStack(alignment: .leading, spacing: 0) {
-                Line("Copy install command", "The one line that installs the copper CLI on another Mac") {
+                Line("Copy for another agent", "A /jev command, a prompt with the address and token, the MCP config, or the line that installs the copper CLI on another Mac") { EmptyView() }
+                SettingsFlow(spacing: 8) {
+                    Pill(copied == "jev" ? "Copied" : "Copy /jev") { copy(MCP.jevCommand(goal: nil), "jev") }
+                    Pill(copied == "prompt" ? "Copied" : "Copy prompt") { copy(mcp.config.jev ? mcp.jevPrompt : mcp.agentPrompt, "prompt") }
+                    Pill(copied == "http" ? "Copied" : "Copy config") { copy(mcp.clientConfig, "http") }
                     Pill(copied == "install" ? "Copied" : "Copy install") { copy(Setup.installCommand, "install") }
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, -4)
+                .padding(.bottom, 10)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(Setup.installCommand)
                     Text("Or with Homebrew: \(Setup.brewCommand)")
@@ -787,10 +747,9 @@ private struct AgentsTerminalSection: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
-                .padding(.top, -4)
                 .padding(.bottom, 12)
             }
-            .settingsAnchor("agents.install")
+            .settingsAnchor("agents.copy")
         }
         .task(id: "\(mcp.endpoint) \(mcp.config.token)") { await refreshSetup() }
     }
@@ -914,43 +873,31 @@ private struct AgentsTerminalSection: View {
     }
 }
 
-/// The key: the bearer token, copying it, making a new one; and what the
-/// server has done this session.
-private struct AgentsKeySection: View {
+/// The bearer token: copying it, making a new one.
+private struct AgentsTokenRow: View {
     @ObservedObject var mcp = MCP.shared
     @State private var copied = false
     @State private var confirmRotate = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SettingsSection("The key") {
-                Line("Bearer token", "Every request must carry it. Kept in agent.json, readable by you alone. A new token stops every client that has the old one until it's set up again.") {
-                    HStack(spacing: 8) {
-                        Text(String(mcp.config.token.prefix(8)) + "…")
-                            .font(.system(size: 12, design: .monospaced)).foregroundStyle(SettingsInk.detail)
-                            .accessibilityLabel("Token starting \(String(mcp.config.token.prefix(8)))")
-                        Pill(copied ? "Copied" : "Copy") {
-                            SettingsActions.copy(mcp.config.token)
-                            copied = true
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { copied = false }
-                        }
-                        Pill("New token…") { confirmRotate = true }
-                    }
+        Line("Bearer token", "Every request must carry it; it stays in agent.json, readable by you alone. A new token stops every client set up with the old one.") {
+            HStack(spacing: 8) {
+                Text(String(mcp.config.token.prefix(8)) + "…")
+                    .font(.system(size: 12, design: .monospaced)).foregroundStyle(SettingsInk.detail)
+                    .accessibilityLabel("Token starting \(String(mcp.config.token.prefix(8)))")
+                Pill(copied ? "Copied" : "Copy") {
+                    SettingsActions.copy(mcp.config.token)
+                    copied = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { copied = false }
                 }
-                .settingsAnchor("agents.token")
-                .confirmationDialog("Make a new token?", isPresented: $confirmRotate) {
-                    Button("Make a new token", role: .destructive) { mcp.rotateToken() }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text("Every client set up with the current token stops working until it is set up again: phi and Claude Code with Update, under Terminal agents.")
-                }
+                Pill("New token…") { confirmRotate = true }
             }
-            VStack(alignment: .leading, spacing: 4) {
-                if mcp.calls > 0 {
-                    SettingsNote("\(mcp.calls) tool call\(mcp.calls == 1 ? "" : "s") this session — last: \(mcp.lastTool)")
-                }
-                SettingsNote("Agents act as you: whatever you are signed in to, they are too. Turn the server off when you don't need it.")
-            }
+        }
+        .confirmationDialog("Make a new token?", isPresented: $confirmRotate) {
+            Button("Make a new token", role: .destructive) { mcp.rotateToken() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Every client set up with the current token stops working until it is set up again: phi and Claude Code with Update, under Terminal agents.")
         }
     }
 }
@@ -1225,10 +1172,14 @@ extension Browser {
     /// Settings, opened on one page. Spaces and Extensions are pages of it
     /// like any other: every "Edit Space…" and "Manage Extensions…" — the
     /// pill's puzzle piece, the foot's doors, the menus, ⌘K — lands here.
-    func openSettings(_ page: SettingsPanel.Page) {
+    /// Fork (settings-merge): `anchor` scrolls to a section on a page that
+    /// holds several (Voice on Intelligence, Addons on Extensions).
+    func openSettings(_ page: SettingsPanel.Page, at anchor: String? = nil) {
         settingsPage = page
         Store.settings.set(page.rawValue, forKey: "settings.page")
         tuning = true
+        // After the panel's onAppear, which starts it fresh.
+        if let anchor { DispatchQueue.main.async { SettingsFinder.of(self).land(on: anchor) } }
     }
 }
 

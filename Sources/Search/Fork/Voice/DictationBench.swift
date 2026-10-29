@@ -21,7 +21,7 @@ import SwiftUI
 //   voice warm cold [DELAY] | now           the model let go (and every load held DELAY s), then loaded as
 //                                           the pane opening does; now = loaded and waited for
 //   voice seed idle|dictating|finishing|finishing-warming|denied|preparing|warming|downloading|…
-//   voice render PATH [WIDTH [HEIGHT]] [dark] [settings]   the pane (or Settings › Voice), drawn off screen at WIDTH
+//   voice render PATH [WIDTH [HEIGHT]] [dark] [settings]   the pane (or Settings › Intelligence › Voice), drawn off screen at WIDTH
 //   voice prefs on|off|hold|toggle|insert|send
 //   voice model status|install|cancel|remove
 //   voice state                             phase, mic, line, engine, counts, the last timeline
@@ -548,7 +548,7 @@ enum DictationBench {
 
     /// The pane at WIDTH (340–620), light or dark, drawn through a hosting
     /// view like `render agent` — whole, off screen, no window brought forward.
-    /// With `settings`: Settings › Voice instead, at WIDTH of the panel's
+    /// With `settings`: Settings › Intelligence › Voice instead, at WIDTH of the panel's
     /// content column (409–699 pt: the panel's 600–920 less its rail), with
     /// the column's own 32 pt margins and Settings' look.
     static func render(_ args: [String], in browser: Browser) -> [String: Any] {

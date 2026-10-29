@@ -8,7 +8,7 @@ import SwiftUI
 // nowhere else in the pane; the chat stays the chat.
 
 /// The header's Listen door: hidden with voice off; dimmed (a click opens
-/// Settings › Voice) while the speech model isn't ready; disabled while a
+/// Settings › Intelligence › Voice) while the speech model isn't ready; disabled while a
 /// dictation has the microphone; the accent while Listen has it.
 struct ListenDoor: View {
     let browser: Browser

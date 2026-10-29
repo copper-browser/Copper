@@ -465,6 +465,11 @@ final class SettingsFinder: ObservableObject {
         if !browser.tuning { browser.tuning = true }
     }
 
+    /// Scroll the open page to `anchor`, as a picked result would.
+    func land(on anchor: String) {
+        pending = Target(anchor: anchor, fallback: nil, flash: true)
+    }
+
     /// A page chosen in the rail while searching: the page, the query kept.
     func leaveResults() { showingResults = false }
 

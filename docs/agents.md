@@ -437,7 +437,7 @@ are in [agent-link.md](agent-link.md). Headless Copper uses the same manager; se
 
 Listen (Voice, started by the person from the waveform button in the ⌘E pane) writes down what
 is said, one finalized segment per pause. Agents on this Mac — phi, Claude Code, the `copper`
-CLI, anything holding the loopback bearer — can read it, **only while Settings › Voice › "Let
+CLI, anything holding the loopback bearer — can read it, **only while Settings › Intelligence › Voice › "Let
 agents on this Mac read the Listen transcript" is on** (off by default; `voice.shareTranscript`).
 Agents can never start, pause or stop Listen, and never get audio: the tools only read text.
 The pane's own agent has its own path to the transcript; it does not use these tools.
@@ -456,7 +456,7 @@ The pane's own agent has its own path to the transcript; it does not use these t
 - `gap: true` means segments after your cursor were dropped by the caps (the last hour, 2 MB);
   `next_seq` then skips past the hole. One answer carries at most 100 segments / ~256 KB.
 - Refusals are `isError: true` with a sentence: sharing off ("The person hasn't allowed agents
-  to read the Listen transcript (Copper Settings › Voice)."), no transcript yet, Voice off, or
+  to read the Listen transcript (Copper Settings › Intelligence › Voice)."), no transcript yet, Voice off, or
   macOS 14 (the tools are only listed on macOS 15+).
 - Non-driving: these calls are answered before the Drive machinery — no announcement, driver
   card, breadcrumb, staged tab or Stop band — and transcript text is never logged or put in
