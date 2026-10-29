@@ -11,6 +11,7 @@ in [ROADMAP.md](ROADMAP.md).
 
 ## Unreleased
 
+- **The Jev key has one home.** It is set in Settings › Intelligence › Jev; Agents › Jev mode no longer has its own key field, and while the key is missing it says so with **Add key**, which takes you there.
 - **Settings hides what can't apply instead of greying it out.** Swipe between spaces shows only with tabs in a sidebar, and a space's Blur only for a picture or a scene.
 - **Settings › Passwords is shorter.** Import lives behind Your passwords' Open… (it opened the same window), the Passkeys section shows once you have a passkey, and Agent access lists accounts only while sharing everything is off — with no empty Identities or Cards headings.
 - **Trails and Tide are gone.** The Labs preview that drew Today's tabs as lines of intent, and Tide that drifted old trails under Earlier, are removed; Today is always the plain list. Its ⌘⇧W Close Trail and Ask About This Trail menu items, `./bench flight` and `./bench trails` go with it. A `trails.json` left in Copper's folder is no longer read.
