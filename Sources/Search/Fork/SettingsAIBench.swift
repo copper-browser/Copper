@@ -41,15 +41,14 @@ enum SettingsAIBench {
     /// 635 pt in the widest panel).
     private static func picture(_ arg: String, in browser: Browser) -> [String: Any] {
         let words = arg.split(separator: " ").map(String.init)
-        guard words.count >= 2 else { return ["error": "ai picture intelligence|agents|labs PATH [dark] [WIDTH]"] }
+        guard words.count >= 2 else { return ["error": "ai picture intelligence|agents PATH [dark] [WIDTH]"] }
         let dark = words.contains("dark")
         let width = words.dropFirst(2).compactMap { Double($0) }.first ?? 635
         let page: AnyView
         switch words[0].lowercased() {
         case "intelligence": page = AnyView(IntelligencePage(browser: browser))
         case "agents": page = AnyView(AgentsPage(browser: browser))
-        case "labs": page = AnyView(LabsPage(browser: browser))
-        default: return ["error": "no page \(words[0]) — intelligence, agents or labs"]
+        default: return ["error": "no page \(words[0]) — intelligence or agents"]
         }
         let host = NSHostingView(rootView: page
             .frame(width: CGFloat(width), alignment: .topLeading)

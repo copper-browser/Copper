@@ -2,9 +2,9 @@ import Foundation
 import Testing
 @testable import Search
 
-// Settings › Intelligence, Agents and Labs: the rules behind the rows, apart
+// Settings › Intelligence and Agents: the rules behind the rows, apart
 // from any window or network — what Check says for each way a question can
-// fail, when its verdict stops counting, when the Trails rows can be used,
+// fail, when its verdict stops counting,
 // which tabs a cancelled Claude sign-in closes, and that Copy and Open stay
 // in a test world only when one is running.
 
@@ -148,32 +148,6 @@ struct CheckFreshness {
         var model = asked
         model.model = "opus"
         #expect(model.key("router") == asked.key("router"))
-    }
-}
-
-@Suite("Labs › Trails by layout")
-struct TrailsRows {
-    @Test func onlyTheSidebarTurnsItOn() {
-        #expect(TrailsRow.canSwitch(on: false, sidebar: true))
-        #expect(!TrailsRow.canSwitch(on: false, sidebar: false))
-        // Already on with tabs across the top: it can still be turned off.
-        #expect(TrailsRow.canSwitch(on: true, sidebar: false))
-    }
-
-    @Test func tideOnlyWhereTrailsShow() {
-        #expect(TrailsRow.canTune(on: true, sidebar: true))
-        #expect(!TrailsRow.canTune(on: true, sidebar: false))
-        #expect(!TrailsRow.canTune(on: false, sidebar: true))
-    }
-
-    @Test func everyStateSaysWhereTrailsShow() {
-        for on in [false, true] {
-            for sidebar in [false, true] {
-                #expect(TrailsRow.detail(on: on, sidebar: sidebar).contains("Shown in the sidebar"))
-            }
-        }
-        #expect(TrailsRow.detail(on: false, sidebar: false).contains("Tabs › Tabs in a sidebar"))
-        #expect(TrailsRow.detail(on: true, sidebar: false).contains("turn this off"))
     }
 }
 

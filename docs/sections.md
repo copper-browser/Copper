@@ -21,7 +21,7 @@ an old session never lands in a block that archives itself.
 
 A tab crosses the seam three ways:
 
-- drag it — a Today row, or a trail's page with Trails on — onto the New
+- drag it — a Today row — onto the New
   Tab row or anything above it, and let go: it is saved where it was let go
   (below); drag a Saved row past the middle of the New Tab row and let
   go: it is unsaved;
@@ -62,13 +62,8 @@ Any row carried up above the column, over the favourites, opens a place at
 the end of the grid (shown even when there are no pins yet); let go there
 and it is pinned.
 
-With Trails on, Today's pages are dragged with a system drag (their own
-type, so a page can move between trails); the column is a drop target for
-that type, and over Saved a page gets the same room and lands the same way.
-Over a trail, the trail's own target wins.
-
 An empty Saved block has no rows to open a room between: once a Today row
-(or a trail's page) is carried onto the New Tab row, a place opens above
+is carried onto the New Tab row, a place opens above
 the hairline instead — *Drop here to save*, ringed in the space's colour —
 and letting go there saves it. Back over Today it shuts again.
 
@@ -77,8 +72,7 @@ and the frames the column reports in its own coordinate space — and
 `SavedDrop.index` says where in the row that is; both are unit-tested
 (`Tests/SearchTests/SavedTabsTests.swift`). Up to October 2026 a row crossed
 only when let go a row and a half past the edge of its own block (past the
-middle of the New Tab row), always landed at the bottom of Saved, and with
-Trails on could not cross at all.
+middle of the New Tab row) and always landed at the bottom of Saved.
 
 ## Closing a Saved tab
 
@@ -135,7 +129,7 @@ default), 48h, or Never.
     ./bench sections seed [empty]        real rows, asleep: four Saved (two in a folder), three Today
     ./bench sections drag ID DY [STEPS] [hold]   real mouse events: pick the row up, move it DY points
     ./bench sections release | target    let go of a held drag; where it would land
-    ./bench sections drop ID Y [hold]    a trail's page let go at Y, as Trails' system drag does it
+    ./bench sections drop ID Y [hold]    a Today row let go at Y
     ./bench sections hover ID|off        the row under the bench's pointer, its cross showing
     ./bench sections click ID [cross]    a real click on the row, or on its cross
     ./bench sections picture PATH [EXTRA]  the window to a PNG, nothing brought forward

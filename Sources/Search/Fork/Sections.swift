@@ -362,9 +362,8 @@ final class Sections: ObservableObject {
                 drag.rows[tab.id].map { (String(tab.id.uuidString.prefix(8)).lowercased(), $0.midY) }
             })
         case "drop":
-            // drop ID Y [hold]: a trail's page let go over the column at Y (the
-            // column's space) — what Trails' system drag hands the column's
-            // drop target, through the same model; `hold` stops before the
+            // drop ID Y [hold]: a Today row let go over the column at Y (the
+            // column's space), through the same model as a pointer drag; `hold` stops before the
             // drop, with the gap open, and `drop end` puts it away.
             let drag = SideDrag.of(browser)
             let words = arg.split(separator: " ").map(String.init)

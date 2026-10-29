@@ -366,7 +366,6 @@ struct SettingsPanel: View {
                 ArchiveLine() // Fork: sections
                     .settingsAnchor("tabs.archive")
             }
-            LabsPage(browser: browser) // Fork (settings-merge): Labs was its own page — Fork/Trails/Flights.swift
         }
     }
 

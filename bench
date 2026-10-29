@@ -213,15 +213,7 @@
                                        let go (or held, for a picture of where it would land); target says
                                        where; picture is the window as a PNG, nothing brought forward
     ./bench sections drop ID Y [hold]|drop end
-                                       a trail's page let go over the column at Y (its own space), as
-                                       Trails' system drag hands it to the column's drop target
-    ./bench flight [trails on|off | tide 6h|12h|24h|never]
-                                       Labs flights (Settings › Labs): list them, or flip one in this world
-    ./bench trails [open URL [FROM]|type ID WORDS|backdate N HOURS|glance N|off|toggle N|
-                    rename N TEXT|close N|ask N|canvas N|move ID N|new|file|menu|press]
-                                       the Trails flight: each trail with its pages and depth; FROM opens
-                                       a page as ⌘-click would from that tab; backdate lets Tide be seen
-                                       without waiting; glance holds a Glance open for `window PATH`
+                                       a Today row let go over the column at Y (its own space)
     ./bench flow sources               browsers Flow can see
     ./bench flow scan --source Chrome  cheap site counts (no keychain prompt)
     ./bench flow bookmarks              actual imported tree, order and site count (test world)
@@ -302,7 +294,7 @@
     ./bench agent [on|off|rotate|setup-phi|setup-claude|setup-cli|setup-status]
                                        the MCP server agents drive the window through; setup bridges terminal agents
     ./bench ai [lane key|claude|tier haiku|sonnet|opus]   which model lane is active and ready
-    ./bench ai picture intelligence|agents|labs PATH [dark] [WIDTH]   the whole page drawn off screen
+    ./bench ai picture intelligence|agents PATH [dark] [WIDTH]   the whole page drawn off screen
     ./bench ai check [status]          Settings › Intelligence › Check: run it, or its last verdict (fresh, refused)
     ./bench ai cloud fake JSON|clear   stand in Copper Cloud's /v1/intelligence answer (test world)
     ./bench ai clipboard               what the AI pages copied/opened in this test world
@@ -419,7 +411,7 @@
     ./bench settings browse scroll [top|bottom|next|PX]
                                        move the open page's scroll as the wheel would; where it is,
                                        and whether anything on it is wider than the column (test runs only)
-    ./bench settings browse picture spaces|extensions|voice|cloud|updates|intelligence|agents|labs PATH [WIDTH] [light|dark]
+    ./bench settings browse picture spaces|extensions|voice|cloud|updates|intelligence|agents|addons PATH [WIDTH] [light|dark]
                                        the whole page as a PNG, laid out at a page-column WIDTH
                                        (345 is Settings' narrowest), not scrolled
     ./bench ui KEY VALUE               settings/passwords/welcome/history/downloads/bookmarks/hidden on|off,
@@ -605,7 +597,7 @@ def main(argv):
         words = [a for a in args if a != "--table"]
         request["op"] = words[0] if words else "state"
         request["arg"] = " ".join(words[1:]) if len(words) > 1 else ""
-    elif verb in ("spaces", "groups", "sections", "agent", "ai", "updates", "bw", "op", "downloads", "drive", "ext-manager", "windows", "flight", "trails", "pace", "calendar"):
+    elif verb in ("spaces", "groups", "sections", "agent", "ai", "updates", "bw", "op", "downloads", "drive", "ext-manager", "windows", "pace", "calendar"):
         request["op"] = args[0] if args else ("status" if verb in ("updates", "bw", "op", "drive", "pace") else "state" if verb == "calendar" else "list")
         request["arg"] = " ".join(args[1:]) if len(args) > 1 else ""
     elif verb == "history":
@@ -906,19 +898,6 @@ def main(argv):
         if answer.get("saved"): print("saved, in order (z = put down / asleep):")
         for t in answer.get("saved", []):
             print(f"  {'●' if t.get('live') else ' '} {t['id']}  {'z' if t.get('asleep') else ' '}  {t['title'] or '—'}" + (f"  [{t['group']}]" if t.get('group') else ""))
-    elif verb == "trails" and "trails" in answer:
-        for k in ("error", "opened", "draft", "sending"):
-            if k in answer: print(f"{k}: {answer[k]}")
-        print(f"tide: {answer.get('tide')}  glancing: {answer.get('glancing')}")
-        for t in answer["trails"]:
-            mark = "●" if t["live"] else " "
-            fold = "" if len(t["pages"]) == 1 else ("▾ " if t["open"] else "▸ ")
-            q = "🔍 " if t["searched"] else ""
-            print(f"{mark} {t['index']:2} {fold}{q}{t['title']}  [{t['place']}, {t['hours']}h, {len(t['pages'])} page(s)]  {t['id']}")
-            if len(t["pages"]) > 1:
-                for p in t["pages"]:
-                    z = " z" if p.get("asleep") else ""
-                    print(f"        {'  ' * p['depth']}└ {p['id']}  {p['title'] or '—'}{z}")
     elif verb == "tabs" and request.get("op"):
         if "cleared" in answer:
             print(f"cleared {answer['cleared']} tab(s)")

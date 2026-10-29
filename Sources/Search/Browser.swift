@@ -896,7 +896,6 @@ final class Browser: NSObject, ObservableObject {
             return
         }
         editingTab = nil
-        Trails.typed(into: tab, in: self) // Fork (trails): typed = a new trail, only while the flight is on
         tab.go(to: url)
     }
 
@@ -2358,7 +2357,6 @@ final class Browser: NSObject, ObservableObject {
             return
         }
         if CanvasJoinFlow.handle(url, in: self) { editing = false; typed = ""; return }
-        Trails.typed(into: active ?? tabs.first, in: self) // Fork (trails): typed = a new trail, only while the flight is on
         (active ?? tabs.first)?.go(to: url)
         editing = false
         typed = ""
@@ -2458,8 +2456,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
             let flags = action.modifierFlags
             MouseButtons.noteLinkClick(action)
             if flags.contains(.command) || MouseButtons.isMiddle(action) {
-                let opened = open(url, foreground: flags.contains(.shift))
-                Trails.opened(opened, from: tab(for: webView), in: self) // Fork (trails): lineage, only while the flight is on
+                open(url, foreground: flags.contains(.shift))
                 decisionHandler(.cancel)
                 return
             }
