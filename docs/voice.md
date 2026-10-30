@@ -77,7 +77,7 @@ await listen.stop()            // the last phrase's final arrives before this re
 Times are seconds from the first sample pushed. It is Listen's loop (a phrase ends at a 0.7 s pause or
 15 s), fed by the page; each final is decoded once more for word times, and when that decode hears a
 different number of words the final's words are spread over its span and marked `approx`. One listen
-per page (a new one replaces it), three at most, and one that gets no audio for 30 s ends. The model
+per page (a new one replaces it), three at most, and one that gets no audio for 30 s ends (one that was asked to stop is waiting on the model, not the page, and gets 180 s for its last finals). The model
 stays loaded while a page listens. `Fork/Voice/PageVoice.swift`; `swift test --filter PageVoice`.
 
 ## Listen — a live transcript

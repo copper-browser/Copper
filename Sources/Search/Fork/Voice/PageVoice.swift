@@ -51,7 +51,16 @@ final class PageVoice {
     static let asks = "on-device speech to text"
 
     /// No audio for this long ends a session: its page went away.
-    static let idleLimit: TimeInterval = 30
+    nonisolated static let idleLimit: TimeInterval = 30
+    /// A session that was asked to stop waits on the model, not the page: the
+    /// first load after an update can take a minute or two, and its finals
+    /// still come. Past this it is let go.
+    nonisolated static let stopLimit: TimeInterval = 180
+
+    /// Whether the sweep lets a session go after `idle` seconds without audio.
+    nonisolated static func abandoned(idle: TimeInterval, stopping: Bool) -> Bool {
+        idle > (stopping ? stopLimit : idleLimit)
+    }
     /// Audio kept for the word-timing decode of a final (a final covers at most 16 s).
     static let keepSamples = 16_000 * 60
     /// At most this many at once (a new one from the same page replaces its old one).
@@ -106,6 +115,8 @@ final class PageVoice {
         var base = 0
         var fed = 0
         var lastFed = Date()
+        /// `stop` was called: no more audio is coming, its last finals are.
+        var stopping = false
         /// Finals in order: each waits for the one before it.
         var tail: Task<Void, Never>?
         var finals = 0
@@ -288,6 +299,8 @@ final class PageVoice {
 
     private func stop(_ id: Int, from web: WKWebView) async -> [String: Any] {
         guard let s = sessions[id], s.web === web else { return ["ok": true] }
+        s.stopping = true
+        s.lastFed = Date()
         _ = await s.live.finish()
         // finish() returns once its events are out of LiveSession, and they
         // hop to the main actor ahead of this; the last final's words follow.
@@ -324,7 +337,8 @@ final class PageVoice {
 
     private func sweep() {
         let now = Date()
-        for s in sessions.values where s.web == nil || now.timeIntervalSince(s.lastFed) > Self.idleLimit {
+        for s in sessions.values
+        where s.web == nil || Self.abandoned(idle: now.timeIntervalSince(s.lastFed), stopping: s.stopping) {
             cancel(s.id, from: nil, reason: s.web == nil ? "page closed" : "no audio")
         }
         if sessions.isEmpty {
