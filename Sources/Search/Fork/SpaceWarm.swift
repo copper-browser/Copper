@@ -103,10 +103,19 @@ enum Room {
         moved(view)
     }
 
+    /// Here, now (Fork (page-capture): a call's page waits here while you are
+    /// in another tab — Fork/Capture/CaptureCalls.swift).
+    static func holds(_ view: NSView) -> Bool {
+        parked.contains(ObjectIdentifier(view)) && view.window != nil && view.window === window
+    }
+
     /// The view left for somewhere else (or nowhere): occlusion counts again.
     /// The last one out takes the room down with it — an ordered-in window,
     /// even one off every screen, would count as a visible window to AppKit.
     static func moved(_ view: NSView) {
+        // Fork (page-capture): after the room has had its say, a call's page
+        // is kept seen wherever it went (Fork/Capture/CaptureCalls.swift).
+        defer { if let web = view as? WKWebView { CaptureCalls.shared.moved(web) } }
         guard !parked.isEmpty, let web = view as? WKWebView, web.window == nil || web.window !== window,
               parked.remove(ObjectIdentifier(web)) != nil else { return }
         web.detectsOcclusion(true)

@@ -356,10 +356,7 @@ struct ContentView: View {
         VStack(spacing: 8) {
             clearTabsToast
             announcement
-            if let ask = browser.asking {
-                captureAsking(ask)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
+            CaptureSlot(browser: browser, desk: browser.capture) // Fork (page-capture): asks, a refusal to undo, macOS's own "no" (Fork/Capture/CaptureBar.swift)
             if let offer = browser.offering {
                 keepAsking(offer)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -374,7 +371,6 @@ struct ContentView: View {
         .padding(.bottom, 30)
         .animation(Motion.settle, value: browser.veiling)
         .animation(Motion.settle, value: clearTabs.generation)
-        .animation(Motion.settle, value: browser.asking)
         .animation(Motion.settle, value: browser.offering)
         .animation(Motion.settle, value: canvases.newInvite)
     }
@@ -532,40 +528,6 @@ struct ContentView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .animation(Motion.settle, value: browser.announcement)
         }
-    }
-
-    /// A page asking to see or hear you. Named by the site, in its own words,
-    /// with the answer remembered so it is asked once and not every call.
-    private func captureAsking(_ ask: Browser.CaptureAsk) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: ask.wants == PageVoice.asks ? "waveform" : ask.wants == "microphone" ? "mic" : "video") // Fork (page-voice)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Palette.muted)
-            Text("\(ask.host) wants to use your \(ask.wants)")
-                .font(.system(size: 12.5))
-                .foregroundStyle(Palette.ink)
-            Button { browser.allowCapture() } label: {
-                Text("Allow")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Palette.ground)
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 5)
-                    .background(Palette.ink, in: Capsule())
-            }
-            .buttonStyle(.plain)
-            Button { browser.denyCapture() } label: {
-                Text("Don't allow")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Palette.muted)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.leading, 16)
-        .padding(.trailing, 10)
-        .padding(.vertical, 9)
-        .background(Palette.ground, in: Capsule())
-        .overlay(Capsule().strokeBorder(Palette.hairline, lineWidth: 1))
-        .shadow(color: .black.opacity(0.12), radius: 20, y: 6)
     }
 
     /// Offered once, answered once. The password is never shown back to you —

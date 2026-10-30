@@ -791,54 +791,16 @@ final class Browser: NSObject, ObservableObject {
     /// A page asking to see or hear you, waiting for an answer. WebKit hands
     /// over a decision handler and holds the page until it is called — so this
     /// keeps the handler and the question together, and never drops either.
-    struct CaptureAsk: Equatable, Identifiable {
-        let host: String
-        let wants: String
-        var id: String { host + wants }
-    }
+    ///
+    /// Fork (page-capture): every request waits its turn, answers are kept per
+    /// site and per device, and what macOS itself allows is said in the bar —
+    /// this window's desk, Fork/Capture/ (docs/capture.md).
+    lazy var capture = CaptureDesk(browser: self)
 
-    @Published private(set) var asking: CaptureAsk?
-    private var decide: ((WKPermissionDecision) -> Void)?
-    private var askedAbout = ""
-
-    func allowCapture() { answerCapture(.grant) }
-    func denyCapture() { answerCapture(.deny) }
-
-    private func answerCapture(_ decision: WKPermissionDecision) {
-        guard let decide else { return }
-        // Remembered per site, so a call you take every week asks once.
-        Store.settings.set(decision == .grant, forKey: "capture." + askedAbout)
-        decide(decision)
-        self.decide = nil
-        askedAbout = ""
-        asking = nil
-    }
-
-    /// Fork (page-voice): a page asking for Copper's on-device speech to text
-    /// (Fork/Voice/PageVoice.swift) — asked, answered and remembered as the
-    /// microphone is, under `capture.<host>|voice`.
-    func askPageVoice(host: String, _ answer: @escaping (Bool) -> Void) {
-        let key = "\(host)|voice"
-        if let remembered = Store.settings.object(forKey: "capture." + key) as? Bool {
-            answer(remembered)
-            return
-        }
-        guard decide == nil else {
-            answer(false)
-            return
-        }
-        decide = { answer($0 == .grant) }
-        askedAbout = key
-        asking = CaptureAsk(host: host, wants: PageVoice.asks)
-    }
-
-    /// Everything a site has been allowed or refused, for the day you want to
-    /// change your mind.
+    /// Everything a site has been allowed, for the day you want to change
+    /// your mind.
     func forgetCaptureChoices() {
-        for key in Store.settings.dictionaryRepresentation().keys
-        where key.hasPrefix("capture.") {
-            Store.settings.removeObject(forKey: key)
-        }
+        CaptureBook.forgetAll() // Fork (page-capture)
         announce("Camera and microphone choices forgotten")
     }
 
@@ -2610,32 +2572,10 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
         type: WKMediaCaptureType,
         decisionHandler: @escaping (WKPermissionDecision) -> Void
     ) {
-        let host = origin.host.isEmpty ? (tab(for: webView)?.address?.host() ?? "This page") : origin.host
-        let key = "\(host)|\(type.rawValue)"
-
-        if let remembered = Store.settings.object(forKey: "capture." + key) as? Bool {
-            decisionHandler(remembered ? .grant : .deny)
-            return
-        }
-        // One question at a time. A second page asking while the first is still
-        // waiting is refused rather than queued behind it.
-        guard decide == nil else {
-            decisionHandler(.deny)
-            return
-        }
-
-        decide = decisionHandler
-        askedAbout = key
-        asking = CaptureAsk(host: host, wants: Browser.name(for: type))
-    }
-
-    private static func name(for type: WKMediaCaptureType) -> String {
-        switch type {
-        case .camera: return "camera"
-        case .microphone: return "microphone"
-        case .cameraAndMicrophone: return "camera and microphone"
-        @unknown default: return "camera and microphone"
-        }
+        // Fork (page-capture): queued behind any other request rather than
+        // refused for arriving second, granted at once on what the site was
+        // allowed per device, otherwise asked in the bar (Fork/Capture/CaptureDesk.swift).
+        capture.asked(by: webView, origin: origin, type: type, decisionHandler)
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
