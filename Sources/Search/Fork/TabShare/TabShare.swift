@@ -272,6 +272,7 @@ final class TabShare: NSObject, ObservableObject {
         TabShareStage.keep(source, fallback: Self.size(of: consumerTab))
         if keepsCallerPainting, let consumerTab { TabShareStage.keep(consumerTab) }
         shares.append(share)
+        holdPace()
         capture.start()
         startWatchdog()
         let pixels = TabShareRules.pixels(for: source.built?.bounds.size ?? TabShareStage.stageSize, want: want)
@@ -285,10 +286,47 @@ final class TabShare: NSObject, ObservableObject {
     /// a background tab's pace. Measured: docs/screen-sharing.md.
     var keepsCallerPainting = true
 
+    // MARK: - the pace
+
+    /// Copper's own timers at the precision they ask for, while any share is
+    /// live. About a minute after Copper goes behind other apps (or the Mac
+    /// locks), macOS naps it: its main thread drops to a background priority
+    /// and its timers fire late. The capture's 33 ms tick came every
+    /// 130–200 ms and the call got 5–7 frames a second; the pages' own
+    /// animation frames slowed with it (WebKit's display refresh is run from
+    /// this process), the shared tab painting five times a second. Keeping
+    /// App Nap off the usual way (`.userInitiated`, which the bench holds in
+    /// test worlds) still left the main thread at utility priority and the
+    /// tick at 165 ms; a latency-critical activity keeps both on time, and is
+    /// what macOS asks of live capture. Taken with the first share, given
+    /// back with the last: nothing is held while nothing is shared.
+    /// docs/screen-sharing.md › How it works, step 6.
+    private var pace: NSObjectProtocol?
+
+    /// The bench's `share pace on|off` (test worlds): off shows what a share
+    /// gets without it.
+    var holdsPace = true {
+        didSet { holdPace() }
+    }
+
+    var holdingPace: Bool { pace != nil }
+
+    private func holdPace() {
+        if shares.isEmpty || !holdsPace {
+            guard let held = pace else { return }
+            ProcessInfo.processInfo.endActivity(held)
+            pace = nil
+        } else if pace == nil {
+            pace = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep, .latencyCritical],
+                                                         reason: "Sharing a tab with a call")
+        }
+    }
+
     func stop(_ id: String, reason: String) {
         guard let at = shares.firstIndex(where: { $0.id == id }) else { return }
         let share = shares.remove(at: at)
         share.capture.stop(reason)
+        holdPace()
         let others = shares
         if let tab = AgentTabs.find(share.source) {
             if !others.contains(where: { $0.source == tab.id || $0.consumer == tab.id }) { TabShareStage.release(tab) }
@@ -560,6 +598,7 @@ final class TabShare: NSObject, ObservableObject {
             "ended": ended,
             "stage": TabShareStage.report,
             "keepsCallerPainting": keepsCallerPainting,
+            "pace": ["holds": holdsPace, "held": holdingPace],
         ]
         if let picking {
             out["picker"] = [

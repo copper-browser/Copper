@@ -1,0 +1,52 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Call P (pace)</title>
+<style>body{margin:0;font:14px -apple-system,system-ui;background:#1f2328;color:#eee}#v{width:480px;background:#000;display:block;margin:16px}</style>
+</head><body><video id="v" muted autoplay playsinline></video>
+<script>
+// The calling page of docs/fixtures/tab-share-pace-e2e.sh: shares a tab and keeps count, second by second,
+// of the pictures the share's own script draws into its canvas (each one a frame of the stream), and of
+// the frames an RTCPeerConnection loopback encodes from the track — what the far end of a call would get.
+const draws = [], encoded = [];
+const keep = (list, value) => { list.push(value); if (list.length > 20000) list.splice(0, 5000); };
+// The share's script draws every picture with drawImage(ImageBitmap); nothing else here draws one.
+const drawImage = CanvasRenderingContext2D.prototype.drawImage;
+CanvasRenderingContext2D.prototype.drawImage = function (image, ...rest) {
+  if (image instanceof ImageBitmap) keep(draws, performance.now());
+  return drawImage.call(this, image, ...rest);
+};
+window.__result = null;
+window.__share = (options) => {
+  window.__result = { pending: true };
+  navigator.mediaDevices.getDisplayMedia(options).then(async (stream) => {
+    window.__stream = stream;
+    const track = stream.getVideoTracks()[0];
+    document.getElementById('v').srcObject = stream;
+    window.__result = { ok: true, settings: track.getSettings() };
+    const pc1 = new RTCPeerConnection(), pc2 = new RTCPeerConnection();
+    pc1.onicecandidate = (e) => e.candidate && pc2.addIceCandidate(e.candidate);
+    pc2.onicecandidate = (e) => e.candidate && pc1.addIceCandidate(e.candidate);
+    pc1.addTrack(track, stream);
+    await pc1.setLocalDescription(); await pc2.setRemoteDescription(pc1.localDescription);
+    await pc2.setLocalDescription(); await pc1.setRemoteDescription(pc2.localDescription);
+    window.__pcs = [pc1, pc2];
+    setInterval(async () => {
+      let out = null;
+      (await pc1.getStats()).forEach((r) => { if (r.type === 'outbound-rtp' && r.kind === 'video') out = r; });
+      if (out) keep(encoded, [performance.now(), out.framesEncoded]);
+    }, 1000);
+  }, (e) => { window.__result = { ok: false, name: e.name, message: e.message }; });
+  return 'started';
+};
+// Frames drawn in each of the last `seconds` whole seconds, and frames encoded per second over the same span.
+window.__pace = (seconds) => {
+  const now = performance.now(), perSecond = [];
+  for (let s = seconds; s > 0; s--) {
+    const from = now - s * 1000, to = from + 1000;
+    perSecond.push(draws.filter((t) => t > from && t <= to).length);
+  }
+  const span = encoded.filter((e) => e[0] > now - seconds * 1000 - 1000);
+  const first = span[0], last = span[span.length - 1];
+  const enc = first && last && last[0] > first[0] ? +((last[1] - first[1]) / ((last[0] - first[0]) / 1000)).toFixed(1) : null;
+  return { perSecond, encodedFps: enc, hidden: document.hidden };
+};
+window.__stopTrack = () => { window.__stream.getTracks().forEach((t) => t.stop()); return 'stopped'; };
+</script></body></html>

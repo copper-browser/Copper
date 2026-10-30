@@ -47,7 +47,7 @@ final class TabShareCapture {
     private var latest: [String: Any]?
     private var lastPicture: Data?
     private var lastPublish: CFTimeInterval = 0
-    private var waiting: [(after: Int, reply: Reply)] = []
+    private var waiting: [(after: Int, reply: Reply, at: CFTimeInterval)] = []
     private(set) var ended: String?
     private(set) var lastAsked = Date()
     /// How many times the page has asked for a picture.
@@ -64,6 +64,15 @@ final class TabShareCapture {
     private(set) var encodeMs = 0.0
     private(set) var bytes = 0
     private var window: [CFTimeInterval] = []
+    // Where a picture's time goes, for the bench (`timing`): between two
+    // ticks of the capture's timer, a page's ask waiting for its picture,
+    // and a picture handed over until the page asks again (its decode and
+    // draw, and the trip both ways). A late tick is Copper slowed by macOS;
+    // a slow page is the page's own process (docs/screen-sharing.md › How
+    // it works, step 6).
+    private var lastTick: CFTimeInterval = 0
+    private var lastServed: CFTimeInterval = 0
+    private var tickGaps = TabShareRules.Spread(), waits = TabShareRules.Spread(), turns = TabShareRules.Spread()
 
     /// Called on every tick before the snapshot: the share keeps its pages
     /// where they can paint (TabShare.keepPainting).
@@ -109,6 +118,9 @@ final class TabShareCapture {
 
     private func tick() {
         guard ended == nil else { return }
+        let now = CACurrentMediaTime()
+        if lastTick > 0 { tickGaps.add((now - lastTick) * 1000) }
+        lastTick = now
         beforeTick?()
         // Back-pressure: no snapshot, no JPEG, for a page that is not asking.
         guard TabShareRules.pictures(waiting: waiting.count, sinceAsked: Date().timeIntervalSince(lastAsked)) else {
@@ -204,7 +216,14 @@ final class TabShareCapture {
         let ready = waiting
         waiting = []
         for each in ready {
-            if let latest, seq > each.after { served += 1; each.reply(latest) } else { waiting.append(each) }
+            if let latest, seq > each.after {
+                served += 1
+                waits.add((now - each.at) * 1000)
+                lastServed = now
+                each.reply(latest)
+            } else {
+                waiting.append(each)
+            }
         }
     }
 
@@ -213,12 +232,16 @@ final class TabShareCapture {
     func next(after: Int, reply: Reply) {
         lastAsked = Date()
         asked += 1
+        let now = CACurrentMediaTime()
+        if lastServed > 0 { turns.add((now - lastServed) * 1000); lastServed = 0 }
         if let ended {
             reply(["ended": true, "reason": ended])
             return
         }
         if let latest, seq > after {
             served += 1
+            waits.add(0)
+            lastServed = now
             reply(latest)
             return
         }
@@ -229,7 +252,7 @@ final class TabShareCapture {
         while waiting.count >= TabShareRules.maxWaiting {
             waiting.removeFirst().reply(["seq": 0])
         }
-        waiting.append((after, reply))
+        waiting.append((after, reply, now))
     }
 
     /// Over: every page waiting hears it, and no more pictures are taken.
@@ -268,6 +291,7 @@ final class TabShareCapture {
         ["seq": seq, "snapshots": snapshots, "published": published, "served": served, "failures": failures,
          "fps": fps, "rate": rate, "width": size.width, "height": size.height, "snapshotMs": (snapshotMs * 100).rounded() / 100,
          "encodeMs": (encodeMs * 100).rounded() / 100, "jpegBytes": bytes, "waiting": waiting.count, "asked": asked, "idleTicks": idleTicks,
-         "lastAskedAgo": (Date().timeIntervalSince(lastAsked) * 100).rounded() / 100, "ended": ended ?? NSNull()]
+         "lastAskedAgo": (Date().timeIntervalSince(lastAsked) * 100).rounded() / 100, "ended": ended ?? NSNull(),
+         "timing": ["tickMs": tickGaps.report, "waitMs": waits.report, "pageMs": turns.report]]
     }
 }

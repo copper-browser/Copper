@@ -267,4 +267,29 @@ enum TabShareRules {
     static func quiet(sinceAsked: TimeInterval, everAsked: Bool) -> Bool {
         sinceAsked > (everAsked ? quietLimit : firstAskLimit)
     }
+
+    /// The last few seconds of one measure (milliseconds), for the bench:
+    /// the middle, the slow tenth and the slowest. At 30 a second, 120 is
+    /// four seconds' worth.
+    struct Spread {
+        static let kept = 120
+        private(set) var values: [Double] = []
+
+        mutating func add(_ value: Double) {
+            values.append(value)
+            if values.count > Self.kept { values.removeFirst(values.count - Self.kept) }
+        }
+
+        /// The value `fraction` of the way up, to a tenth of a millisecond.
+        func percentile(_ fraction: Double) -> Double {
+            guard !values.isEmpty else { return 0 }
+            let sorted = values.sorted()
+            let at = Int((Double(sorted.count - 1) * min(max(fraction, 0), 1)).rounded())
+            return (sorted[at] * 10).rounded() / 10
+        }
+
+        var report: [String: Double] {
+            ["p50": percentile(0.5), "p90": percentile(0.9), "max": percentile(1)]
+        }
+    }
 }
