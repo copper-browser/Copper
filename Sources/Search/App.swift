@@ -366,6 +366,7 @@ struct ContentView: View {
                 hint("Click anything to hide it   ⌘Z undo   esc done")
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+            ShareBar(browser: browser) // Fork (tab-share): Sharing <tab> · Stop (Fork/TabShare/TabShareBar.swift)
             CanvasInviteSlot(browser: browser) // Fork (canvas): the invite pill's place; it is drawn over the panels
         }
         .padding(.bottom, 30)
@@ -441,6 +442,7 @@ struct ContentView: View {
             .overlay(alignment: .bottom) { bars }
             .overlay { field }
             .overlay { panels }
+            .overlay { SharePickerSlot(browser: browser) } // Fork (tab-share): what to share (Fork/TabShare/TabSharePicker.swift)
             .overlay(alignment: .bottom) { CanvasInviteBar(browser: browser) } // Fork (canvas): over the panels (Fork/Canvas/CanvasInvites.swift)
             .animation(Motion.settle, value: browser.fieldShowing)
             .background(WindowSetup { window = $0; dress($0) })
@@ -719,6 +721,9 @@ struct ContentView: View {
         // Fork (flow): while Move in is up, a key typed on it is the sheet's —
         // ⌘W closes it, the window's other ⌘ shortcuts wait (Fork/Flow/FlowPresenter.swift).
         if let taken = FlowKeys.take(event) { return taken }
+
+        // Fork (tab-share): while the share picker is up, the keyboard is its own.
+        if SharePicker.take(event, in: browser) { return true }
 
         // Fork (new-tab-launcher): while the ⌘T card is up, Escape, ⇧/⌥
         // Return and ⌘1–9 are its own.

@@ -1,0 +1,75 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Call A (caller)</title>
+<style>body{margin:0;font:14px -apple-system,system-ui;background:#1f2328;color:#eee}#v{width:640px;background:#000;display:block;margin:16px}#log{margin:16px;white-space:pre-wrap;font:12px ui-monospace,Menlo}</style>
+</head><body>
+<button id="go">Share</button>
+<video id="v" muted autoplay playsinline></video>
+<div id="log"></div>
+<script>
+// The calling page of docs/fixtures/tab-share-e2e.sh. window.__share(opts) calls getDisplayMedia (the bench
+// runs it through evaluateJavaScript, which WebKit counts as a user gesture), then measures what arrives.
+const log = (s) => { document.getElementById('log').textContent += s + '\n'; };
+window.__result = null; window.__stream = null; window.__ended = 0;
+window.__detect = () => ({
+  hasGDM: typeof navigator.mediaDevices.getDisplayMedia === 'function',
+  inProto: 'getDisplayMedia' in MediaDevices.prototype,
+  own: Object.prototype.hasOwnProperty.call(navigator.mediaDevices, 'getDisplayMedia'),
+  toString: Function.prototype.toString.call(navigator.mediaDevices.getDisplayMedia),
+  name: navigator.mediaDevices.getDisplayMedia.name, length: navigator.mediaDevices.getDisplayMedia.length,
+  supported: navigator.mediaDevices.getSupportedConstraints(),
+  handlerVisible: !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.copperShare),
+});
+window.__share = (opts) => {
+  window.__result = { pending: true };
+  const t0 = performance.now();
+  return navigator.mediaDevices.getDisplayMedia(opts || { video: true, audio: true }).then((stream) => {
+    window.__stream = stream;
+    const track = stream.getVideoTracks()[0];
+    track.addEventListener('ended', () => { window.__ended++; log('ended event'); });
+    track.onended = () => { window.__onended = (window.__onended || 0) + 1; };
+    const v = document.getElementById('v'); v.srcObject = stream; v.play().catch(() => {});
+    window.__result = { ok: true, ms: Math.round(performance.now() - t0), label: track.label, kind: track.kind,
+      settings: track.getSettings(), audioTracks: stream.getAudioTracks().length, readyState: track.readyState,
+      capabilities: track.getCapabilities ? track.getCapabilities() : null, constraints: track.getConstraints() };
+    log('resolved ' + JSON.stringify(window.__result));
+    return window.__result;
+  }, (e) => { window.__result = { ok: false, name: e.name, message: e.message, ms: Math.round(performance.now() - t0) }; log('rejected ' + e.name + ': ' + e.message); return window.__result; });
+};
+document.getElementById('go').onclick = () => window.__share();
+// Measures for `seconds`: frames presented by the <video> (requestVideoFrameCallback), and how many
+// distinct pictures (a pixel hash of a sampled 64x36 draw) — proof the content keeps changing.
+window.__measure = (seconds) => new Promise((done) => {
+  const v = document.getElementById('v');
+  const c = document.createElement('canvas'); c.width = 64; c.height = 36; const g = c.getContext('2d', { willReadFrequently: true });
+  let frames = 0, distinct = 0, last = '', w = 0, h = 0;
+  const t0 = performance.now();
+  // A <video> in a hidden page gets no frame callbacks; a timer still runs (at a background pace).
+  const sample = () => {
+    try { g.drawImage(v, 0, 0, 64, 36); const d = g.getImageData(0, 0, 64, 36).data; let hsh = 0; for (let i = 0; i < d.length; i += 16) hsh = (hsh * 31 + d[i]) | 0; const k = String(hsh); if (k !== last) { distinct++; last = k; } } catch (e) {}
+    w = v.videoWidth; h = v.videoHeight;
+  };
+  const rvfc = () => { frames++; sample(); if (performance.now() - t0 < seconds * 1000) v.requestVideoFrameCallback(rvfc); };
+  v.requestVideoFrameCallback(rvfc);
+  const timer = setInterval(sample, 50);
+  setTimeout(() => { clearInterval(timer); const dt = (performance.now() - t0) / 1000; done({ fps: +(frames / dt).toFixed(1), distinct, distinctPerSec: +(distinct / dt).toFixed(1), w, h, hidden: document.hidden, readyState: window.__stream && window.__stream.getVideoTracks()[0].readyState }); }, seconds * 1000);
+});
+// RTCPeerConnection loopback: the track is sendable, and keeps encoding.
+window.__rtc = async (seconds) => {
+  const track = window.__stream.getVideoTracks()[0];
+  const pc1 = new RTCPeerConnection(), pc2 = new RTCPeerConnection();
+  pc1.onicecandidate = (e) => e.candidate && pc2.addIceCandidate(e.candidate);
+  pc2.onicecandidate = (e) => e.candidate && pc1.addIceCandidate(e.candidate);
+  let received = 0; pc2.ontrack = (e) => { received++; };
+  pc1.addTrack(track, window.__stream);
+  await pc1.setLocalDescription(); await pc2.setRemoteDescription(pc1.localDescription);
+  await pc2.setLocalDescription(); await pc1.setRemoteDescription(pc2.localDescription);
+  const enc = async () => { let o = null; (await pc1.getStats()).forEach((r) => { if (r.type === 'outbound-rtp' && r.kind === 'video') o = r; }); return o; };
+  await new Promise((r) => setTimeout(r, 1500));
+  const a = await enc();
+  await new Promise((r) => setTimeout(r, seconds * 1000));
+  const b = await enc();
+  window.__pcs = [pc1, pc2];
+  return { encodedFps: b && a ? +((b.framesEncoded - a.framesEncoded) / seconds).toFixed(1) : null, frame: b ? b.frameWidth + 'x' + b.frameHeight : null, received, hidden: document.hidden };
+};
+window.__grab = (w) => { const v = document.getElementById('v'); const c = document.createElement('canvas'); c.width = w || 640; c.height = Math.round(c.width * v.videoHeight / Math.max(1, v.videoWidth)); c.getContext('2d').drawImage(v, 0, 0, c.width, c.height); return c.toDataURL('image/png'); };
+window.__stopTrack = () => { window.__stream.getTracks().forEach((t) => t.stop()); return window.__stream.getVideoTracks()[0].readyState; };
+</script></body></html>

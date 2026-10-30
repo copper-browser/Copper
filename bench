@@ -31,6 +31,16 @@
     ./bench probe                      the window's own state: panels, modal, windows
     ./bench stage                      every window's stage: the active tab, what the stage holds, where
                                        the active tab's view is and whether it can be seen (visible)
+    ./bench share [state]              tab sharing: live shares (pace, size, where the tabs are hung), the
+                                       picker, the page's asks, WebKit's requests and Copper's answers
+    ./bench share answer tab ID|window|screen|cancel
+                                       a test world: answer the open share picker, or the next one
+    ./bench share keys KEYS            a test world: ↑ ↓ ↩ ⎋ ⌫ ⇥ or letters on the open picker
+    ./bench share stop [SHARE|all]     as the bar's Stop does
+    ./bench share caller on|off        keep the calling page painting while it is not on screen
+    ./bench share occlusion ID on|off  a test world: the tab's page ignores (on) / notices whether its window is covered
+    ./bench share picture picker|bar PATH [dark]
+                                       the picker over the calling page, or the bar over the page in front
     ./bench calendar [state|stage|key|picture PATH]
                                        the Calendar pin's card: what it lists; staged meetings (test
                                        worlds); the key window while it is open; the card to a PNG
@@ -502,6 +512,11 @@ def main(argv):
         request["id"] = args[0]
         if len(args) > 1: request["path"] = os.path.abspath(args[1])
         if len(args) > 2: request["width"] = float(args[2])
+    elif verb == "share":
+        request["op"] = args[0] if args else "state"
+        if request["op"] == "picture" and len(args) > 2:
+            args = args[:2] + [os.path.abspath(args[2])] + args[3:]  # the picture's path, from here
+        request["arg"] = " ".join(args[1:]) if len(args) > 1 else ""
     elif verb == "backdrop":
         pass
     elif verb == "canvas":
