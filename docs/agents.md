@@ -60,7 +60,10 @@ Playwright MCP's names and argument shapes. `ref`s come from
 caller's own tab — the one it opened with `browser_tabs new` / `jev_run
 newTab`, or chose with `browser_tabs select` — else the tab on the user's
 screen. Any call can name another with `tab` (an id from `browser_tabs list`,
-or an index). The caller is the agent session (`Drive.Who`, Hands.swift), so
+or an index). A JSON number is an index; so is a string of digits, unless it
+can only be an id: eight digits or more, or a leading zero (about one short id
+in fifty is all digits, `00000012` among them), or a number past the end of
+the row that begins exactly one tab's id. The caller is the agent session (`Drive.Who`, Hands.swift), so
 two threads keep two tabs. A caller's tab is worked on where it is: off
 screen, its web view hangs in a borderless window outside every display
 (`Fork/MCP/Backstage.swift`) that WebKit counts as visible and focused, so

@@ -454,8 +454,7 @@ enum Fork {
                 while i < words.count {
                     if words[i] == "tab", i + 1 < words.count {
                         let pick = words[i + 1]
-                        tab = Int(pick).flatMap { browser.tabs.indices.contains($0) ? browser.tabs[$0] : nil }
-                            ?? browser.tabs.first { $0.id.uuidString.lowercased().hasPrefix(pick.lowercased()) } ?? tab
+                        tab = ((try? AgentTabs.resolve(pick, in: browser)) ?? nil) ?? tab
                         i += 2
                     } else if words[i] == "--for", i + 1 < words.count {
                         seconds = Double(words[i + 1]) ?? seconds; i += 2
@@ -468,8 +467,7 @@ enum Fork {
             case "card":
                 // Open the hover card on a tab's badges (index or id prefix), or `off`.
                 let pick = request["arg"] as? String ?? ""
-                drive.forcedCard = pick == "off" ? nil : (Int(pick).flatMap { browser.tabs.indices.contains($0) ? browser.tabs[$0].id : nil }
-                    ?? browser.tabs.first { $0.id.uuidString.lowercased().hasPrefix(pick.lowercased()) }?.id ?? browser.active?.id)
+                drive.forcedCard = pick == "off" ? nil : (((try? AgentTabs.resolve(pick, in: browser)) ?? nil)?.id ?? browser.active?.id)
             case "unfake":
                 for key in drive.hands.keys where key.hasPrefix("fake:") { drive.hands[key] = nil }
             default: break

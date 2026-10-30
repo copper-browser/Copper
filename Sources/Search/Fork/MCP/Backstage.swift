@@ -74,7 +74,8 @@ enum AgentTabs {
     /// The short id browser_tabs list prints.
     static func short(_ tab: Tab) -> String { String(tab.id.uuidString.prefix(8)).lowercased() }
 
-    /// A `tab` argument: an id (short or whole) or an index in this window's row.
+    /// A `tab` argument: an id (short or whole) or an index in this window's
+    /// row. A JSON number is an index; a string is read by `reading`.
     static func resolve(_ ref: Any?, in browser: Browser) throws -> Tab? {
         guard let ref else { return nil }
         // A JSON number. (`is Bool` would also take 0 and 1: NSNumber bridges.)
@@ -82,12 +83,34 @@ enum AgentTabs {
             return try at(n.intValue, in: browser)
         }
         guard let raw = (ref as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !raw.isEmpty else { return nil }
-        if let i = Int(raw) { return try at(i, in: browser) }
-        let hits = all.filter { $0.id.uuidString.lowercased().hasPrefix(raw) }
-        guard hits.count == 1, let tab = hits.first else {
-            throw Tools.Failure(text: hits.isEmpty ? "no tab \(raw) — \(Tools.tabList(browser))" : "\(raw) names more than one tab; give more of its id")
+        let tabs = all
+        switch reading(raw, row: browser.tabs.count, ids: tabs.map { $0.id.uuidString.lowercased() }) {
+        case .index(let i): return try at(i, in: browser)
+        case .id(let k): return tabs[k]
+        case .nothing: throw Tools.Failure(text: "no tab \(raw) — \(Tools.tabList(browser))")
+        case .several: throw Tools.Failure(text: "\(raw) names more than one tab; give more of its id")
         }
-        return tab
+    }
+
+    /// What a `tab` string names: a place in the row (`index`), the one tab
+    /// whose id it begins (`id`, its place in `ids`), no tab, or several.
+    enum Reading: Equatable { case index(Int), id(Int), nothing, several }
+
+    /// Short ids are the first eight hex digits of a UUID, so about one in
+    /// fifty is all digits (`12345678`, `00000012`). Read as an index, that
+    /// names no tab, or quietly the wrong one. No row has ten million tabs and
+    /// nobody writes an index with a leading zero, so those are always ids; a
+    /// shorter number is a place in the row, unless the row has no such place
+    /// and it begins exactly one tab's id. Anything else is an id or the start
+    /// of one. `row` is how many tabs the row has; `ids` every tab's id,
+    /// lowercased.
+    nonisolated static func reading(_ raw: String, row: Int, ids: [String]) -> Reading {
+        let hits = ids.indices.filter { ids[$0].hasPrefix(raw) }
+        let named: Reading = hits.isEmpty ? .nothing : hits.count == 1 ? .id(hits[0]) : .several
+        guard !raw.isEmpty, raw.allSatisfy({ $0.isASCII && $0.isNumber }),
+              raw.count < 8, !(raw.hasPrefix("0") && raw != "0"), let i = Int(raw) else { return named }
+        if i >= row, case .id = named { return named }
+        return .index(i)
     }
 
     private static func at(_ i: Int, in browser: Browser) throws -> Tab {
