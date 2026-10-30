@@ -281,6 +281,10 @@ final class Bench {
             // Fork (backdrop): the column's scene — its process and its clock.
             BackdropWeb.bench(answer: answer)
 
+        case "share":
+            // Fork (tab-share): shares, the picker, test answers, pictures (Fork/TabShare/TabShareBench.swift).
+            TabShareBench.handle(request, in: browser, answer: answer)
+
         case "canvas":
             // Fork (canvas): the canvas tools and the hosts behind them, async.
             CanvasTools.bench(request, in: browser, answer: answer)

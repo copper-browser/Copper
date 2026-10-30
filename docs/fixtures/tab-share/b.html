@@ -1,0 +1,18 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Slides B (animated)</title>
+<style>
+html,body{margin:0;height:100%;background:#f6f3ee;font:16px -apple-system,system-ui;color:#222}
+#n{position:absolute;left:40px;top:30px;font:700 120px ui-monospace,Menlo,monospace;color:#c0392b}
+#c{position:absolute;right:40px;top:40px;border:1px solid #ccc;background:#fff}
+#bar{position:absolute;left:0;bottom:0;height:24px;background:#2c7be5;animation:sweep 2s linear infinite}
+@keyframes sweep{from{width:0}to{width:100%}}
+p{position:absolute;left:40px;top:220px;width:55%;line-height:1.5}
+</style></head><body>
+<div id="n">0</div><canvas id="c" width="320" height="320"></canvas>
+<p>Tab B — the shared tab. The big number counts animation frames; the canvas square spins; the blue bar sweeps every two seconds. A capture of this tab should change every frame even while another tab is selected.</p>
+<div id="bar"></div>
+<script>
+let f=0;const n=document.getElementById('n'),c=document.getElementById('c').getContext('2d');
+window.__frames=()=>f; window.__hidden=()=>document.hidden; window.__vis=[]; document.addEventListener('visibilitychange',()=>window.__vis.push((document.hidden?'hidden@':'visible@')+Math.round(performance.now())));
+function tick(t){f++;n.textContent=f;c.fillStyle='#fff';c.fillRect(0,0,320,320);c.save();c.translate(160,160);c.rotate(t/500);c.fillStyle='hsl('+(f%360)+',70%,50%)';c.fillRect(-80,-80,160,160);c.restore();requestAnimationFrame(tick)}
+requestAnimationFrame(tick);
+</script></body></html>

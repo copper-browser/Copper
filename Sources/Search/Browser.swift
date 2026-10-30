@@ -2651,6 +2651,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        TabShare.shared.committed(webView) // Fork (tab-share): a new document ends what the old one shared or asked (Fork/TabShare/TabShare.swift)
         guard let tab = tab(for: webView) else { return }
         Pace.page("commit", bench: tab.bench) // Fork (pace)
         tab.failure = nil
