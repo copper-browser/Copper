@@ -11,12 +11,14 @@
 #      screen — never the calling tab — and Copper answers WebKit's private
 #      display-capture question.
 #   3. A tab: a live track (displaySurface "browser", the tab's title), at
-#      15 fps or better, every frame different, at most 1920 wide.
+#      15 fps or better, every frame different, at most 1920 wide; Copper
+#      holds its latency-critical activity while it lasts (the pace over
+#      time, behind other apps: tab-share-pace-e2e.sh).
 #   4. It keeps coming with the calling tab in front and the shared one
 #      behind (the shared tab hung where it paints), and over RTCPeerConnection.
 #   5. With the shared tab in front, the calling page keeps its pace too.
-#   6. The page's track.stop() ends Copper's capture; closing the shared tab
-#      ends the track ('ended'); Copper's Stop does too.
+#   6. The page's track.stop() ends Copper's capture and its activity;
+#      closing the shared tab ends the track ('ended'); Copper's Stop does too.
 #   7. Cancel is NotAllowedError; "A window…" and "Entire screen…" reach
 #      WebKit's own path (WindowPrompt / ScreenPrompt → the mock devices).
 #   8. A cross-origin iframe with allow="display-capture" can share a tab.
@@ -158,6 +160,7 @@ for _ in {1..40}; do r=$(result); [ "$(jq -r '.pending // false' <<<"$r")" != tr
 [ "$(jq -r .label <<<"$r")" = "Slides B (animated)" ] || fail "the track is not named for the tab: $r"
 m=$(await "$a" "window.__measure(4)" 4)
 jq -e '.fps >= 15 and .distinctPerSec >= 15 and .w <= 1920 and .w > 0' <<<"$m" >/dev/null || fail "the stream is too slow or too big: $m"
+[ "$(state | jq -r .pace.held)" = true ] || fail "no latency-critical activity held while sharing: $(state | jq -c .pace)"
 echo "ok a tab: $(jq -c '{label, surface: .settings.displaySurface, ms}' <<<"$r") $(jq -c . <<<"$m")"
 
 # 4. The calling tab in front, the shared one behind.
@@ -183,7 +186,8 @@ stopped=$(bench eval "$a" "window.__stopTrack()")
 sleep 1
 [ "$stopped" = ended ] && [ "$(state | jq '.shares | length')" = 0 ] || fail "track.stop() left Copper capturing: $(state | jq -c .shares)"
 [ "$(state | jq -r '.ended[-1].reason')" = "the page stopped it" ] || fail "wrong end: $(state | jq -c '.ended[-1]')"
-echo "ok track.stop() ends Copper's capture"
+[ "$(state | jq -r .pace.held)" = false ] || fail "the share's activity outlived it: $(state | jq -c .pace)"
+echo "ok track.stop() ends Copper's capture, and gives back its activity"
 
 bench share answer tab "$b" >/dev/null
 r=$(share "{ video: true }")

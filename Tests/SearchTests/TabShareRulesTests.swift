@@ -271,3 +271,25 @@ private func tab(_ title: String, space: String? = nil, caller: Bool = false, bl
     #expect(TabShareRules.quiet(sinceAsked: 13, everAsked: true))
     #expect(TabShareRules.maxWaiting >= 1)
 }
+
+@Test func theTimingSpreadKeepsTheLastFewSecondsAndReadsTheirMiddleAndSlowTenth() {
+    var spread = TabShareRules.Spread()
+    #expect(spread.report == ["p50": 0, "p90": 0, "max": 0])
+    // A tick every 33 ms, then macOS slows Copper and they come every 165 ms.
+    for _ in 0..<TabShareRules.Spread.kept { spread.add(33.3) }
+    #expect(spread.percentile(0.5) == 33.3 && spread.percentile(1) == 33.3)
+    for _ in 0..<(TabShareRules.Spread.kept / 2 + 1) { spread.add(165.04) }
+    #expect(spread.values.count == TabShareRules.Spread.kept)
+    #expect(spread.percentile(0.5) == 165)
+    #expect(spread.percentile(0.9) == 165 && spread.report["max"] == 165)
+    #expect(spread.percentile(0) == 33.3)
+}
+
+@MainActor @Test func nothingIsHeldForThePaceWhileNothingIsShared() {
+    let share = TabShare.shared
+    #expect(share.shares.isEmpty)
+    #expect(!share.holdingPace)
+    share.holdsPace = false
+    share.holdsPace = true
+    #expect(!share.holdingPace)
+}

@@ -109,6 +109,26 @@ page          getDisplayMedia (wrapped)
    another tab, so a call page never drops to a background tab's pace.
    Occlusion detection is put back when the share ends, for the views this
    turned it off for.
+6. **Holding the pace** (`TabShare.holdPace`). The pictures are paced by a
+   timer on Copper's main thread, and about a minute after Copper stops being
+   the app in front — you went to your notes mid-presentation, the Mac
+   locked — macOS naps it: the main thread drops to a background priority
+   and its timers are let fire late. The capture's 33 ms tick came every
+   130–200 ms and a share fell from 30 frames a second to 5–7, for good (a
+   share started after Copper had sat behind other apps that long began
+   there). The pages' own animation frames slowed with it — WebKit's display
+   refresh is run from Copper's process — so the shared tab itself painted
+   five times a second. Keeping App Nap off the usual way
+   (`NSActivityUserInitiated`, which the bench holds in test worlds) still
+   left the main thread at utility priority and the tick at 165 ms; only a
+   latency-critical activity
+   (`[.userInitiatedAllowingIdleSystemSleep, .latencyCritical]`, macOS's
+   answer for live capture) keeps them on time. Copper takes one with the
+   first live share and gives it back with the last: nothing is held, and
+   nothing costs more, while nothing is shared. The pages need nothing of
+   their own: they are visible to WebKit (step 5), their processes stay at
+   a foreground priority, and once Copper keeps time they paint at the
+   display's rate and turn a picture around in 3–4 ms.
 
 No Screen Recording permission is involved for a tab: Copper pictures its own
 web view. *A window…* and *Entire screen…* are WebKit's and macOS's, and need
@@ -173,6 +193,8 @@ Measured on macOS 27.2 (M-series, 1440×848 pt pages), before and after:
 | cost at 1920×1130 | Copper 16, shared page 5, calling page 17, GPU 24 |
 | for comparison, the shared page animating on screen, no share | 3 / 4 / 0 / 5 |
 | windowed, the Copper window behind other apps, 1780×1200 | 30.2 fps, 30 encoded; the shared page not hidden |
+| Copper behind other apps (screen locked) for minutes, without the activity, 1068×720 | 5–7 fps; tick every 133–200 ms; main thread priority 4 (shipped settings) or 20 (test world); the shared page's animation frames 5 a second |
+| the same with it, five minutes and more, either tab in front, or started after 100 s asleep | 30 fps (slowest second 29), tick 33.3 ms, 29.9 encoded, animation frames at the display's rate |
 
 `takeSnapshot` on this WebKit pictures `<video>` and WebGL as well as the
 page (checked with an H.264 clip and a WebGL canvas).
@@ -236,8 +258,20 @@ Rejected:
   frame, constraints, what it costs, and nothing without a pick: a page
   posting to the handler itself, another tab or frame holding a real share
   id, the next document in the same tab, an ask planted by another origin. Pictures in `/tmp/copper-tabshare-qa`.
-- `./bench --world NAME share …`: `state`, `answer tab ID|window|screen|cancel`,
-  `keys` and `occlusion ID on|off` (test worlds only; the last lets a windowed
+- `docs/fixtures/tab-share-pace-e2e.sh`: the pace over time, where the
+  headless run can't look (a headless Copper isn't slowed this way): a windowed test
+  world started in the background with `SEARCH_MEASURE` (macOS and WebKit
+  slow it as they slow the shipped browser), left idle for 75 s, then shared
+  for 90 s — per second, median ≥ 25 fps and the slow tenth ≥ 20, no slower
+  at the end than at the start, ≥ 20 encoded over WebRTC — with `share pace
+  off` as the control (it says so when macOS never slowed Copper on that run,
+  and the pace proved nothing). Its window sits behind yours for about four
+  minutes.
+- `./bench --world NAME share …`: `state` (each share's `timing`: the gaps
+  between ticks, an ask's wait for its picture and the page's turn, middle /
+  slow tenth / slowest over the last few seconds; `appActive`; `pace`),
+  `answer tab ID|window|screen|cancel`, `keys`, `pace on|off` and
+  `occlusion ID on|off` (test worlds only; the last lets a windowed
   probe behind your own windows call getDisplayMedia, which wants a visible
   page), `stop`, `caller on|off`, `picture window|picker|bar PATH [dark]`. `SEARCH_SHARE_MOCK=1` at launch, in a
   test world, turns on WebKit's mock capture devices (the same switch as the camera and microphone's

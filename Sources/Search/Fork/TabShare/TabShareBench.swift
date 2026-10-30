@@ -10,6 +10,8 @@ import WebKit
 //   share keys KEYS                   test worlds: keys pressed on the open picker (↑ ↓ ↩ ⎋ ⌫, letters)
 //   share stop [SHARE|all]            as the bar's Stop does
 //   share caller on|off               keep the calling page painting while you are elsewhere
+//   share pace on|off                 test worlds: hold (on, as Copper does) or not the latency-critical
+//                                     activity that keeps a share at 30 fps behind other apps
 //   share occlusion ID on|off         test worlds: a tab's page ignores (on) or notices (off) whether its
 //                                     window is covered — a windowed probe behind your own windows can
 //                                     still call getDisplayMedia, which wants a visible page
@@ -86,6 +88,10 @@ enum TabShareBench {
         case "caller":
             share.keepsCallerPainting = words.first != "off"
             answer(["keepsCallerPainting": share.keepsCallerPainting])
+        case "pace":
+            guard Store.testing else { answer(["error": "test worlds only"]); return }
+            share.holdsPace = words.first != "off"
+            answer(["holds": share.holdsPace, "held": share.holdingPace])
         case "picture":
             if words.first == "window", words.count >= 2 {
                 answer(window(of: browser, to: words[1]))
@@ -94,7 +100,7 @@ enum TabShareBench {
             guard words.count >= 2 else { answer(["error": "share picture window|picker|bar PATH [dark]"]); return }
             picture(words[0], path: words[1], dark: words.dropFirst(2).contains("dark"), in: browser, answer: answer)
         default:
-            answer(["error": "share state|answer|keys|stop|caller|occlusion|picture"])
+            answer(["error": "share state|answer|keys|stop|caller|pace|occlusion|picture"])
         }
     }
 
@@ -103,6 +109,8 @@ enum TabShareBench {
         out["queuedAnswers"] = TabShareTesting.pending
         out["mockDevices"] = TabShareTesting.mock
         out["pid"] = Int(getpid())
+        // Whether Copper is the app in front: behind other apps, macOS slows it (TabShare.holdPace).
+        out["appActive"] = NSApp.isActive
         out["processes"] = TabShare.shared.shares.map { live -> [String: Any] in
             func pid(_ object: NSObject?, _ name: String) -> Int {
                 guard let object, object.responds(to: NSSelectorFromString(name)), let n = object.value(forKey: name) as? NSNumber else { return 0 }
