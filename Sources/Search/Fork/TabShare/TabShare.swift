@@ -27,12 +27,11 @@ final class TabShare: NSObject, ObservableObject {
 
     /// Tab.swift `Web.configuration`: the page script's way back, once per
     /// configuration (a tab opened by a link shares its opener's controller,
-    /// handler and all). In a test world, WebKit's mock capture devices when
-    /// asked for (TabShareTesting).
+    /// handler and all). (A test world's mock capture devices are
+    /// CapturePreferences.configure's, beside it — TabShareTesting.mock.)
     nonisolated static func configure(_ configuration: WKWebViewConfiguration) {
         MainActor.assumeIsolated {
             configuration.userContentController.addScriptMessageHandler(Relay.shared, contentWorld: .page, name: TabShareScript.handler)
-            TabShareTesting.prepare(configuration)
         }
     }
 

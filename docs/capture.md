@@ -6,8 +6,8 @@ keeps hearing you while you look at other tabs. Implementation: `Sources/Search/
 (`CaptureChoices.swift` the rules, `CaptureDesk.swift` the requests and the bar's state,
 `CaptureBar.swift` the bar, `CaptureCalls.swift` a call in the background, `CaptureHook.swift` the
 page script and the Permissions API, `CaptureBench.swift` the bench). Screen sharing
-(`getDisplayMedia`) is not here: see the screen-sharing work, which answers WebKit's own display
-capture question. Copper's own dictation and Listen are [voice.md](voice.md).*
+(`getDisplayMedia`, a single tab included) is [screen-sharing.md](screen-sharing.md), which answers
+WebKit's own display capture question. Copper's own dictation and Listen are [voice.md](voice.md).*
 
 ## Asking
 
@@ -34,6 +34,11 @@ A page asking shows one bar at the bottom of the window, in the window that hold
   as you click never gets what you didn't read.
 - A page with no host (a file, a `data:` page) is asked about on its own, every time, and nothing
   is remembered for it.
+- **The same bar asks for on-device speech to text** (`window.copper.voice`, listed sites only —
+  [voice.md](voice.md) › On web pages): *rgs.apps.exowatt.com wants to use your on-device speech to
+  text*, after any camera or microphone question, with Show, the half-second read and the dropping
+  of a page that went away as above. Its answer, yes or no, is kept per host (`capture.<host>|voice`)
+  and Forget choices forgets it.
 
 ## What is remembered
 
@@ -94,6 +99,10 @@ Join a call in tab A and switch to tab B: people still hear you, and see you.
   waits in the off-screen room the space warm-up uses (`Room`, `Fork/SpaceWarm.swift`), laid out at
   the stage's size, until you come back or the call ends. Then it is an ordinary tab again. A
   capturing tab is never put to sleep ("on a call", `Sleep.swift`). Closing the tab ends the call.
+- **Sharing a tab from a call** ([screen-sharing.md](screen-sharing.md)): the shared tab and the
+  call are both kept seen, each wherever it is; neither one ending turns the other's occlusion back
+  on — a call ending while its page is still sharing goes straight to the share's own stage, and a
+  share ending leaves the call's page to the call.
 - Measured (mock devices, `./bench --world mic-… privacy capture`): a background call re-asking for
   its microphone 4 s after you left it got it in **4 ms** (before: only when you returned, 8+ s
   later); the same with the window covered.
@@ -149,8 +158,9 @@ was already allowed the device, and otherwise refused and logged.
 ## Checking it
 
 In a test world, `capture.mock` (`defaults write com.officecommun.search.test.<world> capture.mock
--bool true`) gives every page WebKit's stand-in camera and microphone (a test pattern and a tone):
-no hardware, no macOS question. Never anywhere else.
+-bool true`, or `SEARCH_SHARE_MOCK=1` at launch — one switch, two names) gives every page WebKit's
+stand-in camera and microphone (a test pattern and a tone): no hardware, no macOS question. Never
+anywhere else.
 
 ```
 ./bench --world mic-a privacy capture            # what is asked, kept, allowed; each call's capture and where its page is

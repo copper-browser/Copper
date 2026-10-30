@@ -13,7 +13,9 @@ import SwiftUI
 ///   microphone (one page at a time): "Use it here" takes it back;
 /// - macOS refusing Copper the device: said plainly, with the way to
 ///   System Settings › Privacy & Security, until you dismiss it or allow it —
-///   and then, for a few seconds, Reload for the pages it refused.
+///   and then, for a few seconds, Reload for the pages it refused;
+/// - Fork (page-voice): a listed site asking for Copper's on-device speech
+///   to text (Fork/Voice/PageVoice.swift), Allow / Don't allow as for a device.
 struct CaptureSlot: View {
     @ObservedObject var browser: Browser
     @ObservedObject var desk: CaptureDesk
@@ -30,7 +32,13 @@ struct CaptureSlot: View {
 
     /// The tab that asked is not the one on this window's stage.
     private func elsewhere(_ bar: CaptureDesk.Bar) -> Bool {
-        guard case let .ask(question) = bar, let tab = question.tab else { return false }
+        let asker: UUID?
+        switch bar {
+        case let .ask(question): asker = question.tab
+        case let .voice(_, tab): asker = tab
+        default: asker = nil
+        }
+        guard let tab = asker else { return false }
         return tab != browser.activeID && !Split.shared.has(tab)
     }
 
@@ -38,8 +46,10 @@ struct CaptureSlot: View {
     /// question you read, never one that took its place under the pointer.
     private func act(_ action: CaptureBarView.Action, on bar: CaptureDesk.Bar) {
         switch action {
-        case .allow: if let shown = bar.question { desk.allow(shown) }
-        case .deny: if let shown = bar.question { desk.deny(shown) }
+        case .allow:
+            if let shown = bar.question { desk.allow(shown) } else if case .voice = bar { desk.answerVoice(bar, allow: true) }
+        case .deny:
+            if let shown = bar.question { desk.deny(shown) } else if case .voice = bar { desk.answerVoice(bar, allow: false) }
         case .show: desk.showAsker()
         case .allowRefused: desk.allowRefused()
         case .openSettings: desk.openSystemSettings()
@@ -81,7 +91,7 @@ struct CaptureBarView: View {
     @ViewBuilder
     private var buttons: some View {
         switch bar {
-        case .ask:
+        case .ask, .voice:
             if elsewhere { quiet("Show") { act(.show) } }
             strong("Allow") { act(.allow) }
             quiet("Don't allow") { act(.deny) }
@@ -133,6 +143,7 @@ struct CaptureBarView: View {
         case let .system(devices, _): return devices
         case let .restored(devices): return devices
         case let .paused(_, devices, _): return devices
+        case .voice: return []
         }
     }
 
@@ -141,6 +152,7 @@ struct CaptureBarView: View {
         switch bar {
         case .ask, .restored: return camera ? "video" : "mic"
         case .refused, .system, .paused: return camera ? "video.slash" : "mic.slash"
+        case .voice: return "waveform"
         }
     }
 
@@ -161,6 +173,8 @@ struct CaptureBarView: View {
             return "\(Fork.name) can use your \(devices.words) now"
         case let .paused(site, devices, _):
             return "\(Self.named(site)) can't use your \(devices.words) — another tab is using it"
+        case let .voice(host, _):
+            return "\(Self.named(host)) wants to use your \(PageVoice.asks)"
         }
     }
 }

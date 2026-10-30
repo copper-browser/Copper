@@ -67,7 +67,7 @@ enum CaptureSystem {
 
     /// WebKit's stand-in devices, for test worlds only (`capture.mock`,
     /// CapturePreferences.configure): no hardware, no macOS question.
-    static var mock: Bool { Store.testing && Store.settings.bool(forKey: "capture.mock") }
+    static var mock: Bool { CapturePreferences.mock }
 
     private static func type(_ device: CaptureDevices) -> AVMediaType { device == .camera ? .video : .audio }
 
@@ -159,6 +159,10 @@ final class CaptureDesk: ObservableObject {
         /// The tab on screen had these paused by WebKit for another page
         /// that is still using them (CaptureCalls).
         case paused(site: String, devices: CaptureDevices, tab: UUID)
+        /// A listed site asking for Copper's on-device speech to text
+        /// (Fork/Voice/PageVoice.swift) — asked once no camera or microphone
+        /// question is waiting.
+        case voice(host: String, tab: UUID?)
 
         /// The question, when the bar is asking one.
         var question: CaptureQuestion? {
@@ -181,6 +185,9 @@ final class CaptureDesk: ObservableObject {
     private var restoredHush: DispatchWorkItem?
     /// The tab on screen whose capture another page holds (CaptureCalls).
     private var pausedTab: (tab: UUID, site: String, devices: CaptureDevices)?
+    /// Pages waiting to hear whether they may use on-device speech to text,
+    /// oldest first (`askVoice`).
+    private var voiceAsks: [VoiceAsk] = []
     private var activeWatch: NSObjectProtocol?
     private var tabsWatch: AnyCancellable?
     /// When the bar started asking what it asks now. An answer from the bar
@@ -212,7 +219,7 @@ final class CaptureDesk: ObservableObject {
         tabsWatch = browser.$tabs.dropFirst().sink { [weak self] _ in
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    guard let self, !self.queue.isEmpty || self.pausedTab != nil else { return }
+                    guard let self, !self.queue.isEmpty || self.pausedTab != nil || !self.voiceAsks.isEmpty else { return }
                     self.recheck()
                 }
             }
@@ -347,8 +354,11 @@ final class CaptureDesk: ObservableObject {
 
     /// This page's waiting requests, answered no and off the bar.
     private func gone(_ web: WKWebView) {
-        guard queue.waiting.contains(where: { $0.handle.web === web }) else { return }
+        let voice = voiceAsks.filter { $0.web === web }
+        guard queue.waiting.contains(where: { $0.handle.web === web }) || !voice.isEmpty else { return }
         apply(queue.drop { $0.handle.web === web })
+        voiceAsks.removeAll { $0.web === web }
+        for ask in voice { ask(false) }
         refresh()
     }
 
@@ -510,7 +520,13 @@ final class CaptureDesk: ObservableObject {
     /// AgentTabs is the main window when no window shows its space, and a
     /// Show in a second window would have changed the first one.)
     func showAsker() {
-        guard case let .ask(question)? = bar, let id = question.tab, let tab = CaptureDesk.tab(id: id), let browser else { return }
+        let asker: UUID?
+        switch bar {
+        case let .ask(question)?: asker = question.tab
+        case let .voice(_, tab)?: asker = tab
+        default: asker = nil
+        }
+        guard let id = asker, let tab = CaptureDesk.tab(id: id), let browser else { return }
         if let there = Windows.all.first(where: { $0 !== browser && $0.activeID == id }), let window = Windows.window(of: there) {
             window.makeKeyAndOrderFront(nil)
             return
@@ -604,6 +620,11 @@ final class CaptureDesk: ObservableObject {
     /// waiting (WebKit gave up on them): answered no, and off the bar.
     private func prune() {
         apply(queue.drop { !$0.handle.waiting })
+        if voiceAsks.contains(where: { !$0.waiting }) {
+            let gone = voiceAsks.filter { !$0.waiting }
+            voiceAsks.removeAll { !$0.waiting }
+            for ask in gone { ask(false) }
+        }
     }
 
     private func apply(_ settled: CaptureQueue<CaptureAnswer>.Settled) {
@@ -618,10 +639,13 @@ final class CaptureDesk: ObservableObject {
         if let held = pausedTab, CaptureDesk.tab(id: held.tab)?.built.map({ CaptureCalls.shared.paused($0).isEmpty }) ?? true {
             pausedTab = nil
         }
+        settleVoice()
         // A page waiting on an answer comes first; then what macOS refuses.
         let next: Bar?
         if let question = question() {
             next = .ask(question)
+        } else if let voice = voiceAsks.first {
+            next = .voice(host: voice.host, tab: voice.tab)
         } else if let blocked {
             next = .system(blocked.devices, restricted: blocked.restricted)
         } else if let pausedTab {
@@ -635,12 +659,101 @@ final class CaptureDesk: ObservableObject {
         }
         // Something new to read: the bar's answers wait until it can be read.
         if let now = next?.question, bar?.question?.reads(like: now) != true { askedSince = Date() }
+        if case .voice = next, bar != next { askedSince = Date() }
         if bar != next { withAnimation(Motion.settle) { bar = next } }
     }
 
     /// For the bench: requests waiting, oldest first.
     var waiting: [[String: Any]] {
         queue.waiting.map { ["site": $0.site, "devices": $0.devices.names, "tab": $0.tab.map { String($0.uuidString.prefix(8)).lowercased() } ?? NSNull()] }
+            + voiceAsks.map { ["site": $0.host, "devices": ["voice"], "tab": $0.tab.map { String($0.uuidString.prefix(8)).lowercased() } ?? NSNull()] }
+    }
+
+    // MARK: - on-device speech to text (Fork (page-voice))
+
+    /// One page asking for Copper's on-device speech to text: its answer,
+    /// given exactly once — no, if nothing else gave it before it goes.
+    private final class VoiceAsk {
+        let host: String
+        let tab: UUID?
+        private(set) weak var web: WKWebView?
+        private var answer: ((Bool) -> Void)?
+
+        init(host: String, tab: UUID?, web: WKWebView?, _ answer: @escaping (Bool) -> Void) {
+            self.host = host
+            self.tab = tab
+            self.web = web
+            self.answer = answer
+        }
+
+        func callAsFunction(_ yes: Bool) {
+            guard let answer else { return }
+            self.answer = nil
+            answer(yes)
+        }
+
+        /// Still worth asking about: the page is open, on the host that asked.
+        @MainActor var waiting: Bool {
+            guard answer != nil, let web, web.uiDelegate != nil else { return false }
+            return web.url?.host()?.caseInsensitiveCompare(host) == .orderedSame
+        }
+
+        deinit { answer?(false) }
+    }
+
+    /// A listed site asking for on-device speech to text (PageVoice.start):
+    /// the same bar as the camera and the microphone, in the window that holds
+    /// the page's tab, after any question about them — never refused for
+    /// coming second. The answer, yes or no, is kept for the host
+    /// (`PageVoice.consentKey`; Settings › Privacy › Forget choices forgets it).
+    func askVoice(host: String, from web: WKWebView?, _ answer: @escaping (Bool) -> Void) {
+        let tab = web.flatMap { CaptureDesk.tab(for: $0) }
+        if let tab, let owner = Optional(AgentTabs.owner(of: tab)), owner !== browser {
+            return owner.capture.askVoice(host: host, from: web, answer)
+        }
+        if let known = PageVoice.consent(host) { return answer(known) }
+        // Nobody to ask on a Mac nobody sits at; nothing is written down.
+        if Headless.on {
+            Headless.log("declined on-device speech to text for \(host)")
+            return answer(false)
+        }
+        CaptureDesk.log("asking about on-device speech to text for \(host)")
+        voiceAsks.append(VoiceAsk(host: host, tab: tab?.id, web: web, answer))
+        refresh()
+    }
+
+    /// The bar's Allow or Don't allow on a voice question. From the bar
+    /// (`shown`): only for the one it showed, up long enough to be read, as
+    /// for the camera and the microphone. Every page of that host waiting is
+    /// answered.
+    func answerVoice(_ shown: Bar? = nil, allow yes: Bool) {
+        prune()
+        guard question() == nil, let first = voiceAsks.first else { return refresh() }
+        if let shown {
+            guard shown == .voice(host: first.host, tab: first.tab),
+                  Date().timeIntervalSince(askedSince) >= CaptureDesk.readTime else {
+                CaptureDesk.log("an answer for a question that changed, or was up too briefly to be read — not taken")
+                return refresh()
+            }
+        }
+        Store.settings.set(yes, forKey: PageVoice.consentKey(first.host))
+        CaptureDesk.log("\(yes ? "allowed" : "refused") on-device speech to text for \(first.host)")
+        settleVoice()
+        // Another window may have been waiting on the same host.
+        for browser in Windows.all where browser !== self.browser { browser.capture.recheck() }
+        refresh()
+    }
+
+    /// Voice questions a kept answer now settles (this bar's, another window's).
+    private func settleVoice() {
+        guard !voiceAsks.isEmpty else { return }
+        var settled: [(VoiceAsk, Bool)] = []
+        voiceAsks.removeAll { ask in
+            guard let known = PageVoice.consent(ask.host) else { return false }
+            settled.append((ask, known))
+            return true
+        }
+        for (ask, known) in settled { ask(known) }
     }
 
     /// For the bench's pictures: the bar as if a page had asked.

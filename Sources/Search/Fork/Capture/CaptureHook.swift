@@ -13,15 +13,24 @@ enum CapturePreferences {
     /// cut a call in a background tab. A test world with `capture.mock` gets
     /// WebKit's stand-in camera and microphone (a test pattern and a beeping
     /// tone): no hardware is opened and macOS never asks — never anywhere else
-    /// (CaptureSystem.mock reads the same switch). Private preferences, set
-    /// only where this WebKit has them: an unknown KVC key throws at launch.
+    /// (`mock`). Private preferences, set only where this WebKit has them: an
+    /// unknown KVC key throws at launch.
     static func configure(_ config: WKWebViewConfiguration) {
         let preferences = config.preferences
         set(preferences, "interruptAudioOnPageVisibilityChangeEnabled", false)
-        guard Store.testing, Store.settings.bool(forKey: "capture.mock") else { return }
+        guard mock else { return }
         set(preferences, "mockCaptureDevicesEnabled", true)
         // The stand-ins still go through Copper's question, as real devices do.
         set(preferences, "mockCaptureDevicesPromptEnabled", true)
+    }
+
+    /// WebKit's stand-in devices, test worlds only — one switch with two
+    /// names: `capture.mock` in the world's settings, or SEARCH_SHARE_MOCK=1
+    /// at launch (tab sharing's window and screen answers, TabShareTesting).
+    /// CaptureSystem.mock reads it too: no macOS question for a stand-in.
+    static var mock: Bool {
+        Store.testing && (Store.settings.bool(forKey: "capture.mock")
+            || ProcessInfo.processInfo.environment["SEARCH_SHARE_MOCK"] == "1")
     }
 
     private static func set(_ preferences: WKPreferences, _ key: String, _ value: Bool) {

@@ -368,7 +368,7 @@
                                        pages' camera and microphone: the bar's question and buttons, what each
                                        site may use, each call's capture and where its page is (docs/capture.md);
                                        test worlds: allow|undo|resume (what lets a page hear you is yours to click),
-                                       keep on|off, seed ask|refused|system|restricted|restored|paused|none [DEVICE] [SITE],
+                                       keep on|off, seed ask|refused|system|restricted|restored|paused|voice|none [DEVICE] [SITE],
                                        render PATH [dark], seen on|off (covered window's pages count as seen),
                                        park on|off (window off every display), minimize on|off
                                        Settings › Privacy's questions (for a picture) and its clears, every jar

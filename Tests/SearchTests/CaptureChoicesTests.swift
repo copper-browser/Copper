@@ -197,6 +197,22 @@ private let meet = "meet.google.com"
                       "capture.meet.google.com|1", "capture.zoom.us|2"])
 }
 
+/// Page voice (Fork/Voice/PageVoice.swift) keeps its yes or no under
+/// `capture.<host>|voice`, beside the old shape: reading the camera and
+/// microphone choices never spends it, and never reads it as a device.
+@MainActor @Test func pageVoiceAnswersAreNotCameraOrMicrophoneChoices() {
+    let host = "rgs.apps.exowatt.com"
+    #expect(PageVoice.consentKey(host) == "capture.rgs.apps.exowatt.com|voice")
+    let (choices, spent) = CaptureChoices.load(from: [
+        PageVoice.consentKey(host): true,
+        PageVoice.consentKey("other.apps.exowatt.com"): false,
+        "capture.meet.google.com|1": true,
+    ])
+    #expect(choices.allowed == [meet: .microphone])
+    #expect(spent == ["capture.meet.google.com|1"])
+    #expect(!choices.covers(host, .microphone))
+}
+
 @Test func olderKeysJoinWhatIsAlreadyKept() {
     let (choices, _) = CaptureChoices.load(from: [
         CaptureChoices.key: [meet: ["camera"]],

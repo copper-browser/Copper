@@ -17,9 +17,10 @@ import os
 // settings (default `*.apps.exowatt.com`, Exowatt's internal apps) — every
 // other site never sees `window.copper`. Even an allowed site gets nothing
 // until the person says yes once to "<site> wants to use your on-device
-// speech to text", asked and remembered the way the microphone is
-// (Browser.askPageVoice, `capture.<host>|voice`; Settings › Privacy forgets
-// it with the camera and microphone choices). Voice must be on and its model
+// speech to text", asked in the camera and microphone's bar
+// (CaptureDesk.askVoice, Fork/Capture/) and remembered under
+// `capture.<host>|voice`; Settings › Privacy forgets it with the camera and
+// microphone choices. Voice must be on and its model
 // ready (Settings › Intelligence › Voice); `voice.state()` says so first.
 //
 // It is the same live loop as Listen (LiveSession, `.listen`: a phrase ends
@@ -179,9 +180,15 @@ final class PageVoice {
         ["ok": false, "code": code, "message": message]
     }
 
-    private func remembered(_ host: String) -> Bool? {
-        Store.settings.object(forKey: "capture.\(host)|voice") as? Bool
+    /// Where a host's answer is kept (CaptureDesk.answerVoice writes it;
+    /// CaptureBook.forgetAll forgets it).
+    static func consentKey(_ host: String) -> String { "capture.\(host)|voice" }
+
+    static func consent(_ host: String) -> Bool? {
+        Store.settings.object(forKey: consentKey(host)) as? Bool
     }
+
+    private func remembered(_ host: String) -> Bool? { Self.consent(host) }
 
     func state(host: String) -> [String: Any] {
         let supported = VoicePrefs.supported
@@ -215,7 +222,7 @@ final class PageVoice {
         } else {
             let browser = Windows.all.first { $0.tab(for: web) != nil } ?? Windows.current
             granted = await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
-                browser.askPageVoice(host: host) { done.resume(returning: $0) }
+                browser.capture.askVoice(host: host, from: web) { done.resume(returning: $0) }
             }
         }
         guard granted else { return Self.refusal("denied", "Not allowed for \(host) — Settings › Privacy forgets that choice.") }

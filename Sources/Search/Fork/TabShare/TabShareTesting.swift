@@ -26,18 +26,8 @@ enum TabShareTesting {
     /// A headless test world leaves the picker up for `bench share answer`.
     static var holds: Bool { Store.testing }
 
-    /// SEARCH_SHARE_MOCK=1, test worlds only. WKPreferencesPrivate setters,
-    /// called only where this WebKit has them.
-    static let mock = Store.testing && ProcessInfo.processInfo.environment["SEARCH_SHARE_MOCK"] == "1"
-
-    static func prepare(_ configuration: WKWebViewConfiguration) {
-        guard mock else { return }
-        let preferences = configuration.preferences
-        for name in ["_setMockCaptureDevicesEnabled:", "_setMockCaptureDevicesPromptEnabled:"] {
-            let selector = NSSelectorFromString(name)
-            guard preferences.responds(to: selector) else { continue }
-            typealias Setter = @convention(c) (AnyObject, Selector, Bool) -> Void
-            unsafeBitCast(preferences.method(for: selector), to: Setter.self)(preferences, selector, true)
-        }
-    }
+    /// SEARCH_SHARE_MOCK=1, test worlds only — the camera and microphone's
+    /// `capture.mock` by another name: Web.configuration's
+    /// CapturePreferences.configure turns WebKit's stand-ins on for either.
+    static var mock: Bool { CapturePreferences.mock }
 }

@@ -106,10 +106,10 @@ enum TabShareStage {
     /// over it when the share ends: an agent's hold (Backstage), the Room a
     /// launch or a space warm-up hung it in (SpaceWarm — it turns detection
     /// back on itself as the view leaves), headless mode (Backstage refuses
-    /// to turn it on there). Merging fix/page-mic adds its call pages here:
-    /// `|| CaptureCalls.shared.keeps(web)`.
+    /// to turn it on there), a call the page is on (Fork/Capture/CaptureCalls.swift
+    /// keeps it seen until the call ends, and lets go of it then).
     private static func othersKeepSeen(_ web: WKWebView, tab id: Tab.ID) -> Bool {
-        Backstage.shared.holds(id) || web.window is Room.Panel
+        Backstage.shared.holds(id) || web.window is Room.Panel || CaptureCalls.shared.keeps(web)
     }
 
     /// A tab that is gone: forget it without touching a view.

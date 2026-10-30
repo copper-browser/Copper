@@ -132,11 +132,17 @@ final class CaptureCalls {
     private func letGo(_ web: WKWebView) {
         kept.remove(ObjectIdentifier(web))
         CaptureDesk.log("the call ended; an ordinary tab again (\(web.url?.host() ?? "?"))")
+        let tab = CaptureDesk.tab(for: web)
+        // A tab being shared, or sharing one (Fork/TabShare/), stays seen:
+        // the share's stage has the say over it until the share ends.
+        let shared = tab.map { TabShare.shared.involves($0.id) } ?? false
         if Room.holds(web) {
-            // Out of the Room: Room.moved turns occlusion back on.
+            // Out of the Room: Room.moved turns occlusion back on — and a
+            // shared page goes straight to the share's own stage, not a tick later.
             Room.leave(web)
-        } else if !Headless.on, !(web.window is Backstage.Window),
-                  !(CaptureDesk.tab(for: web).map { Backstage.shared.holds($0.id) } ?? false) {
+            if shared, let tab { TabShareStage.keep(tab) }
+        } else if !Headless.on, !shared, !(web.window is Backstage.Window),
+                  !(tab.map { Backstage.shared.holds($0.id) } ?? false) {
             // (A page an agent is working in keeps the backstage's say over
             // occlusion, wherever it is.)
             web.detectsOcclusion(true)

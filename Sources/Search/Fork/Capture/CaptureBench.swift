@@ -14,11 +14,11 @@ import WebKit
 //   forget                        Settings › Privacy › Forget choices
 // Test worlds only — what lets a page hear or see you is yours to click, and
 // the bench is any script of yours (as `key` is, for typing into a page):
-//   allow                         the bar's Allow
+//   allow                         the bar's Allow (a voice question's too)
 //   undo                          the refusal bar's Allow and reload
 //   resume                        the paused bar's Use it here
 //   keep on|off                   keep a call's page seen off stage (default on)
-//   seed ask|refused|system|restricted|restored|paused|none [microphone|camera|both] [SITE]
+//   seed ask|refused|system|restricted|restored|paused|voice|none [microphone|camera|both] [SITE]
 //                                 the bar in a state, for pictures (nothing is answered)
 //   render PATH [dark]            the bar as it is, drawn off screen to a PNG
 //   seen on|off                   the window's pages count as seen though it is covered, and back
@@ -34,8 +34,10 @@ enum CaptureBench {
         if testOnly.contains(op), !Store.testing { return ["error": "privacy capture \(op) only works in a test world"] }
         switch op {
         case "state": break
-        case "allow": desk.allow()
-        case "deny": desk.deny()
+        case "allow":
+            if case .voice? = desk.bar { desk.answerVoice(allow: true) } else { desk.allow() }
+        case "deny":
+            if case .voice? = desk.bar { desk.answerVoice(allow: false) } else { desk.deny() }
         case "show": desk.showAsker()
         case "undo": desk.allowRefused()
         case "dismiss": desk.dismissSystem()
@@ -60,6 +62,7 @@ enum CaptureBench {
             case "restricted": desk.seed(.system(devices, restricted: true))
             case "restored": desk.seed(.restored(devices))
             case "paused": desk.seed(.paused(site: site, devices: devices, tab: UUID()))
+            case "voice": desk.seed(.voice(host: words.count > 3 ? site : "rgs.apps.exowatt.com", tab: nil))
             default: desk.seed(nil)
             }
         case "render":
@@ -162,6 +165,9 @@ enum CaptureBench {
             return ["kind": "restored", "devices": devices.names]
         case let .paused(site, devices, tab)?:
             return ["kind": "paused", "site": site, "devices": devices.names, "tab": String(tab.uuidString.prefix(8)).lowercased()]
+        case let .voice(host, tab)?:
+            let asker: Any = tab.map { String($0.uuidString.prefix(8)).lowercased() } ?? NSNull()
+            return ["kind": "voice", "site": host, "tab": asker]
         }
     }
 

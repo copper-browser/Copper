@@ -240,4 +240,5 @@ Rejected:
   `keys` and `occlusion ID on|off` (test worlds only; the last lets a windowed
   probe behind your own windows call getDisplayMedia, which wants a visible
   page), `stop`, `caller on|off`, `picture window|picker|bar PATH [dark]`. `SEARCH_SHARE_MOCK=1` at launch, in a
-  test world, turns on WebKit's mock capture devices.
+  test world, turns on WebKit's mock capture devices (the same switch as the camera and microphone's
+  `capture.mock`, [capture.md](capture.md) › Checking it).
