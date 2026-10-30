@@ -369,6 +369,8 @@ final class Tab: ObservableObject, Identifiable {
         controller.removeScriptMessageHandler(forName: Passkeys.name, contentWorld: .page)
         controller.removeScriptMessageHandler(forName: ImageRelay.name)
         controller.removeScriptMessageHandler(forName: StoreRelay.name)
+        controller.removeScriptMessageHandler(forName: PageVoiceRelay.name, contentWorld: .page) // Fork (page-voice)
+        controller.addScriptMessageHandler(PageVoiceRelay.shared, contentWorld: .page, name: PageVoiceRelay.name)
         controller.add(relay, name: ScrollRelay.name)
         controller.add(veils_, name: VeilRelay.name)
         controller.add(images, name: ImageRelay.name)
@@ -483,6 +485,10 @@ final class Tab: ObservableObject, Identifiable {
         )
         controller.addUserScript(
             WKUserScript(source: StoreRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
+        )
+        // Fork (page-voice): window.copper.voice on the sites that may ask (Fork/Voice/PageVoice.swift).
+        controller.addUserScript(
+            WKUserScript(source: PageVoice.script, injectionTime: .atDocumentStart, forMainFrameOnly: true)
         )
         if Passkeys.active {
             controller.addUserScript(

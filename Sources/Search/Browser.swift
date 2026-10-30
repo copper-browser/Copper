@@ -814,6 +814,24 @@ final class Browser: NSObject, ObservableObject {
         asking = nil
     }
 
+    /// Fork (page-voice): a page asking for Copper's on-device speech to text
+    /// (Fork/Voice/PageVoice.swift) — asked, answered and remembered as the
+    /// microphone is, under `capture.<host>|voice`.
+    func askPageVoice(host: String, _ answer: @escaping (Bool) -> Void) {
+        let key = "\(host)|voice"
+        if let remembered = Store.settings.object(forKey: "capture." + key) as? Bool {
+            answer(remembered)
+            return
+        }
+        guard decide == nil else {
+            answer(false)
+            return
+        }
+        decide = { answer($0 == .grant) }
+        askedAbout = key
+        asking = CaptureAsk(host: host, wants: PageVoice.asks)
+    }
+
     /// Everything a site has been allowed or refused, for the day you want to
     /// change your mind.
     func forgetCaptureChoices() {
