@@ -20,6 +20,15 @@ import Testing
         #expect(!PageVoice.allows(host: "127.0.0.1", sites: []))
     }
 
+    @Test func aStoppingSessionWaitsOnTheModel() {
+        // A page that went quiet is let go after 30 s; one that asked to stop
+        // is waiting on a cold model (finals still to come) and gets 180 s.
+        #expect(!PageVoice.abandoned(idle: 29, stopping: false))
+        #expect(PageVoice.abandoned(idle: 31, stopping: false))
+        #expect(!PageVoice.abandoned(idle: 90, stopping: true))
+        #expect(PageVoice.abandoned(idle: 181, stopping: true))
+    }
+
     @Test func httpsOnlyButThisMac() {
         #expect(PageVoice.secure(scheme: "https", host: "rgs.apps.exowatt.com"))
         #expect(!PageVoice.secure(scheme: "http", host: "rgs.apps.exowatt.com"))
