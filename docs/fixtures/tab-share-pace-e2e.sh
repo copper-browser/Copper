@@ -99,10 +99,6 @@ open_tab() {
   for _ in {1..60}; do [ "$(bench eval "$id" "document.readyState" 2>/dev/null)" = "complete" ] && break; sleep 0.25; done
   echo "$id"
 }
-# The share verbs read an all-digit id as a place in the row: hand them that place.
-ref() {
-  if [[ "$1" =~ ^[0-9]+$ ]]; then bench tabs | jq -r --arg id "$1" '.tabs | map(.id) | index($id)'; else echo "$1"; fi
-}
 state() { bench share; }
 # Per second, the last N seconds: the frames the share drew into its stream.
 pace() { bench eval "$a" "JSON.stringify(window.__pace($1))"; }
@@ -123,13 +119,13 @@ echo "ok idle $(( $(date +%s) - launched )) s since launch"
 # 2. The share. A page behind other windows is hidden to WebKit, and getDisplayMedia wants a
 # visible one: the caller ignores occlusion for the call, then notices it again (the share
 # itself keeps both pages seen from then on).
-bench share occlusion "$(ref "$a")" on >/dev/null
-bench share answer tab "$(ref "$b")" >/dev/null
+bench share occlusion "$a" on >/dev/null
+bench share answer tab "$b" >/dev/null
 bench eval "$a" "window.__share({ video: { width: { max: 1280 }, height: { max: 720 } } })" >/dev/null
 r=""
 for _ in {1..80}; do r=$(bench eval "$a" "JSON.stringify(window.__result)"); [ "$(jq -r '.pending // false' <<<"$r")" != true ] && break; sleep 0.25; done
 [ "$(jq -r .ok <<<"$r")" = true ] || fail "sharing the tab failed: $r"
-bench share occlusion "$(ref "$a")" off >/dev/null
+bench share occlusion "$a" off >/dev/null
 [ "$(state | jq -r .pace.held)" = true ] || fail "no activity held while sharing: $(state | jq -c .pace)"
 echo "ok shared at $(jq -r '"\(.settings.width)x\(.settings.height)"' <<<"$r")"
 
