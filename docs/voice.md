@@ -52,6 +52,34 @@ addon's, and the other way round. Copper's own agent needn't be set up: the addo
 service. Until the addon's page has asked for voice, ⌃⇧D goes on to the page. The details are
 [addons.md › Voice](addons.md#voice); `DictationSink.swift` is where the words change hands.
 
+## On web pages — `window.copper.voice`
+
+A web page that already records audio (RGS, Exowatt's meeting recorder) can have Copper's on-device
+model turn that audio into words with their times. The page keeps its own microphone and pushes the
+same 16 kHz mono PCM to Copper; Copper never opens the microphone for it, keeps no audio and sends
+nothing anywhere. Only pages on `voice.pages.sites` (default `*.apps.exowatt.com`, https or this Mac's
+`localhost`) see `window.copper` at all, and even they get nothing until you answer **Allow** once to
+"*site* wants to use your on-device speech to text" — the same bar and the same per-site memory as
+the microphone (`capture.<host>|voice`; Settings › Privacy forgets it with the camera and microphone
+choices). Voice must be on with its model ready.
+
+```js
+const s = await window.copper.voice.state()   // {enabled, ready, model, consent: granted|denied|ask, engine}
+const listen = await window.copper.voice.listen({
+  onPartial: (e) => { /* e.text: the phrase in flight */ },
+  onFinal: (e) => { /* {seq, start, end, text, words: [{text, start, end, approx?}]} */ },
+  onEnd: (e) => { /* {reason: stopped|cancelled|replaced|no audio|page closed} */ },
+})
+listen.push(int16Frame)        // Int16Array, Float32Array or ArrayBuffer of pcm_s16le, 16 kHz mono
+await listen.stop()            // the last phrase's final arrives before this resolves
+```
+
+Times are seconds from the first sample pushed. It is Listen's loop (a phrase ends at a 0.7 s pause or
+15 s), fed by the page; each final is decoded once more for word times, and when that decode hears a
+different number of words the final's words are spread over its span and marked `approx`. One listen
+per page (a new one replaces it), three at most, and one that gets no audio for 30 s ends. The model
+stays loaded while a page listens. `Fork/Voice/PageVoice.swift`; `swift test --filter PageVoice`.
+
 ## Listen — a live transcript
 
 **Listen** writes down what is said near the Mac — a meeting, a call, you thinking aloud — so the

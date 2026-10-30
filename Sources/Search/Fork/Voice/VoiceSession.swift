@@ -922,7 +922,8 @@ final class Voice: ObservableObject {
     func scheduleUnload() {
         unloadTimer?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            guard let self, !self.active, !Listen.shared.capturing, self.engineState != .warming else { return }
+            guard let self, !self.active, !Listen.shared.capturing, !PageVoice.shared.listening,
+                  self.engineState != .warming else { return }
             self.resetEngine()
             if #available(macOS 15, *) { Task { await VoiceEngine.shared.unload() } }
             Voice.log.info("voice model unloaded after 10 idle minutes")

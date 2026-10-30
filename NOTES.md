@@ -1,3 +1,5 @@
+Exowatt apps can use Copper's on-device speech to text. RGS, inside Copper, now takes the words of a live transcript from Copper's own speech model on your Mac while Nemotron still tells the speakers apart. The first time an app asks, Copper asks you; other sites never see it.
+
 Folders can no longer be undone by another device. Each Mac now syncs only the changes you make on it, so a Mac or PC that is out of step can't take your tabs out of their folders everywhere. If one sync would unfile or remove more than ten tabs at once, Copper asks first in the sidebar.
 
 Settings is shorter again. Advanced options fold away on Agents and Intelligence, a space's icon and colours open under Customize, Passwords drops its empty sections, and About's shortcuts are one row. Trails and Tide, the Labs preview, are gone.
