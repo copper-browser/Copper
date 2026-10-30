@@ -1,0 +1,35 @@
+<!doctype html><html><head><meta charset="utf-8"><title>frame</title></head><body style="margin:0;background:#111">
+<video id="v" muted autoplay playsinline style="width:640px"></video>
+<script>
+const report = (o) => parent.postMessage(Object.assign({ kind: 'result' }, o), '*');
+window.addEventListener('message', (e) => {
+  if (!e.data) return;
+  if (e.data.kind === 'share') {
+    navigator.mediaDevices.getDisplayMedia({ video: true }).then((s) => {
+      window.__s = s; const t = s.getVideoTracks()[0]; document.getElementById('v').srcObject = s;
+      report({ ok: true, label: t.label, surface: t.getSettings().displaySurface, w: t.getSettings().width });
+    }, (err) => report({ ok: false, name: err.name, message: err.message }));
+  }
+  // getDisplayMedia called through a fresh about:blank frame's function, as pages that keep
+  // pristine copies of built-ins do: the wrapper there asks from that frame, not this one.
+  if (e.data.kind === 'shareRaw') {
+    const blank = document.createElement('iframe'); document.body.appendChild(blank);
+    const raw = blank.contentWindow.MediaDevices.prototype.getDisplayMedia;
+    const source = Function.prototype.toString.call(raw).replace(/\s+/g, ' ').slice(0, 60);
+    raw.call(navigator.mediaDevices, { video: true }).then((s) => {
+      window.__s = s; report({ ok: true, raw: true, surface: s.getVideoTracks()[0].getSettings().displaySurface, source });
+    }, (err) => report({ ok: false, raw: true, name: err.name, message: err.message, source }));
+  }
+  // Straight to Copper's handler, as any script in any frame can.
+  if (e.data.kind === 'post') {
+    window.webkit.messageHandlers.copperShare.postMessage(e.data.message).then(
+      (v) => report({ posted: true, answer: v === undefined ? null : v }), (err) => report({ posted: true, error: String(err) }));
+  }
+  if (e.data.kind === 'measure') {
+    const v = document.getElementById('v'); let n = 0; const t0 = performance.now();
+    const cb = () => { n++; if (performance.now() - t0 < e.data.seconds * 1000) v.requestVideoFrameCallback(cb); };
+    v.requestVideoFrameCallback(cb);
+    setTimeout(() => report({ measured: true, fps: +(n / e.data.seconds).toFixed(1), w: v.videoWidth }), e.data.seconds * 1000 + 50);
+  }
+});
+</script></body></html>

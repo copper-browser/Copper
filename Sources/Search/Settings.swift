@@ -491,7 +491,7 @@ struct SettingsPanel: View {
                 }
             }
             SettingsSection("Permissions") {
-                Line("Camera and microphone", "What each site was allowed or refused") {
+                Line("Camera and microphone", "What each site was allowed") { // Fork (page-capture): a refusal is never kept (docs/capture.md)
                     Pill("Forget choices") { browser.forgetCaptureChoices() }
                 }
                 .settingsAnchor("privacy.capture")

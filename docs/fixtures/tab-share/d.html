@@ -1,0 +1,14 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Call D (iframe caller)</title></head>
+<body style="margin:0;background:#223;color:#eee;font:13px -apple-system">
+<p>Main frame on localhost; the call lives in a cross-origin iframe (127.0.0.1) with allow="display-capture".</p>
+<iframe id="f" allow="display-capture" style="width:700px;height:420px;border:0"></iframe>
+<script>
+// The same server under another name: a cross-origin frame.
+document.getElementById('f').src = 'http://127.0.0.1:' + location.port + '/frame.html';
+window.__frameResult = null;
+window.addEventListener('message', (e) => { if (e.data && e.data.kind === 'result') window.__frameResult = e.data; });
+window.__shareInFrame = () => { document.getElementById('f').contentWindow.postMessage({ kind: 'share' }, '*'); return 'posted'; };
+window.__shareRawInFrame = () => { document.getElementById('f').contentWindow.postMessage({ kind: 'shareRaw' }, '*'); return 'posted'; };
+window.__postInFrame = (message) => { window.__frameResult = null; document.getElementById('f').contentWindow.postMessage({ kind: 'post', message }, '*'); return 'posted'; };
+window.__measureInFrame = (s) => { document.getElementById('f').contentWindow.postMessage({ kind: 'measure', seconds: s }, '*'); return 'posted'; };
+</script></body></html>

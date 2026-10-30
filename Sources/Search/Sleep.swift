@@ -107,6 +107,7 @@ extension Browser {
         if Windows.all.contains(where: { $0.activeID == tab.id }) || Split.shared.has(tab.id) { return "on screen" } // Fork: windows — any window's stage
         if tab.pin != nil { return "pinned" }
         if Backstage.shared.holds(tab.id) { return "an agent is working in it" } // Fork: agent-tabs
+        if TabShare.shared.involves(tab.id) { return "being shared" } // Fork: tab-share — the shared tab and the page sharing it
         if tab.bench { return "a bench tab" }
         if tab.isBlank { return "blank" }
         if tab.asleep { return "already asleep" }

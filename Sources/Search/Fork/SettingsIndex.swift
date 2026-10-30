@@ -444,7 +444,7 @@ enum SettingsIndex {
           toggle: pref(\.shielded)),
         e(.privacy, "Blocking", "Block on this site", "Turn off on a site that breaks — the page reloads",
           ["pause blocking", "allow site", "allowlist", "whitelist", "broken site", "exception"], "privacy.site", fallback: "privacy.shield"),
-        e(.privacy, "Permissions", "Camera and microphone", "What each site was allowed or refused",
+        e(.privacy, "Permissions", "Camera and microphone", "What each site was allowed",
           ["permissions", "webcam", "mic", "site permissions", "forget choices"], "privacy.capture"),
         e(.privacy, "Clear browsing data", "History", "Every address you have been to",
           ["clear history", "delete history", "browsing data", "erase"], "privacy.history"),

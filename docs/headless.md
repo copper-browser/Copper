@@ -26,7 +26,7 @@ What changes when headless is on (and nothing here runs when it is off):
 | Browser window | on screen | **parked outside every display** (see *The window*) |
 | JS `alert` / `confirm` / `prompt`, certificate and HTTP-auth sheets, extension permission alerts | a sheet on the window | **declined on the spot** (`confirm()` → false, `prompt()` → null, bad certificate → not excused, sign-in → cancelled) and logged |
 | Open/save panels (file inputs, downloads "Save as…") | a sheet | **cancelled**, logged |
-| Camera / microphone asks | a bar at the bottom | **denied**, logged |
+| Camera / microphone asks | a bar at the bottom ([capture.md](capture.md)) | **denied**, logged — unless the site was already allowed that device |
 | Keychain prompts | a dialog | none — reads that would prompt fail (`errSecInteractionNotAllowed`) |
 | First-run Welcome panel | shown once | **suppressed** |
 | "Reopen windows?" after a crash | AppKit may ask | off (`ApplePersistenceIgnoreState`) |

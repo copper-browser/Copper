@@ -51,7 +51,9 @@ enum Web {
         // did nothing at all: the page asks, and WebKit refuses without a word.
         config.preferences.isElementFullscreenEnabled = true
         config.mediaTypesRequiringUserActionForPlayback = .audio
+        TabShare.configure(config) // Fork (tab-share): getDisplayMedia's way back to Copper (Fork/TabShare/)
         if Store.testing, !Store.measuring { config.preferences.inactiveSchedulingPolicy = .none }
+        CapturePreferences.configure(config) // Fork (page-capture): a hidden page keeps its microphone; test worlds' stand-in devices
         return config
     }
 }
@@ -376,6 +378,7 @@ final class Tab: ObservableObject, Identifiable {
         controller.add(images, name: ImageRelay.name)
         controller.add(shop, name: StoreRelay.name)
         controller.add(forms, name: FormRelay.name)
+        CaptureHook.listen(controller) // Fork (page-capture): what the page asks for and hears back (Fork/Capture/CaptureHook.swift)
         passkeysListening = false
         listenForPasskeys(controller) // Fork (passkeys-hooks): only while Copper is the authenticator
         Shield.shared.protect(controller)
@@ -461,6 +464,7 @@ final class Tab: ObservableObject, Identifiable {
         if CanvasHost.arm(built) { return } // Fork (canvas-hooks): a board gets one small script, not every page's
         let controller = built.configuration.userContentController
         controller.removeAllUserScripts()
+        TabShare.arm(controller) // Fork (tab-share): getDisplayMedia offers a tab (Fork/TabShare/TabShareScript.swift)
         listenForPasskeys(controller) // Fork (passkeys-hooks): follows Settings › Passwords
         controller.addUserScript(
             WKUserScript(source: ScrollRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
@@ -490,6 +494,7 @@ final class Tab: ObservableObject, Identifiable {
         controller.addUserScript(
             WKUserScript(source: PageVoice.script, injectionTime: .atDocumentStart, forMainFrameOnly: true)
         )
+        CaptureHook.arm(controller) // Fork (page-capture): every frame
         if Passkeys.active {
             controller.addUserScript(
                 WKUserScript(source: Passkeys.script, injectionTime: .atDocumentStart, forMainFrameOnly: false)

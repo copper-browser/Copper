@@ -59,9 +59,11 @@ model turn that audio into words with their times. The page keeps its own microp
 same 16 kHz mono PCM to Copper; Copper never opens the microphone for it, keeps no audio and sends
 nothing anywhere. Only pages on `voice.pages.sites` (default `*.apps.exowatt.com`, https or this Mac's
 `localhost`) see `window.copper` at all, and even they get nothing until you answer **Allow** once to
-"*site* wants to use your on-device speech to text" — the same bar and the same per-site memory as
-the microphone (`capture.<host>|voice`; Settings › Privacy forgets it with the camera and microphone
-choices). Voice must be on with its model ready.
+"*site* wants to use your on-device speech to text" — the camera and microphone's bar
+([capture.md](capture.md)), asked after any question about them and never refused for coming second,
+with **Show** when the page is in another tab. The answer, yes or no, is kept per host
+(`capture.<host>|voice`; Settings › Privacy forgets it with the camera and microphone choices).
+Voice must be on with its model ready.
 
 ```js
 const s = await window.copper.voice.state()   // {enabled, ready, model, consent: granted|denied|ask, engine}

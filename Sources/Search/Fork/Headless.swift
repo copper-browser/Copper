@@ -191,17 +191,8 @@ enum Headless {
             }
             .store(in: &bag)
         // A page asking for the camera or microphone waits on an answer
-        // nobody can give; it gets "no" at once.
-        browser.$asking
-            .compactMap { $0 }
-            .receive(on: DispatchQueue.main)
-            .sink { [weak browser] ask in
-                MainActor.assumeIsolated {
-                    log("declined \(ask.wants) for \(ask.host)")
-                    browser?.denyCapture()
-                }
-            }
-            .store(in: &bag)
+        // nobody can give; it gets "no" at once, unless the site was already
+        // allowed (Fork/Capture/CaptureDesk.swift `asked`, which logs it).
         for window in NSApp.windows { Parking.park(window) }
         log("browser ready — agent server \(MCP.shared.config.enabled ? "on" : "off") at \(MCP.shared.endpoint), Jev \(MCP.shared.config.jev ? "on" : "off"), \(AgentLinks.shared.all.filter { $0.config.enabled }.count) agent links on")
     }

@@ -1,0 +1,8 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Media C (video + WebGL)</title>
+<style>body{margin:0;background:#eee;font:14px -apple-system}video,canvas{display:block;margin:10px}</style></head><body>
+<video id="v" src="clip.mp4" muted autoplay loop playsinline width="640" height="360"></video>
+<canvas id="g" width="400" height="300"></canvas>
+<script>
+const gl = document.getElementById('g').getContext('webgl');
+let t = 0; function draw(){ t += 0.02; gl.clearColor((Math.sin(t)+1)/2, 0.3, (Math.cos(t)+1)/2, 1); gl.clear(gl.COLOR_BUFFER_BIT); requestAnimationFrame(draw); } draw();
+</script></body></html>

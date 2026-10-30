@@ -140,8 +140,10 @@ enum PrivacyBench {
             guard let kind = PrivacyClear.Kind(rawValue: word) else { return ["error": "privacy clear history|cookies|cache"] }
             PrivacyClear.shared.confirm(kind, in: browser)
             return ["cleared": kind.rawValue]
+        case "capture": // Fork (page-capture): the camera and microphone desk — Fork/Capture/CaptureBench.swift
+            return CaptureBench.handle(word, in: browser)
         default:
-            return ["error": "privacy status|ask history|cookies|none|clear history|cookies|cache"]
+            return ["error": "privacy status|ask history|cookies|none|clear history|cookies|cache|capture …"]
         }
     }
 }
