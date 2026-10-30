@@ -64,6 +64,7 @@ Full story: `docs/releasing.md`.
 - Prefer new files under `Sources/Search/Fork/` over edits to upstream files. Anything upstream does not have cannot conflict on the next rebase.
 - If you must touch an upstream file, add or update the row in `PATCHES.md` in the same commit.
 - Ping Collin on Slack before starting on a plan item so we do not both pick up the same one.
+- **Windows and Linux follow the Mac.** A PR that changes something a user sees gets a row (or an updated row) in [copper-windows/docs/parity.md](https://github.com/copper-browser/copper-windows/blob/main/docs/parity.md), the checklist both ports work from, in the same week. Toolkit-free logic belongs in copper-linux's shared crates (`copper-shell-core`, `copper-core`, …) so both get it once.
 
 ---
 
