@@ -1113,9 +1113,29 @@ final class Tab: ObservableObject, Identifiable {
     /// did nothing actually was.
     func recoverFromCrash() {
         guard let address else { return }
+        // A page that takes its process down as it loads would be loaded
+        // again the moment it died, and die again, for good: the page that
+        // keeps refreshing. The third death in half a minute stops it, and
+        // the page says so with Try again.
+        let now = Date()
+        deaths = deaths.filter { now.timeIntervalSince($0) < 30 } + [now]
+        guard deaths.count < 3 else {
+            deaths = []
+            cancelRecovery()
+            crashedOut = true
+            failure = "This page keeps closing as it loads."
+            Breadcrumbs.note("webcontent-loop", [("host", address.host() ?? "-")]) // Fork: crash breadcrumbs
+            return
+        }
         failure = nil
         loadAndVerify(address)
     }
+
+    /// When this page's process last went away, for `recoverFromCrash`.
+    private var deaths: [Date] = []
+    /// Set when `recoverFromCrash` gave up: the process is gone, so Try
+    /// again asks for the address rather than a reload of nothing.
+    private var crashedOut = false
 
     /// `web.load`, checked a moment later rather than trusted outright: a
     /// load handed to WebKit right after a process just died, or as the
@@ -1270,7 +1290,11 @@ final class Tab: ObservableObject, Identifiable {
         // A pin put down with ⌘W has no view left to reload; waking it is
         // the reload.
         guard !wake() else { return }
-        if hollow, let address {
+        if crashedOut, let address {
+            crashedOut = false
+            failure = nil
+            loadAndVerify(address)
+        } else if hollow, let address {
             web.load(URLRequest(url: address))
         } else {
             web.reload()

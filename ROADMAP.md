@@ -17,7 +17,7 @@ don't build it twice.
 - [ ] **Dragging tabs to reorder them** in the row across the top. *(X)*
 - [ ] **A double-click on the title bar fills the screen** from anywhere along the top, in both layouts. *(X)*
 - [ ] **Passkeys on some sign-ins** (Google's "Use your passkey"). The page bridge's parent-domain mismatch is fixed and covered by synthetic tests ([passkey checks](docs/passkeys.md#regression-checks)); live Google sign-in still needs validation on a signed release. *([#10](https://github.com/driceroland/Search/issues/10), X)*
-- [ ] **Google sign-in reloads in a loop** with the iCloud Passwords extension installed. *([#2](https://github.com/driceroland/Search/issues/2))*
+- [x] **Google sign-in reloads in a loop** with the iCloud Passwords extension installed. A password manager's frame on the page asked WebKit for its tab, WebKit ended the page's process, and Copper loaded it again for ever; the shim no longer asks from a frame, and a page that keeps crashing stops and says so. *([#2](https://github.com/driceroland/Search/issues/2))*
 - [ ] README: the size reads 2 MB in one place and 5 MB in another; 1.0 is 2.9 MB.
 
 ## Next — small additions people asked for
