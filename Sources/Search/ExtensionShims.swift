@@ -399,6 +399,59 @@ enum ExtensionShims {
       };
       if (inContent) return;
 
+      // An extension page inside a web page's frame — a password manager's
+      // menu under a sign-in field, a shopping panel on a store — runs in
+      // that page's process, and WebKit answers the tabs, windows, action,
+      // cookies and scripting APIs only for a process it made for the
+      // extension. Asked from anywhere else, it ends the process: the page
+      // goes white, Copper loads it again, the frame asks again (the
+      // sign-in page that keeps refreshing). Chrome answers them in a
+      // frame; here they are refused before they reach WebKit, and
+      // getCurrent finds no tab, as Chrome's does outside one.
+      const framed = !worker && typeof document !== "undefined" && (() => {
+        try {
+          if (root.top === root) return false;
+          const ancestors = location.ancestorOrigins;
+          if (ancestors && ancestors.length) return Array.prototype.some.call(ancestors, (o) => o !== location.origin);
+          return root.top.location.origin !== location.origin;
+        } catch (e) { return true; }
+      })();
+      if (framed) {
+        const guard = (space, keys) => {
+          const target = chrome[space];
+          if (!target) return;
+          for (const key of keys) {
+            let there; try { there = target[key]; } catch (e) { continue; }
+            if (typeof there !== "function" || /^on[A-Z]/.test(key)) continue;
+            const error = () => new Error("chrome." + space + "." + key + " isn't available to an extension frame in a web page");
+            // A port is handed back at once, not promised: refused at once.
+            if (key === "connect") { put(target, key, () => { throw error(); }); continue; }
+            put(target, key, (...args) => {
+              const callback = args.length && typeof args[args.length - 1] === "function" ? args.pop() : null;
+              if (space === "tabs" && key === "getCurrent") {
+                if (!callback) return Promise.resolve(undefined);
+                setTimeout(() => callback(undefined));
+                return;
+              }
+              if (!callback) return Promise.reject(error());
+              setTimeout(() => withLastError(error(), callback));
+            });
+          }
+        };
+        const all = (space) => {
+          const keys = new Set();
+          for (let o = chrome[space]; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) Object.getOwnPropertyNames(o).forEach((k) => keys.add(k));
+          return [...keys];
+        };
+        // WebKit's list (WebExtensionContext.messages.in: isLoadedAndPrivilegedMessage).
+        guard("tabs", ["create", "update", "duplicate", "get", "getCurrent", "query", "reload", "goBack", "goForward",
+          "detectLanguage", "toggleReaderMode", "captureVisibleTab", "sendMessage", "connect", "getZoom", "setZoom",
+          "move", "remove", "executeScript", "insertCSS", "removeCSS"]);
+        guard("windows", ["create", "get", "getCurrent", "getLastFocused", "getAll", "update", "remove"]);
+        for (const space of ["action", "browserAction", "pageAction", "cookies", "scripting", "menus", "contextMenus",
+          "notifications", "commands", "declarativeNetRequest"]) guard(space, all(space));
+      }
+
       // WebKit unloads an extension's worker after half a minute idle, and
       // starts it again for an event only if it remembers a listener for
       // it — which it does for messages, the worker's listener being in
@@ -737,13 +790,13 @@ enum ExtensionShims {
         // Known at once for the manifest's popup page — pages lay themselves
         // out before any answer can come back — and settled by what WebKit
         // says of the tab.
-        let popup = (() => {
+        let popup = !framed && (() => {
           try {
             const m = runtime.getManifest(), a = m.action || m.browser_action || {};
             return !!a.default_popup && new URL(a.default_popup, location.origin + "/").pathname === location.pathname;
           } catch (e) { return false; }
         })();
-        if (chrome.tabs && typeof chrome.tabs.getCurrent === "function") {
+        if (!framed && chrome.tabs && typeof chrome.tabs.getCurrent === "function") {
           const getCurrent = chrome.tabs.getCurrent.bind(chrome.tabs);
           const current = () => Promise.resolve(getCurrent()).then((t) => {
             if (t && !(t.index >= 0 && t.index < 1e6)) { popup = true; return undefined; }
