@@ -37,12 +37,18 @@ One line per event, written straight through (`O_APPEND`, no buffer), from any t
 2026-10-07T04:13:44.870Z 5511 tool name=browser_evaluate tab=1a2b3c4d ms=31 result=error class=Failure
 2026-10-07T04:14:40.000Z 5511 pulse mem=812MB tabs=14 views=6
 2026-10-07T04:15:02.311Z 5511 webcontent-gone host=example.com front=no
+2026-10-07T04:15:09.874Z 5511 webcontent-loop host=example.com
 2026-10-07T05:01:10.004Z 5511 quit
 ```
 
 Metadata only: tool names, a tab's short id, durations, ok or the error's type (never its
 message), a host (never a path or query), the memory footprint and tab / web-view counts once a
 minute. Never page content, form values, typed text, cookies or a tool's arguments.
+
+`webcontent-loop` is a tab on screen whose page took its process down three times in half a
+minute: Copper stopped loading it again and shows *This page keeps closing as it loads.* with
+Try again. macOS's own log says why the process went (`log show --predicate 'process ==
+"Copper" AND eventMessage CONTAINS "invalid message"'` for one WebKit refused).
 
 A launch line with no `quit` after it is a run that died. If macOS left no report for it —
 jetsam, `kill -9`, a force quit, power loss — it gets an entry of its own ("quit unexpectedly,
