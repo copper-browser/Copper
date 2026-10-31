@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import JavaScriptCore
 import Testing
 @testable import Search
@@ -103,6 +103,8 @@ private func value(_ js: JSContext, _ script: String) -> String {
 }
 
 @MainActor @Test func aPageThatKeepsCrashingStopsBeingReloaded() throws {
+    // A tab asks the app's appearance for its icon; a test process has no app until asked.
+    _ = NSApplication.shared
     let tab = Tab()
     tab.setAddressOptimistically(try #require(URL(string: "https://accounts.google.com/")))
     tab.recoverFromCrash()
