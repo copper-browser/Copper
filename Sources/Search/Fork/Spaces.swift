@@ -144,6 +144,10 @@ final class Spaces: ObservableObject {
     private var browsers: [Browser] { browserRefs.values.compactMap(\.value) }
 
     var parkedTabs: [Tab] { rows.filter { $0.key != current }.flatMap(\.value) }
+    /// Every tab there is: the pins and every space's row, on screen in any
+    /// window or not. (`browser.tabs + parkedTabs` misses the front window's
+    /// space whenever a different window asks.)
+    var everyTab: [Tab] { pins + rows.values.flatMap { $0 } }
     func parkedRow(_ id: UUID) -> [Tab]? { rows[id] }
     func row(_ id: UUID) -> [Tab] { rows[id] ?? [] }
     /// The projection a window draws: global pins first, then that space's
