@@ -80,10 +80,11 @@ final class Groups: ObservableObject {
         return leaves.count == 1 ? leaves[0] : nil
     }
 
-    /// The tabs in a group, in row order, across the visible row and the
+    /// The tabs in a group, in row order, across every window and the
     /// parked spaces.
     func members(of id: UUID, in browser: Browser) -> [Tab] {
-        (browser.tabs + Spaces.shared.parkedTabs).filter { membership[$0.id] == id }
+        var seen: Set<Tab.ID> = []
+        return (browser.tabs + Spaces.shared.everyTab).filter { membership[$0.id] == id && seen.insert($0.id).inserted }
     }
 
     /// The space's empty folders that sit inside no other folder: nothing
@@ -309,11 +310,14 @@ final class Groups: ObservableObject {
         membership[tab.id] = id
     }
 
-    /// Tabs that no longer exist anywhere drop out of the map.
+    /// Tabs that no longer exist anywhere drop out of the map. `tabs` must be
+    /// every tab there is (`Spaces.everyTab`), not one window's.
     func prune(keeping tabs: [Tab]) {
         let alive = Set(tabs.map(\.id))
         let stale = membership.keys.filter { !alive.contains($0) }
         guard !stale.isEmpty else { return }
+        // A trail line, so a sidebar that goes flat again says why.
+        Breadcrumbs.note("folders prune", [("dropped", String(stale.count)), ("alive", String(alive.count))])
         for id in stale { membership[id] = nil }
     }
 

@@ -130,7 +130,10 @@ struct GroupedRows: View {
             if block == .saved { drag.saved = frame }
         }
         .onChange(of: browser.tabs.map(\.id)) { _, _ in
-            groups.prune(keeping: browser.tabs + Spaces.shared.parkedTabs)
+            // Every window's tabs, not this one's: with two windows open,
+            // `parkedTabs` leaves out the front window's space, and pruning
+            // against it took every tab there out of its folder.
+            groups.prune(keeping: browser.tabs + Spaces.shared.everyTab)
         }
     }
 
