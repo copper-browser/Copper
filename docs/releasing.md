@@ -4,56 +4,48 @@
 release to the next, how development builds stay out of the installed Copper's way, and how to
 rotate the certificate. Files: `build.sh`, `release/package-app.sh`,
 `release/designated-requirement.txt`, `release/copper-release-signing.cer`,
-`.github/workflows/release.yml`, `Sources/Search/Fork/Signing.swift`,
+`.woodpecker/release.yaml`, `release/roadrunner.sh`, `Sources/Search/Fork/Signing.swift`,
 `Sources/Search/Fork/Updates.swift`.*
 
 ## Cutting a release
 
+Releases build on **Roadrunner's Mac** (Exowatt's Woodpecker CI, `.woodpecker/release.yaml` →
+`release/roadrunner.sh`). Start a manual pipeline with the variable `COPPER_RELEASE`:
+
 ```sh
-gh workflow run release.yml -R copper-browser/Copper -f ref=fork                  # publish
-gh workflow run release.yml -R copper-browser/Copper --ref <branch> -f publish=false   # dry run
-gh workflow run release.yml -R copper-browser/Copper -f ref=fork -f runner=macos-15   # on a GitHub-hosted Mac
+W=https://ci.dev.exowatt.com/api; T=<your Woodpecker token>   # repo id 370 = copper-browser/Copper
+curl -fsS -X POST -H "Authorization: Bearer $T" -H 'Content-Type: application/json' \
+  -d '{"branch":"fork","variables":{"COPPER_RELEASE":"publish"}}' $W/repos/370/pipelines      # publish
+curl -fsS -X POST -H "Authorization: Bearer $T" -H 'Content-Type: application/json' \
+  -d '{"branch":"<branch>","variables":{"COPPER_RELEASE":"dry-run"}}' $W/repos/370/pipelines  # dry run
 ```
 
-The workflow builds on Copper's own Mac, a self-hosted runner labelled `copper-mini`
-(`COPPER_RELEASE=1 ./build.sh release app`), stamps
-`<VERSION>.<YYYYMMDD>.<run>` into the bundle, signs it with Copper's release certificate,
-checks the signature on the zipped bytes, launches the zipped app headless and asks `/health`
-for its version, and then publishes the zip, its `.sha256`, `copper-version.json`,
-`copper-install.sh` and the dSYM as a `v<version>` release. The updater, the curl installer and
-the Homebrew tap all read that release.
+(or the Woodpecker UI: the repo → *Run pipeline* → branch + variable). `COPPER_PRERELEASE=true`
+marks a pre-release (not `latest`: the updater, installer and tap ignore it).
 
-**Two CPUs.** Every release is built twice on the same Apple Silicon runner: natively for
+The pipeline builds on the Mac (`COPPER_RELEASE=1 ./build.sh release app`), stamps
+`<VERSION>.<YYYYMMDD>.<n>` into the bundle (`n` = one past the highest `v<VERSION>.<YYYYMMDD>.*`
+tag), signs it with Copper's release certificate, checks the signature on the zipped bytes, and
+then publishes the zip, its `.sha256`, `copper-version.json`, `copper-install.sh` and the dSYM as
+a `v<version>` release. The updater, the curl installer and the Homebrew tap all read that
+release. (The headless launch check of the old GitHub Actions workflow is not run: the CI Mac
+has no GUI session for it.)
+
+**Two CPUs.** Every release is built twice on the same Apple Silicon Mac: natively for
 `arm64`, and cross-built for Intel with `COPPER_ARCH=x86_64 ./build.sh release app`
 (`swift build --triple x86_64-apple-macosx14.0`, into `build/x86_64/Copper.app`). Both are
 stamped and signed the same way (`release/package-app.sh … <arch>`, which refuses a binary that
-isn't that CPU), both are checked, and both are launched — the Intel one through Rosetta, when
-the runner has it (`softwareupdate --install-rosetta --agree-to-license`; without it the run
-warns and skips only that launch). Each CPU gets `copper-<version>-macos-<arch>.zip`, its stable
-`copper-macos-<arch>.zip` name, the `.sha256`s and a dSYM. `copper-version.json` lists both under
-`archives`; its top-level `zip`, `sha256` and `archiveUrl` stay arm64's, which is all a Copper
-from before the Intel build reads. The updater (`Fork/Updates.swift`) takes its own CPU's archive
-— an Intel Copper never falls back to the arm64 one — and checks the unpacked bundle's
-architecture before the swap. The curl installer picks by `uname -m` (arm64 under a Rosetta
-shell), and the tap's cask switches with Homebrew's `arch` stanza.
+isn't that CPU) and both are checked. Each CPU gets `copper-<version>-macos-<arch>.zip`, its
+stable `copper-macos-<arch>.zip` name, the `.sha256`s and a dSYM. `copper-version.json` lists
+both under `archives`; its top-level `zip`, `sha256` and `archiveUrl` stay arm64's, which is all
+a Copper from before the Intel build reads. The updater (`Fork/Updates.swift`) takes its own
+CPU's archive — an Intel Copper never falls back to the arm64 one — and checks the unpacked
+bundle's architecture before the swap. The curl installer picks by `uname -m` (arm64 under a
+Rosetta shell), and the tap's cask switches with Homebrew's `arch` stanza.
 
-**`publish=false`** is a dry run: everything up to and including the launch check, then the zip,
-its `.sha256`, `copper-version.json` and the dSYM are kept as the run's artifact (7 days) and
-nothing else happens — no tag, no GitHub release, no asset upload, nothing the updater,
-installer or tap reads. Only the *Create the GitHub release* step is handed a token
-(`GH_TOKEN`; checkout keeps no credentials), and it and *Verify the published bytes* run only
-when publish is exactly `true`.
-`ref` defaults to the branch the run was started from (`fork` from the Actions page). A
-publishing run refuses any ref but `fork`; dry runs build any ref.
-
-**`runner`** picks the Mac. `copper-mini` (the default) is Copper's own, always-on Mac with
-Xcode, registered to this repository as a self-hosted runner; it picks a run up at once.
-`macos-15` is a GitHub-hosted Mac, for when that Mac is offline (the run would otherwise wait
-in the queue). Hosted macOS arm64 runners are often short: a job nobody picks up is cancelled
-after 15 minutes with *not acquired by Runner of type hosted* and no steps run. Because the
-repository is public, workflows from outside contributors' pull requests wait for a
-maintainer's approval (Settings › Actions › Fork pull request workflows), and only
-`release.yml` names the `copper-mini` label.
+**`dry-run`** builds, signs and checks exactly the same way and publishes nothing — no tag, no
+GitHub release, no asset upload, nothing the updater, installer or tap reads. A publishing run
+refuses any branch but `fork`; dry runs build any branch.
 
 ## How a release is signed
 
@@ -62,12 +54,12 @@ maintainer's approval (Settings › Actions › Fork pull request workflows), an
   public half is `release/copper-release-signing.cer`; its SHA-1 is
   `76264b1f74fbc16100eb71c855edd6d4165c4fbe`. It is not a Developer ID and the app is not
   notarized, so the installer and the cask still clear the quarantine flag (`xattr -cr`).
-- **The private key** exists in two places: the repository secrets
-  `COPPER_SIGNING_P12_BASE64` (the password-protected `.p12`, base64) and
-  `COPPER_SIGNING_P12_PASSWORD`, and Felipe's offline copy. It is never in the repository.
-- **On the runner.** *Signing keychain* decodes the p12 into a keychain made for that run
+- **The private key** exists in two places: the Woodpecker repository secrets
+  `copper_signing_p12_base64` (the password-protected `.p12`, base64) and
+  `copper_signing_p12_password` (event `manual` only), and Felipe's offline copy. It is never in the repository.
+- **On the Mac.** `release/roadrunner.sh` decodes the p12 into a keychain made for that run
   (random password, on the search list only for the run), checks that the certificate in it is
-  the one `release/` names, and *Delete the signing keychain* removes it again (`if: always()`).
+  the one `release/` names, and deletes it again when it is done (also on failure).
 - **The requirement.** `release/package-app.sh` signs with the certificate's SHA-1 and an
   explicit designated requirement, the one line in `release/designated-requirement.txt`:
 

@@ -1,0 +1,23 @@
+# Roadrunner (Woodpecker, https://cicd.apps.exowatt.com), cron "sync" every 6 h (or manual):
+# - sync-main: main mirrors driceroland/Search:main, fast-forward only (GitHub merge-upstream).
+#   A 409 means someone committed to main by hand; fix the branch, not this file.
+# - sync-fork (on the Roadrunner Mac): when main moved, rebase fork onto it, swift build, push
+#   sync/<date> and open a PR to fork. A conflict fails loudly; resolve per PATCHES.md.
+labels:
+  tier: "0"
+when:
+  - event: cron
+    cron: sync
+  - event: manual
+    branch: fork
+steps:
+  - name: sync-main
+    image: bash
+    environment:
+      GH_TOKEN:
+        from_secret: github_release_token
+    commands:
+      - >-
+        curl -fsS --retry 3 --max-time 60 -X POST -H "Authorization: Bearer $$GH_TOKEN"
+        -H 'Accept: application/vnd.github+json' -d '{"branch":"main"}'
+        https://api.github.com/repos/copper-browser/Copper/merge-upstream
