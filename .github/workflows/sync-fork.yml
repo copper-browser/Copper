@@ -1,0 +1,27 @@
+# When main moves, rebase fork onto it, build, and open a PR. A conflict
+# fails the job loudly; resolve by hand (or with an agent) per PATCHES.md.
+name: sync-fork
+# sync (main <- upstream) runs on Roadrunner (.woodpecker/sync.yaml, every 6 h at :17), so this
+# follows on its own schedule instead of workflow_run. macOS stays on GitHub Actions for now.
+on:
+  schedule: [{ cron: "47 */6 * * *" }]
+  workflow_dispatch: {}
+permissions: { contents: write, pull-requests: write }
+jobs:
+  rebase:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with: { ref: fork, fetch-depth: 0 }
+      - name: rebase, build, PR
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          git config user.name copper-sync && git config user.email copper-sync@users.noreply.github.com
+          git fetch origin main
+          if git merge-base --is-ancestor origin/main fork; then echo "fork already on main"; exit 0; fi
+          git checkout -b sync/$(date +%F) fork
+          git rebase origin/main || { echo "::error::rebase conflict — see PATCHES.md"; exit 1; }
+          swift build
+          git push origin HEAD
+          gh pr create --base fork --title "Sync upstream $(date +%F)" \
+            --body "$(git range-diff origin/fork...HEAD | head -200)"
