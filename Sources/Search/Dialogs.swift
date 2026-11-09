@@ -72,6 +72,7 @@ extension Browser {
         let finish: (NSApplication.ModalResponse) -> Void = { answer in
             completionHandler(answer == .OK ? panel.urls : nil)
         }
+        if Dialogs.unattended(webView) { return finish(.cancel) } // Fork: agent-tabs
         if let window = Dialogs.window(for: webView) {
             panel.beginSheetModal(for: window, completionHandler: finish)
         } else {
@@ -257,11 +258,21 @@ enum Dialogs {
         webView.window ?? NSApp.mainWindow ?? NSApp.windows.first { $0.contentView != nil && $0.isVisible }
     }
 
+    /// A page hung backstage for an agent (Fork/MCP/Backstage.swift) is on no
+    /// screen, so nobody can answer it, and a sheet on that window makes AppKit
+    /// pull it onto the display, the agent's page with it, again on every Space
+    /// switch. Its questions are declined at once, as headless Copper's are:
+    /// confirm() false, prompt() null, no file, no certificate, no sign-in.
+    static func unattended(_ webView: WKWebView) -> Bool { // Fork: agent-tabs
+        webView.window is Backstage.Window
+    }
+
     static func show(
         _ alert: NSAlert,
         over webView: WKWebView,
         then finish: @escaping (NSApplication.ModalResponse) -> Void
     ) {
+        if unattended(webView) { return finish(.abort) } // Fork: agent-tabs
         if let window = window(for: webView) {
             alert.beginSheetModal(for: window, completionHandler: finish)
         } else {
