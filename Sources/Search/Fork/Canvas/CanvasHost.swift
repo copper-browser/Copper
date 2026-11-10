@@ -418,7 +418,7 @@ final class CanvasHost {
     private static var sweeper: Timer?
 
     /// Every 20 s: a host whose tab is gone, or whose page was let go (a
-    /// pinned tab put down, a tab asleep), stops holding its room open; and
+    /// Saved row put down, a tab asleep), stops holding its room open; and
     /// the collaborator count forgets people who went quiet.
     private static func watch() {
         guard sweeper == nil else { return }
@@ -1362,7 +1362,7 @@ final class CanvasHost {
         }
         for browser in Windows.all {
             for tab in browser.tabs where (tab.pending ?? tab.address).flatMap(CanvasLinks.id(from:)) == id {
-                // A favourite is only put down by Close; it has to come out.
+                // A favourite is not closed by Close (it keeps its page; Fork/PinsAwake.swift); it has to come out.
                 if tab.pin != nil { browser.unpin(tab) }
                 Sections.shared.closeForGood(tab, in: browser) // a Saved row is only put down by a close (Fork/Sections.swift)
             }

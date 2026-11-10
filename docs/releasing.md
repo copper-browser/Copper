@@ -4,7 +4,7 @@
 release to the next, how development builds stay out of the installed Copper's way, and how to
 rotate the certificate. Files: `build.sh`, `release/package-app.sh`,
 `release/designated-requirement.txt`, `release/copper-release-signing.cer`,
-`.github/workflows/release.yml`, `Sources/Search/Fork/Signing.swift`,
+`.github/workflows/release.yml`, `release/release-local.sh`, `Sources/Search/Fork/Signing.swift`,
 `Sources/Search/Fork/Updates.swift`.*
 
 ## Cutting a release
@@ -55,6 +55,98 @@ repository is public, workflows from outside contributors' pull requests wait fo
 maintainer's approval (Settings › Actions › Fork pull request workflows), and only
 `release.yml` names the `copper-mini` label.
 
+## Cutting a release without GitHub Actions
+
+```sh
+release/release-local.sh --preflight                  # the checks before the build, nothing more
+release/release-local.sh --dry-run                    # build, sign, check, launch; publish nothing
+release/release-local.sh                              # publish fork's HEAD as the next version
+release/release-local.sh --version 1.0.20261111.106   # a version of your choosing
+COPPER_RELEASE_REMOTE_DIR='~/farm/copper-release' release/release-local.sh   # build on the mini's internal disk
+```
+
+Exowatt's work stopped using GitHub Actions on 2026-11-09, and Roadrunner has no Mac to build
+on yet, so a release can also be cut from Felipe's laptop: `release/release-local.sh` builds on
+his Mac mini, signs on the laptop and publishes with `gh` as whoever is signed in (an owner of
+`copper-browser`). The workflow above stays as it is for Collin's runner. Both make the same
+release — the same build commands and checks, the same certificate and requirement, the same
+assets, `copper-version.json` and release text — so the updater, the curl installer and the tap
+can't tell which path cut one.
+
+In the workflow's order:
+
+1. **Preflight.** `HEAD` must be `fork`'s head on GitHub and the tree clean; a dry run says when
+   it isn't and goes on, since it builds the commit (`git archive`), never the working tree. The
+   version is `<VERSION>.<UTC YYYYMMDD>.<n>`, `n` one more than the highest trailing number of
+   any `v…` tag or release in the repository, so it never takes a number the workflow used or
+   sorts below one. `--version` picks it instead; it must be new, and to publish, above the
+   latest. The key and its password must be in `~/.config/copper-signing`, mode 0600.
+2. **Build on the mini** (`felipe-exowatt@100.112.175.26`, over Tailscale). The commit's tree
+   goes to a job folder on its external disk, `/Volumes/Farm/farm-exowatt/copper-release/`, or
+   wherever `COPPER_RELEASE_REMOTE_DIR` says (quoted, `~/` is the mini's home: the internal disk
+   when the external one is full). The run wants 5 GB free there and stops before building
+   without it: the build compiles three configurations (arm64 release, the debug build
+   `swift test` needs, x86_64 release), each about 1 GB of `.build` on the mini, plus the sources
+   and the two apps with their dSYMs, about 3.5 GB in all; every run prints what it used. Then
+   the workflow's build steps run there with their assertions:
+   `COPPER_RELEASE=1 SEARCH_SIGN_IDENTITY= ./build.sh release app`, `swift test --filter xosInsert`
+   and the Intel cross-build. With `SEARCH_SIGN_IDENTITY` empty, `build.sh` asks the keychain for
+   a Developer ID; here it is handed a `security` that finds nothing, so the build is ad hoc as on
+   the runner and no keychain is touched on either Mac. The two unsigned apps and their dSYMs come
+   back to the laptop, and the sources and build products on the mini are deleted at once.
+3. **Sign on the laptop** with [rcodesign](https://github.com/indygreg/apple-platform-rs)
+   (apple-codesign 0.29.0, the `macos-universal` build, pinned by SHA-256 and fetched once into
+   `~/.cache/copper-release/`). It reads the `.p12` and `p12-password` where they are
+   (`--p12-file`, `--p12-password-file`): no keychain, and the key is never copied, printed or
+   sent anywhere. The rest is `package-app.sh`'s: stamp the version into `Info.plist`, refuse a
+   bundle that isn't `com.collinrijock.copper` or doesn't pin the certificate, and sign with no
+   hardened runtime, no entitlements, no timestamp and the explicit requirement (compiled with
+   `csreq -r release/designated-requirement.txt -b …`, which is the form rcodesign takes).
+   build.sh's ad-hoc signature is removed first, because rcodesign carries an existing
+   signature's flags and entitlements over. `--exclude 'Contents/Resources/**'` keeps rcodesign
+   from signing the SwiftPM resource bundle in `Resources` as a bundle of its own; codesign's
+   rules treat `Resources` as data, and the bundle's files are sealed one by one, as before.
+4. **Check, package, launch.** The workflow's *Check the signature* on the zipped bytes (plus: no
+   code-signature flags, signed by *Copper Release Signing*); the versioned and stable zips and
+   their `.sha256`s; the dSYMs; `copper-version.json`, written by the workflow's own code and
+   held to the fields of the manifest `releases/latest` serves; `copper-install.sh`. The zips are
+   `ditto -c -k --norsrc --noextattr --noqtn --noacl --keepParent`: the laptop gives every file a
+   `com.apple.provenance` attribute, which plain `ditto` stores as `._` files that a plain
+   `unzip` would leave inside the bundle, unsealed. The runner's zips have none, and neither do
+   these. Then both zips are opened headless on the mini, in throwaway worlds on free ports, and
+   `/health` must report the version within 90 s (the Intel app under Rosetta, 120 s). An app
+   has to start in the session of whoever is logged in there: `open` over ssh has no window
+   server (LaunchServices answers -10810) and `launchctl asuser` needs root, so a one-shot agent
+   in that session's launchd domain (`launchctl bootstrap gui/<uid>`) runs the `open`. That
+   session may not read the external disk, so the two apps are unzipped into the user's
+   temporary folder on the internal one. Only those pids are stopped; the apps, the worlds'
+   folders and defaults, and the WebKit and cache folders the check created are deleted.
+5. **Publish** (not in a dry run): the tag is checked once more (a workflow run may have taken the
+   number during the build), then `gh release create v<version> --target <commit> --latest` with
+   every asset and the workflow's release text, and the published bytes are checked — the
+   versioned zips, and the stable zips and manifest behind `releases/latest/download`.
+
+Everything lands in `build/release-local/<version>/` (gitignored): `assets/` is exactly what a
+release uploads, `release-notes.md` its text, `logs/` the mini's build and launch output and
+rcodesign's. The job folder on the mini is deleted at the end, whatever happened.
+
+**What differs from a workflow release.** Only the signer. The requirement, the flags (none),
+the sealed resources (the same `CodeResources`), the certificate and the signed attributes are
+the same, and `codesign` verifies both the same way. rcodesign hashes code in 4 KB pages where
+codesign uses 16 KB for arm64 (x86_64 is 4 KB in both), so the arm64 signature is about
+140 KB instead of 36. That is not part of the designated requirement: macOS keeps a person's
+grants and an installed Copper's updater accepts the bundle exactly as it does a workflow
+release (`codesign --verify --deep --strict -R=…`), and the kernel checks 4 KB pages on Apple
+silicon as it does on Intel. The first dry run was rehearsed against the real thing: Copper
+1.0.20261110.104 as released, headless in a test world pointed at a stub feed, staged the
+rcodesign-signed 1.0.20261110.105 and passed the pre-swap check (`updates dry-run on`, then
+`updates upgrade`).
+
+**One sequence of numbers.** The workflow's `n` is its run number. A workflow run on the same
+UTC day as a local release can land on the number the local one took; its *Create the GitHub
+release* step then fails on the existing release and publishes nothing. Run it again, or cut
+the release here.
+
 ## How a release is signed
 
 - **The certificate.** One self-signed code-signing certificate, `CN=Copper Release Signing`
@@ -64,7 +156,8 @@ maintainer's approval (Settings › Actions › Fork pull request workflows), an
   notarized, so the installer and the cask still clear the quarantine flag (`xattr -cr`).
 - **The private key** exists in two places: the repository secrets
   `COPPER_SIGNING_P12_BASE64` (the password-protected `.p12`, base64) and
-  `COPPER_SIGNING_P12_PASSWORD`, and Felipe's offline copy. It is never in the repository.
+  `COPPER_SIGNING_P12_PASSWORD`, and Felipe's copy (offline, and in `~/.config/copper-signing`
+  on his laptop, where `release/release-local.sh` signs from). It is never in the repository.
 - **On the runner.** *Signing keychain* decodes the p12 into a keychain made for that run
   (random password, on the search list only for the run), checks that the certificate in it is
   the one `release/` names, and *Delete the signing keychain* removes it again (`if: always()`).
@@ -192,10 +285,12 @@ first signed release did.
    `release/designated-requirement.txt` and `Signing.releaseCertificate` (the requirement back to
    the single new leaf), then the secrets:
    `base64 -i copper-release-signing.p12 | tr -d '\n' | gh secret set COPPER_SIGNING_P12_BASE64 -R copper-browser/Copper`
-   and `gh secret set COPPER_SIGNING_P12_PASSWORD -R copper-browser/Copper < p12-password`.
-   *Signing keychain* fails the run if the secret and `release/` disagree.
-4. A dry run (`-f publish=false`) must show the new requirement on the artifact before the first
-   real release. Anyone who skipped the bridge release reinstalls once (curl installer or
+   and `gh secret set COPPER_SIGNING_P12_PASSWORD -R copper-browser/Copper < p12-password`,
+   and the new pair in `~/.config/copper-signing` for `release/release-local.sh`.
+   *Signing keychain* fails the run if the secret and `release/` disagree; the local path fails
+   its signature check.
+4. A dry run (`-f publish=false`, or `release/release-local.sh --dry-run`) must show the new
+   requirement on the artifact before the first real release. Anyone who skipped the bridge release reinstalls once (curl installer or
    Homebrew).
 
 ### Keeping the key
@@ -203,8 +298,9 @@ first signed release did.
 The bridge in step 2 needs the old key: only a release signed with it can teach installed
 Coppers to accept a new certificate. So the `.p12` and its password are kept together, offline,
 outside any repository, beside the repository secrets; the secrets alone can't be read back out
-of GitHub. After a rotation, the new `.p12` and password replace the offline copy, and the
-working folder (`~/.config/copper-signing`) is emptied.
+of GitHub. After a rotation, the new `.p12` and password replace the offline copy and the pair
+in `~/.config/copper-signing` that `release/release-local.sh` signs with; the rest of that
+working folder is emptied.
 
 If the key is lost (or leaks and must not sign again), there is no bridge: ship the switch
 (step 3) directly, and every installed Copper refuses it with *"isn't signed with Copper's

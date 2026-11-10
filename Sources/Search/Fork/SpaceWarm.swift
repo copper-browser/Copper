@@ -19,24 +19,31 @@ import WebKit
 //
 // Not on battery saver, never in a headless run, and not at all with
 // `defaults write <domain> spaces.warm -bool false`.
+//
+// Fork (pins-awake): the pins go first, loaded the same way, and none of
+// those three stops them: a pin is never left without its page
+// (Fork/PinsAwake.swift).
 @MainActor
 enum SpaceWarm {
     static var on: Bool { Store.settings.object(forKey: "spaces.warm") as? Bool ?? true }
 
     static func start(for browser: Browser) {
-        guard browser.primary, !Headless.on, on else { return }
-        Launch.shared.whenSettled {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak browser] in
-                guard let browser, !ProcessInfo.processInfo.isLowPowerModeEnabled else { return }
-                let spaces = Spaces.shared
-                let here = spaces.current(in: browser)
-                let waiting = spaces.all.map(\.id).filter { $0 != here }.compactMap { id -> (UUID, Tab)? in
-                    guard let landing = spaces.wouldLand(in: id, for: browser),
-                          let tab = spaces.projection(id).first(where: { $0.id == landing }),
-                          tab.pending != nil, !tab.shy else { return nil }
-                    return (id, tab)
+        guard browser.primary else { return }
+        Launch.shared.whenSettled { [weak browser] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                guard let browser else { return }
+                PinsAwake.shared.start(in: browser) { [weak browser] in
+                    guard let browser, !Headless.on, on, !ProcessInfo.processInfo.isLowPowerModeEnabled else { return }
+                    let spaces = Spaces.shared
+                    let here = spaces.current(in: browser)
+                    let waiting = spaces.all.map(\.id).filter { $0 != here }.compactMap { id -> (UUID, Tab)? in
+                        guard let landing = spaces.wouldLand(in: id, for: browser),
+                              let tab = spaces.projection(id).first(where: { $0.id == landing }),
+                              tab.pending != nil, !tab.shy else { return nil }
+                        return (id, tab)
+                    }
+                    next(waiting, in: browser)
                 }
-                next(waiting, in: browser)
             }
         }
     }
@@ -49,16 +56,31 @@ enum SpaceWarm {
             return next(rest, in: browser)
         }
         Spaces.shared.remember(tab.id, in: space, for: browser)
+        warm(tab, size: browser.active?.built?.bounds.size, start: { _ = tab.wake() }) {
+            next(rest, in: browser)
+        }
+    }
+
+    /// One tab's page loaded out of sight: its view in the Room, `start` sets
+    /// the load going (a wake; for a pin, a reload too), and once the page has
+    /// loaded — or eight seconds on — the view leaves, so it rests like any
+    /// tab you've left, unless a switch already put it on a stage. `done` a
+    /// moment after.
+    static func warm(_ tab: Tab, size: CGSize?, start: () -> Void, done: @escaping () -> Void) {
         let view = tab.web
-        Room.park(view, size: browser.active?.built?.bounds.size)
-        _ = tab.wake()
+        Room.park(view, size: size)
+        start()
         let started = Date()
+        // Fork (pins-awake): a load that has not said it started yet is not
+        // a load that has finished — the view had only its last page's
+        // address to show, and left the Room before the new one began.
+        var began = false
         func check() {
-            if !tab.loading && tab.built?.url != nil || Date().timeIntervalSince(started) > 8 {
-                // It rests like any tab you've left — unless a switch already
-                // put it on a stage.
+            began = began || tab.loading
+            let waited = Date().timeIntervalSince(started)
+            if !tab.loading && tab.built?.url != nil && (began || waited > 1.5) || waited > 8 {
                 Room.leave(view)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { next(rest, in: browser) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { done() }
             } else {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { check() }
             }

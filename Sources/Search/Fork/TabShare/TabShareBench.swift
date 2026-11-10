@@ -7,7 +7,14 @@ import WebKit
 //   share [state]                     live shares, the picker, asks, WebKit's requests and Copper's answers
 //   share answer tab ID|window|screen|cancel
 //                                     test worlds: answer the open picker, or the next one
-//   share keys KEYS                   test worlds: keys pressed on the open picker (↑ ↓ ↩ ⎋ ⌫, letters)
+//   share keys KEYS                   test worlds: keys pressed on the open picker (↑ ↓ ← → ⇥ ↩ ⎋ ⌫, letters)
+//   share sample [N] [self] [notab] [audio] [frame] [hint monitor|window|browser]
+//                                     test worlds: put the picker up over N made-up tabs (250) in five
+//                                     spaces, nobody waiting on its answer — to draw it and walk it
+//                                     with the keys. self offers the calling tab, notab none at all
+//                                     (a window or the screen only), audio says tab audio isn't
+//                                     shared, frame asks from a frame of another site, hint is the
+//                                     page's displaySurface
 //   share stop [SHARE|all]            as the bar's Stop does
 //   share caller on|off               keep the calling page painting while you are elsewhere
 //   share pace on|off                 test worlds: hold (on, as Copper does) or not the latency-critical
@@ -18,9 +25,10 @@ import WebKit
 //   share picture window PATH         the window as WindowServer has it — page, column, bars and
 //                                     picker — without bringing it forward (an app may always
 //                                     picture its own windows)
-//   share picture picker|bar PATH [dark]
+//   share picture picker|bar PATH [dark] [bare]
 //                                     the card alone over the page it belongs to: the page's own
-//                                     snapshot with the card drawn on it, light or dark
+//                                     snapshot with the card drawn on it, light or dark; bare is
+//                                     the card on its own, as tall as a 900 pt window lets it be
 @MainActor
 enum TabShareBench {
     static func handle(_ request: [String: Any], in browser: Browser, answer: @escaping ([String: Any]) -> Void) {
@@ -65,6 +73,14 @@ enum TabShareBench {
                 pressed.append(String(key))
             }
             answer(["pressed": pressed, "state": state(in: browser)])
+        case "sample":
+            guard Store.testing else { answer(["error": "test worlds only"]); return }
+            let count = words.first.flatMap(Int.init) ?? 250
+            let hint = words.firstIndex(of: "hint").flatMap { words.indices.contains($0 + 1) ? words[$0 + 1] : nil }
+            share.sample(in: browser, host: "meet.google.com", within: words.contains("frame") ? "news.example" : nil,
+                         home: "Exowatt", tabs: sampleTabs(count), includeSelf: words.contains("self"), canShareTab: !words.contains("notab"),
+                         systemAudio: words.contains("audio"), video: hint.map { ["displaySurface": $0] as Any } ?? true)
+            answer(state(in: browser))
         case "stop":
             let target = words.first ?? "all"
             if target == "all" {
@@ -97,10 +113,11 @@ enum TabShareBench {
                 answer(window(of: browser, to: words[1]))
                 return
             }
-            guard words.count >= 2 else { answer(["error": "share picture window|picker|bar PATH [dark]"]); return }
-            picture(words[0], path: words[1], dark: words.dropFirst(2).contains("dark"), in: browser, answer: answer)
+            guard words.count >= 2 else { answer(["error": "share picture window|picker|bar PATH [dark] [bare]"]); return }
+            picture(words[0], path: words[1], dark: words.dropFirst(2).contains("dark"), bare: words.dropFirst(2).contains("bare"),
+                    in: browser, answer: answer)
         default:
-            answer(["error": "share state|answer|keys|stop|caller|pace|occlusion|picture"])
+            answer(["error": "share state|answer|keys|sample|stop|caller|pace|occlusion|picture"])
         }
     }
 
@@ -125,7 +142,8 @@ enum TabShareBench {
 
     /// One key as the picker hears it.
     private static func event(for key: Character) -> NSEvent? {
-        let codes: [Character: (UInt16, String)] = ["↓": (125, "\u{F701}"), "↑": (126, "\u{F700}"), "↩": (36, "\r"), "⎋": (53, "\u{1B}"),
+        let codes: [Character: (UInt16, String)] = ["↓": (125, "\u{F701}"), "↑": (126, "\u{F700}"), "←": (123, "\u{F702}"),
+                                                    "→": (124, "\u{F703}"), "↩": (36, "\r"), "⎋": (53, "\u{1B}"),
                                                     "⌫": (51, "\u{7F}"), "⇥": (48, "\t")]
         let (code, text) = codes[key] ?? (0, String(key))
         return NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
@@ -135,7 +153,8 @@ enum TabShareBench {
 
     // MARK: - pictures
 
-    private static func picture(_ which: String, path: String, dark: Bool, in browser: Browser, answer: @escaping ([String: Any]) -> Void) {
+    private static func picture(_ which: String, path: String, dark: Bool, bare: Bool, in browser: Browser,
+                                answer: @escaping ([String: Any]) -> Void) {
         let share = TabShare.shared
         let scheme: ColorScheme = dark ? .dark : .light
         let card: AnyView
@@ -144,10 +163,14 @@ enum TabShareBench {
         switch which {
         case "picker":
             guard let picking = share.picking else { answer(["error": "no picker is up"]); return }
+            page = bare ? nil : picking.caller.flatMap { AgentTabs.find($0) } ?? browser.active
+            // As tall as the card may stand in this window, as on screen (a
+            // 900 pt one for the card on its own).
+            let height = bare ? 900 : Windows.window(of: browser)?.contentView?.bounds.height ?? 900
             card = AnyView(SharePickerCard(picking: picking, query: share.query, highlighted: share.highlighted, rows: share.rows,
-                                           tint: Spaces.shared.space(in: browser).tint, scheme: scheme, stamp: 0, scrolls: false) { _ in }
+                                           tint: Spaces.shared.space(in: browser).tint, scheme: scheme, stamp: 0,
+                                           room: SharePicker.room(in: height), scrolls: false)
                 .frame(width: SharePicker.width))
-            page = picking.caller.flatMap { AgentTabs.find($0) } ?? browser.active
             top = true
         case "bar":
             guard let live = share.shares.first, let tab = AgentTabs.find(live.source) else { answer(["error": "nothing is shared"]); return }
@@ -189,6 +212,56 @@ enum TabShareBench {
                 write(made, to: path, answer: answer)
             }
         }
+    }
+
+    /// `share sample`'s tabs: a day's worth across five spaces, the six last
+    /// looked at spread over three of them, then the rest older and older.
+    /// The first is the call itself, offered only with `self`.
+    private static func sampleTabs(_ count: Int) -> [TabShareRules.Candidate] {
+        let now = Date()
+        let spaces: [String?] = [nil, "Copper", "Research", "Personal", "Travel"]
+        var tabs: [TabShareRules.Candidate] = []
+        func add(_ title: String, _ host: String, _ space: String?, minutes: Double, caller: Bool = false) {
+            tabs.append(.init(id: UUID(), title: title, host: host, space: space, isCaller: caller,
+                              seen: now.addingTimeInterval(-minutes * 60)))
+        }
+        add("Weekly ops sync - Google Meet", "meet.google.com", nil, minutes: 0, caller: true)
+        let latest: [(String, String, String?)] = [
+            ("Board update, November - Google Slides", "docs.google.com", nil),
+            ("Tab share: picker redesign #141 · copper-browser/Copper", "github.com", "Copper"),
+            ("Fleet overview - Dashboards - Grafana", "grafana.dev.exowatt.com", nil),
+            ("Thermal storage dispatch under price uncertainty", "arxiv.org", "Research"),
+            ("Q4 site rollout plan - Google Docs", "docs.google.com", nil),
+            ("#eng-platform | Exowatt | Slack", "app.slack.com", nil),
+            ("Meeting notes: site ops - Notion", "notion.so", "Copper"),
+            ("United Airlines - Trip details AUS to SFO", "united.com", "Travel"),
+        ]
+        for (at, tab) in latest.enumerated() { add(tab.0, tab.1, tab.2, minutes: Double(at + 1) * 4) }
+        let kinds: [(String, String)] = [
+            ("%@ - Google Docs", "docs.google.com"), ("%@ - Google Sheets", "docs.google.com"),
+            ("%@ · Exowatt-Labs/site-controller", "github.com"), ("%@ - Notion", "notion.so"),
+            ("%@ - Linear", "linear.app"), ("%@ - Figma", "figma.com"), ("%@ - YouTube", "youtube.com"),
+            ("%@ - Wikipedia", "en.wikipedia.org"), ("%@ | MDN", "developer.mozilla.org"),
+            ("%@ - Stack Overflow", "stackoverflow.com"), ("%@ - Google Meet", "meet.google.com"),
+            ("%@ - Zoom", "zoom.us"), ("%@ - Exowatt Mail", "mail.google.com"), ("%@ - Claude", "claude.ai"),
+        ]
+        let topics = ["BESS commissioning checklist", "Fleet capacity model", "Molten salt loop review", "Hiring plan 2027",
+                      "Incident review: inverter trip", "Pricing model v3", "Customer pilot, Austin", "Supply chain tracker",
+                      "Site 42 interconnect", "Vendor scorecard", "Release checklist", "getDisplayMedia()", "ScrollViewReader",
+                      "Meetup planning", "Thermal block test results", "Design review", "Quarterly planning", "Onboarding"]
+        var at = 0
+        while tabs.count < count + 1 {
+            let kind = kinds[at % kinds.count], topic = topics[(at * 5 + at / kinds.count) % topics.count]
+            // Mostly this space and Copper, fewer the further down the strip.
+            let space = spaces[[0, 0, 1, 0, 1, 2, 0, 3, 1, 2, 4, 0, 3][at % 13]]
+            add(String(format: kind.0, topic), kind.1, space, minutes: 60 + Double(at) * 47)
+            at += 1
+        }
+        // Each space's tabs together, as the window lists them.
+        return tabs.enumerated().sorted { a, b in
+            let one = spaces.firstIndex(of: a.element.space) ?? 0, two = spaces.firstIndex(of: b.element.space) ?? 0
+            return one == two ? a.offset < b.offset : one < two
+        }.map(\.element)
     }
 
     /// The card at 2×, with 40 pt of margin for its shadow.

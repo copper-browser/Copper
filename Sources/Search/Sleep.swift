@@ -19,11 +19,19 @@ import WebKit
 // for every three gigabytes), or once left for twelve hours.
 //
 // Some tabs never sleep, because waking them couldn't give back what they
-// were doing: the one on screen, pinned tabs (those are put down by hand,
-// with ⌘W), a tab playing sound, on a call, sending a download, holding its
-// video out in the little window, or holding something typed and not sent.
+// were doing: the one on screen, pinned tabs, a tab playing sound, on a call,
+// sending a download, holding its video out in the little window, or holding
+// something typed and not sent.
 // (A video with no sound needs no rule: WebKit pauses it the moment its tab
 // leaves the screen, so nothing plays silently in a tab that could sleep.)
+//
+// Fork (pins-awake): a pinned tab never gives its page back at all, by any
+// road — from the moment it is pinned, or from launch, until it is unpinned.
+// ⌘W on one steps away from it and leaves the page loaded (it used to put
+// the pin down), `Tab.sleep(picture:)` and `Tab.rest()` refuse one whoever
+// asks, the pins a launch brings back asleep are loaded in the background,
+// and one whose process macOS took back is loaded again at once
+// (Fork/PinsAwake.swift). Unpinned, it sleeps by the rules here.
 //
 // Fork (tab-memory): the budget counts pages, and pages are not one size —
 // X, Gmail or YouTube hold about a gigabyte each, so ten of them "kept
@@ -134,7 +142,7 @@ extension Browser {
     /// the caller's business; this is everything else.
     func awake(because tab: Tab) -> String? {
         if Windows.all.contains(where: { $0.activeID == tab.id }) || Split.shared.has(tab.id) { return "on screen" } // Fork: windows — any window's stage
-        if tab.pin != nil { return "pinned" }
+        if tab.pin != nil { return "pinned" } // Fork (pins-awake): always — Tab.sleep(picture:) refuses a pin too
         if Backstage.shared.holds(tab.id) { return "an agent is working in it" } // Fork: agent-tabs
         if TabShare.shared.involves(tab.id) { return "being shared" } // Fork: tab-share — the shared tab and the page sharing it
         if tab.bench { return "a bench tab" }

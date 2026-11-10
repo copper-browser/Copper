@@ -274,6 +274,9 @@ final class Tab: ObservableObject, Identifiable {
     /// One letter, when the tab has been pinned. A pinned tab keeps its place
     /// at the head of the row and gives up its title for that letter — which
     /// is all you need for the five or six pages you keep open all day.
+    /// Fork (pins-awake): and open they stay — a pin keeps its page loaded
+    /// until it is unpinned; nothing sleeps it or puts it down
+    /// (Fork/PinsAwake.swift).
     @Published var pin: String?
 
     /// When you last looked at it. The summon lists pages by this, because
@@ -946,13 +949,18 @@ final class Tab: ObservableObject, Identifiable {
     private var fromCache = false
 
     /// True for a tab that has a place and an address but is holding no page —
-    /// brought back from the last session, or put down with ⌘W while pinned.
+    /// brought back from the last session, or put down with ⌘W. Fork
+    /// (pins-awake): a pin only until the background has loaded it.
     var asleep: Bool { pending != nil }
 
-    /// ⌘W on a pinned tab. The letter keeps its place in the row and the
-    /// address is remembered; everything the page was holding is let go, so a
-    /// pin you are not reading costs a line in a file and nothing else.
+    /// ⌘W on a Saved row (Fork/Sections.swift; it was ⌘W on a pinned tab).
+    /// The row keeps its place and the address is remembered; everything the
+    /// page was holding is let go, so a row you are not reading costs a line
+    /// in a file and nothing else.
     func rest() {
+        // Fork (pins-awake): never a pin's page — that goes only with the pin
+        // (Fork/PinsAwake.swift).
+        guard PinRule.mayUnload(pinned: pin != nil, .putDown) else { return }
         guard let url = address else { return }
         pending = url
         memory = nil
@@ -973,11 +981,13 @@ final class Tab: ObservableObject, Identifiable {
     }
 
     /// Nobody has looked at this page for a while. Its view goes, as with a
-    /// pin put down by hand, but its history and a picture of it stay: the
+    /// row put down by hand, but its history and a picture of it stay: the
     /// view built to wake it opens the same page, at the same place, with
     /// Back still going back. What was typed and not sent is the one thing
     /// that can't come back, which is why the browser asks `unsaved` first.
     func sleep(picture: Data?) {
+        // Fork (pins-awake): a pin never sleeps, whoever asks.
+        guard PinRule.mayUnload(pinned: pin != nil, .sleep) else { return }
         guard let url = address, let built else { return }
         memory = built.interactionState
         self.picture = picture
@@ -1229,7 +1239,7 @@ final class Tab: ObservableObject, Identifiable {
     }
 
     /// Opened for the first time since the app started, or coming back from
-    /// ⌘W while pinned. Answers whether there was anything to wake — the
+    /// being put down with ⌘W. Answers whether there was anything to wake — the
     /// caller's own `revive()`, right after this, is for a tab that went
     /// quiet a different way, and firing it too here raced this very load
     /// with a second one of its own for the same address.
@@ -1287,7 +1297,7 @@ final class Tab: ObservableObject, Identifiable {
     /// view that has lost its document is given the address back instead:
     /// there is nothing else for it to reload.
     func reload() {
-        // A pin put down with ⌘W has no view left to reload; waking it is
+        // A tab put down with ⌘W has no view left to reload; waking it is
         // the reload.
         guard !wake() else { return }
         if crashedOut, let address {

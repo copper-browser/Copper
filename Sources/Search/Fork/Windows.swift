@@ -230,6 +230,9 @@ enum Windows {
         // building pages in a browser nobody can see.
         Agent.shared.stop(ifIn: browser)
         browser.retire()
+        // Fork (pins-awake): a pin made in this window outlives it, page and
+        // all; the first window takes over answering for it.
+        PinsAwake.shared.rehome(from: browser)
         saved.removeAll { $0.id == id }
         write(now: true)
     }

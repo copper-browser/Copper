@@ -425,6 +425,7 @@ final class Spaces: ObservableObject {
     /// Write the session soon. A rename arrives a keystroke at a time, so
     /// this waits for the typing to stop.
     private func keep() {
+        PinsAwake.shared.changed() // Fork (pins-awake): a pin that turned up without its page loads in the background
         keeping?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self, let browser = browser ?? mainBrowser else { return }

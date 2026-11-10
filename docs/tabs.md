@@ -51,6 +51,42 @@ headless or test-world Copper instead of yours; that probe passes it on to the m
 Copper by pid (docs/headless.md). `.html`, `.webloc` and `.url` files opened with
 Copper open their page (`Fork/LinkRelay.swift`).
 
+## Pinned tabs never unload
+
+A pinned tab (a favourite, in the grid every space shows) keeps its page loaded from the
+moment it is pinned, or from launch, until it is unpinned. There is no setting for it
+(`Fork/PinsAwake.swift`).
+
+- **Nothing puts one to sleep.** The idle sweep and memory pressure pass over pins
+  (`Browser.awake(because:)` says "pinned"), and `Tab.sleep(picture:)` and `Tab.rest()`
+  refuse one whoever calls them — an extension's `chrome.tabs.discard` included. Only
+  closing it for good (after Unpin, a canvas deleted, a pin another Mac removed) lets its
+  page go.
+- **⌘W on a pin steps away from it.** File › Close Tab, the wheel button, Close Tab in ⌘K,
+  an agent's or an extension's close: you land on the tab you were on before (an
+  ordinary one, never another pin; a blank tab if there is none), and the page is still
+  there, loaded, when you come back. Close Other Tabs leaves the pins as they are. Up to
+  November 2026, ⌘W put a pin down and let its page go.
+- **A launch loads them in the background.** The pins a session brings back, the one on
+  screen aside, are loaded once the first page has drawn, one at a time, out of sight (in
+  the Room, as Fork/SpaceWarm.swift loads each space's page) — before the other spaces'
+  pages, and on battery saver or in a headless run too. A tab pinned while asleep (a
+  Saved row put down, a tab brought back asleep) or a pin another Mac sends is loaded the
+  same way a moment later.
+- **A page whose process went away is loaded again at once.** macOS ends background web
+  processes under memory pressure; a pin's page is reloaded in the background as soon as
+  WebKit says so, and the trail says `pin-reload host=… n=…` (docs/crashes.md). A page
+  that takes its process down as it loads gets three such reloads in ten minutes
+  (`PinReloads`); after that the trail says `pin-reload-stop` and the pin waits to be
+  reloaded when you come back to it, as any other tab does.
+
+Unpinned, a tab is an ordinary tab again and sleeps by the ordinary rules.
+
+`./bench pins` lists every pin — loaded or not, its web process, its reloads in the last
+ten minutes; in a test world `./bench pins kill ID` ends a tab's web process as macOS
+does, and `pins close ID` / `pins others ID` are ⌘W and Close Other Tabs.
+`docs/fixtures/pins-awake-e2e.py` runs all of the above in a fresh headless world.
+
 ## Coming back to a sleeping tab
 
 A tab that went to sleep shows its last picture the instant it is picked — drawn at

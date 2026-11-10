@@ -229,6 +229,9 @@ extension Browser {
         // button on it. Behind another tab: the moment you come back to it.
         if tab.id == activeID, !tab.isBlank {
             tab.recoverFromCrash()
+        } else if PinsAwake.shared.processGone(tab, in: self) {
+            // Fork (pins-awake): a pin is loaded again now, out of sight —
+            // three times in ten minutes at most (Fork/PinsAwake.swift).
         } else {
             tab.stale = true
         }

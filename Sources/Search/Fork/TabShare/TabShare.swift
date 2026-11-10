@@ -62,6 +62,8 @@ final class TabShare: NSObject, ObservableObject {
         let host: String
         /// The site whose page that frame sits in, when it is another's.
         var within: String? = nil
+        /// The name of the window's own space, over its tabs in the full list.
+        var home: String? = nil
         let caller: Tab.ID?
         /// The tabs on offer; empty when the page cannot be handed a tab
         /// (its frame has no wrapper), and then only a window or the screen.
@@ -77,15 +79,40 @@ final class TabShare: NSObject, ObservableObject {
     }
 
     @Published private(set) var picking: Picking?
-    /// The picker's typed filter and highlighted row.
+    /// The picker's typed filter, its highlighted row, and whether "All tabs"
+    /// is open.
     @Published var query = ""
     @Published var highlighted = 0
+    @Published var expanded = false
+    /// The row highlighted when the picker came up, for when the search is
+    /// emptied again.
+    private var opening = 0
 
-    /// The rows the picker shows now: the filtered tabs, then a window, the
-    /// screen.
-    var rows: [Choice] {
+    /// The rows the picker shows now, as the keys walk them: Entire screen, a
+    /// window, then the tabs (TabShareRules.rows).
+    var rows: [TabShareRules.Row] {
         guard let picking else { return [] }
-        return TabShareRules.filter(picking.tabs, query).map { .tab($0.id) } + [.window, .screen]
+        return TabShareRules.rows(picking.tabs, query: query, expanded: expanded)
+    }
+
+    /// A row clicked, or Return on the highlighted one: "All tabs" opens or
+    /// closes; anything else is the answer.
+    func pick(_ row: TabShareRules.Row) {
+        switch row {
+        case .screen: choose(.screen)
+        case .window: choose(.window)
+        case .tab(let id), .listed(let id): choose(.tab(id))
+        case .all:
+            expanded.toggle()
+            highlighted = rows.firstIndex { if case .all = $0 { return true } else { return false } } ?? highlighted
+        }
+    }
+
+    /// The typed letters changed: the first match is the one Return takes.
+    /// Emptied, the search hands the highlight back to where it started.
+    func edited(_ text: String) {
+        query = text
+        highlighted = text.allSatisfy(\.isWhitespace) ? opening : TabShareRules.firstTab(in: rows)
     }
 
     // MARK: - shares
@@ -184,7 +211,8 @@ final class TabShare: NSObject, ObservableObject {
         let owner = caller.flatMap { Windows.owner(of: $0) } ?? browser
         let canShareTab = ask != nil
         let candidates = canShareTab ? Self.candidates(in: owner, caller: caller?.id) : []
-        let picking = Picking(browser: ObjectIdentifier(owner), host: names.host, within: names.within, caller: caller?.id,
+        let picking = Picking(browser: ObjectIdentifier(owner), host: names.host, within: names.within,
+                              home: Spaces.shared.space(in: owner).title, caller: caller?.id,
                               tabs: TabShareRules.offer(candidates, includeCaller: ask?.includeSelf ?? false),
                               canShareTab: canShareTab, systemAudio: systemAudio, ask: askID, view: view,
                               decide: decide)
@@ -192,8 +220,10 @@ final class TabShare: NSObject, ObservableObject {
               "ask": ask?.key.id ?? NSNull(), "offered": picking.tabs.count, "decision": "picker",
               "frameKnown": frameKey.frame != nil, "documentKnown": frameKey.document != nil])
         query = ""
+        expanded = false
         self.picking = picking
-        highlighted = TabShareRules.highlight(for: ask?.video, rows: rows.count, tabs: picking.tabs.count)
+        highlighted = TabShareRules.highlight(for: ask?.video, tabs: picking.tabs)
+        opening = highlighted
         startWatchdog()
         if let queued = TabShareTesting.takeAnswer() {
             choose(queued)
@@ -554,12 +584,20 @@ final class TabShare: NSObject, ObservableObject {
     }
 
     /// Every tab a window could offer: its own space's (pins and rows), then
-    /// every other space's, each under that space's name.
+    /// every other space's, each under that space's name, with when each was
+    /// last looked at — Sections' clock, which a relaunch keeps, where a
+    /// tab's own starts again at launch. A tab Sections has never met (a pin
+    /// nobody has opened since launch) would read as this minute there, so
+    /// it goes by its own clock if it was looked at this session, and last
+    /// otherwise.
     static func candidates(in browser: Browser, caller: Tab.ID?) -> [TabShareRules.Candidate] {
         func candidate(_ tab: Tab, space: String?) -> TabShareRules.Candidate {
             let host = (tab.address ?? tab.pending)?.host() ?? ""
+            let seen = Sections.shared.knows(tab) ? Sections.shared.lastSeen(tab)
+                : Recent.shared.trail.contains(tab.id) ? tab.touched : .distantPast
             return .init(id: tab.id, title: tab.label, host: host.hasPrefix("www.") ? String(host.dropFirst(4)) : host,
-                         space: space, isCaller: tab.id == caller, isBlank: tab.isBlank, isPrivate: tab.shy)
+                         space: space, isCaller: tab.id == caller, isBlank: tab.isBlank, isPrivate: tab.shy,
+                         seen: seen)
         }
         let here = Spaces.shared.current(in: browser)
         var list = browser.tabs.map { candidate($0, space: nil) }
@@ -567,6 +605,24 @@ final class TabShare: NSObject, ObservableObject {
             list += Spaces.shared.row(space.id).map { candidate($0, space: space.title) }
         }
         return list
+    }
+
+    /// The bench's `share sample` (test worlds): a picker over made-up tabs,
+    /// nobody waiting on its answer, to draw and to walk with the keys. It
+    /// belongs to the window's front page, so the watchdog leaves it up.
+    func sample(in browser: Browser, host: String, within: String?, home: String?, tabs: [TabShareRules.Candidate],
+                includeSelf: Bool, canShareTab: Bool, systemAudio: Bool, video: Any?) {
+        guard Store.testing else { return }
+        if let open = picking { close(open, with: .cancel, note: "replaced") }
+        let picking = Picking(browser: ObjectIdentifier(browser), host: host, within: within, home: home, caller: nil,
+                              tabs: canShareTab ? TabShareRules.offer(tabs, includeCaller: includeSelf) : [],
+                              canShareTab: canShareTab, systemAudio: systemAudio, ask: nil, view: browser.active?.built,
+                              decide: { _ in })
+        query = ""
+        expanded = false
+        self.picking = picking
+        highlighted = TabShareRules.highlight(for: video, tabs: picking.tabs)
+        opening = highlighted
     }
 
     private func note(_ entry: [String: Any]) {
@@ -603,13 +659,16 @@ final class TabShare: NSObject, ObservableObject {
         if let picking {
             out["picker"] = [
                 "host": picking.host, "within": picking.within ?? NSNull(), "canShareTab": picking.canShareTab, "systemAudio": picking.systemAudio,
-                "query": query, "highlighted": highlighted,
-                "rows": rows.map { choice -> String in
-                    switch choice {
-                    case .tab(let id): return "tab " + (AgentTabs.find(id).map { AgentTabs.short($0) + " " + $0.label } ?? id.uuidString)
-                    case .window: return "window"
+                "query": query, "highlighted": highlighted, "expanded": expanded, "offered": picking.tabs.count,
+                "rows": rows.map { row -> String in
+                    switch row {
                     case .screen: return "screen"
-                    case .cancel: return "cancel"
+                    case .window: return "window"
+                    case .tab(let id), .listed(let id):
+                        return "tab " + (AgentTabs.find(id).map { AgentTabs.short($0) + " " + $0.label }
+                            ?? picking.tabs.first { $0.id == id }.map { String($0.id.uuidString.prefix(8)).lowercased() + " " + $0.title }
+                            ?? id.uuidString)
+                    case .all(let count, let open): return "all \(count)" + (open ? " open" : "")
                     }
                 },
             ]

@@ -488,6 +488,10 @@ enum Tools {
         Backstage.shared.release(tab.id)
         let owner = AgentTabs.owner(of: tab)
         owner.close(tab)
+        // Fork (pins-awake): ⌘W on a pin only steps away from it.
+        if tab.pin != nil, owner.tabs.contains(where: { $0.id == tab.id }) {
+            return "Not closed — it is a pinned tab, which stays open with its page loaded; only Unpin takes it out."
+        }
         return owner.tabs.contains { $0.id == tab.id } ? "Closed — it is a Saved tab, so it stays in Saved, unloaded." : "Closed."
     }
 
