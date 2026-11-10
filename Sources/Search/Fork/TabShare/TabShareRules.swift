@@ -47,19 +47,26 @@ enum TabShareRules {
                     fps: positive(ceiling(video["frameRate"])))
     }
 
-    /// The surface the page would like offered first — Chrome's
-    /// `displaySurface` hint (`"browser"`, `"window"`, `"monitor"`), plain or
-    /// as `{ ideal: … }` — as the picker row to highlight among `rows` (the
-    /// tabs, then a window, then the screen). A hint for a tab with no tab to
-    /// offer, or no hint, is the first row.
-    static func highlight(for video: Any?, rows: Int, tabs: Int) -> Int {
+    /// The row the picker highlights first, among `rows` (Entire screen, A
+    /// window, then the tabs). The page's own wish wins — Chrome's
+    /// `displaySurface` hint (`"monitor"`, `"window"`, `"browser"`), plain or
+    /// as `{ ideal: … }`; a hint for a tab with no tab to offer is a window.
+    ///
+    /// With no hint, Entire screen: it is what a call is most often handed,
+    /// and Return on it hands nothing over by itself — macOS's own picker
+    /// asks which screen next — where Return on a tab would put that page in
+    /// the call at once. A page that asked to be offered itself
+    /// (`preferCurrentTab`, `selfBrowserSurface: "include"`) wants itself
+    /// shared: This tab, which comes first among the tabs.
+    static func highlight(for video: Any?, tabs: [Candidate]) -> Int {
         let hint = video as? [String: Any]
         let surface = (hint?["displaySurface"] as? String)
             ?? ((hint?["displaySurface"] as? [String: Any]).flatMap { $0["exact"] as? String ?? $0["ideal"] as? String })
         switch surface {
-        case "monitor": return max(0, rows - 1)
-        case "window": return max(0, rows - 2)
-        default: return tabs > 0 ? 0 : max(0, rows - 2)
+        case "monitor": return 0
+        case "window": return 1
+        case "browser": return tabs.isEmpty ? 1 : 2
+        default: return tabs.contains(where: \.isCaller) ? 2 : 0
         }
     }
 
@@ -198,6 +205,9 @@ enum TabShareRules {
         var isCaller = false
         var isBlank = false
         var isPrivate = false
+        /// When it was last looked at (Sections.lastSeen): the picker's first
+        /// few tabs are the latest.
+        var seen = Date.distantPast
     }
 
     /// The tabs to offer: never a blank tab (there is nothing to show) or a
@@ -227,10 +237,65 @@ enum TabShareRules {
         }
     }
 
+    /// How many tabs the card lists before "All tabs": the ones you are most
+    /// likely to want, all in view without scrolling.
+    static let recentCount = 6
+
+    /// Last looked at first, across every space. The calling tab, when it is
+    /// offered at all, goes ahead of everything (the page asked for it); ties
+    /// keep the list's own order.
+    static func byRecency(_ tabs: [Candidate]) -> [Candidate] {
+        tabs.enumerated().sorted { a, b in
+            if a.element.isCaller != b.element.isCaller { return a.element.isCaller }
+            if a.element.seen != b.element.seen { return a.element.seen > b.element.seen }
+            return a.offset < b.offset
+        }.map(\.element)
+    }
+
+    /// One line of the card, top to bottom, as the keys walk it.
+    enum Row: Equatable {
+        case screen
+        case window
+        /// A tab among the recent few, or among the matches for what was typed.
+        case tab(UUID)
+        /// "All tabs" and how many there are; open, every one follows.
+        case all(count: Int, open: Bool)
+        /// A tab in the full list, under its space's name.
+        case listed(UUID)
+    }
+
+    /// What the card offers. Entire screen and a window always come first —
+    /// drawn side by side at the top of the card, where no list can push them
+    /// out of sight — then the tabs. Typed letters list every tab that
+    /// matches, in every space, latest first. Otherwise the few last looked
+    /// at, then "All tabs", which opens onto all of them in the list's own
+    /// order: this space's, then each other space's under its name.
+    static func rows(_ tabs: [Candidate], query: String, expanded: Bool, recent: Int = recentCount) -> [Row] {
+        let fixed: [Row] = [.screen, .window]
+        if !query.split(whereSeparator: \.isWhitespace).isEmpty {
+            return fixed + byRecency(filter(tabs, query)).map { .tab($0.id) }
+        }
+        let latest = byRecency(tabs).prefix(recent).map { Row.tab($0.id) }
+        guard tabs.count > recent else { return fixed + latest }
+        return fixed + latest + [.all(count: tabs.count, open: expanded)] + (expanded ? tabs.map { .listed($0.id) } : [])
+    }
+
+    /// Where the highlight goes when the typed letters change: the first tab
+    /// listed — the latest match — or Entire screen when nothing matches.
+    static func firstTab(in rows: [Row]) -> Int {
+        rows.firstIndex { if case .tab = $0 { return true } else { return false } } ?? 0
+    }
+
     /// ↑ and ↓ over `count` rows, stopping at the ends.
     static func step(_ index: Int, by delta: Int, count: Int) -> Int {
         guard count > 0 else { return 0 }
         return min(count - 1, max(0, index + delta))
+    }
+
+    /// ← and → between Entire screen and A window, side by side at the top
+    /// of the card (rows 0 and 1). On a tab they do nothing.
+    static func across(_ index: Int, by delta: Int) -> Int {
+        index > 1 ? index : min(1, max(0, index + delta))
     }
 
     // MARK: - frames

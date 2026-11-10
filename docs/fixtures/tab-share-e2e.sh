@@ -7,8 +7,8 @@
 # Copper world touched, nothing on screen.
 #
 #   1. The wrapper is invisible to feature detection until called.
-#   2. getDisplayMedia puts up Copper's picker: the other tabs, a window, the
-#      screen — never the calling tab — and Copper answers WebKit's private
+#   2. getDisplayMedia puts up Copper's picker: the screen, a window, the
+#      other tabs — never the calling tab — and Copper answers WebKit's private
 #      display-capture question.
 #   3. A tab: a live track (displaySurface "browser", the tab's title), at
 #      15 fps or better, every frame different, at most 1920 wide; Copper
@@ -143,7 +143,7 @@ for _ in {1..40}; do rows=$(state | jq -c '.picker.rows // empty'); [ -n "$rows"
 [ -n "$rows" ] || fail "no picker came up: $(state | jq -c .decisions)"
 jq -e --arg b "$b" 'any(.[]; startswith("tab " + $b))' <<<"$rows" >/dev/null || fail "the shared tab is not offered: $rows"
 jq -e --arg a "$a" 'all(.[]; startswith("tab " + $a) | not)' <<<"$rows" >/dev/null || fail "the calling tab is offered: $rows"
-jq -e '.[-2] == "window" and .[-1] == "screen"' <<<"$rows" >/dev/null || fail "no window and screen rows: $rows"
+jq -e '.[0] == "screen" and .[1] == "window"' <<<"$rows" >/dev/null || fail "no screen and window rows on top: $rows"
 [ "$(state | jq -r '.decisions[-1].decision')" = picker ] || fail "WebKit's display question did not reach Copper"
 bench share picture window "$shots/picker-window.png" >/dev/null
 bench share picture picker "$shots/picker-card-light.png" >/dev/null

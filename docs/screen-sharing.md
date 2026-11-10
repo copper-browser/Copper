@@ -2,27 +2,55 @@
 
 When a page asks to share your screen — Present now in Google Meet, Share
 Screen in Zoom on the web, a Slack huddle — Copper asks what to share in a
-card of its own, the way ⌘K looks:
+card of its own, the way ⌘K looks. Top to bottom:
 
-- **Tabs**: every tab in this window's space, then each other space's under
-  its name, each with its icon, title and site. The tab that is asking is left
-  out (a call shared into itself is a hall of mirrors), unless the page asked
-  to be offered itself (`selfBrowserSurface: "include"` or `preferCurrentTab`),
-  and then it comes first, marked *This tab*. Blank and private tabs are never
-  offered, and nothing but a tab the card offered can be shared: a private
-  tab keeps nothing and is no other page's to see, and a page in an ordinary
-  tab has no way to name one. Typing narrows the list.
-- **A window…** and **Entire screen…** hand over to macOS's own picker, as
-  before.
+- **Entire screen…** and **A window…**, side by side under the card's
+  title: one click each, and they hand over to macOS's own picker, as before.
+  They sit above the tabs, outside anything that scrolls, so however many
+  tabs you keep they are never more than a click (or ← →) away.
+- **A search field.** Typing anywhere on the card searches every tab in every
+  space, by title and site (every word has to be found), and lists all the
+  matches, last looked at first, each other space's tab with its space's name
+  after the site.
+- **Recent tabs**: the six you looked at last, in any space — Sections'
+  clock, which a relaunch keeps — each with its icon, title and site.
+- **All tabs (N)**, below them, opens onto every tab: this window's space
+  first, then each other space under its name.
+
+With nothing typed and All tabs closed, everything is in view at once. A long
+list of matches or the full list grows the card to the room the window has
+below it, never more, and scrolls inside it; the top of the card stays put.
+
+The tab that is asking is left out (a call shared into itself is a hall of
+mirrors), unless the page asked to be offered itself
+(`selfBrowserSurface: "include"` or `preferCurrentTab`), and then it comes
+first, marked *This tab*. Blank and private tabs are never offered, and
+nothing but a tab the card offered can be shared: a private tab keeps nothing
+and is no other page's to see, and a page in an ordinary tab has no way to
+name one. A page Copper can't hand a tab (see *Who gets the pictures*) gets
+the card with Entire screen and A window alone.
 
 The card names the site that would be handed the pictures — the frame's,
 when the call lives in a frame of another site inside the page, with *In a
 frame on* the page's site under it — and the bar says the same.
 
-↑ ↓ (and ⇥) walk the rows, Return shares, Escape, ⌘. or a click outside
-cancels. Cancelling tells the page `NotAllowedError`, as Chrome does. A page
-that hints what it wants (`video: { displaySurface: "monitor" }`, as Chrome
-reads it) gets that row highlighted first.
+↑ ↓ and ⇥ walk everything in order (Entire screen, A window, then the tabs),
+← → go between Entire screen and A window, Return shares the highlighted
+choice (on All tabs it opens or closes the list), Escape, ⌘., ⌘W, Cancel or a
+click outside cancels. Cancelling tells the page `NotAllowedError`, as Chrome
+does. What is highlighted first:
+
+- the page's hint, when it gives one (`video: { displaySurface: … }`, as
+  Chrome reads it): `"monitor"` Entire screen, `"window"` A window,
+  `"browser"` the first tab;
+- *This tab*, for a page that asked to be offered itself;
+- otherwise **Entire screen**: it is what a call is most often handed, and
+  Return on it hands nothing over by itself — macOS's picker asks which
+  screen next — where Return on a tab would put that page in the call at
+  once.
+
+Typing moves the highlight to the first match, so a few letters and Return
+share a tab; emptying the search puts it back where it started.
 
 A shared tab is shared as a page: only its content, never Copper around it, at
 up to 30 frames a second and up to 1920 pixels wide (Retina detail, shrunk to
@@ -248,8 +276,9 @@ Rejected:
 
 - `swift test --filter TabShare`: constraints, sizes, matching an ask to
   WebKit's request (frame, document and origin; never another origin's), the
-  names on the card, back-pressure and the ends, the picker's list
-  (`TabShareRulesTests`); the page script in JavaScriptCore against a
+  names on the card, back-pressure and the ends, the picker's list — what is
+  offered, the latest few, All tabs, the search, the first highlight and the
+  keys (`TabShareRulesTests`); the page script in JavaScriptCore against a
   stand-in page — untouched until called, the tab path's fixed label and
   private share id (`TabShareScriptTests`).
 - `docs/fixtures/tab-share-e2e.sh`: a headless test world end to end — the
@@ -270,7 +299,11 @@ Rejected:
 - `./bench --world NAME share …`: `state` (each share's `timing`: the gaps
   between ticks, an ask's wait for its picture and the page's turn, middle /
   slow tenth / slowest over the last few seconds; `appActive`; `pace`),
-  `answer tab ID|window|screen|cancel`, `keys`, `pace on|off` and
+  `answer tab ID|window|screen|cancel`, `keys`, `sample [N] [self] [notab]
+  [audio] [frame] [hint monitor|window|browser]` (test worlds: the card over
+  N made-up tabs in five spaces, nobody waiting on its answer — to draw it
+  and walk it with `keys`; `picture picker PATH [dark] bare` draws it on its
+  own), `pace on|off` and
   `occlusion ID on|off` (test worlds only; the last lets a windowed
   probe behind your own windows call getDisplayMedia, which wants a visible
   page), `stop`, `caller on|off`, `picture window|picker|bar PATH [dark]`. `SEARCH_SHARE_MOCK=1` at launch, in a

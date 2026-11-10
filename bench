@@ -37,13 +37,15 @@
                                        picker, the page's asks, WebKit's requests and Copper's answers
     ./bench share answer tab ID|window|screen|cancel
                                        a test world: answer the open share picker, or the next one
-    ./bench share keys KEYS            a test world: ↑ ↓ ↩ ⎋ ⌫ ⇥ or letters on the open picker
+    ./bench share keys KEYS            a test world: ↑ ↓ ← → ↩ ⎋ ⌫ ⇥ or letters on the open picker
+    ./bench share sample [N] [self] [notab] [audio] [frame] [hint monitor|window|browser]
+                                       a test world: the picker over N made-up tabs, to draw and walk
     ./bench share stop [SHARE|all]     as the bar's Stop does
     ./bench share caller on|off        keep the calling page painting while it is not on screen
     ./bench share pace on|off          a test world: hold (on) or not the activity that keeps a share's timers precise
     ./bench share occlusion ID on|off  a test world: the tab's page ignores (on) / notices whether its window is covered
-    ./bench share picture picker|bar PATH [dark]
-                                       the picker over the calling page, or the bar over the page in front
+    ./bench share picture picker|bar PATH [dark] [bare]
+                                       the picker over the calling page (bare: on its own), or the bar over the page in front
     ./bench calendar [state|stage|key|picture PATH]
                                        the Calendar pin's card: what it lists; staged meetings (test
                                        worlds); the key window while it is open; the card to a PNG
