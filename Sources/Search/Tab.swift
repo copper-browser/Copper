@@ -1468,17 +1468,24 @@ final class PageView: WKWebView {
     /// them beeped. Safari keeps those quiet, and so does this view. The
     /// app's own shortcuts never get this far: its key monitor takes them
     /// before the page sees the key.
-    private var handed: NSEvent?
+    ///
+    /// Fork (key-beep): the last few, not the last one. The page answers a
+    /// moment later, so a held arrow or quick taps (scrubbing YouTube, paging
+    /// X's photos) put the next key in before the last came back; with one
+    /// key remembered every return trip was missed, and each one beeped.
+    private var handed: [NSEvent] = []
     /// How many came back unused and were kept quiet, for the bench.
     static var quieted = 0
 
     override func keyDown(with event: NSEvent) {
-        if let handed, PageView.same(handed, event) {
-            self.handed = nil
+        if let at = handed.firstIndex(where: { PageView.same($0, event) }) {
+            handed.remove(at: at)
             PageView.quieted += 1
             return
         }
-        handed = event
+        // Keys the page used never come back; the oldest fall off the end.
+        handed.append(event)
+        if handed.count > 32 { handed.removeFirst() }
         super.keyDown(with: event)
     }
 
