@@ -200,9 +200,26 @@ private func webKitPicture(_ rect: CGRect, width: Int) -> (Int, Int) {
 
 // MARK: - the picker's list
 
-private func tab(_ title: String, space: String? = nil, caller: Bool = false, blank: Bool = false, shy: Bool = false) -> TabShareRules.Candidate {
+private func tab(_ title: String, space: String? = nil, caller: Bool = false, blank: Bool = false, shy: Bool = false,
+                 minutesAgo: Double? = nil) -> TabShareRules.Candidate {
     TabShareRules.Candidate(id: UUID(), title: title, host: title.lowercased() + ".com", space: space,
-                            isCaller: caller, isBlank: blank, isPrivate: shy)
+                            isCaller: caller, isBlank: blank, isPrivate: shy,
+                            seen: minutesAgo.map { Date(timeIntervalSinceReferenceDate: 800_000_000 - $0 * 60) } ?? .distantPast)
+}
+
+/// The rows as words, for comparing: `screen`, `window`, a tab's title, `all N`
+/// (`all N open`) and `- title` for a tab in the full list.
+private func words(_ rows: [TabShareRules.Row], _ tabs: [TabShareRules.Candidate]) -> [String] {
+    let titles = Dictionary(uniqueKeysWithValues: tabs.map { ($0.id, $0.title) })
+    return rows.map { row in
+        switch row {
+        case .screen: return "screen"
+        case .window: return "window"
+        case .tab(let id): return titles[id] ?? "?"
+        case .listed(let id): return "- " + (titles[id] ?? "?")
+        case .all(let count, let open): return "all \(count)" + (open ? " open" : "")
+        }
+    }
 }
 
 @Test func thePickerLeavesOutTheCallerBlankTabsAndPrivateOnes() {
@@ -230,15 +247,82 @@ private func tab(_ title: String, space: String? = nil, caller: Bool = false, bl
 }
 
 @Test func thePagesDisplaySurfaceHintPicksTheFirstRow() {
-    // Two tabs, then a window, then the screen.
-    #expect(TabShareRules.highlight(for: true, rows: 4, tabs: 2) == 0)
-    #expect(TabShareRules.highlight(for: ["displaySurface": "browser"], rows: 4, tabs: 2) == 0)
-    #expect(TabShareRules.highlight(for: ["displaySurface": "window"], rows: 4, tabs: 2) == 2)
-    #expect(TabShareRules.highlight(for: ["displaySurface": "monitor"], rows: 4, tabs: 2) == 3)
-    #expect(TabShareRules.highlight(for: ["displaySurface": ["ideal": "monitor"]], rows: 4, tabs: 2) == 3)
-    // No tab to offer: a window first.
-    #expect(TabShareRules.highlight(for: nil, rows: 2, tabs: 0) == 0)
-    #expect(TabShareRules.highlight(for: ["displaySurface": "browser"], rows: 2, tabs: 0) == 0)
+    // Entire screen, a window, then the tabs.
+    let tabs = [tab("Slides"), tab("Docs")]
+    #expect(TabShareRules.highlight(for: ["displaySurface": "monitor"], tabs: tabs) == 0)
+    #expect(TabShareRules.highlight(for: ["displaySurface": ["ideal": "monitor"]], tabs: tabs) == 0)
+    #expect(TabShareRules.highlight(for: ["displaySurface": "window"], tabs: tabs) == 1)
+    #expect(TabShareRules.highlight(for: ["displaySurface": ["exact": "window"]], tabs: tabs) == 1)
+    #expect(TabShareRules.highlight(for: ["displaySurface": "browser"], tabs: tabs) == 2)
+    // A tab asked for with no tab to offer: a window.
+    #expect(TabShareRules.highlight(for: ["displaySurface": "browser"], tabs: []) == 1)
+}
+
+/// No hint: Return opens macOS's picker for the screen — the usual share,
+/// and never a page handed to the call by a stray Return. A page that asked
+/// to be offered itself gets This tab.
+@Test func withNoHintReturnSharesTheScreenOrThisTabWhenThePageAskedForItself() {
+    #expect(TabShareRules.highlight(for: true, tabs: [tab("Slides"), tab("Docs")]) == 0)
+    #expect(TabShareRules.highlight(for: nil, tabs: []) == 0)
+    let mine = TabShareRules.offer([tab("Slides"), tab("Meet", caller: true)], includeCaller: true)
+    #expect(TabShareRules.highlight(for: true, tabs: mine) == 2)
+    #expect(TabShareRules.rows(mine, query: "", expanded: false)[2] == .tab(mine[0].id))
+    #expect(mine[0].isCaller)
+    // A hint still wins.
+    #expect(TabShareRules.highlight(for: ["displaySurface": "monitor"], tabs: mine) == 0)
+}
+
+@Test func theLatestTabsComeFirstFromEverySpaceAndTheCallerAheadOfThem() {
+    let tabs = [tab("Mail", minutesAgo: 300), tab("Slides", minutesAgo: 2), tab("Notes", space: "Work", minutesAgo: 1),
+                tab("Old"), tab("Meet", caller: true, minutesAgo: 5), tab("Maps", space: "Home", minutesAgo: 30)]
+    #expect(TabShareRules.byRecency(tabs).map(\.title) == ["Meet", "Notes", "Slides", "Maps", "Mail", "Old"])
+    // Never seen, or seen at once: the list's own order.
+    let even = [tab("A"), tab("B"), tab("C")]
+    #expect(TabShareRules.byRecency(even).map(\.title) == ["A", "B", "C"])
+}
+
+@Test func theScreenAndAWindowAlwaysLeadAndOnlyTheLatestFewTabsShowUntilAllTabsIsOpened() {
+    // Ten tabs over two spaces, the latest scattered among them.
+    let tabs = [tab("a", minutesAgo: 90), tab("b", minutesAgo: 3), tab("c", minutesAgo: 80), tab("d", minutesAgo: 1),
+                tab("e", minutesAgo: 70), tab("f", space: "Work", minutesAgo: 2), tab("g", space: "Work", minutesAgo: 60),
+                tab("h", space: "Work", minutesAgo: 4), tab("i", space: "Work", minutesAgo: 50), tab("j", space: "Work")]
+    let closed = TabShareRules.rows(tabs, query: "", expanded: false, recent: 4)
+    #expect(words(closed, tabs) == ["screen", "window", "d", "f", "b", "h", "all 10"])
+    let open = TabShareRules.rows(tabs, query: "", expanded: true, recent: 4)
+    #expect(words(open, tabs) == ["screen", "window", "d", "f", "b", "h", "all 10 open",
+                                 "- a", "- b", "- c", "- d", "- e", "- f", "- g", "- h", "- i", "- j"])
+    // Opening it changes nothing above it: the highlight on All tabs stays there.
+    #expect(Array(open.prefix(6)) == Array(closed.prefix(6)))
+    // The default few.
+    #expect(TabShareRules.rows(tabs, query: "", expanded: false).count == 2 + TabShareRules.recentCount + 1)
+    #expect((6...8).contains(TabShareRules.recentCount))
+}
+
+@Test func aFewTabsAreAllListedWithNoAllTabsRow() {
+    let tabs = [tab("Slides", minutesAgo: 9), tab("Docs", minutesAgo: 1)]
+    #expect(words(TabShareRules.rows(tabs, query: "", expanded: false), tabs) == ["screen", "window", "Docs", "Slides"])
+    #expect(words(TabShareRules.rows(tabs, query: "", expanded: true), tabs) == ["screen", "window", "Docs", "Slides"])
+}
+
+@Test func aPageThatCannotBeHandedATabGetsTheScreenAndAWindowAlone() {
+    #expect(TabShareRules.rows([], query: "", expanded: false) == [.screen, .window])
+    #expect(TabShareRules.rows([], query: "", expanded: true) == [.screen, .window])
+}
+
+@Test func typingSearchesEveryTabInEverySpaceLatestFirst() {
+    var tabs = (0..<40).map { tab("Filler \($0)", space: $0 % 2 == 0 ? nil : "Work", minutesAgo: Double($0)) }
+    tabs += [tab("Meet notes", space: "Home", minutesAgo: 500), tab("Weekly meeting", minutesAgo: 600),
+             tab("Meet recording", space: "Work", minutesAgo: 45)]
+    let found = TabShareRules.rows(tabs, query: "meet", expanded: false)
+    #expect(words(found, tabs) == ["screen", "window", "Meet recording", "Meet notes", "Weekly meeting"])
+    // All tabs open or not, typing lists the matches alone.
+    #expect(TabShareRules.rows(tabs, query: "meet", expanded: true) == found)
+    // Return takes the first match; nothing found, the screen.
+    #expect(TabShareRules.firstTab(in: found) == 2)
+    #expect(TabShareRules.rows(tabs, query: "zzz", expanded: false) == [.screen, .window])
+    #expect(TabShareRules.firstTab(in: [.screen, .window]) == 0)
+    // Spaces alone are no search.
+    #expect(TabShareRules.rows(tabs, query: "  ", expanded: false) == TabShareRules.rows(tabs, query: "", expanded: false))
 }
 
 @Test func theArrowsStopAtTheEnds() {
@@ -246,6 +330,16 @@ private func tab(_ title: String, space: String? = nil, caller: Bool = false, bl
     #expect(TabShareRules.step(1, by: 1, count: 3) == 2)
     #expect(TabShareRules.step(2, by: 1, count: 3) == 2)
     #expect(TabShareRules.step(5, by: 0, count: 0) == 0)
+}
+
+@Test func leftAndRightGoBetweenTheScreenAndAWindowAndNowhereElse() {
+    #expect(TabShareRules.across(0, by: 1) == 1)
+    #expect(TabShareRules.across(1, by: 1) == 1)
+    #expect(TabShareRules.across(1, by: -1) == 0)
+    #expect(TabShareRules.across(0, by: -1) == 0)
+    // On a tab, ← and → leave the highlight where it is.
+    #expect(TabShareRules.across(4, by: -1) == 4)
+    #expect(TabShareRules.across(2, by: 1) == 2)
 }
 
 // MARK: - frames
