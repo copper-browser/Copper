@@ -78,15 +78,27 @@ final class Heat: ObservableObject {
         hot.contains(tab.id)
     }
 
+    /// Fork (tab-memory): what a tab's page weighs — its web process and
+    /// that process's physical footprint. Nil with no page built; read when
+    /// asked, never sampled.
+    func weight(of tab: Tab) -> (pid: pid_t, bytes: UInt64)? {
+        guard let web = tab.built, let pid = webProcessID(web), let bytes = Breadcrumbs.footprint(of: pid) else { return nil }
+        return (pid, bytes)
+    }
+
     /// Bench's `heat` verb: only already-built tabs are reported, preserving
-    /// the same no-side-effects rule as the sampler.
+    /// the same no-side-effects rule as the sampler. Every window's and every
+    /// space's, with what each weighs (Fork: tab-memory); CPU is sampled for
+    /// the front window's row only.
     func bench(_ request: [String: Any] = [:], in browser: Browser) -> [String: Any] {
-        let tabs = browser.tabs.filter { $0.built != nil }.map { tab -> [String: Any] in
+        let tabs = AgentTabs.all.filter { $0.built != nil }.map { tab -> [String: Any] in
             let reading = readings[tab.id]
-            let pid = reading?.pid ?? tab.built.flatMap { webProcessID($0) }
+            let weight = weight(of: tab)
+            let pid = reading?.pid ?? weight?.pid
             return [
                 "id": tab.id.uuidString,
                 "title": tab.label,
+                "mb": weight.map { Int($0.bytes / 1_048_576) } ?? NSNull(),
                 "pid": pid.map { $0 } ?? NSNull(),
                 "cpu": reading?.cpu ?? 0,
                 "sustained": reading?.sustained ?? 0,

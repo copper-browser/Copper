@@ -371,8 +371,10 @@ final class Bench {
                 var seen = Set<Tab.ID>()
                 let loaded = (Windows.all.flatMap(\.tabs) + Spaces.shared.parkedTabs)
                     .filter { seen.insert($0.id).inserted && $0.built != nil && !$0.asleep }.count
-                let chosen = browser.sleepIdle()
-                answer(["budget": Browser.awakeBudget, "loaded": loaded, "chosen": chosen.map(Bench.short)])
+                // Fork (tab-memory): `sleep sweep SECONDS` — the same sweep,
+                // as if the half hour were SECONDS.
+                let chosen = browser.sleepIdle(after: request["seconds"] as? Double)
+                answer(["budget": Browser.awakeBudget, "heavyMB": Int(Browser.heavy / 1_048_576), "loaded": loaded, "chosen": chosen.map(Bench.short)])
                 return
             }
             // Now rather than after half an hour, but past every other check
