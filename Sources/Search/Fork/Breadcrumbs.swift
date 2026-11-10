@@ -97,11 +97,22 @@ enum Breadcrumbs {
         let timer = DispatchSource.makeTimerSource(queue: .main)
         timer.schedule(deadline: .now() + 60, repeating: 60, leeway: .seconds(5))
         timer.setEventHandler {
-            let (tabs, views) = MainActor.assumeIsolated { () -> (Int, Int) in
+            // Fork (tab-memory): and what the pages weigh — every web process
+            // once, and the heaviest by its host (never more of the address),
+            // so "Copper was using a lot of memory" has a which and a when.
+            let (tabs, views, web, top) = MainActor.assumeIsolated { () -> (Int, Int, UInt64, String) in
                 let all = AgentTabs.all
-                return (all.count, all.filter { $0.built != nil }.count)
+                var weighed: [pid_t: (UInt64, String)] = [:]
+                for tab in all {
+                    guard let (pid, bytes) = Heat.shared.weight(of: tab), weighed[pid] == nil else { continue }
+                    weighed[pid] = (bytes, tab.address?.host ?? "-")
+                }
+                let heaviest = weighed.values.max { $0.0 < $1.0 }
+                return (all.count, all.filter { $0.built != nil }.count, weighed.values.reduce(0) { $0 + $1.0 },
+                        heaviest.map { "\($0.1):\($0.0 / 1_048_576)MB" } ?? "-")
             }
-            note("pulse", [("mem", footprint().map { "\($0 / 1_048_576)MB" } ?? "-"), ("tabs", String(tabs)), ("views", String(views))])
+            note("pulse", [("mem", footprint().map { "\($0 / 1_048_576)MB" } ?? "-"), ("tabs", String(tabs)), ("views", String(views)),
+                           ("web", "\(web / 1_048_576)MB"), ("top", top)])
         }
         timer.resume()
         pulse = timer
@@ -109,11 +120,11 @@ enum Breadcrumbs {
 
     /// The physical footprint — the number macOS weighs a process by when it
     /// is short of memory.
-    static func footprint() -> UInt64? {
+    static func footprint(of pid: pid_t = getpid()) -> UInt64? {
         var info = rusage_info_current()
         let result = withUnsafeMutablePointer(to: &info) { pointer in
             pointer.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
-                proc_pid_rusage(getpid(), RUSAGE_INFO_CURRENT, $0)
+                proc_pid_rusage(pid, RUSAGE_INFO_CURRENT, $0)
             }
         }
         return result == 0 ? info.ri_phys_footprint : nil

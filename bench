@@ -12,7 +12,9 @@
     ./bench go ID URL                  send a bench tab somewhere else
     ./bench wait ID [SECONDS]          until the page has loaded
     ./bench sleep ID                   put a tab to sleep now, or say what keeps it awake
-    ./bench sleep sweep                the idle sweep now: the budget, the pages loaded, the tabs it chose
+    ./bench sleep sweep [SECONDS]      the idle sweep now: the budget, the pages loaded, the tabs it chose;
+                                       SECONDS stands in for the half hour a tab has to be left
+    ./bench heat                       every loaded page, heaviest first: megabytes, CPU, web process
     ./bench select ID                  bring a tab to the front — --test runs only
     ./bench resize W H [STEPS]         take the window to W×H in steps, like a drag — --test runs only
     ./bench key ID TEXT [--app] [--hold] press keys on a tab as real key events — --test runs only;
@@ -497,7 +499,8 @@ def main(argv):
         request["id"] = args[0]
         if len(args) > 1: request["seconds"] = float(args[1])
     elif verb in ("text", "close", "sleep", "select"):
-        if len(args) != 1: sys.exit(f"usage: bench {verb} ID")
+        if verb == "sleep" and len(args) == 2 and args[0] == "sweep": request["seconds"] = float(args[1])
+        elif len(args) != 1: sys.exit(f"usage: bench {verb} ID")
         request["id"] = args[0]
     elif verb == "eval":
         if len(args) != 2: sys.exit("usage: bench eval ID JS")
@@ -761,7 +764,7 @@ def main(argv):
         request["id"] = args[0]
         if verb == "pin" and len(args) == 2: request["letter"] = args[1]
         if verb == "reorder": request["index"] = int(args[1])
-    elif verb not in ("tabs", "probe", "extensions", "stage"):
+    elif verb not in ("tabs", "probe", "extensions", "stage", "heat"):
         sys.exit(f"unknown command “{verb}” — see bench help")
 
     answer = ask(os.path.join(folder(world), "bench.sock"), request)
@@ -921,6 +924,12 @@ def main(argv):
         if answer.get("saved"): print("saved, in order (z = put down / asleep):")
         for t in answer.get("saved", []):
             print(f"  {'●' if t.get('live') else ' '} {t['id']}  {'z' if t.get('asleep') else ' '}  {t['title'] or '—'}" + (f"  [{t['group']}]" if t.get('group') else ""))
+    elif verb == "heat":
+        tabs = sorted(answer.get("tabs", []), key=lambda t: -(t.get("mb") or 0))
+        for t in tabs:
+            print(f"{t.get('mb') or 0:6} MB  {t.get('cpu', 0):5.1f}%  pid {t.get('pid')}  {t['id'][:8].lower()}  {t.get('title') or '—'}")
+        # A process shared by two tabs is counted once.
+        print(f"{sum({t.get('pid'): t.get('mb') or 0 for t in tabs}.values()):6} MB  in {len(tabs)} loaded page(s)")
     elif verb == "tabs" and request.get("op"):
         if "cleared" in answer:
             print(f"cleared {answer['cleared']} tab(s)")

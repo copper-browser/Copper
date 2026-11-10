@@ -539,6 +539,7 @@ enum Tools {
             }
             // Behind the user's tab, not in front of it. Unless asked.
             let tab = browser.open(url, foreground: focus || pane)
+            AgentTabs.opened.insert(tab.id) // Fork (tab-memory)
             AgentTabs.bind(tab)
             AgentTabs.prepare(tab)
             if raw != nil { try await settle(tab) }

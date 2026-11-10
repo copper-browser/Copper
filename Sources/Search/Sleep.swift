@@ -22,6 +22,17 @@ import WebKit
 // were doing: the one on screen, pinned tabs (those are put down by hand,
 // with ⌘W), a tab playing sound, on a call, sending a download, holding its
 // video out in the little window, or holding something typed and not sent.
+// (A video with no sound needs no rule: WebKit pauses it the moment its tab
+// leaves the screen, so nothing plays silently in a tab that could sleep.)
+//
+// Fork (tab-memory): the budget counts pages, and pages are not one size —
+// X, Gmail or YouTube hold about a gigabyte each, so ten of them "kept
+// easily" on a 16 GB Mac was most of its memory. A page that heavy (`heavy`:
+// a thirty-second of the Mac's memory, half a gigabyte on 16 GB)
+// goes at the half hour whatever the budget says, and so does a space's own
+// tab, which otherwise waits for memory pressure: the Gmail a launch warmed
+// for a space nobody went to held 980 MB all day. A tab an agent opened for
+// itself goes at the half hour too, once the agent is done with it.
 //
 // When macOS says memory is short, the half hour shrinks: to five minutes on
 // a warning, to nothing when it is critical.
@@ -42,6 +53,16 @@ extension Browser {
         if set > 0 { return set }
         let gigabytes = Int(ProcessInfo.processInfo.physicalMemory / 1_073_741_824)
         return min(40, max(6, gigabytes * 2 / 3))
+    }
+
+    /// A page whose process holds this much goes at the half hour whatever
+    /// the budget says: a thirty-second of this Mac's memory (512 MB on
+    /// 16 GB, 1.1 GB on 36 — a Mac with memory to spare keeps more of its
+    /// pages), at least 500 MB — or `sleep.heavy` in megabytes, for the bench.
+    static var heavy: UInt64 {
+        let set = Store.settings.integer(forKey: "sleep.heavy")
+        if set > 0 { return UInt64(set) * 1_048_576 }
+        return max(500 * 1_048_576, ProcessInfo.processInfo.physicalMemory / 32)
     }
 
     /// Left this long, a page goes whatever the budget says.
@@ -71,29 +92,37 @@ extension Browser {
     /// Every tab that has gone long enough without being looked at, the one
     /// left longest first — beyond the budget only, unless memory is short
     /// (`given`) or the bench set its own `sleep.after`. The tabs it chose.
+    /// `after` is the bench's shorter wait, everything else as it would be.
     @discardableResult
-    func sleepIdle(within given: TimeInterval? = nil) -> [Tab] {
+    func sleepIdle(within given: TimeInterval? = nil, after: TimeInterval? = nil) -> [Tab] {
         guard prefs.sleepsTabs else { return [] }
-        let wait = given ?? Browser.sleepAfter
+        let wait = given ?? after ?? Browser.sleepAfter
         let now = Date()
         var seen = Set<Tab.ID>()
         let candidates = (Windows.all.flatMap(\.tabs) + Spaces.shared.parkedTabs).filter { seen.insert($0.id).inserted }
-        let idle = candidates
-            .filter { now.timeIntervalSince($0.touched) >= wait && awake(because: $0) == nil }
-            // Fork (space-keepalive): a space's own tab waits for memory pressure.
-            .filter { given != nil || !Spaces.shared.remembered($0.id) }
+        let rested = candidates.filter { now.timeIntervalSince($0.touched) >= wait && awake(because: $0) == nil }
+        // Fork (tab-memory): weighed once, and only the ones that could go.
+        // A tab an agent opened and is done with goes the same way: nobody
+        // chose to keep it loaded.
+        let heavy = Set(rested.filter {
+            AgentTabs.opened.contains($0.id) || (Heat.shared.weight(of: $0)?.bytes ?? 0) >= Browser.heavy
+        }.map(\.id))
+        let idle = rested
+            // Fork (space-keepalive): a space's own tab waits for memory
+            // pressure — unless it is a heavy one.
+            .filter { given != nil || !Spaces.shared.remembered($0.id) || heavy.contains($0.id) }
             .sorted { $0.touched < $1.touched }
         guard given == nil, Store.settings.double(forKey: "sleep.after") <= 0 else {
             for tab in idle { self.sleep(tab) }
             return idle
         }
         // Fork (perf): only as many as there are loaded pages over the budget,
-        // any left past the ceiling, and any still burning a core with nobody
+        // any left past the ceiling, any still burning a core with nobody
         // looking (Heat's sustained reading) — under the budget that page
-        // kept the fans going for twelve hours.
+        // kept the fans going for twelve hours — and any heavy one.
         var over = candidates.filter { $0.built != nil && !$0.asleep }.count - Browser.awakeBudget
         var chosen: [Tab] = []
-        for tab in idle where over > 0 || now.timeIntervalSince(tab.touched) >= Browser.sleepCeiling || Heat.shared.isHot(tab) {
+        for tab in idle where over > 0 || now.timeIntervalSince(tab.touched) >= Browser.sleepCeiling || Heat.shared.isHot(tab) || heavy.contains(tab.id) {
             self.sleep(tab)
             chosen.append(tab)
             over -= 1

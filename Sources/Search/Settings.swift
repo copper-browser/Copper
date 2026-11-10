@@ -358,7 +358,7 @@ struct SettingsPanel: View {
                 }
             }
             SettingsSection("Tabs you leave") {
-                Line("Sleep tabs you aren't using",  "When many pages are open or memory runs short, the tabs you left longest sleep and come back where you were. Pinned tabs, sound, calls and anything typed stay awake.") {
+                Line("Sleep tabs you aren't using",  "When many pages are open, a page is heavy or memory runs short, the tabs you left longest sleep and come back where you were. Pinned tabs, sound, calls and anything typed stay awake.") {
                     Switch(on: $prefs.sleepsTabs)
                 }
                 .settingsAnchor("tabs.sleep")

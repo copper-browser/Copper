@@ -1,0 +1,8 @@
+<!doctype html><title>page</title>
+<!-- tab-memory-e2e.sh: a page that holds ?mb megabytes, as X or Gmail hold a gigabyte. -->
+<body><script>
+const q = new URLSearchParams(location.search), mb = +q.get('mb') || 0;
+window.held = [];
+for (let i = 0; i < mb; i += 50) held.push(new Uint8Array(50 << 20).fill(1));
+document.title = q.get('name') || 'page';
+</script>
