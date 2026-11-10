@@ -22,6 +22,8 @@ import WebKit
 // were doing: the one on screen, pinned tabs (those are put down by hand,
 // with ⌘W), a tab playing sound, on a call, sending a download, holding its
 // video out in the little window, or holding something typed and not sent.
+// (A video with no sound needs no rule: WebKit pauses it the moment its tab
+// leaves the screen, so nothing plays silently in a tab that could sleep.)
 //
 // Fork (tab-memory): the budget counts pages, and pages are not one size —
 // X, Gmail or YouTube hold about a gigabyte each, so ten of them "kept
@@ -29,7 +31,8 @@ import WebKit
 // a thirty-second of the Mac's memory, half a gigabyte on 16 GB)
 // goes at the half hour whatever the budget says, and so does a space's own
 // tab, which otherwise waits for memory pressure: the Gmail a launch warmed
-// for a space nobody went to held 980 MB all day.
+// for a space nobody went to held 980 MB all day. A tab an agent opened for
+// itself goes at the half hour too, once the agent is done with it.
 //
 // When macOS says memory is short, the half hour shrinks: to five minutes on
 // a warning, to nothing when it is critical.
@@ -99,7 +102,11 @@ extension Browser {
         let candidates = (Windows.all.flatMap(\.tabs) + Spaces.shared.parkedTabs).filter { seen.insert($0.id).inserted }
         let rested = candidates.filter { now.timeIntervalSince($0.touched) >= wait && awake(because: $0) == nil }
         // Fork (tab-memory): weighed once, and only the ones that could go.
-        let heavy = Set(rested.filter { (Heat.shared.weight(of: $0)?.bytes ?? 0) >= Browser.heavy }.map(\.id))
+        // A tab an agent opened and is done with goes the same way: nobody
+        // chose to keep it loaded.
+        let heavy = Set(rested.filter {
+            AgentTabs.opened.contains($0.id) || (Heat.shared.weight(of: $0)?.bytes ?? 0) >= Browser.heavy
+        }.map(\.id))
         let idle = rested
             // Fork (space-keepalive): a space's own tab waits for memory
             // pressure — unless it is a heavy one.

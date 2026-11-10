@@ -8,11 +8,12 @@
 # they weighed. Now a heavy page (500 MB on a 16 GB Mac) goes once it has been left the half
 # hour, under the budget or not, a space's own tab included.
 #
-#   1. Five pages loaded: two light, three holding 600 MB (one loose, one a
-#      pin, one the other space's own tab). `bench heat` weighs them.
+#   1. Six pages loaded: two light, three holding 600 MB (one loose, one a
+#      pin, one the other space's own tab) and a light one an agent opened
+#      for itself. `bench heat` weighs them.
 #   2. The sweep, with seconds standing in for the half hour: the loose heavy
-#      page and the other space's heavy page sleep; the light page, the pin
-#      and the page on screen stay.
+#      page, the other space's heavy page and the agent's page sleep; the
+#      light page, the pin and the page on screen stay.
 #   3. Over a gigabyte comes back, and the sleeping tabs are still in the row.
 #
 # A fresh SEARCH_PROBE world, headless; no network, no real Copper world
@@ -56,6 +57,12 @@ JSON
 defaults write "$domain" bench -bool true
 defaults write "$domain" welcomed -bool true
 defaults write "$domain" spaces.warm -bool false
+defaults write "$domain" agents.linger -int 2    # an agent lets go of its tab in seconds, not five minutes
+port=$(python3 -c "import socket; s=socket.socket(); s.bind(('127.0.0.1',0)); print(s.getsockname()[1])")
+token=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+printf '{"enabled":true,"port":%s,"token":"%s","announces":false,"jev":false}' "$port" "$token" >"$folder/agent.json"
+mcp() { curl -s -m 20 -X POST "http://127.0.0.1:$port/mcp" -H "Authorization: Bearer $token" -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"$1\",\"arguments\":$2}}"; }
 defaults write "$domain" sleep.heavy -int 500   # a 16 GB Mac's; the line rises with memory
 bench() { "$root/bench" --world "$world" "$@"; }
 SEARCH_PROBE="$world" SEARCH_HEADLESS=1 "$app" >"$tmp/copper.log" 2>&1 &
@@ -74,10 +81,12 @@ total() { bench heat | tail -1 | awk '{print $1}'; }
 # 1. Every page loaded; the other space's is its own (remembered) tab.
 bench spaces select 1 >/dev/null; load other
 bench spaces select 0 >/dev/null; load pin; load heavy; load light; load front
+mcp browser_tabs "{\"action\":\"new\",\"url\":\"$page?name=agent\"}" | grep -q '"isError":false' || fail "the agent could not open a tab"
 sleep 2
 before="$(total)"
+loaded agent || fail "the agent's page is not loaded"
 [ "$(bench heat | awk '/ pid / && $1 >= 600' | wc -l | tr -d ' ')" = 3 ] || fail "expected three pages over 600 MB: $(bench heat | tr '\n' ';')"
-echo "ok 1 five pages loaded, $before MB, three of them heavy"
+echo "ok 1 six pages loaded, $before MB, three of them heavy"
 
 # 2. The sweep, three seconds standing in for the half hour.
 sleep 3
@@ -85,10 +94,11 @@ bench sleep sweep 3 >"$tmp/sweep.json"
 sleep 3
 loaded heavy && fail "the heavy page left alone is still loaded ($(tr -d '\n ' <"$tmp/sweep.json"))"
 loaded other && fail "the other space's heavy page is still loaded"
+loaded agent && fail "the page an agent opened and left is still loaded"
 loaded light || fail "the light page under the budget was put to sleep"
 loaded pin || fail "a pin was put to sleep"
 loaded front || fail "the page on screen was put to sleep"
-echo "ok 2 the two heavy pages sleep; the light page, the pin and the page on screen stay"
+echo "ok 2 the two heavy pages and the agent's page sleep; the light page, the pin and the page on screen stay"
 
 # 3. What came back, and the tab is still there to click.
 after="$(total)"

@@ -54,6 +54,11 @@ enum AgentTabs {
     /// Each agent session's own tab, by `Drive.Who.key`.
     private(set) static var bound: [String: UUID] = [:]
 
+    /// Fork (tab-memory): the tabs an agent opened for itself (browser_tabs
+    /// new, jev_run newTab). Once the agent is done and nobody has looked for
+    /// half an hour, such a page sleeps whatever the budget says (Sleep.swift).
+    static var opened = Set<UUID>()
+
     /// The pane beside the page asks about what you are looking at; it never
     /// keeps a tab of its own.
     private static func binds(_ key: String?) -> Bool { key != nil && key != "pane" }
@@ -207,8 +212,12 @@ final class Backstage {
         override var canBecomeMain: Bool { false }
     }
 
-    /// How long a page stays backstage after the agent's last call.
-    static let linger: TimeInterval = 5 * 60
+    /// How long a page stays backstage after the agent's last call: five
+    /// minutes, or `agents.linger` in seconds — for the bench.
+    static var linger: TimeInterval {
+        let set = Store.settings.double(forKey: "agents.linger")
+        return set > 0 ? set : 5 * 60
+    }
 
     private var window: Window?
     /// Tab → the last time an agent asked for it.

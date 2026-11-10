@@ -1651,6 +1651,7 @@ enum Ultrafast {
                     // and every call after it work there.
                     let pane = AgentTabs.callerKey == "pane"
                     tab = browser.open(url, foreground: pane || ((args["focus"] as? Bool) ?? false))
+                    AgentTabs.opened.insert(tab.id) // Fork (tab-memory)
                     AgentTabs.bind(tab)
                     AgentTabs.prepare(tab)
                 } else {
