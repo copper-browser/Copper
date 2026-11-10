@@ -1,0 +1,11 @@
+<!doctype html><title>keys</title>
+<!-- key-beep-e2e.sh: a page that uses its keys the way X and YouTube do. -->
+<body style="margin:0;overflow:hidden"><div id=out>0</div>
+<input id=box placeholder="type here">
+<script>
+// Like X's photo viewer and YouTube's player: uses the key, never calls preventDefault.
+window.used = [];
+addEventListener('keydown', e => { used.push(e.key); document.getElementById('out').textContent = used.length; });
+// A busy page: the web process answers late, as X and YouTube do.
+if (location.hash === '#busy') setInterval(() => { const t = performance.now(); while (performance.now() - t < 40) {} }, 50);
+</script>
