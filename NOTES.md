@@ -1,3 +1,5 @@
+Copper uses less memory, and arrow keys stop beeping. A heavy page you have left for half an hour (X, Gmail, YouTube can hold a gigabyte each) now goes to sleep and comes back where it was when you click it, and so does a tab an agent opened and finished with; pins, anything playing, calls, downloads and anything typed stay awake. Holding or tapping ← and → on X and YouTube no longer plays the Mac's error sound.
+
 Exowatt apps can use Copper's on-device speech to text. RGS, inside Copper, now takes the words of a live transcript from Copper's own speech model on your Mac while Nemotron still tells the speakers apart. The first time an app asks, Copper asks you; other sites never see it.
 
 Folders can no longer be undone by another device. Each Mac now syncs only the changes you make on it, so a Mac or PC that is out of step can't take your tabs out of their folders everywhere. If one sync would unfile or remove more than ten tabs at once, Copper asks first in the sidebar.
