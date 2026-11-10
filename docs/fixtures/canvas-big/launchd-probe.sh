@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Start / stop a headless PROBE Copper as a launchd job in the GUI session —
-# for an ssh session (e.g. the Mac mini), where `open` fails with -10810 and
+# for an ssh session (e.g. a reference Mac), where `open` fails with -10810 and
 # `launchctl asuser` is not permitted.
 #
 #   launchd-probe.sh start APP [WORLD] [PORT]   # default world cfix, port 4203

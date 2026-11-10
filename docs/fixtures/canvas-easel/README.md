@@ -60,11 +60,11 @@ changes and ran ≈ 0 ms of script — they were paint):
    (≤ 2 M world px²) get `will-change: transform`, so WebKit gives them to Core Animation as
    textures and the GPU scales them: zoom frames 29.5 → 17 ms median on the fixed-easel board.
 
-The easel side (grunts-dev/easel `f19a8e5`): paper grain from a 96 px bitmap tile instead of
+The easel side: paper grain from a 96 px bitmap tile instead of
 feTurbulence, the stamp's worn ink a mask instead of turbulence + displacement, board and
 section prints opt-in.
 
 `canvas-big` on the same laptop (bench view, 3 runs, its six live local pages dominate):
 `fork` 16.7 fps / p50 61 / p95 175 ms → this branch 21.7 fps / p50 18 / p95 143 ms. (On
-`devicePixelRatio` 2 that board is far slower than the 42 fps BASELINE.md measured on the mini
-at 1×.)
+`devicePixelRatio` 2 that board is far slower than the 42 fps BASELINE.md measured on the
+reference Mac at 1×.)
