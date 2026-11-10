@@ -53,8 +53,8 @@ is 1 MB including the environment).
 | `measure.js` | a function for `copper eval`: DOM nodes, mounted shapes, live iframes, images, scripted 5 s pan+zoom rAF p50/p95 |
 | `measure.sh` | runs `measure.js` two-phase, adds the probe's own WebContent/GPU/Networking RSS (macOS), optional `--shot /tmp/…` |
 | `drive.py`, `_guard.sh` | what the two wrappers run |
-| `launchd-probe.sh` | start/stop a headless probe as a launchd job (for ssh sessions: the Mac mini) |
-| `BASELINE.md` | the BEFORE numbers on unmodified `fork`, Mac mini (M6), plus MCP observations |
+| `launchd-probe.sh` | start/stop a headless probe as a launchd job (for ssh sessions on the reference machine) |
+| `BASELINE.md` | the BEFORE numbers on unmodified `fork`, an M6 Mac, plus MCP observations |
 | `out/` | generated, git-ignored: `out/<scale>/ops-NNN.json`, `manifest.json`, `apply-*.json` reports, `out/www/` |
 
 `manifest.json` has the expected counts, `focusIds` (three live frames of the wall's first row and
@@ -97,19 +97,19 @@ after `FIXTURE_PROBE_STARTED`.
 may not write without a privacy prompt (an external volume, `~/Desktop`, `~/Documents`) blocks the
 main thread in `open()` and with it the whole MCP server (see BASELINE.md).
 
-## Mac mini (the reference machine for before/after numbers)
+## Reference machine (for before/after numbers)
 
-`BASELINE.md` numbers come from Felipe's Mac mini (M6); re-measure there to compare. From a bare
-`ssh` session `open` fails (`-10810`) and `launchctl asuser` is not permitted, so the probe runs as a
+`BASELINE.md` numbers come from an Apple M6 Mac (12 cores, 24 GB, macOS 27); re-measure on the same
+machine to compare. From a bare `ssh` session `open` fails (`-10810`) and `launchctl asuser` is not permitted, so the probe runs as a
 launchd job in the GUI session: `launchd-probe.sh` writes the plist and boots it (logs in `/tmp` — a
 log path on `/Volumes/…` makes launchd fail the job with `EX_CONFIG`).
 
 ```sh
-M=felipearce@100.112.175.26; W=/Volumes/Farm/farm/fixture
+M=<user>@<mac>; W=<scratch dir>
 git -C ~/src/copper-jev archive origin/fork | ssh -o BatchMode=yes $M "mkdir -p $W/base && tar xf - -C $W/base"
 tar czf - --exclude=out -C ~/src/copper-canvasperf/docs/fixtures/canvas-big . | ssh -o BatchMode=yes $M "mkdir -p $W/src && tar xzf - -C $W/src"
 ssh -o BatchMode=yes $M
-  export PATH=/opt/homebrew/bin:$PATH W=/Volumes/Farm/farm/fixture
+  export PATH=/opt/homebrew/bin:$PATH W=<scratch dir>
   (cd $W/base && SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk SEARCH_SIGN_IDENTITY=- ./build.sh)
   cd $W/src && python3 gen.py --scale big && ./serve.sh start
   ./launchd-probe.sh start $W/base/build/Copper.app cfix 4203
@@ -124,7 +124,7 @@ ssh -o BatchMode=yes $M
   sleep 20; for n in 1 2 3; do ./measure.sh > /tmp/bench-$n.json; sleep 3; done
   $COPPER_BIN shot /tmp/bench-view.png
   # overview: focus the leftmost/rightmost/topmost/bottommost shapes (from canvas_read), sleep 15, ./measure.sh
-  ./launchd-probe.sh stop cfix          # stops ONLY this probe; never touch ~/.grunts/Copper.app
+  ./launchd-probe.sh stop cfix          # stops ONLY this probe; never touch the everyday Copper
   ./serve.sh stop
 exit
 ssh -o BatchMode=yes $M "rm -rf $W"                     # when done (copy evidence back first)

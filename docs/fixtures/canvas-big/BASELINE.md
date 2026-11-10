@@ -1,16 +1,16 @@
-# canvas-big — BEFORE baseline (unmodified `fork`), on the Mac mini (M6)
+# canvas-big — BEFORE baseline (unmodified `fork`), on a reference Mac (M6)
 
-**Machine:** Felipe's Mac mini (M6, 12 cores, 24 GB, macOS 27.0, arm64), over Tailscale.
+**Machine:** an Apple M6 Mac (12 cores, 24 GB, macOS 27.0, arm64), driven over ssh.
 **Build:** clean `git archive origin/fork` at `1de2b6a` (Merge PR #62), `./build.sh` with the
 MacOSX26.5 CLT SDK, ad-hoc signed → `Copper.app` 1.0 build 202610161525, `com.collinrijock.copper.dev`.
 No canvas-perf changes. **Probe:** world `cfix`, MCP port 4203, `SEARCH_HEADLESS=1`,
 `SEARCH_HEADLESS_SIZE=1840x1240` (the board's viewport is 1439×1188 CSS px), started by a launchd
-job in the GUI session (see README › Mac mini). **Fixture:** `gen.py --scale big`, seed 20261016
+job in the GUI session (see README › Reference machine). **Fixture:** `gen.py --scale big`, seed 20261016
 (ops sha of the 17 batches identical on Python 3.9 and 3.14), pages served by `serve.sh` on 127.0.0.1:8765.
 Date: 2026-10-16. Measured with `measure.sh` (measure.js + the probe's own WebKit processes from
 `launchctl print pid/<app>`).
 
-Re-measure on the mini with the same protocol to compare (README › Mac mini; `baseline.sh` steps):
+Re-measure on the same machine with the same protocol to compare (README › Reference machine; `baseline.sh` steps):
 relaunch the probe with the board already saved, `canvas_focus` the manifest's `focusIds`, wait
 20 s, three `measure.sh` runs; then `canvas_focus` the board's extremes (overview, min zoom),
 wait 15 s, one run.

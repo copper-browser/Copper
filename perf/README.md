@@ -67,7 +67,7 @@ python3 perf/wikigame.py --summary perf/results/wikigame.jsonl
 
 A pass is Jev's DONE on the target article with no TYPE_TEXT along the way. `wall_ms` is `jev_run`'s own clock (first decision to the end, loading included; the initial navigation is outside it), `jev_ms` and tokens are Jev's, summed over the steps. Pictures are a TypeSafe preview (`TypeSafe-Danger-Zone-Images`), so numbers will move as their models do.
 
-### What it found (2026-10-16, headless dev build on the Mac mini, 120 runs)
+### What it found (2026-10-16, a headless dev build on an M6 Mac, 120 runs)
 
 | Arm | Model | Pass | Median wall (passes) | Jev ms / decision p50 | Tokens / decision |
 |---|---|---:|---:|---:|---:|

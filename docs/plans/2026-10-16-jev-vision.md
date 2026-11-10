@@ -31,7 +31,7 @@ And three other ways to decide or see, to answer *is Jev + a text model really t
 
 ### The bench: Northwind Console
 
-`perf/uibench/app.html` is a made-up SaaS admin app served from the Mac mini (`perf/uibench/server.py`), so timings are the agent's, not a site's. Eight tasks; the app's own server records what happened, so a pass is the app's verdict, not Jev's DONE.
+`perf/uibench/app.html` is a made-up SaaS admin app served from the test Mac (`perf/uibench/server.py`), so timings are the agent's, not a site's. Eight tasks; the app's own server records what happened, so a pass is the app's verdict, not Jev's DONE.
 
 | Task | What it takes | Fewest actions |
 |---|---|---:|
@@ -46,7 +46,7 @@ And three other ways to decide or see, to answer *is Jev + a text model really t
 
 ### Results
 
-240 runs (10 arms × 8 tasks × 3 rounds), then 168 (the hybrid against the best of them), headless dev build on the Mac mini, Haiku as the text model. Medians over passes; APM is actions per minute of wall time.
+240 runs (10 arms × 8 tasks × 3 rounds), then 168 (the hybrid against the best of them), a headless dev build on an M6 Mac, Haiku as the text model. Medians over passes; APM is actions per minute of wall time.
 
 | Arm | What it is | Pass | Median time | APM | Wrong clicks | Decide ms / decision |
 |---|---|---:|---:|---:|---:|---:|
@@ -106,7 +106,7 @@ The picture is taken right after the read (trail layer hidden), re-rendered into
 
 ## The Wikipedia game
 
-`perf/wikigame.py`: ten games (start article → target article; seven one link away, three two away), each a `jev_run` with the goal *reach the article titled X by clicking links in the article only, never the search box*, in a tab of the harness's own, verified by the final URL. Six arms, alternating within each game, two rounds: **120 runs**, 20 per arm. Headless dev build of this branch on the Mac mini (M-series, 1280×800 viewport, Wikipedia live), 2026-10-16 14:17–14:31 EDT. A pass is Jev's DONE on the target with no TYPE_TEXT. `wall` is `jev_run`'s clock (first decision to the end, page loads included; the initial navigation outside it); *Jev ms* and tokens are per decision, summed per run. Raw runs: `perf/results/wikigame.jsonl`.
+`perf/wikigame.py`: ten games (start article → target article; seven one link away, three two away), each a `jev_run` with the goal *reach the article titled X by clicking links in the article only, never the search box*, in a tab of the harness's own, verified by the final URL. Six arms, alternating within each game, two rounds: **120 runs**, 20 per arm. Headless dev build of this branch on an M6 Mac (1280×800 viewport, Wikipedia live), 2026-10-16 14:17–14:31 EDT. A pass is Jev's DONE on the target with no TYPE_TEXT. `wall` is `jev_run`'s clock (first decision to the end, page loads included; the initial navigation outside it); *Jev ms* and tokens are per decision, summed per run. Raw runs: `perf/results/wikigame.jsonl`.
 
 | Arm | Model | Pass | Median wall (passes) | Median actions | Jev ms / decision (p50 · p90) | Tokens / decision | Tokens / run | Box | Stale |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
