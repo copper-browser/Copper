@@ -38,6 +38,8 @@ One line per event, written straight through (`O_APPEND`, no buffer), from any t
 2026-10-07T04:14:40.000Z 5511 pulse mem=812MB tabs=14 views=6
 2026-10-07T04:15:02.311Z 5511 webcontent-gone host=example.com front=no
 2026-10-07T04:15:09.874Z 5511 webcontent-loop host=example.com
+2026-10-07T04:20:31.402Z 5511 webcontent-gone host=mail.google.com front=no
+2026-10-07T04:20:31.402Z 5511 pin-reload host=mail.google.com n=1
 2026-10-07T05:01:10.004Z 5511 quit
 ```
 
@@ -49,6 +51,11 @@ minute. Never page content, form values, typed text, cookies or a tool's argumen
 minute: Copper stopped loading it again and shows *This page keeps closing as it loads.* with
 Try again. macOS's own log says why the process went (`log show --predicate 'process ==
 "Copper" AND eventMessage CONTAINS "invalid message"'` for one WebKit refused).
+
+`pin-reload` is a pinned tab whose page's process went while it was out of sight, loaded again
+in the background at once (`n` is how many times in the last ten minutes); `pin-reload-stop` is
+the fourth inside ten minutes, not reloaded — the pin waits to be reloaded when you come back to
+it, as any other tab does (docs/tabs.md, *Pinned tabs never unload*).
 
 A launch line with no `quit` after it is a run that died. If macOS left no report for it —
 jetsam, `kill -9`, a force quit, power loss — it gets an entry of its own ("quit unexpectedly,

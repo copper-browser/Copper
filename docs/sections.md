@@ -81,7 +81,7 @@ the wheel button on the row, Close Tab in ⌘K, Close Other Tabs, a split
 pane's cross, an agent's or the CLI's close, an extension's
 `tabs.remove`, and closing a window's last tab all reach `Browser.close`,
 which asks `Sections.putsDown` first. A Saved row on a page is then **put
-down** — its page let go as ⌘W lets a favourite's go (`Tab.rest`), its
+down** — its page let go (`Tab.rest`), its
 title, mark and place kept, nothing dimmed: it looks exactly like a row
 brought back asleep from the last session — and you land where a close
 would have landed you: the row to the right, else to the left, passing over
@@ -95,7 +95,9 @@ Group** on a folder, and **Unsave**. The first three go through
 `Sections.remove`: the tab closes for good and its Reopen Closed Tab entry
 remembers it was Saved, and in which folder — ⌘⇧T puts it back at its place
 in Saved, in that folder if it is still there. Today rows close with the
-cross and with ⌘W as they always have. Favourites are unchanged.
+cross and with ⌘W as they always have. A favourite is never put down: ⌘W
+steps away from it and its page stays loaded (docs/tabs.md, *Pinned tabs
+never unload*).
 
 A kept tab deleted on another Mac, and a canvas deleted or left, close for
 good too (`Sections.closeForGood`), with no way back into Saved.

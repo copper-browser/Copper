@@ -1385,7 +1385,7 @@ final class Browser: NSObject, ObservableObject {
         leaving()
         activeID = tab.id
         tab.touch()
-        // A tab brought back from last time, or waking from ⌘W while pinned,
+        // A tab brought back from last time, or waking from being put down,
         // opens the moment you look at it — and only if there was nothing to
         // wake is this the other case, one whose page quietly died while you
         // were elsewhere, which revive() checks for on its own.
@@ -1461,23 +1461,25 @@ final class Browser: NSObject, ObservableObject {
         // tab that no longer exists.
         if floating == tab.id { land() }
 
-        // A pinned tab is not closed by ⌘W — it is put down. The letter keeps
-        // its place, the page is let go, and you land on whatever you were
-        // looking at before. Only Unpin takes it out of the row.
+        // A pinned tab is not closed by ⌘W. Fork (pins-awake): nor put down
+        // any more — a pin keeps its page until it is unpinned
+        // (Fork/PinsAwake.swift). ⌘W on the pin you are on steps away from
+        // it: you land on whatever you were looking at before, and the page
+        // is still there, loaded, when you come back. Only Unpin takes it
+        // out of the row.
         if tab.pin != nil {
             // Fork: global pins — a pin is in every window's grid; one that
-            // is on another window's stage is not this window's to put down.
-            guard !Spaces.shared.shown(tab, outside: self) else { return }
-            tab.rest()
-            // Ordinary tabs first. Falling back to the most recent tab of any
-            // kind meant closing one pin landed you on another pin, and ⌘W
-            // bounced between the two instead of getting you out of them.
-            let others = tabs.filter { $0.id != tab.id && !$0.asleep }
-            let loose = others.filter { $0.pin == nil }
-            if let back = landing(among: loose.isEmpty ? others : loose) { // Fork: windows — not one on another window's stage
+            // is on another window's stage is not this window's to leave, and
+            // one this window isn't on has nothing to step away from.
+            guard !Spaces.shared.shown(tab, outside: self), activeID == tab.id else { return }
+            // Ordinary tabs first, awake ones before those asleep, and never
+            // another pin: landing on one meant ⌘W bounced between two pins
+            // instead of getting you out of them — and every pin is awake now.
+            // None at all, a new tab, as closing the last tab leaves one.
+            let loose = tabs.filter { $0.id != tab.id && $0.pin == nil && !Sections.shared.isDown($0) }
+            let awake = loose.filter { !$0.asleep }
+            if let back = landing(among: awake.isEmpty ? loose : awake) { // Fork: windows — not one on another window's stage
                 select(back)
-            } else if let asleepPin = tabs.first(where: { $0.id != tab.id }) {
-                select(asleepPin)
             } else {
                 newTab()
             }
@@ -1529,8 +1531,9 @@ final class Browser: NSObject, ObservableObject {
         rememberSession()
     }
 
-    /// Everything but this one. Pinned tabs are put down rather than removed —
-    /// they are not open pages so much as places kept.
+    /// Everything but this one. Pinned tabs stay as they are, pages loaded —
+    /// they are not open pages so much as places kept (Fork: pins-awake; they
+    /// were put down).
     func closeOthers(but keep: Tab) {
         select(keep)
         // The list is read once: closing walks the row and can add to it.
