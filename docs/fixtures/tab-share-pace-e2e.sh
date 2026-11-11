@@ -40,8 +40,8 @@ server=""
 cleanup() {
   if [ -n "$pid" ]; then kill "$pid" 2>/dev/null || true; for _ in {1..40}; do kill -0 "$pid" 2>/dev/null || break; sleep 0.25; done; fi
   if [ -n "$server" ]; then kill "$server" 2>/dev/null || true; wait "$server" 2>/dev/null || true; fi
-  defaults delete "com.officecommun.search.test.$world" >/dev/null 2>&1 || true
-  rm -f "$HOME/Library/Preferences/com.officecommun.search.test.$world.plist"
+  defaults delete "com.collinrijock.copper.test.$world" >/dev/null 2>&1 || true
+  rm -f "$HOME/Library/Preferences/com.collinrijock.copper.test.$world.plist"
   rm -rf "$HOME/Library/Application Support/Copper ($world)" "$tmp"
   # The world's WebKit stores (Store.probeStore: FNV-1a of the world's name).
   local hash=2166136261 i byte
@@ -71,8 +71,8 @@ server=$!
 for _ in {1..40}; do curl -sf "http://127.0.0.1:$port/pace.html" >/dev/null && break; sleep 0.25; done
 web="http://localhost:$port"
 
-defaults write "com.officecommun.search.test.$world" bench -bool true
-defaults write "com.officecommun.search.test.$world" welcomed -bool true
+defaults write "com.collinrijock.copper.test.$world" bench -bool true
+defaults write "com.collinrijock.copper.test.$world" welcomed -bool true
 open -n -g --env SEARCH_PROBE="$world" --env SEARCH_MCP_PORT="$mcp" --env SEARCH_MEASURE=1 \
   --stdout "$tmp/copper.log" --stderr "$tmp/copper.log" "$bundle"
 launched=$(date +%s)

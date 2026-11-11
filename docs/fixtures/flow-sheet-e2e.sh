@@ -25,7 +25,7 @@ command -v jq >/dev/null || { echo "FAIL: jq is required" >&2; exit 1; }
 TEMP=$(mktemp -d "${TMPDIR:-/tmp}/flow-sheet.XXXXXX")
 WORLD="flowsheet$(date +%s)$$"
 PORT=$((43000 + $$ % 9000))
-DOMAIN="com.officecommun.search.test.$WORLD"
+DOMAIN="com.collinrijock.copper.test.$WORLD"
 HOME_WORLD="$HOME/Library/Application Support/Copper ($WORLD)"
 PID=""
 cleanup() {

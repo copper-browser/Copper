@@ -114,7 +114,7 @@ enum SettingsPerf {
 
     // MARK: the bench
 
-    /// Objects the panel (or a card in it) watches, for `churn`. Search's
+    /// Objects the panel (or a card in it) watches, for `churn`. Settings search's
     /// finder and 1Password are added by `SettingsBench`.
     static var publishers: [String: (Browser) -> () -> Void] = [
         "browser": { b in { b.objectWillChange.send() } },

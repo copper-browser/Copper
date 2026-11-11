@@ -4,7 +4,7 @@ import CryptoKit
 import Foundation
 
 /// Copper's own update path. This deliberately does not use Updater.swift:
-/// that feed and its signature belong to Search, and a fork must never let an
+/// that feed and its signature belong to upstream, and a fork must never let an
 /// upstream release replace the browser that is running here.
 ///
 /// The shape is: everything that can fail happens *before* anyone is asked.

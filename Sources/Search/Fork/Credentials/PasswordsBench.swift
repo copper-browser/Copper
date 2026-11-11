@@ -14,7 +14,7 @@ enum PasswordsBench {
         let op = request["op"] as? String ?? "status"
         let words = (request["arg"] as? String ?? "").split(separator: " ", omittingEmptySubsequences: true).map(String.init)
         if op != "status", !ProbeKeychain.active {
-            return ["error": "passwords \(op) only works in a probe world with `defaults write com.officecommun.search.test.<world> probe.keychain -string file` set before launch"]
+            return ["error": "passwords \(op) only works in a probe world with `defaults write com.collinrijock.copper.test.<world> probe.keychain -string file` set before launch"]
         }
         switch op {
         case "status":

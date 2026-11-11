@@ -1,5 +1,5 @@
 # Roadrunner (Woodpecker, https://cicd.apps.exowatt.com), cron "sync" every 6 h (or manual):
-# - sync-main: main mirrors driceroland/Search:main, fast-forward only (GitHub merge-upstream).
+# - sync-main: main mirrors the upstream main, fast-forward only (GitHub merge-upstream).
 #   A 409 means someone committed to main by hand; fix the branch, not this file.
 # The macOS follow-up (rebase fork onto main, swift build, PR) stays on GitHub Actions:
 # .github/workflows/sync-fork.yml.

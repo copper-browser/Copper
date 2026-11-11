@@ -9,9 +9,8 @@
 #                              the same, as Copper itself (com.collinrijock.copper):
 #                                what .github/workflows/release.yml builds and then
 #                                signs with Copper's release certificate
-#   ./build.sh release dmg     + build/Copper.dmg, build/Copper.zip and
-#                                build/appcast.json, signed with Developer ID
-#                                if there is one in the keychain
+#   ./build.sh release dmg     + build/Copper.dmg and build/Copper.zip, signed
+#                                with Developer ID if there is one in the keychain
 #   ./build.sh release ship    + both notarised, the DMG stapled
 #   COPPER_ARCH=x86_64 ./build.sh release app
 #                              the Intel app, cross-built on Apple Silicon, in
@@ -21,25 +20,14 @@
 # Same shape as the one next door: SwiftPM builds the executable, and a macOS
 # app bundle is just a folder with a plist and the binary in the right place.
 #
-# The three files keep the same names from release to release, so the site
-# links to them once and the updater reads one address forever. ./publish.sh
-# copies them into the site.
-#
 # "dmg" lays the disk image's window out with dmgbuild, installed into .build
 # on first use (Python 3 and a network, once).
 #
 # What "ship" needs, once:
 #   - a Developer ID Application certificate in the login keychain
 #     (SEARCH_SIGN_IDENTITY names it; otherwise the first one found is used)
-#   - a notarytool profile: xcrun notarytool store-credentials "search"
-#     (SEARCH_NOTARY_PROFILE names it; default "search")
-#   - SEARCH_DOWNLOAD_URL, the https folder the three files are served from,
-#     for the appcast. Default https://officecommun.com/search, which is
-#     where Updater.feed in Updater.swift looks.
-#
-# NOTES.md, next to this script, is what's new: newest release first, one
-# paragraph each. The first paragraph goes into the appcast, and from there
-# under the version line in Settings.
+#   - a notarytool profile: xcrun notarytool store-credentials "copper"
+#     (SEARCH_NOTARY_PROFILE names it; default "copper")
 #
 # Which app it is (docs/releasing.md). macOS files privacy grants (Full Disk
 # Access, Files & Folders, Automation), the defaults domain, WebKit's data
@@ -57,8 +45,8 @@ CONFIG="${1:-release}"
 STEP="${2:-app}"
 APP="build/Copper.app"
 # Fork (intel): another CPU's app gets a folder of its own, so building it
-# never replaces this Mac's. Only the app step: the disk image, the ZIP and
-# the appcast are this Mac's alone.
+# never replaces this Mac's. Only the app step: the disk image and the ZIP
+# are this Mac's alone.
 ARCH="${COPPER_ARCH:-}"
 if [ -n "$ARCH" ]; then
   [ "$STEP" = app ] || { echo "COPPER_ARCH builds the app step only" >&2; exit 1; }
@@ -69,8 +57,7 @@ VERSION="$(tr -d '[:space:]' < VERSION)"
 # A build number that only ever goes up, so the updater can tell newer from
 # older without parsing version strings.
 BUILD="$(date +%Y%m%d%H%M)"
-# The oldest macOS this runs on — in the plist, and in the appcast so an
-# older Mac is not handed a build it can't open.
+# The oldest macOS this runs on, in the plist.
 MINIMUM="14.0"
 if [ "${COPPER_RELEASE:-}" = 1 ] || [ "$STEP" = dmg ] || [ "$STEP" = ship ]; then
   BUNDLE_ID="com.collinrijock.copper"
@@ -120,6 +107,8 @@ fi
 # travel with the binary it is compiled into (Settings › Voice credits it).
 mkdir -p "$APP/Contents/Resources/phonon-coreml"
 cp Sources/Search/Fork/Voice/Phonon/LICENSE Sources/Search/Fork/Voice/Phonon/NOTICE "$APP/Contents/Resources/phonon-coreml/"
+# Copper's own licence, which carries the MIT notice it was forked under.
+cp LICENSE "$APP/Contents/Resources/LICENSE"
 
 # Symbols stay out of the app. The linker leaves every function's name and a
 # map back to the source in the binary — 15,000 entries, more than half of
@@ -156,7 +145,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>LSMinimumSystemVersion</key><string>$MINIMUM</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
-  <key>NSHumanReadableCopyright</key><string>© Collin Rijock and Felipe Arce. Built on Search by Office Commun.</string>
+  <key>NSHumanReadableCopyright</key><string>© Collin Rijock and Felipe Arce.</string>
   <key>NSHighResolutionCapable</key><true/>
   <!-- Owning http and https is what lets macOS offer this app as the default
        browser, and what sends a link clicked in Mail here. -->
@@ -208,19 +197,9 @@ PLIST
 # that stays the same from release to release (release/package-app.sh).
 IDENTITY="${SEARCH_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null \
   | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"' || true)}"
-# Passkeys need an entitlement Apple grants to browsers on request, and a
-# Developer ID provisioning profile that carries it. With the profile next to
-# this script, both go in; without it, the app is signed as before, because
-# a restricted entitlement with no profile behind it is an app that won't open.
-ENTITLEMENTS="Search.entitlements"
-if [ -f "Search.provisionprofile" ]; then
-  cp "Search.provisionprofile" "$APP/Contents/embedded.provisionprofile"
-  ENTITLEMENTS="Search.passkeys.entitlements"
-  echo "passkeys: profile embedded"
-fi
 if [ -n "$IDENTITY" ]; then
   codesign --force --deep --timestamp --options runtime \
-    --entitlements "$ENTITLEMENTS" \
+    --entitlements Copper.entitlements \
     --sign "$IDENTITY" "$APP"
   echo "signed as: $IDENTITY"
 else
@@ -265,35 +244,11 @@ rm -rf "$ART"
 [ -n "$IDENTITY" ] && codesign --force --timestamp --sign "$IDENTITY" "$DMG"
 echo "packed: $DMG"
 
-# The ZIP is what the updater fetches, and its hash is what the updater
-# checks before opening it.
+# The ZIP, beside the disk image.
 ZIP="build/$NAME.zip"
 rm -f "$ZIP"
 ditto -c -k --keepParent "$APP" "$ZIP"
-SHA="$(shasum -a 256 "$ZIP" | cut -d' ' -f1)"
 echo "packed: $ZIP"
-
-# What the updater reads. The first paragraph of NOTES.md, with the two
-# characters JSON minds escaped, is the line under the version in Settings.
-BASE="${SEARCH_DOWNLOAD_URL:-https://officecommun.com/search}"
-BASE="${BASE%/}"
-NOTES=""
-if [ -f NOTES.md ]; then
-  NOTES="$(awk 'NF { printf "%s%s", (n++ ? " " : ""), $0; next } n { exit }' NOTES.md \
-    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
-fi
-cat > build/appcast.json <<JSON
-{
-  "version": "$VERSION",
-  "build": $BUILD,
-  "url": "$BASE/$NAME.zip",
-  "dmg": "$BASE/$NAME.dmg",
-  "sha256": "$SHA",
-  "notes": "$NOTES",
-  "minimumSystemVersion": "$MINIMUM"
-}
-JSON
-echo "wrote: build/appcast.json ($VERSION, build $BUILD)"
 [ "$STEP" = "dmg" ] && exit 0
 
 # Notarisation: Apple looks both over. The ticket is stapled to the image,
@@ -301,7 +256,7 @@ echo "wrote: build/appcast.json ($VERSION, build $BUILD)"
 # is fetched by an app that already trusts it, and is left as hashed.
 [ -z "$IDENTITY" ] && { echo "can't ship without a Developer ID certificate" >&2; exit 1; }
 for FILE in "$DMG" "$ZIP"; do
-  xcrun notarytool submit "$FILE" --keychain-profile "${SEARCH_NOTARY_PROFILE:-search}" --wait
+  xcrun notarytool submit "$FILE" --keychain-profile "${SEARCH_NOTARY_PROFILE:-copper}" --wait
 done
 xcrun stapler staple "$DMG"
-echo "shipped: $DMG, $ZIP and build/appcast.json — ./publish.sh <folder> puts them on the site"
+echo "shipped: $DMG and $ZIP"

@@ -206,8 +206,8 @@ if [ -f "$job/worlds" ]; then
   while read -r world; do
     [ -n "$world" ] || continue
     rm -rf "$HOME/Library/Application Support/Copper ($world)"
-    defaults delete "com.officecommun.search.test.$world" 2> /dev/null
-    rm -f "$HOME/Library/Preferences/com.officecommun.search.test.$world.plist"
+    defaults delete "com.collinrijock.copper.test.$world" 2> /dev/null
+    rm -f "$HOME/Library/Preferences/com.collinrijock.copper.test.$world.plist"
   done < "$job/worlds"
 fi
 if [ -f "$job/made" ]; then
@@ -614,7 +614,7 @@ launch() {
     port=$((41000 + RANDOM % 8000))
     lsof -nP -iTCP:"$port" -sTCP:LISTEN > /dev/null 2>&1 || break
   done
-  defaults write "com.officecommun.search.test.$world" welcomed -bool true
+  defaults write "com.collinrijock.copper.test.$world" welcomed -bool true
   local label="com.exowatt.copper-release-check.$world"
   echo "$label" >> "$job/labels"
   cat > "$check/$arch.plist" <<PLIST

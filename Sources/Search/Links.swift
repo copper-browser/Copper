@@ -151,7 +151,7 @@ final class Links: NSObject, NSApplicationDelegate {
     /// and SwiftUI — seeing a launch that came to open something rather than
     /// a plain one — leaves its window for that event to open. It never sees
     /// the event, so nothing opened it: every link clicked in another app
-    /// while Search was closed launched it with no window and the page
+    /// while Copper was closed launched it with no window and the page
     /// nowhere. SwiftUI's delegate is asked instead for what a plain launch
     /// gets, its window; a single window, so asking twice can't make two.
     @MainActor

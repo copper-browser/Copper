@@ -1,6 +1,6 @@
 # Contributing
 
-This is a small, mostly-solo project, reviewed the same way it's written. Contributions are welcome, but a few things make one land faster.
+This is a small, two-person project, reviewed the same way it's written. Contributions are welcome, but a few things make one land faster.
 
 ## Before writing code
 
@@ -16,13 +16,13 @@ For anything beyond a small fix, open an issue first describing what you want to
 ## What doesn't
 
 - Rewrites of things that already work, for style reasons alone.
-- Anything that phones home, adds analytics, or changes what leaves the app over the network — see the [privacy page](https://officecommun.com/search/privacy) for what that boundary currently is.
+- Anything that phones home, adds analytics, or changes what leaves the app over the network — see [Privacy, concretely](README.md#privacy-concretely) for what that boundary currently is.
 - Vendoring Chromium or any other engine. This is a WebKit browser on purpose.
 
 ## Review
 
-Pull requests are reviewed by Drice, usually with Claude Code doing a first pass on the diff before a human look. That means a review can be fast even when nobody's watching the repo in real time, but it isn't a guarantee of a same-day answer — this isn't anyone's full-time job. Pinging a stale PR after a couple of weeks is completely fine.
+Pull requests are reviewed by Collin and Felipe, usually with a coding agent doing a first pass on the diff before a human look. That means a review can be fast even when nobody's watching the repo in real time, but it isn't a guarantee of a same-day answer. Pinging a stale PR after a couple of weeks is completely fine.
 
 ## Reporting a bug
 
-Open an issue with: what you did, what you expected, what happened instead, and your macOS version. A crash log, if there is one, lives at `~/Library/Application Support/Search/crash.log` — it only ever stays on your Mac unless you paste it into the issue yourself.
+Open an issue with: what you did, what you expected, what happened instead, and your macOS version. Crashes, if there were any, are listed in Settings › About and by `copper crashes` ([docs/crashes.md](docs/crashes.md)) — they only ever stay on your Mac unless you paste one into the issue yourself.

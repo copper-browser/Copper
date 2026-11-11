@@ -113,7 +113,7 @@ Recipe:
    (default `/tmp/copper-shoot`), builds the `hidpi.m` shim (real 2× pixels and active-looking
    window controls), and starts it headless in probe world `sitepics` on MCP port 4196.
    `./bench` needs the `bench` default on in that world's own suite
-   (`defaults write com.officecommun.search.test.sitepics bench -bool true`; never the installed
+   (`defaults write com.collinrijock.copper.test.sitepics bench -bool true`; never the installed
    Copper's `com.collinrijock.copper`).
 2. Set the world up with public pages only — never sign in to anything. The current captures use
    three spaces: Personal (google.com, Wikipedia "Patina", apple.com/mac,

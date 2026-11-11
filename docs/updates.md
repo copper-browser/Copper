@@ -289,6 +289,6 @@ updates requirement TEXT` holds it to any requirement instead — a certificate'
 release check, `off` to go back. Always headless, always a named world. A fake feed is a stamped copy zipped with
 `ditto -c -k --keepParent` plus a schema-1 manifest served by `python3 -m http.server` on
 127.0.0.1; drive it with `./bench --world <w> updates stub <manifest URL>`, `updates check`,
-`updates upgrade` (the world needs `defaults write com.officecommun.search.test.<w> bench
+`updates upgrade` (the world needs `defaults write com.collinrijock.copper.test.<w> bench
 -bool true`), and watch `update.log`. Never test reopen forwarding without the seam: the
 target would be the real main world.

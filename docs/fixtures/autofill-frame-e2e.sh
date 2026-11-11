@@ -21,8 +21,8 @@ pid="" server=""
 cleanup() {
   [ -n "$pid" ] && { kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; }
   [ -n "$server" ] && kill "$server" 2>/dev/null || true
-  defaults delete "com.officecommun.search.test.$world" >/dev/null 2>&1 || true
-  rm -f "$HOME/Library/Preferences/com.officecommun.search.test.$world.plist"
+  defaults delete "com.collinrijock.copper.test.$world" >/dev/null 2>&1 || true
+  rm -f "$HOME/Library/Preferences/com.collinrijock.copper.test.$world.plist"
   rm -rf "$HOME/Library/Application Support/Copper ($world)" "$tmp"
 }
 trap cleanup EXIT
@@ -37,9 +37,9 @@ app="$root/build/Copper.app/Contents/MacOS/Copper"
 (cd "$root/docs/fixtures" && exec python3 -m http.server "$port" --bind 127.0.0.1) >"$tmp/http.log" 2>&1 &
 server=$!
 for _ in {1..40}; do curl -fsS -o /dev/null 2>/dev/null "http://127.0.0.1:$port/login-frame.html" && break; sleep 0.25; done
-defaults write "com.officecommun.search.test.$world" bench -bool true
-defaults write "com.officecommun.search.test.$world" welcomed -bool true
-defaults write "com.officecommun.search.test.$world" probe.keychain -string file
+defaults write "com.collinrijock.copper.test.$world" bench -bool true
+defaults write "com.collinrijock.copper.test.$world" welcomed -bool true
+defaults write "com.collinrijock.copper.test.$world" probe.keychain -string file
 SEARCH_PROBE="$world" SEARCH_HEADLESS=1 "$app" >"$tmp/copper.log" 2>&1 &
 pid=$!
 bench() { "$root/bench" --world "$world" "$@"; }

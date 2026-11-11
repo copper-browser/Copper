@@ -43,7 +43,7 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 world="launchwin-$$"
 folder="$HOME/Library/Application Support/Copper ($world)"
-domain="com.officecommun.search.test.$world"
+domain="com.collinrijock.copper.test.$world"
 port="${FIXTURE_PORT:-$(python3 -c "import socket; s = socket.socket(); s.bind(('127.0.0.1', 0)); print(s.getsockname()[1])")}"
 tmp="$(mktemp -d)"
 pid=""

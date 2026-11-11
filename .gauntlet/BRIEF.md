@@ -1,7 +1,7 @@
 # Gauntlet Loop — Copper vs Arc
 
-Copper (`~/Developer/Copper`, branch `fork`) is a fork of Search, a 3 MB
-WebKit browser for the Mac, being pushed toward a full Arc replacement.
+Copper (`~/Developer/Copper`, branch `fork`) is a 3 MB WebKit browser for
+the Mac, being pushed toward a full Arc replacement.
 Tier 1 of `FORK-PLAN.md` has shipped as code — Spaces, Profiles, ⌘K command
 bar, Split view — but it looks like a prototype next to Arc. This loop closes
 that gap, one piece at a time: a builder builds, a fresh critic puts a

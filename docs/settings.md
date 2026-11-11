@@ -269,7 +269,7 @@ Before a Settings change ships, in a fresh world:
 
 ```sh
 ./build.sh
-defaults write com.officecommun.search.test.set bench -bool true   # once per world, before launch
+defaults write com.collinrijock.copper.test.set bench -bool true   # once per world, before launch
 open -n -g --env SEARCH_PROBE=set --env SEARCH_HEADLESS=1 --env SEARCH_MCP_PORT=4196 build/Copper.app
 ./bench --world set settings index check
 ./bench --world set settings ax sweep

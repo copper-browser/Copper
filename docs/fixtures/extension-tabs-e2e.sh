@@ -24,8 +24,8 @@ server=""
 cleanup() {
   if [ -n "$pid" ]; then kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; fi
   if [ -n "$server" ]; then kill "$server" 2>/dev/null || true; wait "$server" 2>/dev/null || true; fi
-  defaults delete "com.officecommun.search.test.$world" >/dev/null 2>&1 || true
-  rm -f "$HOME/Library/Preferences/com.officecommun.search.test.$world.plist"
+  defaults delete "com.collinrijock.copper.test.$world" >/dev/null 2>&1 || true
+  rm -f "$HOME/Library/Preferences/com.collinrijock.copper.test.$world.plist"
   rm -rf "$HOME/Library/Application Support/Copper ($world)" "$tmp"
   # The world's WebKit stores (Store.probeStore: FNV-1a of the world's name).
   local hash=2166136261 i byte
@@ -60,8 +60,8 @@ for _ in {1..40}; do curl -sf "http://127.0.0.1:$port/target.html" >/dev/null 2>
 curl -sf "http://127.0.0.1:$port/target.html" >/dev/null || fail "local page server did not start"
 web="http://localhost:$port"
 
-defaults write "com.officecommun.search.test.$world" bench -bool true
-defaults write "com.officecommun.search.test.$world" welcomed -bool true
+defaults write "com.collinrijock.copper.test.$world" bench -bool true
+defaults write "com.collinrijock.copper.test.$world" welcomed -bool true
 SEARCH_PROBE="$world" SEARCH_HEADLESS=1 "$app" >"$tmp/copper.log" 2>&1 &
 pid=$!
 bench() { "$root/bench" --world "$world" "$@"; }

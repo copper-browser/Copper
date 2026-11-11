@@ -49,9 +49,9 @@ fresh() { # world port — a new world
   local w=$1 port=$2
   stop "$w"
   rm -rf "$HOME/Library/Application Support/Copper ($w)"
-  defaults delete "com.officecommun.search.test.$w" >/dev/null 2>&1 || true
-  defaults write "com.officecommun.search.test.$w" bench -bool true
-  defaults write "com.officecommun.search.test.$w" welcomed -bool true
+  defaults delete "com.collinrijock.copper.test.$w" >/dev/null 2>&1 || true
+  defaults write "com.collinrijock.copper.test.$w" bench -bool true
+  defaults write "com.collinrijock.copper.test.$w" welcomed -bool true
   : > "/tmp/copper-$w.log"
   launch "$w" "$port"
 }
