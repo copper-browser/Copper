@@ -36,7 +36,7 @@ struct StoreOffer: View {
         @ObservedObject var extensions: Extensions
 
         var body: some View {
-            // Only where the page's own "Add to Search" isn't in place — a
+            // Only where the page's own "Add to Copper" isn't in place — a
             // store that has changed its markup still gets a way in.
             if let url = tab.address, StoreOffer.isStorePage(url), let id = Crx.id(in: url.absoluteString),
                tab.storePlaced != id, !extensions.installed.contains(where: { $0.id == id }) {

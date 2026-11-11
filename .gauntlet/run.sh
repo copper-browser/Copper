@@ -20,8 +20,8 @@ sleep 0.5
 ./build.sh debug app 2>&1 | grep -E "error:|built:" || true
 [ -x build/Copper.app/Contents/MacOS/Copper ] || { echo "build failed" >&2; exit 1; }
 
-defaults write "com.officecommun.search.test.$WORLD" bench -bool true
-defaults write "com.officecommun.search.test.$WORLD" sidebar -bool true
+defaults write "com.collinrijock.copper.test.$WORLD" bench -bool true
+defaults write "com.collinrijock.copper.test.$WORLD" sidebar -bool true
 ./arc-import --world "$WORLD" | tail -1
 
 SEARCH_PROBE="$WORLD" nohup build/Copper.app/Contents/MacOS/Copper >"/tmp/copper-$WORLD.log" 2>&1 &

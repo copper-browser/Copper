@@ -157,7 +157,7 @@ was already allowed the device, and otherwise refused and logged.
 
 ## Checking it
 
-In a test world, `capture.mock` (`defaults write com.officecommun.search.test.<world> capture.mock
+In a test world, `capture.mock` (`defaults write com.collinrijock.copper.test.<world> capture.mock
 -bool true`, or `SEARCH_SHARE_MOCK=1` at launch — one switch, two names) gives every page WebKit's
 stand-in camera and microphone (a test pattern and a tone): no hardware, no macOS question. Never
 anywhere else.

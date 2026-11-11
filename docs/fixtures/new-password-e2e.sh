@@ -42,7 +42,7 @@ op() { python3 "$root/docs/fixtures/op-mock/op" "$@"; }
 cleanup() {
   if [ -n "$pid" ]; then kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; fi
   if [ -n "$server" ]; then kill "$server" 2>/dev/null || true; wait "$server" 2>/dev/null || true; fi
-  defaults delete "com.officecommun.search.test.$world" >/dev/null 2>&1 || true
+  defaults delete "com.collinrijock.copper.test.$world" >/dev/null 2>&1 || true
   rm -rf "$folder" "$tmp"
 }
 trap cleanup EXIT
@@ -97,7 +97,7 @@ for _ in {1..40}; do [ -s "$tmp/port" ] && break; sleep 0.1; done
 port=$(<"$tmp/port")
 op mock reset >/dev/null
 
-suite="com.officecommun.search.test.$world"
+suite="com.collinrijock.copper.test.$world"
 defaults write "$suite" bench -bool true
 defaults write "$suite" welcomed -bool true
 defaults write "$suite" probe.keychain -string file

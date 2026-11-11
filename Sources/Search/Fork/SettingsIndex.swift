@@ -457,8 +457,8 @@ enum SettingsIndex {
     // MARK: about
 
     private static let about: [SettingsEntry] = [
-        e(.about, "Copper", "Copper", "Who made it, and what it is built on",
-          ["version", "build", "credits", "collin", "felipe", "search", "office commun"], "about.identity"),
+        e(.about, "Copper", "Copper", "Who made it",
+          ["version", "build", "credits", "collin", "felipe"], "about.identity"),
         e(.about, "Help", "Send Feedback", "Opens a new issue on Copper’s page, with the version already in it",
           ["feedback", "bug", "report a problem", "issue", "file an issue", "new issue", "contact", "support"], "about.feedback"),
         // Drawn only after a crash; until then search lands on Send Feedback.

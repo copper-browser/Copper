@@ -19,7 +19,7 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 world="keybeep-$$"
 folder="$HOME/Library/Application Support/Copper ($world)"
-domain="com.officecommun.search.test.$world"
+domain="com.collinrijock.copper.test.$world"
 tmp="$(mktemp -d)"
 pid=""
 cleanup() {

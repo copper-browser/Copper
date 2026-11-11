@@ -516,9 +516,6 @@ struct SettingsPanel: View {
                         .font(.system(size: 12.5))
                         .foregroundStyle(SettingsInk.detail)
                         .textSelection(.enabled)
-                    Text("Built on Search by Office Commun")
-                        .font(.system(size: 12))
-                        .foregroundStyle(SettingsInk.detail.opacity(0.85))
                 }
                 Spacer(minLength: 0)
             }

@@ -9,7 +9,7 @@ command -v jq >/dev/null || { echo "FAIL: jq is required for tree assertions"; e
 TMP=$(mktemp -d)
 WORLD="flowbm-$(date +%s)-$$"
 HOME_WORLD="$HOME/Library/Application Support/Copper ($WORLD)"
-DOMAIN="com.officecommun.search.test.$WORLD"
+DOMAIN="com.collinrijock.copper.test.$WORLD"
 PID=""
 cleanup() {
   if [ -n "$PID" ]; then

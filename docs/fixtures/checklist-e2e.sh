@@ -41,9 +41,9 @@ B(){ "$ROOT/bench" --world "$1" "${@:2}"; }
 J(){ python3 -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
 start(){ # world port app
   rm -rf "$HOME/Library/Application Support/Copper ($1)"
-  defaults delete "com.officecommun.search.test.$1" >/dev/null 2>&1
-  defaults write "com.officecommun.search.test.$1" bench -bool true
-  defaults write "com.officecommun.search.test.$1" welcomed -bool true
+  defaults delete "com.collinrijock.copper.test.$1" >/dev/null 2>&1
+  defaults write "com.collinrijock.copper.test.$1" bench -bool true
+  defaults write "com.collinrijock.copper.test.$1" welcomed -bool true
   SEARCH_PROBE=$1 SEARCH_HEADLESS=1 SEARCH_MCP_PORT=$2 SEARCH_HEADLESS_SIZE=1440x1000 "$3/Contents/MacOS/Copper" >"/tmp/copper-$1.log" 2>&1 &
   echo "$! $3" >"/tmp/copper-$1.pid"
   for _ in $(seq 1 60); do B "$1" tabs >/dev/null 2>&1 && return 0; sleep 0.5; done; echo "no bench in $1"; return 1; }

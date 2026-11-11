@@ -204,9 +204,9 @@ outside a test world; `selftest`, `replay`, `status`, `state`, `listen state` an
 
 ```sh
 W=voice
-defaults write com.officecommun.search.test.$W bench -bool true
-defaults write com.officecommun.search.test.$W welcomed -bool true
-defaults write com.officecommun.search.test.$W voice.enabled -bool true
+defaults write com.collinrijock.copper.test.$W bench -bool true
+defaults write com.collinrijock.copper.test.$W welcomed -bool true
+defaults write com.collinrijock.copper.test.$W voice.enabled -bool true
 open -n -g --env SEARCH_PROBE=$W --env SEARCH_HEADLESS=1 \
   --env SEARCH_VOICE_MODEL_DIR=/path/to/a/ready/model build/Copper.app
 

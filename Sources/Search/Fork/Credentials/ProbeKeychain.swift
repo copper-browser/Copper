@@ -9,7 +9,7 @@ import Security
 ///
 /// Honoured only in a named probe world (`SEARCH_PROBE=<name>`) with the
 /// bench switched on, and only when asked for — `defaults write
-/// com.officecommun.search.test.<name> probe.keychain -string file` (or
+/// com.collinrijock.copper.test.<name> probe.keychain -string file` (or
 /// `SEARCH_PROBE_KEYCHAIN=file`). The browser somebody uses never reads
 /// either. `Vault` and `PasskeyStore` ask `active` first and hand every call
 /// here while it is on.
@@ -17,9 +17,9 @@ enum ProbeKeychain {
     /// Decided once, at the first keychain call of the run.
     nonisolated static let active: Bool = {
         guard let world = Store.world else { return false }
-        let suite = UserDefaults(suiteName: world == "test" ? "com.officecommun.search.test" : "com.officecommun.search.test.\(world)")
-        let asked = ProcessInfo.processInfo.environment["SEARCH_PROBE_KEYCHAIN"] ?? suite?.string(forKey: "probe.keychain")
-        return decide(testing: Store.testing, world: world, bench: suite?.bool(forKey: "bench") == true, asked: asked)
+        let suite = Store.settings // the world's own suite
+        let asked = ProcessInfo.processInfo.environment["SEARCH_PROBE_KEYCHAIN"] ?? suite.string(forKey: "probe.keychain")
+        return decide(testing: Store.testing, world: world, bench: suite.bool(forKey: "bench"), asked: asked)
     }()
 
     /// The rule, on its own: a test run, in a named world, with the bench

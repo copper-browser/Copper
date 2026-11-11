@@ -48,7 +48,7 @@ windowed = "--windowed" in args
 binary = os.path.join(app, "Contents/MacOS/Copper")
 world = f"pinsawake-{os.getpid()}"
 folder = os.path.expanduser(f"~/Library/Application Support/Copper ({world})")
-domain = f"com.officecommun.search.test.{world}"
+domain = f"com.collinrijock.copper.test.{world}"
 pages = tempfile.mkdtemp(prefix="pins-awake-")
 log = os.path.join(pages, "copper.log")
 proc = None

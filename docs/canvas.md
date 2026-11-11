@@ -1026,7 +1026,7 @@ Only in a probe world — never the windowed Copper on 4123:
 
 ```sh
 export SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk SEARCH_SIGN_IDENTITY=-; ./build.sh
-defaults write com.officecommun.search.test.canvase bench -bool true     # the bench socket for this world
+defaults write com.collinrijock.copper.test.canvase bench -bool true     # the bench socket for this world
 open -n -g --stderr /tmp/copper-canvas.log --env SEARCH_PROBE=canvasE --env SEARCH_HEADLESS=1 \
   --env SEARCH_MCP_PORT=4161 --env SEARCH_HEADLESS_SIZE=1440x1000 build/Copper.app
 export SEARCH_PROBE=canvasE SEARCH_MCP_PORT=4161

@@ -245,14 +245,14 @@ the dev app's, never the installed Copper's:
 |---|---|---|
 | Privacy grants (TCC: Files & Folders, Full Disk Access, Automation…) | `com.collinrijock.copper` | `com.collinrijock.copper.dev` |
 | `UserDefaults.standard` (WebKit's spelling switches, window frames) | `com.collinrijock.copper` | `com.collinrijock.copper.dev` |
-| Copper's own settings (`Store.settings`) | `com.collinrijock.copper` | `com.officecommun.search.test.<world>` (unchanged) |
+| Copper's own settings (`Store.settings`) | `com.collinrijock.copper` | `com.collinrijock.copper.test.<world>` |
 | Data folder | `~/Library/Application Support/Copper` | `Copper (<world>)` (unchanged) |
 | WebKit container | `~/Library/WebKit/com.collinrijock.copper` | `~/Library/WebKit/com.collinrijock.copper.dev`, one store per world inside |
 | Keychain | items labelled `Copper`, ACLs for the release certificate | items labelled `Copper (<world>)`, ACLs for that ad-hoc build |
 | `copper://` links from other apps | yes | no (not claimed) |
 
 Without `SEARCH_PROBE` a dev build is the world `dev` (`Copper (dev)`, suite
-`com.officecommun.search.test.dev`) — it never opens the real folder. To check that a QA run left
+`com.collinrijock.copper.test.dev`) — it never opens the real folder. To check that a QA run left
 the installed Copper alone:
 
 ```sh
@@ -281,7 +281,7 @@ A test run's own seams keep it away from what belongs to the person at the Mac:
 - **The keychain.** A test run reads no browser's Safe Storage key: Chrome's secrets need
   `flow passphrase` (a fixture's) and land in `FlowProbeSink`, never the keychain. Copper's own
   passwords and passkeys go to a 0600 file in the world when the world asks for it
-  (`defaults write com.officecommun.search.test.<world> probe.keychain -string file`, before
+  (`defaults write com.collinrijock.copper.test.<world> probe.keychain -string file`, before
   launch; `ProbeKeychain`).
 - **Their clipboard, editor, default browser and update log.** Settings' Copy and Open stay in
   the world, Make default is refused, and `update.log` is the world's own

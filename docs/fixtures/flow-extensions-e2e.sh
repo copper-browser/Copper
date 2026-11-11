@@ -8,7 +8,7 @@ tmp="$(mktemp -d)"
 pid=""
 cleanup() {
   if [ -n "$pid" ]; then kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; fi
-  defaults delete "com.officecommun.search.test.$world" >/dev/null 2>&1 || true
+  defaults delete "com.collinrijock.copper.test.$world" >/dev/null 2>&1 || true
   rm -rf "$HOME/Library/Application Support/Copper ($world)" "$tmp"
 }
 trap cleanup EXIT
@@ -21,8 +21,8 @@ if ! (cd "$root" && ./build.sh) >"$tmp/build.log" 2>&1; then
 fi
 app="$root/build/Copper.app/Contents/MacOS/Copper"
 if [ ! -x "$app" ]; then echo "FAIL build: no Copper executable at $app"; exit 1; fi
-defaults write "com.officecommun.search.test.$world" bench -bool true
-defaults write "com.officecommun.search.test.$world" welcomed -bool true
+defaults write "com.collinrijock.copper.test.$world" bench -bool true
+defaults write "com.collinrijock.copper.test.$world" welcomed -bool true
 SEARCH_PROBE="$world" SEARCH_HEADLESS=1 "$app" >"$tmp/copper.log" 2>&1 &
 pid=$!
 ready=false

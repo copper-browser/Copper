@@ -236,9 +236,9 @@ they stay.
   or share its cookies;
 - always a test world (`Store.testing`): `SEARCH_PROBE=<name>` picks the world as before
   (`~/Library/Application Support/Copper (<name>)`, defaults suite
-  `com.officecommun.search.test.<name>`); started with no world at all — a double-click, a plain
+  `com.collinrijock.copper.test.<name>`); started with no world at all — a double-click, a plain
   `open build/Copper.app` — it is the world **dev**, `Copper (dev)`, suite
-  `com.officecommun.search.test.dev`. It never opens `~/Library/Application Support/Copper`.
+  `com.collinrijock.copper.test.dev`. It never opens `~/Library/Application Support/Copper`.
   Drive it with `./bench --world dev …`; plain `./bench` talks to the installed Copper;
 - no `copper://` URL scheme, so canvas links clicked in another app always reach the installed
   Copper;

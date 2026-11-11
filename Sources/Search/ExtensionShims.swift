@@ -27,8 +27,14 @@ enum ExtensionShims {
     static let application = "search"
     static let file = "search-shim.js"
     /// The first line of a worker that already carries the shim.
-    static let marker = "/* Search: Chrome APIs WebKit lacks, filled in (ExtensionShims.swift) */"
-    static let ender = "/* Search: end of shim */"
+    static let marker = "/* Copper: Chrome APIs WebKit lacks, filled in (ExtensionShims.swift) */"
+    static let ender = "/* Copper: end of shim */"
+    /// The marker and end a worker's shim was written with: these, or the
+    /// upstream-named pair workers prepared before November 2026 still carry.
+    static func markers(of source: String) -> (marker: String, ender: String)? {
+        [(marker, ender), ("/* Search: Chrome APIs WebKit lacks, filled in (ExtensionShims.swift) */", "/* Search: end of shim */")]
+            .first { source.hasPrefix($0.0) }
+    }
 
     // MARK: - at install
 
@@ -55,7 +61,7 @@ enum ExtensionShims {
         // Native messaging is how the shim reaches the browser; user scripts
         // are carried out through WebKit's registered content scripts, which
         // need scripting. What is added is written down, so the extension is
-        // described by what it asked for, not by what Search gave it.
+        // described by what it asked for, not by what Copper gave it.
         var permissions = manifest["permissions"] as? [Any] ?? []
         let asked = Set(permissions.compactMap { $0 as? String })
         var added = (try? JSONSerialization.jsonObject(with: Data(contentsOf: folder.appendingPathComponent(".search-added")))) as? [String] ?? []
@@ -77,14 +83,14 @@ enum ExtensionShims {
                 let path = folder.appendingPathComponent(worker.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
                 if var source = try? String(contentsOf: path, encoding: .utf8) {
                     // Already carrying one: take the old one off, so a newer
-                    // Search puts its newer shim in its place.
-                    if source.hasPrefix(marker), let end = source.range(of: ender) {
+                    // Copper puts its newer shim in its place.
+                    if let old = markers(of: source), let end = source.range(of: old.ender) {
                         source = String(source[end.upperBound...]).trimmingPrefix("\n").description
                     }
                     // A copy from before there was an end marker: it ends
                     // where its function does, the first `})();` that
                     // starts a line.
-                    while source.hasPrefix(marker), let end = source.range(of: "\n})();\n") {
+                    while markers(of: source) != nil, let end = source.range(of: "\n})();\n") {
                         source = String(source[end.upperBound...])
                     }
                     try (marker + "\n" + script + "\n" + ender + "\n" + source).write(to: path, atomically: true, encoding: .utf8)
@@ -148,7 +154,7 @@ enum ExtensionShims {
             guard url.pathExtension == "js", url.lastPathComponent != file,
                   var text = try? String(contentsOf: url, encoding: .utf8) else { continue }
             // Not the shim's own words, in a worker that already carries it.
-            if text.hasPrefix(marker), let end = text.range(of: ender) { text = String(text[end.upperBound...]) }
+            if let old = markers(of: text), let end = text.range(of: old.ender) { text = String(text[end.upperBound...]) }
             let range = NSRange(text.startIndex..., in: text)
             for match in pattern.matches(in: text, range: range) {
                 guard let a = Range(match.range(at: 1), in: text), let b = Range(match.range(at: 2), in: text) else { continue }
@@ -293,7 +299,7 @@ enum ExtensionShims {
         InstallEvent.prototype.addRoutes = () => Promise.resolve();
       }
       // WebKit gives a worker the user agent of the last web page that set
-      // one — Safari's, as Search's tabs send — not the Chrome one the
+      // one — Safari's, as Copper's tabs send — not the Chrome one the
       // extension's pages have. Code that picks its path by it then takes
       // the Safari one: Bitwarden's asks a Safari app for a reply thousands
       // of times a second and floods the browser.
@@ -714,7 +720,7 @@ enum ExtensionShims {
         deleteID: refuse("instanceID.deleteID"), deleteToken: refuse("instanceID.deleteToken"),
         getCreationTime: refuse("instanceID.getCreationTime"), onTokenRefresh: event() });
       // Rules that show a button on matching pages: every button is always
-      // shown in Search, so there is nothing for them to do.
+      // shown in Copper, so there is nothing for them to do.
       const rules = () => ({ addRules: (r, cb) => { if (cb) cb(r || []); }, removeRules: (i, cb) => { if (cb) cb(); },
         getRules: (i, cb) => { const f = typeof i === "function" ? i : cb; if (f) f([]); } });
       put2("declarativeContent", { onPageChanged: rules(),
@@ -781,7 +787,7 @@ enum ExtensionShims {
         ContextType: { TAB: "TAB", POPUP: "POPUP", BACKGROUND: "BACKGROUND", OFFSCREEN_DOCUMENT: "OFFSCREEN_DOCUMENT",
           SIDE_PANEL: "SIDE_PANEL", DEVELOPER_TOOLS: "DEVELOPER_TOOLS" },
       });
-      // The popup Search shows is a page of its own, known to WebKit as a
+      // The popup Copper shows is a page of its own, known to WebKit as a
       // tab with no place in the row (no index). Chrome has no current
       // tab in a popup, and lists it among the popup views; extensions lay
       // themselves out by that (Bitwarden, Proton Pass: or else they fill
@@ -933,7 +939,7 @@ enum ExtensionShims {
         StyleOrigin: { AUTHOR: "AUTHOR", USER: "USER" },
       });
       // The popup an extension sets for its button, told to the browser too:
-      // Search opens a popup itself (see Extensions.press), and has to know
+      // Copper opens a popup itself (see Extensions.press), and has to know
       // which page it is now.
       for (const name of ["action", "browserAction"]) {
         const a = chrome[name];
@@ -990,7 +996,7 @@ enum ExtensionShims {
 
       // Rules WebKit can't carry out — a header it doesn't know how to set,
       // say — are refused one by one, where Chrome would take them all. The
-      // rest still go in: one rule Search can't honour shouldn't cost an
+      // rest still go in: one rule Copper can't honour shouldn't cost an
       // extension every other rule, or its startup.
       const dnr = chrome.declarativeNetRequest;
       // Before WebKit sees them, rules are put the way it takes them: a
@@ -1044,7 +1050,7 @@ enum ExtensionShims {
         });
       }
 
-      // Context menu entries for places Search has no menu for — the old
+      // Context menu entries for places Copper has no menu for — the old
       // toolbar button contexts are the button's menu now, and there is no
       // app launcher at all.
       for (const name of ["contextMenus", "menus"]) {
@@ -1090,7 +1096,7 @@ enum ExtensionShims {
       }
 
       // Tabs as Chrome describes them. Every tab has a groupId (-1 when in
-      // no group — Search has none), which code tests before anything else;
+      // no group — Copper has none), which code tests before anything else;
       // and with the "tabs" permission an extension sees every tab's address
       // and title, where WebKit shows them only for sites it has host
       // access to.
@@ -1151,8 +1157,8 @@ enum ExtensionShims {
       }
 
       // Permissions. WebKit knows its own and throws on any other name,
-      // where Chrome answers false. The ones Search answers itself are
-      // Search's to grant: those a manifest names are granted, optional
+      // where Chrome answers false. The ones Copper answers itself are
+      // Copper's to grant: those a manifest names are granted, optional
       // ones are asked for.
       if (chrome.permissions) {
         const webkit = new Set(["activeTab", "alarms", "clipboardWrite", "contextMenus", "cookies", "declarativeNetRequest",
@@ -2294,7 +2300,7 @@ enum ExtensionShims {
             try JSONSerialization.data(withJSONObject: worlds).write(to: url, options: .atomic)
             return nil
 
-        // MARK: permissions Search grants itself
+        // MARK: permissions Copper grants itself
         case "permissions.granted":
             return Store.settings.stringArray(forKey: "extensions.granted.\(id)") ?? []
         case "permissions.request":
@@ -2502,7 +2508,7 @@ enum ExtensionShims {
           const browser = chrome;
         """#
         let text = #"""
-        /* Search: a user script (chrome.userScripts) */
+        /* Copper: a user script (chrome.userScripts) */
         search_user_script: {
           const __searchHref = location.href;
           const __searchGlob = (g) => new RegExp("^" + g.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
@@ -2527,7 +2533,7 @@ enum ExtensionShims {
     static var awake: [String: IOPMAssertionID] = [:]
 
     /// chrome.privacy and chrome.proxy: what each extension set, kept across
-    /// launches as Chrome keeps it. Search acts on one of them — an
+    /// launches as Chrome keeps it. Copper acts on one of them — an
     /// extension turning the browser's own offer to save passwords off,
     /// which is how every password manager asks Chrome to step aside.
     private static func setting(_ api: String, _ details: [String: Any], extension id: String, owner: Extensions) -> Any? {
@@ -2561,7 +2567,7 @@ enum ExtensionShims {
         }
     }
 
-    /// chrome.browsingData, from what WebKit and Search keep.
+    /// chrome.browsingData, from what WebKit and Copper keep.
     private static func clear(_ what: [String: Bool], options: [String: Any], browser: Browser) async throws {
         let since = Date(timeIntervalSince1970: (options["since"] as? Double ?? 0) / 1000)
         let origins = (options["origins"] as? [String])?.compactMap { URL(string: $0)?.host() }

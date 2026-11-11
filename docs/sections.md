@@ -16,7 +16,7 @@ takes only as much of the column as it needs, up to a few hundred points.
 
 An explicit flag, not a guess. `Session.Entry.saved` travels in the session
 file, and `Sections.saved` holds it while the app is up. A file written by
-upstream Search has no flag at all, so everything in it restores as saved —
+upstream has no flag at all, so everything in it restores as saved —
 an old session never lands in a block that archives itself.
 
 A tab crosses the seam three ways:

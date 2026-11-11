@@ -7,8 +7,8 @@ import LocalAuthentication
 // this app in any other form, and nothing is ever logged.
 //
 // This is the same coffer Safari's are in, but not the same drawer: Apple keeps
-// Safari's behind an entitlement no other browser gets. So these are Office
-// Browser's — in the system's vault, unlocked with the Mac, shown with Touch ID.
+// Safari's behind an entitlement no other browser gets. So these are Copper's
+// — in the system's vault, unlocked with the Mac, shown with Touch ID.
 
 struct Login: Identifiable, Equatable, Hashable {
     var host: String

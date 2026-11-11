@@ -52,7 +52,7 @@ cleanup() {
   done
   for world in "${WORLDS[@]:-}"; do
     [ -n "$world" ] || continue
-    defaults delete "com.officecommun.search.test.$world" >/dev/null 2>&1 || :
+    defaults delete "com.collinrijock.copper.test.$world" >/dev/null 2>&1 || :
     rm -rf "$HOME/Library/Application Support/Copper ($world)"
   done
   rm -rf "$TEMP"
@@ -87,10 +87,10 @@ launch() { # launch NAME [WxH]
   WORLD="flowsafari$1$(date +%s)$$"
   WORLDS+=("$WORLD")
   local port=$((47000 + ($$ + ${#WORLDS[@]}) % 9000))
-  defaults write "com.officecommun.search.test.$WORLD" bench -bool true
-  defaults write "com.officecommun.search.test.$WORLD" welcomed -bool true
-  defaults write "com.officecommun.search.test.$WORLD" probe.keychain -string file
-  defaults write "com.officecommun.search.test.$WORLD" flow.installed -string "Chrome,Arc"
+  defaults write "com.collinrijock.copper.test.$WORLD" bench -bool true
+  defaults write "com.collinrijock.copper.test.$WORLD" welcomed -bool true
+  defaults write "com.collinrijock.copper.test.$WORLD" probe.keychain -string file
+  defaults write "com.collinrijock.copper.test.$WORLD" flow.installed -string "Chrome,Arc"
   open -n -g --stderr "$TEMP/$1.log" --env SEARCH_PROBE="$WORLD" --env SEARCH_HEADLESS=1 \
     --env SEARCH_MCP_PORT="$port" --env SEARCH_HEADLESS_SIZE="${2:-1440x960}" "$APP"
   local pid=""

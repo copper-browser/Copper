@@ -1,6 +1,6 @@
 # What Collin is working on — Copper
 
-Copper is Collin's fork of [Search](https://github.com/driceroland/Search), the 3 MB WebKit browser for macOS by Office Commun. The goal is an Arc-class replacement built on WebKit: spaces, profiles, split view, a command bar, and the rest of the daily Arc features, without a Chromium engine. On top of that, Copper adds a Liquid Glass aesthetic for macOS 26, deep customizability through one theme file and one settings pane, and a sidebar widget board. Scope: Part 1, Part 1b A/B/D and Part 2 of FORK-PLAN.md, in the order listed there.
+Copper is Collin's 3 MB WebKit browser for macOS. The goal is an Arc-class replacement built on WebKit: spaces, profiles, split view, a command bar, and the rest of the daily Arc features, without a Chromium engine. On top of that, Copper adds a Liquid Glass aesthetic for macOS 26, deep customizability through one theme file and one settings pane, and a sidebar widget board. Scope: Part 1, Part 1b A/B/D and Part 2 of FORK-PLAN.md, in the order listed there.
 
 **Not Collin's — Felipe owns the agent side:** MCP integration (Copper as an MCP server / client) and any Jev integration. Those sections stay in the plan below for context only; do not start them from this document. Stagehand-style automation is **dropped**: Jev mode (`jev_run` act, `jev_extract` extract, `jev_observe` observe) covers it natively, no second automation layer needed.
 
@@ -70,9 +70,9 @@ Full story: `docs/releasing.md`.
 
 ## The plan (verbatim copy of FORK-PLAN.md)
 
-# Fork plan: Search → Arc-class features
+# Fork plan: Arc-class features
 
-Fork: `copper-browser/Copper` · upstream: `driceroland/Search` (single-author, one squashed commit, v1.0).
+Fork: `copper-browser/Copper` · upstream: single-author, one squashed commit, v1.0.
 
 Ground truth from the code (as of fork):
 
@@ -80,7 +80,7 @@ Ground truth from the code (as of fork):
 - `Tab.swift` owns one lazy `WKWebView`; sleeps after 30 min; restores from `Session.swift` (`session.json`: flat `[Entry{url,title,pin}]` + `active`).
 - `App.swift` → single SwiftUI `Window("browser")`, "one window, on purpose". `Extensions.swift:801` also folds new windows into tabs.
 - `Side.swift` / `TabBar.swift` = vertical / horizontal tab UIs. `Stage.swift` = the page area (single `WebStage`).
-- `Store.swift` = files under `~/Library/Application Support/Search/`, `UserDefaults` at `Store.settings`.
+- `Store.swift` = files under `~/Library/Application Support/Copper/`, `UserDefaults` at `Store.settings`.
 - Web Inspector is already on (`Tab.swift:280 isInspectable = true`).
 - Chrome extensions via `WKWebExtension` + `ExtensionShims.swift` (macOS 15.4+).
 
@@ -130,7 +130,7 @@ Ordering = (how much of daily Arc use it covers) × (how cheap it is here). Do t
 - ~80 lines. `Browser.swift`, `Settings.swift`.
 
 #### 7. Little Arc (links from other apps open in a small floating window)
-- `Links.swift` already handles incoming URLs. Instead of `newTab`, open in a second `Window("little")` sized 900×650 with a single `Tab` not in `tabs`; toolbar button "Open in Search" moves it in. Requires relaxing the one-window rule in `App.swift` (add a second `Window` scene) — keep main browser single-window.
+- `Links.swift` already handles incoming URLs. Instead of `newTab`, open in a second `Window("little")` sized 900×650 with a single `Tab` not in `tabs`; toolbar button "Open in Copper" moves it in. Requires relaxing the one-window rule in `App.swift` (add a second `Window` scene) — keep main browser single-window.
 - ~120 lines. `App.swift`, `Links.swift`, new `Little.swift`.
 
 #### 8. Peek (link preview on ⇧-click / hover-hold)
@@ -230,7 +230,7 @@ Arc has almost none; Vivaldi/Zen have too much. Aim: **one JSON file + one Setti
 
 Collin is not doing this section (nor Jev or Stagehand work). Two directions; do the server first, it is the one nothing else provides on WebKit.
 
-#### C1. Search as an MCP **server** (agents drive the browser)
+#### C1. Copper as an MCP **server** (agents drive the browser)
 Chrome DevTools MCP and Playwright MCP exist for Chromium; nothing for a WebKit browser with your real sessions/cookies. That is the differentiator: Claude Code / phi drive *your* logged-in browser.
 
 - **SDK:** `modelcontextprotocol/swift-sdk` (0.11.x, spec 2025-11-25). Upstream forbids deps; the fork allows exactly this one — record it in the patch manifest (Part 2). Alternative with zero deps: hand-write JSON-RPC over stdio (~300 lines) — not worth it; take the dep.
@@ -246,14 +246,14 @@ Chrome DevTools MCP and Playwright MCP exist for Chromium; nothing for a WebKit 
   | `browser_evaluate` | `callAsyncJavaScript` |
   | `browser_take_screenshot` | `takeSnapshot(with:)` → PNG base64 |
   | `browser_wait_for` | poll `evaluateJavaScript` |
-  | `read_page` (Search-specific) | `Reader.swift` extraction → markdown; cheapest token path |
+  | `read_page` (Copper-specific) | `Reader.swift` extraction → markdown; cheapest token path |
   | `browser_console_messages` | `WKScriptMessageHandler` shim capturing `console.*` |
   | resources: `search://tabs`, `search://history?q=`, `search://bookmarks` | read-only |
 
 - **Safety:** all tools run on `MainActor` via the existing `Browser`; token required; per-call "agent is driving" banner in the sidebar (reuse `announce()`); `private` tabs are never exposed; a setting to require click-to-approve for `browser_evaluate` on hosts in a denylist (banks). Never expose `Vault`.
 - **Files:** `MCP/Server.swift` (tools), `MCP/Snapshot.swift` (a11y script + ref map), `MCP/Listener.swift` (NWListener bridge), Settings pane. ~700 lines total. Hooks into upstream files: one `if CommandLine.arguments.contains("--mcp-stdio")` in `App.swift`, one `Task { await MCP.start() }` at launch.
 
-#### C2. Search as an MCP **client** (an agent in the sidebar)
+#### C2. Copper as an MCP **client** (an agent in the sidebar)
 - A sidebar widget (see D) hosting a chat with a model that has (a) the C1 tools bound locally — no HTTP round trip — and (b) whatever external MCP servers you configure (`mcp.json`, same shape Claude Code uses, so you paste your existing file).
 - **Model access:** BYO endpoint — `Settings › AI: base URL + key`, OpenAI-compatible or Anthropic messages. Default to Exowatt gateway for you; ship with nothing configured (upstream's privacy stance: nothing leaves the Mac unless you set it up).
 - Swift SDK gives `Client` + `HTTPClientTransport`/`StdioTransport` for the external servers — same dep as C1.
@@ -280,7 +280,7 @@ Persisted in `Store.file("widgets.json")`. `Side.swift` becomes `VStack { pins; 
 6. **Clock / calendar** — `TimelineView(.everyMinute)`; calendar via `EventKit` (needs the Calendars entitlement + a prompt). ~80 lines.
 7. **Agent** — the C2 chat. Felipe's; ships when C2 does.
 8. **Tabs preview** — thumbnails of the other spaces' tabs (`Tab.cover` snapshots exist for sleep). ~50 lines.
-9. **HTML widgets** — user-authored: a folder in `Application Support/Search/Widgets/<name>/index.html` rendered in a web panel with a tiny `window.search` JS bridge (`tabs.list`, `tabs.open`, `page.text`) via `WKScriptMessageHandler`. This is the "customisable" escape hatch and needs no plugin API design. ~120 lines.
+9. **HTML widgets** — user-authored: a folder in `Application Support/Copper/Widgets/<name>/index.html` rendered in a web panel with a tiny `window.copper` JS bridge (`tabs.list`, `tabs.open`, `page.text`) via `WKScriptMessageHandler`. This is the "customisable" escape hatch and needs no plugin API design. ~120 lines.
 
 **Layout:** cards use `.glassEffect` on 26 (see A) and `Material` before; height drag handle at the bottom edge; ⌥-click title to collapse; right-click → remove / move to top / per-space toggle. Empty new-tab page shows the same board full-width (B.6).
 
@@ -394,11 +394,11 @@ Green = a PR to click. Red = conflict → Layer 3 or you.
 
 Then the job pushes the branch and opens the PR with `SYNC-NOTES.md` as the body. You review the range-diff, not the code. Needs `ANTHROPIC_API_KEY` (or the Exowatt gateway) in repo secrets and `claude -p` on the runner. Keep `fork` protected so nothing merges without a human. Skip this layer until the first conflict actually happens; two lines of rerere may make it unnecessary.
 
-**Layer 4 — release on tag.** `v1.0-fork.N` tag → `./build.sh release dmg` → GitHub Release with `Search.dmg` + a `VERSION`/appcast file that the fork's `Updater` reads (below).
+**Layer 4 — release on tag.** `v1.0-fork.N` tag → `./build.sh release dmg` → GitHub Release with `Copper.dmg` + a `VERSION`/appcast file that the fork's `Updater` reads (below).
 
 ### Releasing your build
 - `./build.sh release dmg` gives an ad-hoc-signed DMG. Fine for your own Macs (right-click → Open once). A Developer ID ($99/yr) gets you notarisation + a working self-updater.
-- **Updater.swift** polls `officecommun.com` and verifies *their* signature. Untouched, a fork build will one day replace itself with upstream 1.1 and drop every feature. Patch: point the feed at your GitHub Release asset and your signing identity — or a one-line early return until you have a Developer ID. This is a permanent row in `PATCHES.md`.
+- **Updater.swift** polls upstream's site and verifies *their* signature. Untouched, a fork build will one day replace itself with upstream 1.1 and drop every feature. Patch: point the feed at your GitHub Release asset and your signing identity — or a one-line early return until you have a Developer ID. This is a permanent row in `PATCHES.md`.
 - **Bundle id + app name**: change both in `build.sh` so the fork and upstream coexist (separate keychain items, separate `Application Support` folder — `Store.folder` derives from the bundle). Otherwise they fight over `session.json`.
 - Tag `v1.0-fork.1`, `v1.0-fork.2` … so the upstream base is visible in the tag.
 

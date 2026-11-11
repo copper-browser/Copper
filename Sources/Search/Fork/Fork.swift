@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import Foundation
 
-// Everything Copper adds to Search lives under Fork/. Upstream files get
+// Everything Copper adds lives under Fork/. Upstream files get
 // one-line hooks into here and nothing else, so a rebase onto the next
 // upstream release touches as few of their lines as possible. See PATCHES.md.
 enum Fork {
@@ -13,9 +13,8 @@ enum Fork {
     /// Every other ./build.sh build: its own TCC records, defaults domain,
     /// WebKit container and keychain identity, and always a test world.
     static let devBundle = "com.collinrijock.copper.dev"
-    /// Upstream's updater verifies Office Commun's signature against their
-    /// feed. Running it from a Copper build would replace Copper with Search.
-    /// Until there is a Copper feed and a signing identity, it stays off.
+    /// Upstream's updater (Updater.swift) stays off: Copper has its own feed
+    /// and signing identity (Fork/Updates.swift, Fork/Signing.swift).
     static let updates = false
 
     /// Copper owns the unentitled authenticator. Migrate the old upstream

@@ -14,30 +14,25 @@ import Security
 // newer.
 //
 // What the updater leaves alone, on purpose: everything in
-// ~/Library/Application Support/Search, the defaults under
-// com.officecommun.search, and the keychain. The session, the pins, the
+// ~/Library/Application Support/Copper, the defaults under
+// com.collinrijock.copper, and the keychain. The session, the pins, the
 // history, the passwords — none of it is read, moved or rewritten here. Only
 // the bundle changes hands, and it keeps its bundle id and its signing
 // identity, so the keychain items the old build made open for the new one.
 // The updater deletes only what it made: its own scratch folder and the
 // `.old` bundle it set aside.
 //
-// build.sh writes the file (build/appcast.json) at the same time as the DMG
-// and the ZIP; publish.sh puts all three where `feed` points.
+// Fork: Copper updates through Fork/Updates.swift. This one only listens
+// when a test run names a feed (SEARCH_FEED); see Fork.updates.
 
 @MainActor
 final class Updater: ObservableObject {
     static let shared = Updater()
 
-    /// Where the file lives. SEARCH_FEED, for a test run, points somewhere
-    /// else — and is the only way plain http is accepted, so a build that
-    /// was not handed the variable only ever listens to the real site.
-    static let feed: URL = {
-        if let set = ProcessInfo.processInfo.environment["SEARCH_FEED"], let url = URL(string: set) {
-            return url
-        }
-        return URL(string: "https://officecommun.com/search/appcast.json")!
-    }()
+    /// Where the file lives: SEARCH_FEED, for a test run — the only way
+    /// plain http is accepted. Fork: no default; Copper's feed is
+    /// Fork/Updates.swift's.
+    static let feed: URL? = ProcessInfo.processInfo.environment["SEARCH_FEED"].flatMap(URL.init(string:))
 
     private static var overridden: Bool {
         ProcessInfo.processInfo.environment["SEARCH_FEED"] != nil
@@ -218,6 +213,7 @@ final class Updater: ObservableObject {
     }
 
     private static func fetch() async -> Release? {
+        guard let feed else { return nil }
         var request = URLRequest(url: feed)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.timeoutInterval = 12

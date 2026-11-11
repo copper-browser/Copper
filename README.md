@@ -1,6 +1,6 @@
 # Copper
 
-A small, fast, quiet web browser for the Mac, by Collin and Felipe. Built on Search by Office Commun.
+A small, fast, quiet web browser for the Mac, by Collin and Felipe.
 
 ![Copper, with its tabs down the left and a page taking the rest of the window](.github/screenshot.png)
 
@@ -174,4 +174,4 @@ Issues and pull requests are genuinely welcome — see [CONTRIBUTING.md](CONTRIB
 
 ### License
 
-MIT — see [LICENSE](LICENSE). Do what you want with the code. Copper and the app icon are Collin and Felipe's; it is built on Search by Office Commun.
+MIT — see [LICENSE](LICENSE). Do what you want with the code. Copper and the app icon are Collin and Felipe's.

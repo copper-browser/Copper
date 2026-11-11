@@ -23,7 +23,7 @@ cleanup() {
   fi
   rm -rf "$TEMP" # only this script's private mktemp folder
   # and the world this script made up: a unique name, never the user's own
-  defaults delete "com.officecommun.search.test.$WORLD" >/dev/null 2>&1 || :
+  defaults delete "com.collinrijock.copper.test.$WORLD" >/dev/null 2>&1 || :
   rm -rf "$HOME/Library/Application Support/Copper ($WORLD)"
 }
 trap cleanup EXIT
@@ -61,8 +61,8 @@ session "https://example.invalid/from-chrome"
 
 # A unique world and defaults suite (not even the shared 'test' probe world).
 # Headless suppresses activation and all macOS dialogs.
-defaults write "com.officecommun.search.test.$WORLD" bench -bool true
-defaults write "com.officecommun.search.test.$WORLD" welcomed -bool true
+defaults write "com.collinrijock.copper.test.$WORLD" bench -bool true
+defaults write "com.collinrijock.copper.test.$WORLD" welcomed -bool true
 SEARCH_PROBE="$WORLD" SEARCH_HEADLESS=1 SEARCH_MCP_PORT=$((42000 + $$ % 10000)) \
   "$APP/Contents/MacOS/Copper" > "$TEMP/copper.log" 2>&1 &
 PID=$!

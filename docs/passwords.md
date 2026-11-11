@@ -593,7 +593,7 @@ instead keep Copper's own passwords and passkeys in a 0600 JSON file in its
 folder (`probe-keychain.json`), set before launch:
 
 ```sh
-defaults write com.officecommun.search.test.$W probe.keychain -string file
+defaults write com.collinrijock.copper.test.$W probe.keychain -string file
 ```
 
 Only a named world with `bench` on honours it; Touch ID is answered by the
@@ -668,8 +668,8 @@ beside the state, argv and env *names* only):
 ```sh
 W=op1p; P=4211
 mkdir -p /tmp/$W-mock /tmp/$W-fake/1Password.app     # a stand-in app path
-defaults write com.officecommun.search.test.$W bench -bool true
-defaults write com.officecommun.search.test.$W welcomed -bool true
+defaults write com.collinrijock.copper.test.$W bench -bool true
+defaults write com.collinrijock.copper.test.$W welcomed -bool true
 open -n -g --stderr /tmp/copper-$W.log --env SEARCH_PROBE=$W --env SEARCH_HEADLESS=1 \
   --env SEARCH_MCP_PORT=$P --env SEARCH_OP_PATH="$PWD/docs/fixtures/op-mock/op" \
   --env OP_MOCK_STATE=/tmp/$W-mock/state.json \

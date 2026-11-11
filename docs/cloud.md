@@ -498,7 +498,7 @@ splits its words on spaces, so a password given there can't contain one (the
 page has no such limit). Two probe worlds on one Mac are two devices:
 
 ```sh
-defaults write com.officecommun.search.test.one bench -bool true   # before launch: the script socket
+defaults write com.collinrijock.copper.test.one bench -bool true   # before launch: the script socket
 open -n -g --env SEARCH_PROBE=one --env SEARCH_HEADLESS=1 --env SEARCH_MCP_PORT=4151 build/Copper.app
 ./bench --world one cloud status
 ```

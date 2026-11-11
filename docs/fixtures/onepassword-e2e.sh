@@ -47,8 +47,8 @@ pid=""
 started=$(date '+%Y-%m-%d %H:%M:%S')
 cleanup() {
   if [ -n "$pid" ]; then kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; fi
-  defaults delete "com.officecommun.search.test.$world" >/dev/null 2>&1 || true
-  rm -f "$HOME/Library/Preferences/com.officecommun.search.test.$world.plist"
+  defaults delete "com.collinrijock.copper.test.$world" >/dev/null 2>&1 || true
+  rm -f "$HOME/Library/Preferences/com.collinrijock.copper.test.$world.plist"
   rm -rf "$HOME/Library/Application Support/Copper ($world)"
   if [ "${COPPER_1P_KEEP:-0}" = 1 ]; then echo "kept $tmp"; else rm -rf "$tmp"; fi
   local hash=2166136261 i byte
@@ -107,8 +107,8 @@ text += '\nchrome.runtime.onMessage.addListener((m, s, reply) => { if (!m || m.c
 open(path, "w", encoding="utf-8").write(text)
 PY
 
-defaults write "com.officecommun.search.test.$world" bench -bool true
-defaults write "com.officecommun.search.test.$world" welcomed -bool true
+defaults write "com.collinrijock.copper.test.$world" bench -bool true
+defaults write "com.collinrijock.copper.test.$world" welcomed -bool true
 env ${hosts[@]+"${hosts[@]}"} SEARCH_NATIVE_LOG="$tmp/frames.log" SEARCH_NATIVE_LOG_BYTES=600 SEARCH_PROBE="$world" SEARCH_HEADLESS=1 "$app" >"$tmp/copper.log" 2>&1 &
 pid=$!
 bench() { "$root/bench" --world "$world" "$@"; }

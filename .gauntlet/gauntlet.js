@@ -1,6 +1,6 @@
 export const meta = {
   name: 'copper_arc_gauntlet',
-  description: 'Gauntlet Loop: builder/critic rounds pushing Copper (Search fork) Tier 1 surfaces — sidebar, command bar, split view, folders — to Arc grade, judged on screenshots beside real Arc screenshots.',
+  description: 'Gauntlet Loop: builder/critic rounds pushing Copper's Tier 1 surfaces — sidebar, command bar, split view, folders — to Arc grade, judged on screenshots beside real Arc screenshots.',
   phases: [{ title: 'Surfaces' }, { title: 'Smoothing' }],
 };
 

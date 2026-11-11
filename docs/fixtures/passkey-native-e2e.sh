@@ -22,7 +22,7 @@ cleanup() {
     security delete-generic-password -s "Copper Passkeys ($world)" >/dev/null 2>&1 || break
   done
   if [ -n "$server" ]; then kill "$server" 2>/dev/null || true; wait "$server" 2>/dev/null || true; fi
-  defaults delete "com.officecommun.search.test.$world" >/dev/null 2>&1 || true
+  defaults delete "com.collinrijock.copper.test.$world" >/dev/null 2>&1 || true
   rm -rf "$folder" "$tmp"
   local hash=2166136261 i byte stem
   for ((i = 0; i < ${#world}; i++)); do
@@ -56,8 +56,8 @@ PY
 server=$!
 for _ in {1..40}; do [ -s "$tmp/port" ] && break; sleep 0.1; done
 [ -s "$tmp/port" ] || fail "localhost server"
-defaults write "com.officecommun.search.test.$world" bench -bool true
-defaults write "com.officecommun.search.test.$world" welcomed -bool true
+defaults write "com.collinrijock.copper.test.$world" bench -bool true
+defaults write "com.collinrijock.copper.test.$world" welcomed -bool true
 SEARCH_PROBE="$world" SEARCH_HEADLESS=1 "$app" >"$tmp/copper.log" 2>&1 &
 pid=$!
 for _ in {1..60}; do bench tabs >/dev/null 2>&1 && break; sleep 0.25; done

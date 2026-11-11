@@ -81,7 +81,7 @@ def seed(world):
         target["url"] = os.environ.get("PERF_ACTIVE", "http://127.0.0.1:8799/index.html")
         target["title"] = "Perf page"
     json.dump(shape, open(path, "w"))
-    suite = f"com.officecommun.search.test.{world}"
+    suite = f"com.collinrijock.copper.test.{world}"
     for key, kind, value in [("bench", "-bool", "true"), ("welcomed", "-bool", "true"),
                              ("sidebar", "-bool", "true"), ("glyph", "-string", "icons"),
                              ("look", "-string", "system"), ("sidebar.width", "-float", "326")]:
