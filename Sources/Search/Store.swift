@@ -125,12 +125,14 @@ enum Store {
     }()
 
     /// Test worlds kept their settings under upstream's suite name until
-    /// November 2026 (the dev app's world among them). The first run under
-    /// the new name takes a copy; the old domain is left where it was.
+    /// November 2026 (the dev app's world among them). They move to the new
+    /// name, where anything already set there (a `defaults write` before
+    /// launch) wins, and the old domain goes, so ./fresh.sh's wipe sticks.
     static func adopt(_ suite: String, from old: String) {
         let defaults = UserDefaults.standard
-        guard defaults.persistentDomain(forName: suite) == nil,
-              let kept = defaults.persistentDomain(forName: old) else { return }
-        defaults.setPersistentDomain(kept, forName: suite)
+        guard let kept = defaults.persistentDomain(forName: old) else { return }
+        let set = defaults.persistentDomain(forName: suite) ?? [:]
+        defaults.setPersistentDomain(kept.merging(set) { $1 }, forName: suite)
+        defaults.removePersistentDomain(forName: old)
     }
 }

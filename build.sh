@@ -107,6 +107,8 @@ fi
 # travel with the binary it is compiled into (Settings › Voice credits it).
 mkdir -p "$APP/Contents/Resources/phonon-coreml"
 cp Sources/Search/Fork/Voice/Phonon/LICENSE Sources/Search/Fork/Voice/Phonon/NOTICE "$APP/Contents/Resources/phonon-coreml/"
+# Copper's own licence, which carries the MIT notice it was forked under.
+cp LICENSE "$APP/Contents/Resources/LICENSE"
 
 # Symbols stay out of the app. The linker leaves every function's name and a
 # map back to the source in the binary — 15,000 entries, more than half of

@@ -18,14 +18,15 @@ import Testing
         }
         Store.adopt(new, from: old)
         #expect(defaults.persistentDomain(forName: new) == nil) // nothing to take
-        defaults.setPersistentDomain(["bench": true, "look": "dark"], forName: old)
+        defaults.setPersistentDomain(["bench": false, "look": "dark"], forName: old)
+        defaults.setPersistentDomain(["bench": true], forName: new) // written before launch
         Store.adopt(new, from: old)
         #expect(defaults.persistentDomain(forName: new)?["look"] as? String == "dark")
-        #expect(defaults.persistentDomain(forName: new)?["bench"] as? Bool == true)
-        #expect(defaults.persistentDomain(forName: old)?["look"] as? String == "dark") // left in place
-        defaults.setPersistentDomain(["look": "light"], forName: new)
+        #expect(defaults.persistentDomain(forName: new)?["bench"] as? Bool == true) // the new name wins
+        #expect(defaults.persistentDomain(forName: old) == nil) // moved, so a wipe stays wiped
+        defaults.removePersistentDomain(forName: new)
         Store.adopt(new, from: old)
-        #expect(defaults.persistentDomain(forName: new)?["look"] as? String == "light") // once only
+        #expect(defaults.persistentDomain(forName: new) == nil) // once only
     }
 
     @Test @MainActor func aWorkerShimmedUnderTheOldMarkerGetsOneShim() throws {

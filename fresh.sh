@@ -32,8 +32,10 @@ if [ "${1:-}" != "again" ]; then
   rm -rf "$HOME/Library/Application Support/Copper ($WORLD)"
   defaults delete "$SUITE" 2>/dev/null || true
   # Store.probeStore(1), the fixed identifier of the world's website data,
-  # in the development app's WebKit container (./build.sh builds that app).
-  rm -rf "$HOME/Library/WebKit/com.collinrijock.copper.dev/WebsiteDataStore/$STORE"
+  # in the WebKit container of whichever app build/Copper.app is (dev or release).
+  for app in com.collinrijock.copper.dev com.collinrijock.copper; do
+    rm -rf "$HOME/Library/WebKit/$app/WebsiteDataStore/$STORE"
+  done
   echo "world \"$WORLD\" wiped"
 fi
 
