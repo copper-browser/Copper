@@ -130,7 +130,8 @@ enum Store {
     /// launch) wins, and the old domain goes, so ./fresh.sh's wipe sticks.
     static func adopt(_ suite: String, from old: String) {
         let defaults = UserDefaults.standard
-        guard let kept = defaults.persistentDomain(forName: old) else { return }
+        // A removed domain reads back as empty, not nil.
+        guard let kept = defaults.persistentDomain(forName: old), !kept.isEmpty else { return }
         let set = defaults.persistentDomain(forName: suite) ?? [:]
         defaults.setPersistentDomain(kept.merging(set) { $1 }, forName: suite)
         defaults.removePersistentDomain(forName: old)

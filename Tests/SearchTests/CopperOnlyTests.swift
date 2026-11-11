@@ -23,10 +23,10 @@ import Testing
         Store.adopt(new, from: old)
         #expect(defaults.persistentDomain(forName: new)?["look"] as? String == "dark")
         #expect(defaults.persistentDomain(forName: new)?["bench"] as? Bool == true) // the new name wins
-        #expect(defaults.persistentDomain(forName: old) == nil) // moved, so a wipe stays wiped
+        #expect(defaults.persistentDomain(forName: old)?.isEmpty ?? true) // moved, so a wipe stays wiped
         defaults.removePersistentDomain(forName: new)
         Store.adopt(new, from: old)
-        #expect(defaults.persistentDomain(forName: new) == nil) // once only
+        #expect(defaults.persistentDomain(forName: new)?.isEmpty ?? true) // once only
     }
 
     @Test @MainActor func aWorkerShimmedUnderTheOldMarkerGetsOneShim() throws {
