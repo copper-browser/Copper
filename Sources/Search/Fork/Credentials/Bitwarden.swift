@@ -985,7 +985,8 @@ final class Bitwarden: ObservableObject {
         if let found = try await folders().first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
             return found
         }
-        return Folder(id: try await write(["name": name], kind: "folder"), name: name)
+        let id = try await write(["name": name], kind: "folder")
+        return Folder(id: id, name: name)
     }
 
     func generate() async throws -> String {
