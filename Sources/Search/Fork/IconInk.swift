@@ -54,19 +54,19 @@ enum IconInk {
 
     /// An icon just read from `file`: its tone from beside the file, or read
     /// off the main thread and kept there. When that finds a glyph this look
-    /// has to ink, `inked` gets the inked one to put on.
-    static func read(_ image: NSImage, at file: URL, inked: @escaping (NSImage) -> Void) {
+    /// has to ink, the rows already wearing it — parked ones too — put the
+    /// inked one on.
+    static func read(_ image: NSImage, at file: URL) {
         if let tone = kept(at: file) { return learn(image, tone: tone) }
         Task {
             guard let tone = await measure(file) else { return }
             learn(image, tone: tone)
-            let worn = legible(image, dark: Favicons.dark)
-            if worn !== image { inked(worn) }
+            if legible(image, dark: Favicons.dark) !== image { reink(Spaces.shared.everyTab + Windows.all.flatMap(\.tabs)) }
         }
     }
 
-    /// The look changed: every row wearing a glyph from the cache puts on
-    /// this look's — the asleep and parked ones too, which upstream's relook
+    /// The look changed, or a glyph's tone was just read: every row wearing a
+    /// glyph from the cache puts on this look's — the asleep and parked ones too, which upstream's relook
     /// leaves alone (it would wake them to ask their pages). Every other row
     /// is passed over on one lookup: its mark is the same in either look.
     static func reink(_ tabs: [Tab]) {

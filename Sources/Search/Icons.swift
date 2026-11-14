@@ -61,7 +61,7 @@ final class Favicons {
         memory[key] = image
         // Fork (icon-ink): whether it is a glyph to ink, from beside the file
         // or read off the main thread (Fork/IconInk.swift).
-        IconInk.read(image, at: file) { [weak self] in self?.arrived?(key.replacingOccurrences(of: "@dark", with: ""), $0) }
+        IconInk.read(image, at: file)
         return IconInk.legible(image, dark: Favicons.dark) // Fork (icon-ink)
     }
 

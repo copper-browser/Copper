@@ -80,7 +80,7 @@ struct IconInkTests {
         #expect(IconInk.kept(at: file) == 1)
         // The next launch: known from the file, inked without a read.
         let again = NSImage(byReferencing: file)
-        IconInk.read(again, at: file) { _ in Issue.record("already kept: nothing left to read") }
+        IconInk.read(again, at: file)
         #expect(inkLevel(IconInk.legible(again, dark: false)) < 0.2)
     }
 }
