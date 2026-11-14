@@ -24,13 +24,14 @@ import WebKit
 // starts the moment the pointer rests on its chip at the foot (`hover`), a
 // few hundred milliseconds before the click.
 //
-// Fork (space-perf): then every other space's, one at a time, while the
-// pages that may sleep hold under half their byte budget (`roomy`,
-// Sleep.swift's `footprintBudget`): a first trip to a space after a launch
-// woke its page inside the switch, ~300 ms of main thread on top of the
-// rows (four of five switches in the A2 bench). Hidden, they are throttled
-// like any tab you've left, and idle sleep's byte budget and heavy rule
-// still put them down. A swipe towards a space starts its page too.
+// Fork (switch, hill-climb r4): no longer every other space after it. That
+// held +52 MB and +13 wakeups/s at idle and measured no faster switch (A2).
+// A page is warmed on intent instead: the pointer resting on a chip
+// (`hover`), a swipe setting off towards a space (SpaceSlide), ⌃ going down
+// (`control`: ⌃1–9 and ⌃⌥←/→ switch spaces) for the spaces either side. And
+// a page warmed for a space you then don't go to — the last space's too —
+// is put back to sleep a minute on (`cool`), so a guess that came to
+// nothing costs nothing for long.
 //
 // Not on battery saver, never in a headless run, and not at all with
 // `defaults write <domain> spaces.warm -bool false`.
@@ -48,10 +49,8 @@ enum SpaceWarm {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 guard let browser else { return }
                 PinsAwake.shared.start(in: browser) { [weak browser] in
-                    guard let browser else { return }
-                    var seen = Set<UUID>()
-                    let order = ([last].compactMap { $0 } + Spaces.shared.all.map(\.id)).filter { seen.insert($0).inserted }
-                    next(order, in: browser, first: last != nil)
+                    guard let browser, let last else { return }
+                    warm(space: last, in: browser)
                 }
             }
         }
@@ -66,30 +65,44 @@ enum SpaceWarm {
     /// The pointer came to rest on a space's chip (SpacesUI): its page starts now.
     static func hover(_ space: UUID, in browser: Browser) { warm(space: space, in: browser) }
 
+    /// Fork (switch): ⌃ went down (or up) in `browser`'s window. ⌃1–9 and
+    /// ⌃⌥←/→ are the space keys, so ⌃ held a moment with no tab walk (⌃⇥)
+    /// under way warms the spaces either side, one after the other.
+    static func control(_ down: Bool, in browser: Browser) {
+        holding += 1
+        guard down else { return }
+        let mine = holding
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak browser] in
+            guard let browser, mine == holding, !Recent.shared.walking else { return }
+            sides(of: browser)
+        }
+    }
+    private static var holding = 0
+
+    /// The spaces either side of the one `browser` is in.
+    static func sides(of browser: Browser) {
+        let all = Spaces.shared.all
+        guard all.count > 1, let here = all.firstIndex(where: { $0.id == Spaces.shared.current(in: browser) }) else { return }
+        next([all[(here + 1) % all.count].id, all[(here + all.count - 1) % all.count].id], in: browser)
+    }
+
     /// The landing tab being warmed now: one at a time.
     private static var warming: Tab.ID?
 
-    /// Fork (space-perf): the spaces' landing tabs in `queue`, one after
-    /// another, while there is room for them. The space you were in last
-    /// (`first`) is warmed whatever the room, as before.
-    private static func next(_ queue: [UUID], in browser: Browser, first: Bool = false) {
+    /// The spaces' landing tabs in `queue`, one after another.
+    private static func next(_ queue: [UUID], in browser: Browser) {
         guard let space = queue.first else { return }
         let rest = Array(queue.dropFirst())
-        guard first || roomy else { return }
         if !warm(space: space, in: browser, then: { [weak browser] in if let browser { next(rest, in: browser) } }) {
             next(rest, in: browser)
         }
     }
 
-    /// Fork (space-perf): the pages that may sleep (every loaded page but
-    /// the pins) hold less than half their byte budget between them.
-    static var roomy: Bool {
-        var pids = Set<pid_t>()
-        let bytes = Spaces.shared.everyTab.filter { $0.pin == nil && $0.built != nil && !$0.asleep }.reduce(UInt64(0)) { sum, tab in
-            guard let weight = Heat.shared.weight(of: tab), pids.insert(weight.pid).inserted else { return sum }
-            return sum + weight.bytes
-        }
-        return bytes < Browser.footprintBudget / 2
+    /// Fork (switch): how long a warmed page waits for its space before it
+    /// goes back to sleep (`defaults write <domain> spaces.warm.cool <s>`).
+    static var cool: TimeInterval {
+        let set = Store.settings.double(forKey: "spaces.warm.cool")
+        return set > 0 ? set : 60
     }
 
     /// The page `browser` would land on in `space`, loaded out of sight —
@@ -104,9 +117,26 @@ enum SpaceWarm {
               tab.pending != nil, tab.built == nil, !tab.shy else { return false }
         spaces.remember(tab.id, in: space, for: browser)
         warming = tab.id
+        let looked = tab.touched
         Breadcrumbs.note("space-warm", [("host", tab.pending?.host() ?? "-")])
-        warm(tab, size: browser.active?.built?.bounds.size, start: { _ = tab.wake() }) { warming = nil; then?() }
+        warm(tab, size: browser.active?.built?.bounds.size, start: { _ = tab.wake() }) { [weak browser, weak tab] in
+            warming = nil
+            if let browser, let tab { cooling(tab, unless: looked, in: browser) }
+            then?()
+        }
         return true
+    }
+
+    /// Fork (switch): a warmed page nobody went to within `cool` goes back
+    /// to sleep (Browser.sleep: never one on screen, holding something typed,
+    /// or kept awake for any other reason). Looking at it touches it, which
+    /// lets it stay.
+    private static func cooling(_ tab: Tab, unless looked: Date, in browser: Browser) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + cool) { [weak browser, weak tab] in
+            guard let browser, let tab, tab.touched == looked, !tab.asleep, tab.built != nil else { return }
+            Breadcrumbs.note("space-warm", [("cooled", tab.address?.host() ?? "-")])
+            browser.sleep(tab)
+        }
     }
 
     /// One tab's page loaded out of sight: its view in the Room, `start` sets

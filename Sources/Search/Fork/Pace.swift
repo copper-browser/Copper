@@ -100,6 +100,13 @@ enum Pace {
         mark("page." + step)
     }
 
+    /// Fork (switch): a step inside one piece of work — a space switch's
+    /// projection, its select, the page attached, the slide's go — placed in
+    /// the same window as `log`, so a pass's milliseconds can be put on a step.
+    static func step(_ name: String) {
+        if steps.count < 200 { steps.append((name, ((CACurrentMediaTime() - since) * 10000).rounded() / 10)) }
+    }
+
     static func bench(_ request: [String: Any]) -> [String: Any] {
         if request["op"] as? String == "reset" {
             since = CACurrentMediaTime()

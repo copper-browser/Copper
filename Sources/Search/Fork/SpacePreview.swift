@@ -276,7 +276,7 @@ struct SpacePreview: View, Equatable {
 
         var body: some View {
             HStack(spacing: 0) {
-                SpaceGlyph(space: space, size: 16, dark: dark, ink: tint.mark, bare: true, plate: false)
+                SpaceGlyph(space: space, size: 16, dark: dark, ink: tint.mark, bare: true) // Fork (switch): on its plate, as SpaceHeader draws it
                     .frame(width: 24, height: 24)
                     .padding(.leading, -4)
                     .padding(.trailing, 6)
@@ -369,11 +369,9 @@ struct SpacePreview: View, Equatable {
                         .font(.system(size: 9))
                         .foregroundStyle(tint.ink.opacity(0.7))
                 }
-                Text(tab.label)
+                FadingTitle(text: Text(tab.label) // Fork (switch): as SideRow's, a long title fades, not "…"
                     .font(.system(size: SideBar.title, weight: live ? .semibold : .regular))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .foregroundStyle(tint.ink)
+                    .foregroundStyle(tint.ink))
                 Spacer(minLength: 2)
             }
             // As `SideRow`: the sound over the title's faded end, no slot kept.

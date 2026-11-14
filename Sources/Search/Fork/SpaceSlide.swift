@@ -188,7 +188,9 @@ final class SpaceSlide: ObservableObject {
         let old = Spaces.shared.space(in: browser)
         // The rows as they stand, planned for the preview that slides out.
         // Planning is the cheap part; the view is built with the frame.
+        Pace.step("slide.begin") // Fork (switch)
         let model = SpacePreviewModel.live(old, in: browser, width: column.width, height: band.height)
+        Pace.step("slide.planned")
         withTransaction(calm) {
             dragging = false
             swiping = false
@@ -226,6 +228,7 @@ final class SpaceSlide: ObservableObject {
 
     private func go(_ mine: Int) {
         guard mine == serial, sliding else { return }
+        Pace.step("slide.go") // Fork (switch)
         timing?.moved = CACurrentMediaTime()
         watch()
         if let hold {

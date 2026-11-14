@@ -442,7 +442,7 @@ struct SpaceChip: View {
             if let dot, !current, !over {
                 Circle().fill(dot).frame(width: 6, height: 6)
             } else {
-                mark.saturation(current || over ? 1 : 0)
+                if HCB.sat { mark } else { mark.saturation(current || over ? 1 : 0) }
             }
         }
         .opacity(current || over ? 1 : 0.72)

@@ -14,6 +14,9 @@ nobody went to held 980 MB all day). Now:
   3. A space switch records the space left as the next launch's `spaces.last`.
   4. An agent's page hung backstage turns hidden once the agent has been
      quiet (`agents.quiet`, here 2 s), and visible again at its next call.
+  5. (hill-climb r4) Intent warms a space's page — ⌃ held, here `bench spaces
+     warm sides` — and a warmed page nobody goes to is put back to sleep
+     (`spaces.warm.cool`, here 12 s; 60 s by default).
 
 A fresh SEARCH_PROBE world of the development build, windowed (SpaceWarm
 never runs headless), pages from a local server: no network, no real Copper
@@ -132,7 +135,8 @@ token = secrets.token_hex(32)
 with open(os.path.join(folder, "agent.json"), "w") as f:
     json.dump({"enabled": True, "port": port, "token": token, "announces": False, "jev": False}, f)
 for key, kind, value in [("bench", "-bool", "true"), ("welcomed", "-bool", "true"), ("sidebar", "-bool", "true"),
-                         ("spaces.last", "-string", B), ("sleep.budget", "-int", "1"), ("agents.quiet", "-float", "2")]:
+                         ("spaces.last", "-string", B), ("sleep.budget", "-int", "1"), ("agents.quiet", "-float", "2"),
+                         ("spaces.warm.cool", "-float", "12")]:
     subprocess.run(["defaults", "write", domain, key, kind, value], check=True)
 
 try:
@@ -173,6 +177,14 @@ try:
     if "visible" not in seen:
         fail(f"at the next call the agent's page is {seen!r}")
     print("   quiet:", hidden, "· next call: visible")
+
+    print("5. ⌃ held in C warms the space beside it (B, asleep since 2); unvisited, it sleeps again")
+    until("B asleep", lambda: "Page b" not in loaded(), 20)
+    ask({"do": "spaces", "op": "warm", "arg": "sides"})
+    until("B warmed by intent", lambda: "Page b" in loaded(), 30)
+    t0 = time.time()
+    until("B's unvisited page back asleep", lambda: "Page b" not in loaded(), 40)
+    print(f"   warmed, then asleep again {time.time() - t0:.1f} s later")
     print("PASS idle-memory")
 finally:
     cleanup()

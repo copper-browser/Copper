@@ -13,6 +13,7 @@ struct PressLook: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var still
 
     func body(content: Content) -> some View {
+        if HCB.press { content } else {
         content
             .overlay {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
@@ -21,7 +22,17 @@ struct PressLook: ViewModifier {
             }
             .scaleEffect(down && !still ? 0.98 : 1)
             .animation(still ? nil : Motion.quick, value: down)
+        }
     }
+}
+
+// HCB: bisect switches (temporary, never shipped).
+enum HCB {
+    static let env = ProcessInfo.processInfo.environment
+    static let fade = env["HCB_FADE"] != nil
+    static let press = env["HCB_PRESS"] != nil
+    static let sat = env["HCB_SAT"] != nil
+    static let pair = env["HCB_PAIR"] != nil
 }
 
 /// The house ButtonStyle: a plain button that shows it was pressed. A
@@ -43,9 +54,11 @@ struct Pressable: ViewModifier {
     @State private var down = false
 
     func body(content: Content) -> some View {
+        if HCB.press { content } else {
         content
             .modifier(PressLook(down: down, radius: radius))
             .onLongPressGesture(minimumDuration: .infinity, maximumDistance: 4, perform: {}, onPressingChanged: { down = $0 })
+        }
     }
 }
 
@@ -57,6 +70,7 @@ struct FadingTitle: View {
     let text: Text
 
     var body: some View {
+        if HCB.fade { text.lineLimit(1).truncationMode(.tail) } else {
         ViewThatFits(in: .horizontal) {
             text.lineLimit(1)
             text.lineLimit(1)
@@ -70,6 +84,7 @@ struct FadingTitle: View {
                             .frame(width: 24)
                     }
                 }
+        }
         }
     }
 }
