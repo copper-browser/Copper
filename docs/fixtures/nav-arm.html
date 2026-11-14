@@ -7,12 +7,11 @@
 <form><input name="user"><input type="password" name="pass"></form>
 <iframe id="inner" src="nav-arm-frame.html" width="300" height="80"></iframe>
 <script>
-  // What the checks read: shield, veil, and the sign-in watcher in the page and in its frame.
+  // What the checks read: shield and veil. (The sign-in watcher lives in Copper's own
+  // content world, out of this script's sight: the check asks for it with `bench eval --copper`.)
   window.report = () => JSON.stringify({
     at: location.hostname + location.search,
     ad: getComputedStyle(document.getElementById("ad")).display,
     veiled: getComputedStyle(document.getElementById("veiled")).display,
-    forms: !!window.__officeForms,
-    frameForms: !!document.getElementById("inner").contentWindow.__officeForms,
   });
 </script>

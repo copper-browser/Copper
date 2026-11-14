@@ -419,10 +419,22 @@ final class Bench {
             guard let tab = find(request, in: browser) else { answer(missing(request)); return }
             guard let js = request["js"] as? String else { answer(["error": "eval needs js"]); return }
             house(tab)
-            tab.web.evaluateJavaScript(js) { value, error in
+            // Fork (agent-world): `copper` runs it where Copper's own page scripts live (Fork/MCP/Frames.swift).
+            guard request["copper"] as? Bool == true else {
+                tab.web.evaluateJavaScript(js) { value, error in
+                    MainActor.assumeIsolated {
+                        if let error { answer(["error": error.localizedDescription]); return }
+                        answer(["value": Bench.plain(value)])
+                    }
+                }
+                return
+            }
+            tab.web.evaluateJavaScript(js, in: nil, in: .copper) { result in
                 MainActor.assumeIsolated {
-                    if let error { answer(["error": error.localizedDescription]); return }
-                    answer(["value": Bench.plain(value)])
+                    switch result {
+                    case .success(let value): answer(["value": Bench.plain(value as? NSObject)])
+                    case .failure(let error): answer(["error": error.localizedDescription])
+                    }
                 }
             }
 

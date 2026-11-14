@@ -67,7 +67,8 @@ extension CanvasHost {
         controller.removeAllUserScripts()
         controller.removeAllContentRuleLists()
         Shield.shared.forget(controller) // Fork (navperf): its next tune puts the list back as before
-        controller.addUserScript(WKUserScript(source: typing, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        // In Copper's own world: the forms handler it tells is heard from there only (Fork/MCP/Frames.swift).
+        controller.addUserScript(WKUserScript(source: typing, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .copper))
         // Live web frames say where they are (CanvasFrames), from their own world.
         controller.addUserScript(frameScript)
         return true

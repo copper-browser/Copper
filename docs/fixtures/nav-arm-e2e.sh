@@ -61,13 +61,16 @@ check() {
   bench wait "$tab" 10 >/dev/null
   for _ in {1..20}; do
     got=$(bench eval "$tab" 'window.report ? window.report() : ""' 2>/dev/null || true)
-    [ "$got" = "$want" ] && { echo "ok   $got"; return; }
+    # The sign-in watcher, in the page and in its frame: in Copper's world, and not in the page's.
+    forms=$(bench eval "$tab" '[!!window.__officeForms, !!document.getElementById("inner").contentWindow.__officeForms].join()' --copper 2>/dev/null || true)
+    seen=$(bench eval "$tab" '!!window.__officeForms' 2>/dev/null || true)
+    [ "$got" = "$want" ] && [ "$forms" = "true,true" ] && [ "$seen" = false ] && { echo "ok   $got forms $forms (page sees: $seen)"; return; }
     sleep 0.25
   done
-  fail "$url: got $got, want $want"
+  fail "$url: got $got (forms $forms, page sees $seen), want $want (forms true,true, page sees false)"
 }
-armed='"ad":"none","veiled":"none","forms":true,"frameForms":true}'
-bare='"ad":"inline","veiled":"block","forms":true,"frameForms":true}'
+armed='"ad":"none","veiled":"none"}'
+bare='"ad":"inline","veiled":"block"}'
 check first 127.0.0.1 "$armed"
 check "http://localhost:$port/nav-arm.html" localhost "$bare"
 check "http://127.0.0.1:$port/nav-arm.html?again" "127.0.0.1?again" "$armed"

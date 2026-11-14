@@ -1,4 +1,5 @@
 import Foundation
+import WebKit
 
 /// Where an in-process sign-in was requested. The source is intentionally
 /// used only for routing/telemetry inside Copper; it is never returned to the
@@ -22,17 +23,27 @@ enum SignIn {
         guard let tab = AgentTabs.target(in: browser) else { throw Failure(message: AgentTabs.missing()) }
         AgentTabs.prepare(tab)
         guard !tab.shy else { throw Failure(message: "sign-in is unavailable in private tabs") }
-        // Fork (form-target): the account is the site's whose box has the
-        // caret — an embedded frame's when one has it — and the secret goes
-        // into that frame only. Picking by the page's host and filling the
-        // frame would hand the page's password to any frame that claims focus.
-        guard let target = tab.formTarget else { throw Failure(message: "current tab has no host") }
+        let what = ((args["what"] as? String) ?? "password").lowercased()
+        guard what == "password" || what == "otp" else {
+            throw Failure(message: "what must be password or otp")
+        }
+        let account = (args["account"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Fork (form-origin): the page itself, unless a frame is named or
+        // exactly one frame holds a sign-in a shared login is saved for —
+        // never wherever the caret happens to be. And only a login saved for
+        // that document's exact address (scheme, host and port).
+        let target = try await place(args, tab: tab, otp: what == "otp", account: account)
         let host = target.host
-        let framed = target.frame == nil ? "" : " (the box with the caret is in an embedded frame from \(host); click the sign-in box you mean first)"
+        let framed = target.frame == nil ? "" : " (in the embedded frame from \(target.origin))"
 
         let all = Credentials.candidates(for: host)
-        let permitted = AgentAccess.permitted(for: host)
+        let permitted = shared(for: target)
         guard !permitted.isEmpty else {
+            let wider = AgentAccess.permitted(for: host)
+            if !wider.isEmpty {
+                let saved = Array(Set(wider.flatMap(\.sites))).sorted().prefix(4).joined(separator: ", ")
+                throw Failure(message: "the shared login for \(host) is saved for \(saved), not \(target.origin)\(framed) — agents fill a login only on the exact address it was saved for. Save it for this address (browser_vault_save, or add the address to the item) to use it here")
+            }
             if !all.isEmpty {
                 throw Failure(message: "credential for \(host) exists but is not shared with agents — enable it in Settings › Passwords › Agent access")
             }
@@ -45,10 +56,9 @@ enum SignIn {
             if OnePassword.shared.isLocked {
                 throw Failure(message: "1password is locked — unlock it in Settings › Passwords")
             }
-            throw Failure(message: "no saved credential for \(host)\(framed)")
+            throw Failure(message: "no saved credential for \(host)\(framed)\(await elsewhere(tab, target: target, otp: what == "otp"))")
         }
 
-        let account = (args["account"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let selected: Credential?
         if let account, !account.isEmpty {
             selected = permitted.first(where: { $0.user == account })
@@ -68,17 +78,15 @@ enum SignIn {
             return ["candidates": permitted.map(\.user), "host": host]
         }
 
-        let what = ((args["what"] as? String) ?? "password").lowercased()
-        guard what == "password" || what == "otp" else {
-            throw Failure(message: "what must be password or otp")
-        }
         let submit = (args["submit"] as? Bool) ?? true
 
         switch what {
         case "password":
             // The field first, the secret second: a page with nothing to fill
             // never causes a read from the vault.
-            guard await tab.hasPasswordField(at: target) else { throw Failure(message: "sign-in fields not found on the page") }
+            guard await tab.hasPasswordField(at: target) else {
+                throw Failure(message: "sign-in fields not found on the page\(framed)\(await elsewhere(tab, target: target, otp: false))")
+            }
             let secret: String
             do {
                 secret = try await Credentials.secret(credential.id)
@@ -117,7 +125,9 @@ enum SignIn {
 
         case "otp":
             guard credential.hasTOTP else { throw Failure(message: "no one-time code for this account") }
-            guard await tab.hasOTPField(at: target) else { throw Failure(message: "no one-time-code field on the page") }
+            guard await tab.hasOTPField(at: target) else {
+                throw Failure(message: "no one-time-code field on the page\(framed)\(await elsewhere(tab, target: target, otp: true))")
+            }
             let code: String
             do {
                 code = try await Credentials.totp(credential.id)
@@ -146,5 +156,73 @@ enum SignIn {
         default:
             throw Failure(message: "what must be password or otp")
         }
+    }
+
+    // MARK: - where it goes (Fork: form-origin)
+
+    /// The shared logins an agent may fill into `target`: saved for that
+    /// document's exact address, and (when asked for by name) that account.
+    @MainActor
+    static func shared(for target: Tab.FormTarget, account: String? = nil) -> [Credential] {
+        AgentAccess.permitted(for: target.host).filter { credential in
+            guard Credentials.owns(credential, origin: target.origin) else { return false }
+            guard let account, !account.isEmpty else { return true }
+            return credential.user.caseInsensitiveCompare(account) == .orderedSame
+        }
+    }
+
+    @MainActor
+    private static func spot(_ frame: WKFrameInfo) -> Tab.FormTarget? {
+        guard let host = Tab.bare(frame.securityOrigin.host), let origin = Credentials.origin(of: frame.securityOrigin) else { return nil }
+        return Tab.FormTarget(frame: frame, host: host, origin: origin)
+    }
+
+    @MainActor
+    private static func has(_ target: Tab.FormTarget, otp: Bool, in tab: Tab) async -> Bool {
+        otp ? await tab.hasOTPField(at: target) : await tab.hasPasswordField(at: target)
+    }
+
+    /// The document a sign-in goes into: the frame the agent named; else the
+    /// page, when it has the boxes; else the one embedded frame that has
+    /// them and a shared login saved for its own address. Two such frames
+    /// are a question for the agent. The caret picks nothing: a frame can
+    /// take it.
+    @MainActor
+    static func place(_ args: [String: Any], tab: Tab, otp: Bool, account: String?) async throws -> Tab.FormTarget {
+        if let named = (args["frame"] as? String)?.trimmingCharacters(in: .whitespaces), !named.isEmpty {
+            let entry: Tools.Frames.Entry
+            do { entry = try Tools.Frames.frame(named: named, in: tab.web) } catch { throw Failure(message: error.localizedDescription) }
+            guard let target = spot(entry.info) else { throw Failure(message: "frame \(named) has no address a login could be saved for") }
+            return target
+        }
+        guard let page = tab.pageTarget else { throw Failure(message: "current tab has no host") }
+        if await has(page, otp: otp, in: tab) { return page }
+        var owned: [(number: Int, target: Tab.FormTarget)] = []
+        // Only frames whose forms script has seen a sign-in or code box: a page of ad frames costs nothing.
+        for entry in await Tools.Frames.live(tab.web, where: \.signIn) {
+            guard let target = spot(entry.info), !shared(for: target, account: account).isEmpty,
+                  await has(target, otp: otp, in: tab) else { continue }
+            owned.append((entry.number, target))
+        }
+        if owned.count > 1 {
+            let list = owned.map { "f\($0.number) (\($0.target.origin))" }.joined(separator: ", ")
+            throw Failure(message: "several embedded frames hold a sign-in with a shared login: \(list) — pass frame to say which")
+        }
+        return owned.first?.target ?? page
+    }
+
+    /// For a refusal: the embedded frames that do hold the boxes, so the
+    /// agent knows where the sign-in is and why nothing went there.
+    @MainActor
+    private static func elsewhere(_ tab: Tab, target: Tab.FormTarget, otp: Bool) async -> String {
+        guard target.frame == nil else { return "" }
+        var found: [String] = []
+        // Only frames whose forms script has seen a sign-in or code box: a page of ad frames costs nothing.
+        for entry in await Tools.Frames.live(tab.web, where: \.signIn) {
+            guard let framed = spot(entry.info), await has(framed, otp: otp, in: tab) else { continue }
+            found.append("f\(entry.number) (\(framed.origin))")
+        }
+        guard !found.isEmpty else { return "" }
+        return ". An embedded frame has the boxes: \(found.joined(separator: ", ")) — no shared login is saved for that address"
     }
 }

@@ -392,7 +392,7 @@ extension Tools.Ultrafast {
               o.observe(document.documentElement, {subtree: true, childList: true, attributes: true, characterData: true});
             });
             """
-            web.callAsyncJavaScript(script, arguments: [:], in: nil, in: .page) { _ in finish() }
+            web.callAsyncJavaScript(script, arguments: [:], in: nil, in: .copper) { _ in finish() }
             DispatchQueue.main.asyncAfter(deadline: .now() + cap + 0.1) { finish() }
         }
     }

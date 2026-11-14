@@ -14,9 +14,9 @@ import Testing
     #expect(tool.localizedDescription == "Timed out after 15 s")
 }
 
-@Test func theHelperKeepsTheConsoleShimItsOwnLoadTimeCopyUses() {
-    // The helper starts from the same shim agent tabs get at document start,
-    // so a page that already has it keeps the logs from its load.
-    #expect(Tools.Page.helper.hasPrefix(Tools.Page.consoleShim))
-    #expect(Tools.Page.helper.contains("var logs = window.__copperLogs;"))
+@Test func theHelperCarriesNoConsoleShim() {
+    // The recorder wraps the page's own console, so it goes into the page's
+    // world on its own (Page.js); the helper lives in Copper's and holds no logs.
+    #expect(!Tools.Page.helper.contains("__copperLogs"))
+    #expect(Tools.Page.consoleShim.contains("window.__copperLogs"))
 }

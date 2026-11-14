@@ -53,7 +53,7 @@ enum Trail {
                 await install(web)
                 web.callAsyncJavaScript(
                     "if (window.__jevTrail && window.__jevTrail.glide) { return await window.__jevTrail.glide(a); } return false;",
-                    arguments: ["a": ["x": x, "y": y]], in: nil, in: .page
+                    arguments: ["a": ["x": x, "y": y]], in: nil, in: .copper
                 ) { _ in
                     if arrived.take() { continuation.resume() }
                 }

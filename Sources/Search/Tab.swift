@@ -389,7 +389,7 @@ final class Tab: ObservableObject, Identifiable {
         let controller = web.configuration.userContentController
         controller.removeScriptMessageHandler(forName: ScrollRelay.name)
         controller.removeScriptMessageHandler(forName: VeilRelay.name)
-        controller.removeScriptMessageHandler(forName: FormRelay.name)
+        controller.removeScriptMessageHandler(forName: FormRelay.name, contentWorld: .copper)
         controller.removeScriptMessageHandler(forName: Passkeys.name, contentWorld: .page)
         controller.removeScriptMessageHandler(forName: ImageRelay.name)
         controller.removeScriptMessageHandler(forName: StoreRelay.name)
@@ -399,7 +399,8 @@ final class Tab: ObservableObject, Identifiable {
         controller.add(veils_, name: VeilRelay.name)
         controller.add(images, name: ImageRelay.name)
         controller.add(shop, name: StoreRelay.name)
-        controller.add(forms, name: FormRelay.name)
+        // Fork (agent-world): heard from Copper's own content world only — a page's script has no such handler to post to.
+        controller.add(forms, contentWorld: .copper, name: FormRelay.name)
         CaptureHook.listen(controller) // Fork (page-capture): what the page asks for and hears back (Fork/Capture/CaptureHook.swift)
         passkeysListening = false
         listenForPasskeys(controller) // Fork (passkeys-hooks): only while Copper is the authenticator
@@ -503,7 +504,11 @@ final class Tab: ObservableObject, Identifiable {
         )
         controller.addUserScript(
             // Every frame: a sign-in can be served inside one (Fork: frame-autofill).
-            WKUserScript(source: FormRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: false)
+            // In Copper's own world, out of the page's reach (Fork: agent-world).
+            WKUserScript(source: FormRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: false, in: .copper)
+        )
+        controller.addUserScript(
+            WKUserScript(source: FormRelay.early, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
         )
         controller.addUserScript(
             WKUserScript(source: Swipe.calm, injectionTime: .atDocumentStart, forMainFrameOnly: true)
@@ -585,18 +590,29 @@ final class Tab: ObservableObject, Identifiable {
     var formHost: String? { Self.bare(formFrame.map(\.securityOrigin.host) ?? address?.host()) }
 
     /// Fork (form-target): where a fill goes, fixed when the account is
-    /// chosen — the frame with the caret then (nil: the page) and its site.
-    /// Any frame can say it has the caret, so a fill never follows the caret
-    /// later: it goes into this frame, and only while the frame is still on
-    /// this site.
+    /// chosen — the frame with the caret then (nil: the page), its site, and
+    /// its origin (scheme, host and port, as `location.origin` says it). A
+    /// fill never follows the caret later: it goes into this frame, and only
+    /// while the document there is still of this origin (form-origin).
     struct FormTarget {
         let frame: WKFrameInfo?
         let host: String
+        let origin: String
     }
 
-    var formTarget: FormTarget? { formHost.map { FormTarget(frame: formFrame, host: $0) } }
+    var formTarget: FormTarget? {
+        let origin = formFrame.map { Credentials.origin(of: $0.securityOrigin) } ?? address.map { Credentials.origin(of: $0) }
+        guard let host = formHost, let origin = origin ?? nil else { return nil }
+        return FormTarget(frame: formFrame, host: host, origin: origin)
+    }
 
-    private static func bare(_ host: String?) -> String? {
+    /// Fork (agent-frames): the page itself as a target, whatever has the caret.
+    var pageTarget: FormTarget? {
+        guard let address, let host = Self.bare(address.host()), let origin = Credentials.origin(of: address) else { return nil }
+        return FormTarget(frame: nil, host: host, origin: origin)
+    }
+
+    static func bare(_ host: String?) -> String? {
         guard let host = host?.lowercased(), !host.isEmpty else { return nil }
         return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
@@ -607,29 +623,51 @@ final class Tab: ObservableObject, Identifiable {
             && a.securityOrigin.port == b.securityOrigin.port && a.request.url == b.request.url
     }
 
+    /// Fork (form-origin): which of the page's frames the page itself says
+    /// has the caret (its place among the page's frames), and a frame's
+    /// claim to the caret that the page hasn't confirmed yet.
+    private var frameAt: Int?
+    private var claim: (frame: WKFrameInfo, at: Int, body: [String: Any])?
+
     /// Whether a focus message from `frame` speaks for the caret. The page
     /// always does — it says "in a frame" another way (`frameMoved`). An
-    /// embedded frame does when it has the caret (`holding`), or lets go
-    /// after having it; every other frame on the page (ads, embeds) is
+    /// embedded frame does when it has the caret (`holding`) and the page
+    /// has said the caret is in that very frame (`at`); until then its word
+    /// is held (`claim`) and the page is asked. A frame letting go after
+    /// having it speaks too; every other frame on the page (ads, embeds) is
     /// talking about nothing.
-    func focusFrom(_ frame: WKFrameInfo, holding: Bool) -> Bool {
+    func focusFrom(_ frame: WKFrameInfo, holding: Bool, at: Int? = nil, body: [String: Any] = [:]) -> Bool {
         if frame.isMainFrame {
-            formFrame = nil; frameOrigin = nil; frameField = nil
+            formFrame = nil; frameOrigin = nil; frameField = nil; frameAt = nil; claim = nil
             return true
         }
         if holding {
+            guard let at, at >= 0, at == frameAt else {
+                claim = at.flatMap { $0 >= 0 ? (frame, $0, body) : nil }
+                // The page hears nothing when the caret goes into a frame; asked, it says which (`frameMoved`).
+                if claim != nil { page("window.__officeForms && window.__officeForms.caret()") }
+                return false
+            }
             if let held = formFrame, Self.same(held, frame) { formFrame = frame; return true }
-            formFrame = frame; frameOrigin = nil; frameField = nil
+            formFrame = frame; frameField = nil
             return true
         }
+        if let held = claim, Self.same(held.frame, frame) { claim = nil }
         return formFrame.map { Self.same($0, frame) } ?? false
     }
 
-    /// The page says the caret is in one of its frames, and where that
-    /// frame's content starts. The frame itself says which box.
-    // shortcut: one level of frames only — a sign-in nested two iframes deep is placed against the outer frame; walk frame parents if one turns up.
-    func frameMoved(_ origin: CGPoint) {
+    /// The page says the caret is in one of its frames (`at`: which), and
+    /// where that frame's content starts. The frame itself says which box.
+    // shortcut: the page vouches for its own frames only — a sign-in nested two iframes deep is believed with the outer frame and placed against it; walk frame parents if one turns up.
+    func frameMoved(_ origin: CGPoint, at: Int) {
+        if frameAt != at { formFrame = nil; frameField = nil }
+        frameAt = at
         frameOrigin = origin
+        if let held = claim {
+            claim = nil
+            // The frame the page vouches for is heard; any other's word is dropped.
+            if held.at == at { forms.focus(held.body, from: held.frame); return }
+        }
         guard formFrame != nil else {
             // A frame that hasn't spoken (yet, or has no box): as before, nothing to hang from.
             typing = false
@@ -647,10 +685,8 @@ final class Tab: ObservableObject, Identifiable {
         if let frame, !frame.isMainFrame {
             frameField = rect
             guard let rect else { onField?(self, nil); return }
-            if frameOrigin != nil { place(rect); return }
-            // The page hears nothing when the caret goes into a frame; asked,
-            // it says where the frame is (`frameMoved`), and the list is placed then.
-            web.evaluateJavaScript("window.__officeForms && window.__officeForms.caret()")
+            // Believed only after the page said where the frame is (`focusFrom`).
+            if frameOrigin != nil { place(rect) }
             return
         }
         guard let rect else {
@@ -726,26 +762,25 @@ final class Tab: ObservableObject, Identifiable {
     }
 
     /// The forms script, run where the sign-in is: in `frame`, else the
-    /// embedded frame the caret is in, else the page.
+    /// embedded frame the caret is in, else the page. Always in Copper's own
+    /// content world, where the script lives (Fork: agent-world).
     /// With `target` (form-target): in exactly that frame, and only if the
-    /// document there is still on the target's site — else it answers false.
+    /// document there is still of the target's origin — else it answers false.
     private func forms(_ js: String, in frame: WKFrameInfo? = nil, at target: FormTarget? = nil, done: ((Any?) -> Void)? = nil) {
         if let target {
-            guard let host = jsonLiteral(target.host) else { done?(false); return }
-            // `location` can't be redefined by the page, and `===` can't be hooked.
-            let guarded = "((location.hostname === \(host) || location.hostname === 'www.' + \(host)) ? (\(js)) : false)"
-            guard let frame = target.frame else {
-                web.evaluateJavaScript(guarded) { result, _ in done?(result) }
-                return
-            }
-            web.evaluateJavaScript(guarded, in: frame, in: .page) { done?(try? $0.get()) }
+            guard let origin = jsonLiteral(target.origin) else { done?(false); return }
+            // Copper's world has its own `location`; nothing the page defines reaches it.
+            let guarded = "(location.origin === \(origin) ? (\(js)) : false)"
+            web.evaluateJavaScript(guarded, in: target.frame, in: .copper) { done?((try? $0.get()) as? NSObject) }
             return
         }
-        guard let frame = frame ?? formFrame else {
-            web.evaluateJavaScript(js) { result, _ in done?(result) }
-            return
-        }
-        web.evaluateJavaScript(js, in: frame, in: .page) { done?(try? $0.get()) }
+        web.evaluateJavaScript(js, in: frame ?? formFrame, in: .copper) { done?((try? $0.get()) as? NSObject) }
+    }
+
+    /// The forms script in the page itself, whatever frame has the caret.
+    private func page(_ js: String) {
+        guard let built else { return }
+        built.evaluateJavaScript(js, in: nil, in: .copper)
     }
 
     /// Puts a remembered name and password where a person would have typed
@@ -1076,9 +1111,10 @@ final class Tab: ObservableObject, Identifiable {
     func unsaved(_ done: @escaping (Bool) -> Void) {
         guard let built else { return done(false) }
         built.evaluateJavaScript(
-            "!!(window.__officeForms && window.__officeForms.unsaved && window.__officeForms.unsaved())"
-        ) { value, _ in
-            MainActor.assumeIsolated { done((value as? Bool) == true) }
+            "!!(window.__officeForms && window.__officeForms.unsaved && window.__officeForms.unsaved())",
+            in: nil, in: .copper // Fork (agent-world)
+        ) { result in
+            MainActor.assumeIsolated { done((try? result.get()) as? Bool == true) }
         }
     }
 
@@ -1460,7 +1496,7 @@ final class Tab: ObservableObject, Identifiable {
         let controller = web.configuration.userContentController
         controller.removeScriptMessageHandler(forName: ScrollRelay.name)
         controller.removeScriptMessageHandler(forName: VeilRelay.name)
-        controller.removeScriptMessageHandler(forName: FormRelay.name)
+        controller.removeScriptMessageHandler(forName: FormRelay.name, contentWorld: .copper)
         controller.removeScriptMessageHandler(forName: Passkeys.name, contentWorld: .page)
         Passkeys.drop(self) // Fork (passkey-picker): the page waiting on a passkey is gone
         controller.removeScriptMessageHandler(forName: ImageRelay.name)

@@ -109,10 +109,10 @@ for _ in {1..60}; do bench tabs >/dev/null 2>&1 && break; sleep 0.25; done
 bench tabs >/dev/null || fail "headless bench"
 
 json() { python3 -c "import json,sys; d=json.loads(sys.argv[1]); print($2)" "$1"; }
-wait_eval() { # ID JS-returning-truthy TRIES
+wait_eval() { # ID JS-returning-truthy TRIES [--copper: in Copper's own world, where its forms script is]
   local out
   for _ in $(seq 1 "${3:-60}"); do
-    out=$(bench eval "$1" "$2" 2>/dev/null || true)
+    out=$(bench eval "$1" "$2" ${4:+"$4"} 2>/dev/null || true)
     [ "$out" = true ] && return 0
     sleep 0.1
   done
@@ -155,7 +155,7 @@ bench op backend onepassword >/dev/null
 
 # --- 1. A sign-in is not offered a new password ----------------------------
 lg=$(bench open "http://localhost:$port/login")
-wait_eval "$lg" "document.readyState === 'complete' && !!window.__officeForms" || fail "login page"
+wait_eval "$lg" "document.readyState === 'complete' && !!window.__officeForms" 60 --copper || fail "login page"
 bench eval "$lg" "document.getElementById('user').value = 'alice@example.com'; 'typed'" >/dev/null
 rows=$(rows_after_focus "$lg" "#pass")
 json "$rows" "'new-password' not in d.get('rows', [])" | grep -q True || fail "sign-in offered a new password: $rows"
@@ -164,7 +164,7 @@ bench close "$lg" >/dev/null
 
 # --- 2. Sign-up with passwordrules ------------------------------------------
 su=$(bench open "http://localhost:$port/signup")
-wait_eval "$su" "document.readyState === 'complete' && !!window.__officeForms" || fail "signup page"
+wait_eval "$su" "document.readyState === 'complete' && !!window.__officeForms" 60 --copper || fail "signup page"
 bench eval "$su" "(() => { const e = document.getElementById('email'); e.focus(); e.value = 'dana@example.com';
   e.dispatchEvent(new Event('input', {bubbles: true})); return 'typed'; })()" >/dev/null
 rows=$(rows_after_focus "$su" "#new")
@@ -188,8 +188,8 @@ bench close "$su" >/dev/null
 
 # --- 3. UKG's change form, 1Password -----------------------------------------
 ch=$(bench open "http://localhost:$port/change?u=alice@example.com")
-wait_eval "$ch" "document.readyState === 'complete' && !!window.__officeForms" || fail "change page"
-roles=$(bench eval "$ch" "['OldPass','Pass1','Pass2'].map(n => (window.__officeForms.classify(document.getElementById(n)) || {}).role).join(',')")
+wait_eval "$ch" "document.readyState === 'complete' && !!window.__officeForms" 60 --copper || fail "change page"
+roles=$(bench eval "$ch" "['OldPass','Pass1','Pass2'].map(n => (window.__officeForms.classify(document.getElementById(n)) || {}).role).join(',')" --copper)
 [ "$roles" = current,new,confirm ] || fail "roles $roles"
 rows=$(rows_after_focus "$ch" "#Pass1")
 [ "$(json "$rows" "d['rows'][0]")" = new-password ] || fail "change form list: $rows"
@@ -220,7 +220,7 @@ printf 'url,username,password\nhttp://localhost:%s/,erin@example.com,erin-old-pw
 bench passwords import "$tmp/logins.csv" >/dev/null
 for _ in {1..40}; do [ "$(json "$(bench passwords status)" "(d.get('lastImport') or {}).get('kept', -1)")" = 1 ] && break; sleep 0.1; done
 kc=$(bench open "http://localhost:$port/change?u=erin@example.com")
-wait_eval "$kc" "document.readyState === 'complete' && !!window.__officeForms" || fail "change page (keychain)"
+wait_eval "$kc" "document.readyState === 'complete' && !!window.__officeForms" 60 --copper || fail "change page (keychain)"
 rows_after_focus "$kc" "#Pass1" >/dev/null
 bench op pick new-password >/dev/null
 wait_eval "$kc" "document.getElementById('Pass1').value.length === 20 && document.getElementById('OldPass').value === 'erin-old-pw'" \
@@ -257,7 +257,7 @@ wait_offer() {
   echo "$offer"
 }
 ts=$(bench open "http://localhost:$port/signup")
-wait_eval "$ts" "document.readyState === 'complete' && !!window.__officeForms" || fail "signup page (typed)"
+wait_eval "$ts" "document.readyState === 'complete' && !!window.__officeForms" 60 --copper || fail "signup page (typed)"
 typed "$ts" "#email" frank@example.com
 typed "$ts" "#new" Typed-by-hand-1
 typed "$ts" "#again" Typed-by-hand-1
@@ -273,7 +273,7 @@ bench passwords forget localhost frank@example.com >/dev/null
 echo "PASS typed sign-up: Save offer for frank with the new password"
 
 tc=$(bench open "http://localhost:$port/change?then=login")
-wait_eval "$tc" "document.readyState === 'complete' && !!window.__officeForms" || fail "change page (typed)"
+wait_eval "$tc" "document.readyState === 'complete' && !!window.__officeForms" 60 --copper || fail "change page (typed)"
 typed "$tc" "#OldPass" whatever-it-was
 typed "$tc" "#Pass1" Typed-change-22
 typed "$tc" "#Pass2" Typed-change-22
@@ -291,7 +291,7 @@ bench close "$tc" >/dev/null
 copper() { SEARCH_PROBE="$world" SEARCH_MCP_PORT="$mcp_port" "$root/build/Copper.app/Contents/Resources/bin/copper" "$@"; }
 bench op backend onepassword >/dev/null
 ag=$(bench open "http://localhost:$port/change?u=alice@example.com")
-wait_eval "$ag" "document.readyState === 'complete' && !!window.__officeForms" || fail "change page (agent)"
+wait_eval "$ag" "document.readyState === 'complete' && !!window.__officeForms" 60 --copper || fail "change page (agent)"
 bench select "$ag" >/dev/null
 out=$(copper call browser_autofill '{"kind":"new-password","reason":"e2e"}' 2>&1 || true)
 case "$out" in *"not shared with agents"*) ;; *) fail "unshared login was not refused: $out";; esac
@@ -310,7 +310,7 @@ bench close "$ag" >/dev/null
 echo "PASS agent change: refused while unshared; shared, saved + filled with no password in the answer"
 
 as=$(bench open "http://localhost:$port/signup")
-wait_eval "$as" "document.readyState === 'complete' && !!window.__officeForms" || fail "signup page (agent)"
+wait_eval "$as" "document.readyState === 'complete' && !!window.__officeForms" 60 --copper || fail "signup page (agent)"
 bench select "$as" >/dev/null
 out=$(copper autofill new-password --account gina@example.com --submit 2>&1) || fail "copper autofill new-password: $out"
 wait_eval "$as" "!!document.getElementById('ok')" || fail "agent sign-up was not submitted: $out"

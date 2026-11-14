@@ -67,10 +67,10 @@ python3 -c 'import json,sys; assert json.loads(sys.argv[1])["probeKeychain"]' "$
 bench passkeys answer yes >/dev/null
 
 json() { python3 -c "import json,sys; d=json.loads(sys.argv[1]); print($2)" "$1"; }
-wait_eval() { # ID JS-returning-truthy TRIES
+wait_eval() { # ID JS-returning-truthy TRIES [--copper: in Copper's own world, where its forms script is]
   local out
   for _ in $(seq 1 "${3:-60}"); do
-    out=$(bench eval "$1" "$2" 2>/dev/null || true)
+    out=$(bench eval "$1" "$2" ${4:+"$4"} 2>/dev/null || true)
     [ "$out" = true ] && return 0
     sleep 0.1
   done
@@ -127,7 +127,7 @@ cands=$(bench bw candidates localhost)
 [ "$(json "$cands" "[c['totp'] for c in d['candidates'] if c['user']=='alice'][0]")" = True ] || fail "alice has no code: $cands"
 
 lg=$(bench open "http://localhost:$port/login")
-wait_eval "$lg" "document.readyState === 'complete' && !!window.__officeForms" || fail "login page"
+wait_eval "$lg" "document.readyState === 'complete' && !!window.__officeForms" 60 --copper || fail "login page"
 bench select "$lg" >/dev/null
 bench eval "$lg" "document.getElementById('user').focus(); 'focused'" >/dev/null
 krow=""

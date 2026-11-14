@@ -58,8 +58,10 @@ python3 - "$port" <<'PY' >"$tmp/server.log" 2>&1 &
 import http.server, sys
 pages = {
   # The page signs in at 127.0.0.1; its frame comes from localhost and says
-  # what its boxes hold (the password's length only), and on "spoof" tells
-  # Copper the caret is in it — any page can post that message.
+  # what its boxes hold (the password's length only), and on "spoof" tries to
+  # tell Copper the caret is in it (the forms handler is in Copper's own
+  # content world now, so a page's script has nothing to post to); on "grab"
+  # it really takes the caret, as any frame can.
   '/spoof': b'''<!doctype html><meta charset="utf-8"><title>Victim</title>
 <form id="f"><input id="user" name="username" type="email" autocomplete="username">
 <input id="pass" name="password" type="password" autocomplete="current-password"></form>
@@ -72,7 +74,9 @@ document.getElementById('f').addEventListener('submit', (e) => e.preventDefault(
 <script>const tell = () => parent.postMessage({ evil: document.getElementById('user').value, len: document.getElementById('pass').value.length }, '*');
 document.addEventListener('input', tell, true); setInterval(tell, 200);
 document.getElementById('f').addEventListener('submit', (e) => { e.preventDefault(); tell(); });
-addEventListener('message', (e) => { if (e.data === 'spoof') webkit.messageHandlers.officeForms.postMessage(
+addEventListener('message', (e) => {
+  if (e.data === 'grab') document.getElementById('pass').focus();
+  if (e.data === 'spoof') webkit.messageHandlers.officeForms.postMessage(
   { kind: 'focus', typing: true, rect: { x: 10, y: 10, width: 200, height: 24 }, field: null, hint: '' }); });</script>''',
   '/code': b'''<!doctype html><meta charset="utf-8"><title>Code</title>
 <form id="f"><label>Verification code <input id="otp" name="otp" inputmode="numeric" autocomplete="one-time-code"></label></form>
@@ -135,9 +139,9 @@ text = " ".join(c.get("text", "") for c in r.get("content", []))
 print(("err" if r.get("isError") else "ok") + "\t" + text.replace("\n", " "))' "$raw"
 }
 ok() { [ "${1%%$'\t'*}" = ok ]; }
-eval_in() { bench eval "$1" "$2" 2>/dev/null || true; }
-wait_eval() { # ID JS-returning-true TRIES
-  for _ in $(seq 1 "${3:-60}"); do [ "$(eval_in "$1" "$2")" = true ] && return 0; sleep 0.1; done
+eval_in() { bench eval "$1" "$2" ${3:+"$3"} 2>/dev/null || true; }
+wait_eval() { # ID JS-returning-true TRIES [--copper: in Copper's own world, where its forms script is]
+  for _ in $(seq 1 "${3:-60}"); do [ "$(eval_in "$1" "$2" "${4:-}")" = true ] && return 0; sleep 0.1; done
   return 1
 }
 wait_step() {
@@ -161,7 +165,7 @@ cards=$(bench op cards)
 out=$(mcp card browser_tabs "{\"action\":\"new\",\"url\":\"$base/card\"}")
 ok "$out" || fail "card tab: $out"
 ct=$(tab_of "$out")
-wait_eval "$ct" "document.readyState === 'complete' && !!window.__officeForms" || fail "card page"
+wait_eval "$ct" "document.readyState === 'complete' && !!window.__officeForms" 60 --copper || fail "card page"
 out=$(mcp card browser_autofill '{"kind":"card"}')
 ok "$out" || fail "card in the Agents vault refused: $out"
 wait_eval "$ct" "document.getElementById('num').value.length === 16" 30 || fail "card not filled: $out"
@@ -182,6 +186,12 @@ at=$(tab_of "$out")
 wait_eval "$at" "document.getElementById('evil').textContent.indexOf('\"len\":0') >= 0" 80 || fail "frame never loaded"
 bench eval "$at" "document.getElementById('fr').contentWindow.postMessage('spoof', '*'); 1" >/dev/null
 sleep 0.6
+# The page's world has none of Copper's helpers or handlers to call.
+[ "$(eval_in "$at" "!!(window.__officeForms || window.__copper || window.__jevFast || (window.webkit && webkit.messageHandlers && webkit.messageHandlers.officeForms))")" = false ] \
+  || fail "Copper's helpers or forms handler are reachable from the page's own scripts"
+# The frame really takes the caret too: a sign-in goes to the page all the same.
+bench eval "$at" "document.getElementById('fr').contentWindow.postMessage('grab', '*'); 1" >/dev/null
+sleep 0.4
 out=$(mcp a browser_sign_in '{"account":"alice","submit":false}')
 sleep 0.8
 said=$(eval_in "$at" "document.getElementById('evil').textContent")
@@ -190,9 +200,18 @@ echo "   sign-in: $out"
 echo "   frame says $said; page password length $page"
 grep -q '"len":0' <<<"$said" || fail "the page's password reached the cross-origin frame ($said)"
 grep -q 'alice' <<<"$said" && fail "the page's account name reached the frame ($said)"
-ok "$out" && fail "sign-in with a spoofed frame focus succeeded: $out"
-[ "$page" = 0 ] || fail "filled the page while the caret was claimed by a frame ($page)"
-step "2 a cross-origin frame that posts focus gets nothing (${out#*$'\t'})"
+ok "$out" || fail "sign-in on the page, a frame holding the caret: $out"
+[ "$page" = 12 ] || fail "the page's own boxes weren't filled ($page)"
+# Named, the frame is still refused: the login isn't saved for its address.
+snap=$(mcp a browser_snapshot '{}')
+fr=$(grep -oE 'frame=f[0-9]+' <<<"$snap" | head -1 | cut -d= -f2)
+[ -n "$fr" ] || fail "the snapshot names no frame: $snap"
+out=$(mcp a browser_sign_in "{\"account\":\"alice\",\"submit\":false,\"frame\":\"$fr\"}")
+ok "$out" && fail "the page's login was filled into a frame of another origin: $out"
+sleep 0.5
+grep -q '"len":0' <<<"$(eval_in "$at" "document.getElementById('evil').textContent")" || fail "the named frame got the page's password"
+bench eval "$at" "document.getElementById('user').value = ''; document.getElementById('pass').value = ''; 1" >/dev/null
+step "2 a cross-origin frame gets nothing — not by posting focus, not by taking the caret, not when named (${out#*$'\t'})"
 
 # --- 3. The page's own sign-in ----------------------------------------------
 bench eval "$at" "document.getElementById('user').focus(); 1" >/dev/null
@@ -207,7 +226,7 @@ step "3 the caret on the page: the page's account fills the page, not the frame"
 # --- 4. A one-time code is sent ---------------------------------------------
 out=$(mcp a browser_navigate "{\"url\":\"$base/code\"}")
 ok "$out" || fail "navigate to code page: $out"
-wait_eval "$at" "document.readyState === 'complete' && !!window.__officeForms" || fail "code page"
+wait_eval "$at" "document.readyState === 'complete' && !!window.__officeForms" 60 --copper || fail "code page"
 out=$(mcp a browser_sign_in '{"account":"alice","what":"otp"}')
 ok "$out" || fail "otp sign-in: $out"
 grep -q '"submitted":true' <<<"$out" || fail "the code was filled but not sent: $out"
@@ -224,6 +243,7 @@ ok "$out" || fail "the agent closing its own tab: $out"
 bench tabs | grep -q "$at" && fail "the agent's tab is still open"
 user_ok() { [ "$(eval_in "$ut" "location.pathname + '|' + document.title")" = "/user|User page" ] || fail "the user's tab was changed: $(eval_in "$ut" "location.href + '|' + document.title")"; }
 for call in "browser_navigate {\"url\":\"$base/code\"}" "browser_evaluate {\"function\":\"() => { document.title = 'hacked'; return 1 }\"}" \
+            "jev_extract {\"instruction\":\"what does the page say\"}" \
             "browser_close {}" "browser_tabs {\"action\":\"close\"}"; do
   out=$(mcp a ${call%% *} "${call#* }")
   ok "$out" && fail "${call%% *} after the agent's tab closed was not refused: $out"
@@ -239,7 +259,7 @@ ok "$out" || fail "a new tab after the close: $out"
 out=$(mcp a browser_navigate "{\"url\":\"$base/card\"}")
 ok "$out" || fail "navigate in the new tab: $out"
 user_ok
-step "5 the agent's tab closed: navigate/evaluate/close refused, user's tab untouched, snapshot reads it, browser_tabs new works again"
+step "5 the agent's tab closed: navigate/evaluate/jev_extract/close refused, user's tab untouched, snapshot reads it, browser_tabs new works again"
 
 # --- 6. An agent that never had a tab can't close the user's -----------------
 out=$(mcp b browser_close '{}')
