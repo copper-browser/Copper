@@ -123,7 +123,7 @@ enum Vault {
 
     /// Fork (origin-save): the scheme and port an item was saved with, as an
     /// origin. Nil when it has no http(s) protocol (saved before they were kept).
-    private static func origin(of row: [String: Any], host: String) -> String? {
+    static func origin(of row: [String: Any], host: String) -> String? {
         let scheme: String
         switch row[kSecAttrProtocol as String] as? String {
         case (kSecAttrProtocolHTTP as String)?: scheme = "http"

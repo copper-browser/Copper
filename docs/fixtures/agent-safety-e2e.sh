@@ -16,6 +16,14 @@
 #      tab was closed" and the user's tab is untouched; a read (snapshot)
 #      still reads the tab on screen; browser_tabs new gets a tab again.
 #   6. An agent that never had a tab can't browser_close the user's tab.
+#   7. browser_autofill kind=new-password on 127.0.0.1:P never reads into the
+#      page, or changes, the keychain login saved from 127.0.0.1:<other port>.
+#   8. A custom field of a login saved for localhost:8765 never fills
+#      localhost:P.
+#   9. The page navigates to another origin while the new password is saved
+#      (1Password, slowed by the mock): nothing goes into the new page.
+#  10. The caret moves into a cross-origin frame while it is saved: the
+#      password goes to the page's form it was made for, not the frame.
 #
 # COPPER_APP=/path/Copper.app runs another build (COPPER_KEEP_GOING=1 for all steps).
 # Ports: MCP $COPPER_MCP_PORT (4170), pages $FIXTURE_PORT (4171).
@@ -85,6 +93,29 @@ addEventListener('message', (e) => {
 <form id="f"><input id="num" name="cardnumber" autocomplete="cc-number"><input id="name" name="ccname" autocomplete="cc-name">
 <input id="exp" name="exp" autocomplete="cc-exp"><input id="csc" name="cvc" autocomplete="cc-csc"></form>''',
   '/user': b'''<!doctype html><meta charset="utf-8"><title>User page</title><p>The user's own tab.</p>''',
+  # A change-password form for bob, and a sign-up form; each says only lengths.
+  '/change': b'''<!doctype html><meta charset="utf-8"><title>Change</title>
+<form id="f"><input id="user" name="username" autocomplete="username" value="bob">
+<input id="cur" name="current" type="password" autocomplete="current-password">
+<input id="new" name="new" type="password" autocomplete="new-password"><input id="again" name="again" type="password" autocomplete="new-password"></form>''',
+  '/signup': b'''<!doctype html><meta charset="utf-8"><title>Sign up</title>
+<form id="f"><input id="user" name="username" autocomplete="username" value="nav@example.com">
+<input id="new" name="new" type="password" autocomplete="new-password"><input id="again" name="again" type="password" autocomplete="new-password"></form>''',
+  # A sign-up on the page and a frame from localhost with a new-password box of its own,
+  # which takes the caret when told to ("grab") and tells the page what its box holds.
+  '/signup-frame': b'''<!doctype html><meta charset="utf-8"><title>Sign up, framed</title>
+<form id="f"><input id="user" name="username" autocomplete="username" value="focus@example.com">
+<input id="new" name="new" type="password" autocomplete="new-password"><input id="again" name="again" type="password" autocomplete="new-password"></form>
+<p id="evil">nothing</p><iframe id="fr" style="width:420px;height:120px"></iframe>
+<script>document.getElementById('fr').src = 'http://localhost:' + location.port + '/evil-new';
+addEventListener('message', (e) => { if (e.data && e.data.len !== undefined) document.getElementById('evil').textContent = JSON.stringify(e.data); });</script>''',
+  '/evil-new': b'''<!doctype html><meta charset="utf-8"><title>Frame</title>
+<form><input id="new" type="password" autocomplete="new-password"><input id="again" type="password" autocomplete="new-password"></form>
+<script>setInterval(() => parent.postMessage({ len: document.getElementById('new').value.length }, '*'), 100);
+addEventListener('message', (e) => { if (e.data === 'grab') document.getElementById('new').focus(); });</script>''',
+  # A custom field by its label.
+  '/acct': b'''<!doctype html><meta charset="utf-8"><title>Account</title>
+<form><label>Account number <input id="acct" name="acct"></label></form>''',
 }
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
@@ -265,5 +296,84 @@ out=$(mcp b browser_close '{}')
 ok "$out" && fail "browser_close from an agent with no tab closed something: $out"
 bench tabs | grep -q "$ut" || fail "the user's tab was closed by an agent with no tab"
 step "6 browser_close from an agent with no tab of its own refuses (${out#*$'\t'})"
+# --- 7. A new password never uses another port's login ---------------------
+# Kept from http://127.0.0.1:<another port>: the keychain records that origin.
+printf 'url,username,password\nhttp://127.0.0.1:%s/,bob,bob-old-pw\n' "$((port + 7))" >"$tmp/bob.csv"
+bench passwords import "$tmp/bob.csv" >/dev/null
+for _ in {1..40}; do [ "$(json "$(bench passwords check 127.0.0.1 bob bob-old-pw)" "d['matches']")" = True ] && break; sleep 0.1; done
+out=$(mcp c browser_tabs "{\"action\":\"new\",\"url\":\"$base/change\"}")
+ok "$out" || fail "change tab: $out"
+nt=$(tab_of "$out")
+wait_eval "$nt" "document.readyState === 'complete' && !!window.__officeForms" 60 --copper || fail "change page"
+bench eval "$nt" "document.getElementById('new').focus(); 1" >/dev/null
+out=$(mcp c browser_autofill '{"kind":"new-password","account":"bob"}')
+sleep 0.4
+lens=$(eval_in "$nt" "['cur','new','again'].map(i => document.getElementById(i).value.length).join(',')")
+ok "$out" && fail "a new password for $base used the login saved for port $((port + 7)): $out (boxes $lens)"
+[ "$lens" = "0,0,0" ] || fail "boxes filled although refused: $lens (the current box holds another port's password when its first is non-zero)"
+[ "$(json "$(bench passwords check 127.0.0.1 bob bob-old-pw)" "d['matches']")" = True ] || fail "the other port's login was changed"
+grep -q 'bob-old-pw' <<<"$out" && fail "the old password is in the answer"
+step "7 new-password: another port's login is neither read into the page nor changed (${out#*$'\t'})"
+
+# --- 8. A custom field fills only on its login's own address ------------------
+bench op signin password correct horse battery staple >/dev/null; wait_step signin-password
+for _ in {1..50}; do [ "$(json "$(bench op cards)" "len(d.get('cards', []))")" != 0 ] && break; sleep 0.1; done
+sleep 0.5
+# The mock's "Localhost" login (alice; fields PIN, Account number) is saved for http://localhost:8765/.
+out=$(mcp c browser_navigate "{\"url\":\"http://localhost:$port/acct\"}")
+ok "$out" || fail "acct page: $out"
+wait_eval "$nt" "document.readyState === 'complete' && !!window.__officeForms" 60 --copper || fail "acct page forms"
+bench eval "$nt" "document.getElementById('acct').focus(); 1" >/dev/null
+sleep 0.3
+out=$(mcp c browser_autofill '{"kind":"field","name":"Account number"}')
+sleep 0.3
+got=$(eval_in "$nt" "document.getElementById('acct').value.length")
+ok "$out" && fail "a field of the login for localhost:8765 filled http://localhost:$port: $out"
+[ "$got" = 0 ] || fail "the field reached another port's page ($got chars)"
+grep -q 'AC-1001' <<<"$out" && fail "the field's value is in the answer"
+step "8 a custom field stays off another port of the same host (${out#*$'\t'})"
+
+# --- 9. Navigation during the save: the new password goes nowhere else --------
+bench op backend onepassword >/dev/null
+op mock set latency_ms 1500 >/dev/null
+out=$(mcp c browser_navigate "{\"url\":\"$base/signup\"}")
+ok "$out" || fail "signup page: $out"
+wait_eval "$nt" "document.readyState === 'complete' && !!window.__officeForms" 60 --copper || fail "signup forms"
+bench eval "$nt" "document.getElementById('new').focus(); 1" >/dev/null
+mcp c browser_autofill '{"kind":"new-password"}' >"$tmp/nav.out" &
+call=$!
+sleep 0.6
+# The same form, another origin (localhost, not 127.0.0.1), while the save waits on 1Password.
+bench eval "$nt" "location.href = 'http://localhost:$port/signup'; 1" >/dev/null
+wait "$call" || true
+out=$(cat "$tmp/nav.out")
+sleep 0.3
+lens=$(eval_in "$nt" "location.host + ' ' + document.getElementById('new').value.length")
+[ "$lens" = "localhost:$port 0" ] || fail "the new password made for $base went into the page that replaced it ($lens): $out"
+ok "$out" && fail "a fill into a page that navigated away reported success: $out"
+step "9 the page navigates while the password is saved: nothing goes into the new page (${out#*$'\t'})"
+
+# --- 10. The caret moves into a frame during the save: the frame gets nothing --
+out=$(mcp c browser_navigate "{\"url\":\"$base/signup-frame\"}")
+ok "$out" || fail "signup-frame page: $out"
+wait_eval "$nt" "document.getElementById('evil').textContent.indexOf('\"len\":0') >= 0" 80 || fail "frame never loaded"
+bench eval "$nt" "document.getElementById('new').focus(); 1" >/dev/null
+sleep 0.3
+mcp c browser_autofill '{"kind":"new-password"}' >"$tmp/focus.out" &
+call=$!
+sleep 0.6
+bench eval "$nt" "document.getElementById('fr').contentWindow.postMessage('grab', '*'); 1" >/dev/null
+wait "$call" || true
+out=$(cat "$tmp/focus.out")
+sleep 0.5
+said=$(eval_in "$nt" "document.getElementById('evil').textContent")
+page=$(eval_in "$nt" "document.getElementById('new').value.length")
+grep -q '"len":0' <<<"$said" || fail "the new password went into the cross-origin frame that took the caret ($said): $out"
+ok "$out" || fail "the page's own sign-up, the caret taken by a frame mid-call: $out"
+[ "$page" != 0 ] || fail "the page's own new-password box wasn't filled: $out"
+op mock set latency_ms 0 >/dev/null
+bench op backend keychain >/dev/null
+step "10 the caret moves into a frame mid-call: the password goes to the form it was made for ($page chars), the frame gets nothing"
+
 [ "$failed" = 0 ] || exit 1
 echo PASS

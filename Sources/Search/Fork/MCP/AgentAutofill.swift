@@ -171,9 +171,8 @@ enum AgentAutofill {
         guard let page = await tab.newPasswordPage(at: target) else {
             throw Failure(message: "no new-password form on the page (sign-up or change-password)\(gone(tab, target))")
         }
-        let target = Credentials.saveTarget
         let account = NewPassword.account(host: host, named: named.flatMap { $0.isEmpty ? nil : $0 } ?? page.user,
-                                          target: target, pickedHere: browser.pickedCredential(in: tab))
+                                          target: Credentials.saveTarget, pickedHere: browser.pickedCredential(in: tab))
         if let existing = account.existing, !AgentAccess.isAllowed(existing) {
             throw Failure(message: "the saved login \(existing.user.isEmpty ? host : existing.user) is not shared with agents — enable it in Settings › Passwords › Agent access")
         }
