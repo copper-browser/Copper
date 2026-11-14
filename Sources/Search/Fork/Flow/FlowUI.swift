@@ -740,17 +740,20 @@ struct FlowSheet: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Palette.ink)
                     .padding(.horizontal, 17).padding(.vertical, 10)
-                    // A rounded rectangle just short of a capsule: the sheet
-                    // drew a stroked Capsule with 1 pt ticks at both ends.
-                    .background(Self.shape.fill(Palette.ground))
-                    .overlay(Self.shape.strokeBorder(Palette.hairline, lineWidth: 1))
-                    .contentShape(Self.shape)
+                    // The edge is a filled capsule under the ground, 1 pt
+                    // proud of it, not a stroke: the sheet's window drew
+                    // stroked capsules with 1 pt ticks at both ends.
+                    .background {
+                        ZStack {
+                            Capsule().fill(Palette.hairline)
+                            Capsule().fill(Palette.ground).padding(1)
+                        }
+                    }
+                    .contentShape(Capsule())
             }
-            .buttonStyle(Press(radius: 18))
-            .settingsFocusRing($focused, shape: Self.shape)
+            .buttonStyle(Press(radius: 99))
+            .settingsFocusRing($focused, shape: Capsule())
         }
-
-        static let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
     }
 
     /// The one button Return presses, in every state.
