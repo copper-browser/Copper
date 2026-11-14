@@ -110,7 +110,7 @@ enum Trail {
     // MARK: - getting there
 
     /// Whichever of the two answers first wins, and the other is dropped.
-    private final class Latch: @unchecked Sendable {
+    final class Latch: @unchecked Sendable {
         private var used = false
         func take() -> Bool {
             if used { return false }

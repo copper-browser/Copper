@@ -693,6 +693,10 @@ struct ContentView: View {
     private func watchKeys() {
         guard keys == nil else { return }
         keys = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
+            // Fork (agent-keys): a key an agent pressed in a page and the page
+            // didn't use goes no further — not to the window in front, not to
+            // the menus (Fork/MCP/Input.swift `returned`).
+            if Input.returned(event) { return nil }
             // Every window watches the keys; a keystroke is the window's it
             // was typed in, and a panel or popup of no browser's goes to the
             // one in front. (Fork: windows)

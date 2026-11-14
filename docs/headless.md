@@ -295,7 +295,8 @@ A test run's own seams keep it away from what belongs to the person at the Mac:
   item that would prompt all fail closed. Passkeys that need Touch ID cannot be used. The one
   exception is Settings' own questions in a test run (Clear history, New token…, Delete space…):
   they are held for `./bench settings confirm` instead of declined
-  ([settings.md](settings.md#questions-before-what-cant-be-undone)).
+  ([settings.md](settings.md#questions-before-what-cant-be-undone)). An agent answers
+  alert / confirm / prompt on its own tab with `browser_handle_dialog` ([agents.md](agents.md)).
 - Be focused. The app is never active, so `document.hasFocus()` is false — the same as a
   windowed Copper behind other apps, which the tools already handle.
 - Zero windows *and* a painting page at once: `offscreen` has one ordered-in window outside every
