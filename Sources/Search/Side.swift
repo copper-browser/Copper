@@ -133,7 +133,7 @@ struct SideBar: View {
             GeometryReader { geo in
                 Color.clear.onReceive(NotificationCenter.default.publisher(for: MouseButtons.middleClickedSidebar)) { note in
                     guard let point = MouseButtons.point(of: note),
-                          let id = targets.hit(point, in: geo, row: { drag.row(at: $0, among: browser.tabs) }), browser.editingTab != id,
+                          let id = targets.hit(point, in: geo, row: { drag.row(at: $0, among: SideBar.shown(browser)) }), browser.editingTab != id,
                           let tab = browser.tabs.first(where: { $0.id == id }) else { return }
                     browser.close(tab)
                 }
@@ -158,6 +158,19 @@ struct SideBar: View {
         .animation(Motion.glide, value: browser.editingTab)
         .animation(Motion.settle, value: browser.tabs.map(\.id))
         .animation(Motion.settle, value: browser.pinnedCount)
+    }
+
+    /// Fork (space-perf): the loose rows the column draws now — none inside
+    /// a shut folder, whose last frames the drag still remembers.
+    static func shown(_ browser: Browser) -> [Tab] {
+        let loose = browser.tabs.filter { $0.pin == nil }
+        let space = Spaces.shared.current(in: browser)
+        return [true, false].flatMap { saved in
+            FolderTree.plan(loose.filter { Sections.shared.isSaved($0) == saved }, space: space).compactMap { row -> Tab? in
+                if case .tab(let tab, _, _, _) = row { return tab }
+                return nil
+            }
+        }
     }
 
     // MARK: - the lights' band
