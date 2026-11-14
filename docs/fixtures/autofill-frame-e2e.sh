@@ -10,6 +10,7 @@
 #   3. Picking the row fills the frame's boxes (the frame tells the page what
 #      it holds: the name, and the password's length only).
 #   4. A sign-in in the page itself (login.html) still gets the page's account.
+#   5. A frame with no fields keeps only the forms stub; one that grows a field gets the whole script.
 #
 # ./build.sh first unless COPPER_SKIP_BUILD=1.
 set -euo pipefail
@@ -111,6 +112,23 @@ sleep 1
 got=$(bench eval "$page" 'document.getElementById("username").value + " " + document.getElementById("password").value.length')
 grep -q 'page@example.invalid 11' <<<"$got" || fail "the page's own sign-in wasn't filled ($got)"
 echo "ok a sign-in in the page itself still gets and fills the page's account"
+
+# 5. Fork (frame-stub): a frame with nothing to fill keeps the small stub (no forms script compiled there); a frame
+#    that grows a field gets the whole script, under the stub's document name (agents keep their frame refs).
+stub=$(bench open "http://127.0.0.1:$port/frame-stub.html" | grep -oE '[0-9a-f]{8}' | head -1)
+bench wait "$stub" 10 >/dev/null
+sleep 1
+frames='JSON.stringify(["ad", "late"].map(function (id) { var w = document.getElementById(id).contentWindow; return [!!w.__officeFormsStub, !!w.__officeForms, w.__officeForms ? w.__officeForms.doc === w.__officeFormsStub.doc : null]; }))'
+got=$(bench eval "$stub" "$frames" --copper)
+[ "$got" = '[[true,false,null],[true,false,null]]' ] || fail "frames without fields don't keep just the stub: $got"
+bench eval "$stub" 'var d = document.getElementById("late").contentDocument; d.body.insertAdjacentHTML("beforeend", "<input type=password>"); 1' >/dev/null
+for _ in {1..20}; do
+  got=$(bench eval "$stub" "$frames" --copper)
+  [ "$got" = '[[true,false,null],[true,true,true]]' ] && break
+  sleep 0.25
+done
+[ "$got" = '[[true,false,null],[true,true,true]]' ] || fail "a frame that grew a password box didn't get the forms script under its stub's name: $got"
+echo "ok a frame with no fields keeps the stub; one that grows a password box gets the whole forms script ($got)"
 bench select "$tab" >/dev/null 2>&1 || true
 [ -n "${COPPER_FRAME_SHOT:-}" ] && bench shot "$tab" "$COPPER_FRAME_SHOT" >/dev/null && echo "ok page drawn to $COPPER_FRAME_SHOT"
 echo "ok embedded sign-in e2e"
