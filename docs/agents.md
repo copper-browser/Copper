@@ -102,10 +102,52 @@ forward; the pane opens itself only for work on the page on screen.
 | `browser_get_text`, `browser_find`, `browser_console_messages` | reading without a snapshot; refs for text you name; console since load (from document start in a tab the agent opened, else from the first tool call) |
 | `browser_resize`, `browser_close` | the window; your own tab (refused when you have none — name one with `tab`) |
 | `browser_groups` | Copper's tab groups: `list`, `assign {group}`, `remove` |
+| `browser_file_upload` | `paths: [absolute]` answers the file chooser your click opened; before the click it arms the next one; no `paths` cancels ([Files and browser state](#files-and-browser-state)) |
+| `browser_pdf_save` | the page as a paged PDF; `filename` (absolute, or a name under the downloads folder) |
+| `browser_downloads` | downloads your tab (or a popup it opened) started: name, state, bytes, path; `wait` seconds for running ones |
+| `browser_network_requests` | `[GET] url => [200] (fetch)` per request since the page loaded; `includeStatic`, `limit` (≤300) |
+| `browser_cookies` | your tab's site's cookies: `list {name}`, `set {name, value, domain, path, expires, httpOnly, secure, sameSite}`, `delete {name}`; HttpOnly needs Agent access |
+| `browser_history` | search history on this Mac: `query`, `limit`; not for linked apps |
+| `browser_bookmarks` | `list`, `search {query}`, `add {url, title}` (default your tab's page) |
+| `browser_spaces` | `list` (no switching), `move {space}` your own off-screen tab |
 | `browser_perf_probe` | Samples the current tab for rAF loops, DOM churn, animations, filters, canvases, timers, long tasks, and slow resources (`seconds`, `top`, `format`) |
 | `browser_vault_save`, `browser_vault_note` | keep a login or a secure note (backup codes) in the open Bitwarden vault; values never come back ([Saving to the vault](#saving-to-the-vault)) |
 | `browser_crashes` | Copper's own crash history on this Mac as JSON, newest first; `index: N` for one in full with the breadcrumbs before it ([crashes.md](crashes.md)) |
 | `cloud_history_delete` | Deletes the user's history on Copper Cloud (`since`, `until`, `host[]`, `page[]`, `device`, or `all: true`); history on the Mac stays. Loopback clients only — not listed through an agent link, refused to the agent pane. Sites and pages are matched on the Mac, never by the server (docs/cloud.md) |
+
+### Files and browser state
+
+`Fork/MCP/StateTools.swift`, `FileChooser.swift`, `NetLog.swift`. Each page
+tool works on the caller's tab only.
+
+- **Upload.** A chooser your call opened on your tab is held for you (not shown
+  to anyone); the call's answer ends with "The page opened a file chooser", and
+  `browser_file_upload {paths}` answers it. Unanswered, it is cancelled after a
+  minute. Calling first arms the tab: its next chooser (within two minutes)
+  gets the files. Every path must be absolute and exist; a folder only where
+  the input takes folders; more than one file only for `multiple`. A chooser
+  the user opens on a tab no agent is at is their own panel, as before.
+- **PDF.** WebKit's `createPDF` draws one tall sheet; it is cut into
+  letter-proportioned pages.
+- **Downloads.** Each download remembers the tab it came from and that tab's
+  opener, so a link that opened a popup to download still counts as yours.
+- **Network.** WebKit's resource-load delegate reports every request with
+  method and status, from the first time an agent uses the tab; nothing runs
+  in the page. Successful images, scripts and styles are left out unless
+  `includeStatic`.
+- **Cookies.** The tab's own cookie jar (its space's profile), cookies whose
+  domain is the tab's host or a parent of it. `set` takes the host or a parent
+  domain, never a bare top-level domain. HttpOnly cookies are the site's
+  sign-in: their values are listed as hidden, and setting or deleting one is
+  refused, unless the site is shared in Settings › Passwords › Agent access
+  (the same gate as `browser_sign_in`).
+- **Spaces.** `move` takes only a tab the caller opened or selected, not
+  pinned and not on the user's screen; the caller's calls still land on it.
+
+CLI: `copper hover`, `select`, `scroll`, `wait`, `back`, `forward`,
+`upload PATH… | --cancel`, `dialog accept [TEXT] | dismiss`, `pdf [PATH]`,
+`downloads [--wait S]` — each one tool, with the arguments above (`copper
+help`). `copper call browser_cookies '{"action":"list"}'` for the rest.
 
 ### Saved sign-in (no-secret contract)
 

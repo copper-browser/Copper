@@ -30,6 +30,8 @@ final class Downloads: ObservableObject {
         var state: State
         var resumeData: Data?
         var request: URLRequest?
+        /// The tab it came from, and that tab's opener — browser_downloads lists a tab's own.
+        var tabs: [UUID] = []
     }
 
     @Published private(set) var items: [Item] = []
@@ -105,13 +107,16 @@ final class Downloads: ObservableObject {
         let request = download.originalRequest
         let url = request?.url
         let proposed = name?.isEmpty == false ? name! : (url?.lastPathComponent.isEmpty == false ? url!.lastPathComponent : "download")
-        let item = Item(
+        var item = Item(
             id: UUID(), download: download, name: proposed,
             from: host ?? url?.host ?? "", file: nil,
             total: knownTotal(download.progress), done: download.progress.completedUnitCount,
             speed: 0, started: Date(), state: .running, resumeData: nil,
             request: request
         )
+        if let tab = AgentTabs.all.first(where: { $0.built != nil && $0.built === download.webView }) {
+            item.tabs = [tab.id] + (tab.opener.map { [$0] } ?? [])
+        }
         items.insert(item, at: 0)
         observe(download, for: item.id)
         startTimer()

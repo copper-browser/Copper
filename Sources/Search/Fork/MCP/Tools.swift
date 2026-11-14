@@ -219,7 +219,7 @@ enum Tools {
                 "action": string("list, assign, remove", ["enum": ["list", "assign", "remove"]]),
                 "group": string("Group name for assign (created if new)"),
             ], required: ["action"]),
-        ] + Probe.catalogue + [Crashes.tool]
+        ] + Probe.catalogue + [Crashes.tool] + StateTools.catalogue
     }
 
     // MARK: - dispatch
@@ -231,8 +231,11 @@ enum Tools {
         let started = Date()
         // Fork (agent-dialogs): a question left open on this tab is closed before anything else touches it.
         if name != "browser_handle_dialog" { AgentDialogs.moveOn(AgentTabs.peek(args, in: browser, caller: AgentTabs.callerKey)) }
+        // Fork (agent-upload): a file chooser opened during the call is held for the agent (FileChooser.swift).
+        let chooser = FileChooser.began(AgentTabs.peek(args, in: browser, caller: AgentTabs.callerKey)?.id)
+        defer { FileChooser.ended(chooser) }
         do {
-            let content = try await pinnedCall(name, args, in: browser)
+            let content = try await pinnedCall(name, args, in: browser) + FileChooser.note(chooser, name: name)
             let tab = AgentTabs.peek(args, in: browser, caller: AgentTabs.callerKey)
             Breadcrumbs.tool(name, tab: tab?.id, started: started, error: nil)
             // Fork (agent-dialogs): what the page asked while the call ran, and what it was told —
@@ -264,7 +267,7 @@ enum Tools {
 
     @MainActor
     private static func dispatch(_ name: String, _ args: [String: Any], in browser: Browser) async throws -> [Content] {
-        if !["browser_tabs", "browser_close", "browser_resize", "browser_groups", "browser_crashes", "browser_vault_save", "browser_vault_note", CloudHistoryTool.name].contains(name), !CanvasTools.names.contains(name),
+        if !["browser_tabs", "browser_close", "browser_resize", "browser_groups", "browser_crashes", "browser_vault_save", "browser_vault_note", CloudHistoryTool.name].contains(name), !CanvasTools.names.contains(name), !StateTools.tabless(name, args),
            !(name == "jev_run" && (args["newTab"] as? Bool) == true) {
             await AgentTabs.ready(in: browser)
         }
@@ -293,6 +296,7 @@ enum Tools {
             }
             return [.text(String(decoding: data, as: UTF8.self))]
         case CloudHistoryTool.name: return try await CloudHistoryTool.call(args)
+        case _ where StateTools.names.contains(name): return try await StateTools.call(name, args, in: browser)
         default: break
         }
 
