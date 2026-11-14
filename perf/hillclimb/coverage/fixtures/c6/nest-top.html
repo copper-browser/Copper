@@ -1,0 +1,8 @@
+<!doctype html><meta charset="utf-8"><title>HC nested frames</title><script src="/hc.js"></script>
+<p>Top page; the approval button is two frames down, each on another origin.</p>
+<iframe id="mid" style="width:620px;height:260px;border:1px solid #888"></iframe>
+<script>
+var q = new URLSearchParams(location.search);
+document.getElementById('mid').src = q.get('o') + '/c6/nest-mid.html?o=' + encodeURIComponent(q.get('l'));
+addEventListener('message', function (e) { if (e.data && e.data.approved) rec('approved', e.data.approved); });
+</script>

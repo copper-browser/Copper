@@ -1,0 +1,18 @@
+<!doctype html><meta charset="utf-8"><title>HC canvas frame</title>
+<style>body{margin:0}canvas{display:block}</style>
+<canvas id="c" style="width:600px;height:240px"></canvas>
+<script>
+var c = document.getElementById('c'), cx = 60 + Math.random() * 480, cy = 40 + Math.random() * 160, drawn = 0;
+function draw() {
+  drawn = window.devicePixelRatio || 1;
+  c.width = 600 * drawn; c.height = 240 * drawn;
+  var g = c.getContext('2d'); g.scale(drawn, drawn);
+  g.fillStyle = '#dddddd'; g.fillRect(0, 0, 600, 240);
+  g.fillStyle = '#0000ff'; g.beginPath(); g.arc(cx, cy, 16, 0, 7); g.fill();
+  parent.postMessage({frameDPR: drawn}, '*');
+}
+draw();
+setInterval(function () { if ((window.devicePixelRatio || 1) !== drawn) draw(); }, 100);
+c.addEventListener('click', function (e) { var r = c.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  parent.postMessage({blue: {hit: Math.hypot(x - cx, y - cy) < 16, off: [Math.round(x - cx), Math.round(y - cy)]}}, '*'); });
+</script>

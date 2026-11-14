@@ -9,6 +9,7 @@
 #      COV_DIR=hc/harness (the harness copy on the Mac; give parallel runs their own)
 #      COV_REPEAT=3 (fresh world per run; the .md shows the per-run band and flaky jobs)
 #      COV_MODE=windowed (a probe window on the screen: alert sheets, real focus; mini only → coverage-windowed.*)
+#      COV_SHA=<git sha the build came from> (stamped in the report) · COV_DPR=2 (agent pages' pixel ratio; 1 = old runs)
 #      HC_BENCH=path/to/bench (for the passkey job; found next to the build's source otherwise)
 # Out: ~/hc/out/LABEL/coverage/ on the Mac; ~/plans/copper-hillclimb-2026-11-14/out/LABEL/coverage/ on the devbox.
 set -euo pipefail
@@ -21,7 +22,7 @@ if [ "$(uname)" != Darwin ]; then
   back="$HOME/plans/copper-hillclimb-2026-11-14/out/$label/coverage"
   dir="${COV_DIR:-hc/harness}"
   rsync -az --exclude __pycache__ "$here/" "$host:$dir/"
-  ssh "$host" "COV_ONLY='${COV_ONLY:-}' COV_PORT='${COV_PORT:-}' COV_WORLD='${COV_WORLD:-}' COV_REPEAT='${COV_REPEAT:-}' COV_MODE='${COV_MODE:-}' HC_BENCH='${HC_BENCH:-}' $dir/coverage.sh '$label' $app" || echo "coverage run exited $?"
+  ssh "$host" "COV_ONLY='${COV_ONLY:-}' COV_PORT='${COV_PORT:-}' COV_WORLD='${COV_WORLD:-}' COV_REPEAT='${COV_REPEAT:-}' COV_MODE='${COV_MODE:-}' COV_SHA='${COV_SHA:-}' COV_DPR='${COV_DPR:-2}' HC_BENCH='${HC_BENCH:-}' $dir/coverage.sh '$label' $app" || echo "coverage run exited $?"
   mkdir -p "$back"
   rsync -az "$host:hc/out/$label/coverage/" "$back/"
   echo "→ $back/coverage.md"

@@ -1,0 +1,5 @@
+<!doctype html><meta charset="utf-8"><title>HC leaf frame</title>
+<p>Leaf frame (third origin).</p>
+<label>Note <input id="note"></label> <button id="ok">Approve payment</button>
+<script>document.getElementById('ok').addEventListener('click', function () {
+  top.postMessage({approved: {note: document.getElementById('note').value, origin: location.origin}}, '*'); });</script>

@@ -976,6 +976,101 @@ def _(ctx):
     expect(s.wait_r(tab, "canvasclick").get("hit"), "missed")
 
 
+def dot(png, want):
+    """Centre (x, y) of the pixels `want(r, g, b)` picks in a screenshot, and its size; a stride-2 scan."""
+    w, h, px = png_info(png)
+    expect(px, "screenshot is not an 8-bit RGB(A) PNG")
+    xs, ys = [], []
+    for y in range(0, h, 2):
+        for x in range(0, w, 2):
+            if want(*px(x, y)):
+                xs.append(x); ys.append(y)
+    expect(xs, "no matching pixels in the %dx%d screenshot" % (w, h))
+    return (sum(xs) / len(xs), sum(ys) / len(ys)), (w, h)
+
+
+@job("c6.canvas_dpr2", "Click canvas dots found in a Retina screenshot (page + cross-origin frame)",
+     "browser_take_screenshot → browser_mouse_click_xy", "c6/canvas-dpr.html (DPR 2: run.py starts worlds with SEARCH_PROBE_DPR=2)",
+     "red dot (page) and blue dot (frame on F2) both hit, coordinates read off the screenshot only",
+     seed="council R4 (Sol 7: canvas coords came from JS)", needs=["browser_take_screenshot", "browser_mouse_click_xy"])
+def _(ctx):
+    s = ctx.session()
+    tab = s.open(ctx.F + "/c6/canvas-dpr.html?o=" + ctx.F2)
+    dpr = s.wait_r(tab, "dpr", lambda d: d >= 1.5, timeout=5)
+    s.wait_r(tab, "frameDPR", lambda d: d >= 1.5, timeout=8)
+    shot = s.call("browser_take_screenshot", {"tab": tab})
+    expect(shot.images, "no image in the screenshot answer")
+    # Only the picture: the tool says its pixels are CSS pixels, so they are clicked as they are.
+    red, size = dot(shot.images[0], lambda r, g, b: r > 200 and g < 70 and b < 70)
+    blue, _ = dot(shot.images[0], lambda r, g, b: b > 200 and r < 70 and g < 70)
+    s.call("browser_mouse_click_xy", {"tab": tab, "x": round(red[0]), "y": round(red[1]), "element": "red dot"})
+    s.call("browser_mouse_click_xy", {"tab": tab, "x": round(blue[0]), "y": round(blue[1]), "element": "blue dot in the frame"})
+    hit_red = s.wait_r(tab, "red", timeout=3)
+    hit_blue = s.wait_r(tab, "blue", timeout=3)
+    expect(hit_red.get("hit") and hit_blue.get("hit"), "dpr %s, %dx%d picture: red %s, blue %s" % (dpr, size[0], size[1], hit_red, hit_blue))
+    return "dpr %s, picture %dx%d" % (dpr, size[0], size[1])
+
+
+@job("c6.file_drop", "Drop a file onto a drop zone (no file input on the page)", "browser_file_upload ref=zone",
+     "c6/drop.html", "the zone's drop handler reads the file's name and text", seed="council R4 (Fable 20: OS file drop)",
+     needs=["browser_file_upload", "browser_find"])
+def _(ctx):
+    s = ctx.session()
+    tab = s.open(ctx.F + "/c6/drop.html")
+    body = "hc drop %d\n" % int(time.time())
+    path = os.path.join(tempfile.mkdtemp(prefix="hc-drop-"), "invoice-hc.txt")
+    with open(path, "w") as f:
+        f.write(body)
+    res = s.call("browser_file_upload", {"tab": tab, "paths": [path], "ref": refs_of(s, tab, "Drop files here")}, ok=False)
+    got = s.wait_r(tab, "dropped", timeout=4) if not res.error else None
+    expect(got, "nothing dropped: %s" % res.text[:200])
+    expect(len(got) == 1 and got[0].get("name") == "invoice-hc.txt" and got[0].get("text") == body, "page got %s" % json.dumps(got)[:200])
+
+
+@job("c6.context_menu", "Right-click a row and pick an item from the page's own context menu",
+     "browser_click button=right → browser_click", "c6/ctxmenu.html", "menu = rename on report-q3.pdf",
+     seed="council R4 (Fable 20: context menu)", needs=["browser_click", "browser_find"])
+def _(ctx):
+    s = ctx.session()
+    tab = s.open(ctx.F + "/c6/ctxmenu.html")
+    s.call("browser_click", {"tab": tab, "ref": refs_of(s, tab, "report-q3.pdf"), "button": "right", "element": "report-q3.pdf"})
+    s.wait_r(tab, "opened", "report-q3.pdf", timeout=3)
+    s.call("browser_click", {"tab": tab, "ref": s.ref(tab, "Rename"), "element": "Rename"})
+    s.wait_r(tab, "menu", {"item": "rename", "on": "report-q3.pdf"}, timeout=3)
+
+
+@job("c6.closed_shadow", "Fill and click inside a closed shadow root", "browser_snapshot → browser_type → browser_click",
+     "c6/shadow.html (attachShadow mode: closed)", "page got the click with the coupon typed",
+     seed="council R4 (Fable 20: closed shadow root)", needs=["browser_snapshot", "browser_type", "browser_click"])
+def _(ctx):
+    s = ctx.session()
+    tab = s.open(ctx.F + "/c6/shadow.html")
+    s.call("browser_type", {"tab": tab, "ref": s.ref(tab, "Coupon"), "text": "HC10", "element": "Coupon"})
+    s.call("browser_click", {"tab": tab, "ref": s.ref(tab, "Confirm order"), "element": "Confirm order"})
+    s.wait_r(tab, "shadowclick", {"coupon": "HC10"}, timeout=3)
+
+
+@job("c6.frame_two_deep", "Type and click two cross-origin frames down", "browser_snapshot (f refs) → browser_type → browser_click",
+     "c6/nest-top.html (F) → nest-mid.html (F2) → nest-leaf.html (localhost)", "top hears approved with the note, from the leaf's origin",
+     seed="council R4 (Fable 20: two-level cross-origin frame)", needs=["browser_snapshot", "browser_type", "browser_click"])
+def _(ctx):
+    s = ctx.session()
+    tab = s.open(ctx.F + "/c6/nest-top.html?o=" + ctx.F2 + "&l=" + ctx.LH)
+    deadline = time.time() + 8
+    while True:  # the leaf loads after the middle frame
+        try:
+            ok = s.ref(tab, "Approve payment")
+            break
+        except Fail:
+            if time.time() > deadline:
+                raise
+            time.sleep(0.4)
+    s.call("browser_type", {"tab": tab, "ref": s.ref(tab, "Note"), "text": "two deep", "element": "Note"})
+    s.call("browser_click", {"tab": tab, "ref": ok, "element": "Approve payment"})
+    got = s.wait_r(tab, "approved", timeout=3)
+    expect(got.get("note") == "two deep" and got.get("origin") == ctx.LH, "top heard %s" % got)
+
+
 @job("c6.virtual_list", "Reach + click row 7321 of a virtualized list", "browser_scroll ref → browser_find → browser_click",
      "c6/virtual.html", "picked = 7321", needs=["browser_scroll", "browser_find", "browser_click"])
 def _(ctx):

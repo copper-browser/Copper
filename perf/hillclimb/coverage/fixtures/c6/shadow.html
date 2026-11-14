@@ -1,0 +1,14 @@
+<!doctype html><meta charset="utf-8"><title>HC closed shadow root</title><script src="/hc.js"></script>
+<p>The checkout widget keeps its button in a closed shadow root.</p>
+<checkout-box></checkout-box>
+<script>
+customElements.define('checkout-box', class extends HTMLElement {
+  constructor() {
+    super();
+    var root = this.attachShadow({mode: 'closed'});
+    root.innerHTML = '<style>button{font-size:16px;padding:8px 16px}</style><label>Coupon <input id="coupon"></label> <button id="go">Confirm order</button>';
+    var coupon = root.getElementById('coupon');
+    root.getElementById('go').addEventListener('click', function (e) { rec('shadowclick', {coupon: coupon.value}); });
+  }
+});
+</script>

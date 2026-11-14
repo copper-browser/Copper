@@ -1,0 +1,15 @@
+<!doctype html><meta charset="utf-8"><title>HC context menu</title><script src="/hc.js"></script>
+<style>#menu{position:fixed;background:#fff;border:1px solid #888;padding:4px;display:flex;flex-direction:column}#menu[hidden]{display:none}</style>
+<p>Right-click a file for its menu.</p>
+<ul><li id="doc" tabindex="0">report-q3.pdf</li><li id="other" tabindex="0">notes.txt</li></ul>
+<div id="menu" role="menu" hidden><button role="menuitem" id="rename">Rename</button><button role="menuitem" id="share">Share</button><button role="menuitem" id="del">Delete</button></div>
+<script>
+var menu = document.getElementById('menu'), target = null;
+document.querySelectorAll('li').forEach(function (li) {
+  li.addEventListener('contextmenu', function (e) { e.preventDefault(); target = li.textContent; menu.hidden = false;
+    menu.style.left = e.clientX + 'px'; menu.style.top = e.clientY + 'px'; rec('opened', target); });
+});
+document.addEventListener('click', function (e) { if (!menu.contains(e.target)) menu.hidden = true; });
+['rename', 'share', 'del'].forEach(function (id) { document.getElementById(id).addEventListener('click', function () {
+  rec('menu', {item: id, on: target}); menu.hidden = true; }); });
+</script>

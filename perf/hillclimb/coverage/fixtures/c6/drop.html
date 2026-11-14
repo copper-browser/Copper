@@ -1,0 +1,16 @@
+<!doctype html><meta charset="utf-8"><title>HC drop zone</title><script src="/hc.js"></script>
+<p>No file input here: files come only by dragging them in (as from Finder).</p>
+<div id="zone" role="region" aria-label="Upload area" style="width:420px;height:180px;border:2px dashed #888;display:grid;place-items:center">Drop files here</div>
+<script>
+var z = document.getElementById('zone');
+function files(e) { return Array.prototype.indexOf.call(e.dataTransfer.types, 'Files') >= 0; }
+z.addEventListener('dragenter', function (e) { if (files(e)) { e.preventDefault(); rec('entered', true); } });
+z.addEventListener('dragover', function (e) { if (files(e)) e.preventDefault(); });
+z.addEventListener('drop', function (e) {
+  e.preventDefault();
+  var list = e.dataTransfer.files;
+  if (!list.length) { rec('dropped', {error: 'no files'}); return; }
+  Promise.all(Array.prototype.map.call(list, function (f) { return f.text().then(function (t) { return {name: f.name, size: f.size, type: f.type, text: t}; }); }))
+    .then(function (got) { rec('dropped', got); });
+});
+</script>

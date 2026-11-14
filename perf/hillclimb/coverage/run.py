@@ -52,7 +52,9 @@ class World:
         assert port != 4123 and 4130 <= port <= 4239, "coverage ports: 4130-4239 (each worker its own range), never 4123"
 
     def env(self):
-        env = {"SEARCH_PROBE": self.name, "SEARCH_MCP_PORT": str(self.port), "SEARCH_BW_PATH": os.path.join(HERE, "bw-mock.py")}
+        env = {"SEARCH_PROBE": self.name, "SEARCH_MCP_PORT": str(self.port), "SEARCH_BW_PATH": os.path.join(HERE, "bw-mock.py"),
+               # Agent pages at a Retina device pixel ratio, as on a laptop, even on the 1x headless mini (COV_DPR=1 for the old way).
+               "SEARCH_PROBE_DPR": os.environ.get("COV_DPR", "2")}
         if self.headless:
             env.update(SEARCH_HEADLESS="1", SEARCH_HEADLESS_SIZE="1440x900")
         return env
@@ -493,7 +495,9 @@ def report(runs, tools, world, args, out):
             "when": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "host": socket.gethostname(),
             "load_per_run": [r["load"] for r in runs], "boot_s": [r["boot_s"] for r in runs], "version": runs[0]["version"],
             "repeats": len(runs), "score_pct": score, "score_per_run": scores, "flaky": [r["id"] for r in results if r["flaky"]],
-            "counts": counts, "groups": groups, "tools": tools}
+            "counts": counts, "groups": groups, "tools": tools,
+            # The source the build came from (COV_SHA, given by whoever built it) and the agent pages' pixel ratio.
+            "sha": os.environ.get("COV_SHA") or "unknown", "dpr": os.environ.get("COV_DPR", "2")}
     suffix = "" if args.mode == "headless" else "-" + args.mode
     with open(os.path.join(out, "coverage%s.json" % suffix), "w") as f:
         json.dump({"meta": meta, "jobs": {r["id"]: r for r in results}}, f, indent=1)
@@ -501,6 +505,7 @@ def report(runs, tools, world, args, out):
              "C5": "Tabs + browser state", "C6": "Hard UI", "C7": "Reliability + safety", "C8": "Ergonomics (measured)"}
     icon = {"pass": "✅", "fail": "❌", "missing": "⬜", "needs-secret": "🔑", "skip": "➖", "measured": "📏"}
     lines = ["# Coverage — %s (%s)" % (args.label, args.mode), "",
+             "Build: git `%s` · agent pages at DPR %s" % (meta["sha"], meta["dpr"]), "",
              "`%s` %s · %s · %s · load %s · %d tools listed" % (meta["app"], meta["version"] or "", meta["host"], meta["when"],
                                                             "/".join("%.2f" % r["load"][0] for r in runs), len(tools)), "",
              "**Score: %s%% pass** (%d pass · %d fail · %d missing%s of %d) · per run %s · flaky: %s" % (

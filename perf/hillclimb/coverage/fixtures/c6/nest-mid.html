@@ -1,0 +1,4 @@
+<!doctype html><meta charset="utf-8"><title>HC middle frame</title>
+<p>Middle frame (second origin).</p>
+<iframe id="leaf" style="width:560px;height:160px;border:1px solid #aaa"></iframe>
+<script>document.getElementById('leaf').src = new URLSearchParams(location.search).get('o') + '/c6/nest-leaf.html';</script>

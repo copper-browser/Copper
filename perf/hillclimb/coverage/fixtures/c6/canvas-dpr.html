@@ -1,0 +1,23 @@
+<!doctype html><meta charset="utf-8"><title>HC canvas, Retina</title><script src="/hc.js"></script>
+<style>body{margin:0;font:14px sans-serif}canvas{display:block}</style>
+<canvas id="c" style="width:600px;height:260px" aria-label="Board"></canvas>
+<iframe id="f" style="width:600px;height:240px;border:0;display:block"></iframe>
+<script>
+// The red dot sits somewhere random, drawn at the device pixel ratio: an
+// agent finds it only by looking at a screenshot, never from the page's JS.
+var c = document.getElementById('c'), cx = 60 + Math.random() * 480, cy = 40 + Math.random() * 180, drawn = 0;
+function draw() {
+  drawn = window.devicePixelRatio || 1;
+  c.width = 600 * drawn; c.height = 260 * drawn;
+  var g = c.getContext('2d'); g.scale(drawn, drawn);
+  g.fillStyle = '#eeeeee'; g.fillRect(0, 0, 600, 260);
+  g.fillStyle = '#ff0000'; g.beginPath(); g.arc(cx, cy, 16, 0, 7); g.fill();
+  rec('dpr', drawn);
+}
+draw();
+setInterval(function () { if ((window.devicePixelRatio || 1) !== drawn) draw(); }, 100);
+c.addEventListener('click', function (e) { var r = c.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  rec('red', {hit: Math.hypot(x - cx, y - cy) < 16, off: [Math.round(x - cx), Math.round(y - cy)]}); });
+document.getElementById('f').src = new URLSearchParams(location.search).get('o') + '/c6/canvas-dpr-frame.html';
+addEventListener('message', function (e) { if (e.data && e.data.blue) rec('blue', e.data.blue); if (e.data && e.data.frameDPR) rec('frameDPR', e.data.frameDPR); });
+</script>
