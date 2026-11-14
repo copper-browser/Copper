@@ -488,7 +488,7 @@ struct AgentPane: View {
                 }
                 Pill("Cancel") { account.cancel() }
             case .failed(let why):
-                Text(why).font(.system(size: 12)).foregroundStyle(Color.red.opacity(0.85))
+                Text(why).font(.system(size: 12)).foregroundStyle(Palette.danger)
                     .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 24)
                 buttons

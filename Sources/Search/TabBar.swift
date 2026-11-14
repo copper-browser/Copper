@@ -450,50 +450,58 @@ private struct TabPill: View {
             Spacer(minLength: 2)
 
             if !editing, !compact { HandBadges(tab: tab.id, size: 13) } // Fork: agents' hands (Hands.swift)
-
-            // Pinned to the right-hand end of the pill, not trailing the title.
-            // One slot doing two jobs: the cross when the pointer is here, the
-            // ring while the page is still coming, never both.
-            ZStack {
-                if hovering {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(Palette.muted)
-                        .frame(width: 15, height: 15)
-                        .background(Palette.ink.opacity(0.07), in: Circle())
-                        .transition(.opacity)
-                } else if tab.loading {
-                    Ring().transition(.opacity)
-                } else if tab.noisy {
-                    // Which tab the noise is coming from. ⌘⇧M stops it.
-                    Image(systemName: "speaker.wave.2.fill")
-                        .font(.system(size: 8))
-                        .foregroundStyle(Palette.muted)
-                        .transition(.opacity)
-                }
-            }
-            .frame(width: editing ? 0 : 15, height: 15)
-            .opacity(editing ? 0 : 1)
-            // The cross is 15 points across because that is how big it should
-            // look. What you have to hit is the whole right-hand end of the
-            // tab: an overlay is not laid out, so it can reach past its own
-            // frame without moving anything that is.
-            .overlay {
-                if !editing {
-                    Color.clear
-                        .frame(width: 30, height: 28)
-                        .contentShape(Rectangle())
-                        .onTapGesture { if hovering { close() } }
-                }
-            }
-            .animation(Motion.quick, value: hovering)
-            .animation(Motion.quick, value: tab.loading)
-            .animation(Motion.quick, value: tab.noisy)
         }
         .padding(.leading, 11)
         .padding(.trailing, editing ? 11 : 7)
+        // Fork (uitype): the cross and the ring take no room at rest; they are
+        // drawn over the title's end, which fades out under them (Side.swift).
+        .mask { RowEndFade(on: !editing && slotShown, clear: 7 + 15 + 3) }
+        .overlay(alignment: .trailing) {
+            if !editing { slot.padding(.trailing, 7) }
+        }
         .padding(.vertical, 6)
         .frame(width: span, alignment: .leading)
+    }
+
+    private var slotShown: Bool { hovering || tab.loading || tab.noisy }
+
+    /// Pinned to the right-hand end of the pill, not trailing the title.
+    /// One slot doing two jobs: the cross when the pointer is here, the
+    /// ring while the page is still coming, never both.
+    private var slot: some View {
+        ZStack {
+            if hovering {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(Palette.muted)
+                    .frame(width: 15, height: 15)
+                    .background(Palette.ink.opacity(0.07), in: Circle())
+                    .transition(.opacity)
+            } else if tab.loading {
+                Ring().transition(.opacity)
+            } else if tab.noisy {
+                // Which tab the noise is coming from. ⌘⇧M stops it.
+                Image(systemName: "speaker.wave.2.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(Palette.muted)
+                    .transition(.opacity)
+            }
+        }
+        .frame(width: 15, height: 15)
+        // The cross is 15 points across because that is how big it should
+        // look. What you have to hit is the whole right-hand end of the
+        // tab: an overlay is not laid out, so it can reach past its own
+        // frame without moving anything that is.
+        .overlay {
+            Color.clear
+                .frame(width: 30, height: 28)
+                .contentShape(Rectangle())
+                .onTapGesture { if hovering { close() } }
+                .allowsHitTesting(hovering)
+        }
+        .animation(Motion.quick, value: hovering)
+        .animation(Motion.quick, value: tab.loading)
+        .animation(Motion.quick, value: tab.noisy)
     }
 
     @ViewBuilder

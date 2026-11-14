@@ -13,6 +13,22 @@ extension View {
     func settingsField(radius: CGFloat = 7, fill: Color = Palette.wash) -> some View {
         modifier(SettingsFieldGround(radius: radius, fill: fill))
     }
+
+    /// Fork (uitype): an empty field's example, in muted ink and the
+    /// proportional face — the system's own prompt is ~1.5:1, and a plain
+    /// field ignores a prompt's colour. Goes on the field, before its padding.
+    func fieldExample(_ text: String, when empty: Bool) -> some View {
+        background(alignment: .leading) {
+            if empty {
+                Text(text)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.muted)
+                    .lineLimit(1)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
 }
 
 /// `settingsField()`: the wash, and the ink edge while focused.

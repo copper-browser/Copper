@@ -71,7 +71,7 @@ struct AgentActivity: View {
             } else {
                 Image(systemName: group.failures > 0 ? "exclamationmark.triangle.fill" : "checkmark.circle")
                     .font(.system(size: 11))
-                    .foregroundStyle(group.failures > 0 ? Color.red.opacity(0.75) : Palette.muted)
+                    .foregroundStyle(group.failures > 0 ? Palette.danger : Palette.muted)
                 summary
                     .lineLimit(1)
             }
@@ -89,9 +89,9 @@ struct AgentActivity: View {
             + Text(" · \(steps) step\(steps == 1 ? "" : "s")")
         line = line.foregroundColor(Palette.muted)
         if group.failures > 0 {
-            line = line + Text(" · \(group.failures) failed").foregroundColor(Color.red.opacity(0.8))
+            line = line + Text(" · \(group.failures) failed").foregroundColor(Palette.danger)
         } else if group.warnings > 0 {
-            line = line + Text(" · \(group.warnings) with errors").foregroundColor(Color.red.opacity(0.8))
+            line = line + Text(" · \(group.warnings) with errors").foregroundColor(Palette.danger)
         }
         return line.font(.system(size: 12))
     }
@@ -133,7 +133,7 @@ struct AgentActivity: View {
 
     private func step(_ item: Agent.Item) -> some View {
         let failed = !item.ok
-        let red = Color.red.opacity(0.82)
+        let red = Palette.danger
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: AgentActivity.icon(item.tool))
@@ -142,7 +142,7 @@ struct AgentActivity: View {
                     .frame(width: 15)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.title.isEmpty ? Agent.plain(item.tool) : item.title)
-                        .font(.system(size: 12)).foregroundStyle(failed ? red : Palette.ink)
+                        .font(.system(size: 12)).foregroundStyle(Palette.ink) // Fork (uitype): the red is the glyph's and the line under it
                         .lineLimit(2).truncationMode(.tail)
                         .fixedSize(horizontal: false, vertical: true)
                     // Fork (agent-ux): a sentence first; the tool's own words behind Details.
@@ -196,7 +196,7 @@ struct AgentActivity: View {
             ForEach(Array(shown)) { cycle in DriveStep(cycle: cycle, jev: true) }
             if !live, run.status != .running {
                 Text(run.statusLine(busy: false))
-                    .font(.system(size: 11)).foregroundStyle(run.failed ? Color.red.opacity(0.8) : Palette.muted)
+                    .font(.system(size: 11)).foregroundStyle(run.failed ? Palette.danger : Palette.muted)
                     .lineLimit(2)
             }
         }

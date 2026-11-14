@@ -48,6 +48,18 @@ struct CommandPalette: View {
     /// scroll view left to size itself takes all the room it is offered,
     /// and a card with three rows would stand as tall as the window.
     private static let rowHeight: CGFloat = 40
+    /// Fork (uitype): a page's row, its host on a second line under the title.
+    private static let pageRowHeight: CGFloat = 46
+
+    /// A row that goes somewhere (an open tab, a visit, a bookmark) and has a
+    /// host to show: two lines. Commands and searches stay one.
+    static func twoLine(_ offer: Suggestion) -> Bool {
+        guard !offer.detail.isEmpty else { return false }
+        switch offer.kind {
+        case .open, .visited, .known, .bookmark: return true
+        case .search, .command: return false
+        }
+    }
     private static let headingHeight: CGFloat = 28
 
     var body: some View {
@@ -151,7 +163,7 @@ struct CommandPalette: View {
                             if let heading = sections.headings[index] {
                                 Text(heading)
                                     .font(.system(size: 11.5, weight: .medium))
-                                    .foregroundStyle(Palette.ink.opacity(0.6))
+                                    .foregroundStyle(Palette.muted)
                                     .padding(.horizontal, 12)
                                     .frame(height: CommandPalette.headingHeight, alignment: .bottomLeading)
                                     .padding(.bottom, 2)
@@ -189,9 +201,9 @@ struct CommandPalette: View {
 
     /// As tall as the rows.
     private var natural: CGFloat {
-        let rows = CGFloat(browser.offers.count)
+        let rows = browser.offers.reduce(CGFloat(0)) { $0 + (CommandPalette.twoLine($1) ? CommandPalette.pageRowHeight : CommandPalette.rowHeight) + 1 }
         let headings = CGFloat(sections.headings.keys.filter { $0 < browser.offers.count }.count)
-        return rows * (CommandPalette.rowHeight + 1) + headings * (CommandPalette.headingHeight + 3) + 16
+        return rows + headings * (CommandPalette.headingHeight + 3) + 16
     }
 
     /// No taller than the window below the card, less a margin that keeps
@@ -225,6 +237,8 @@ struct CommandPalette: View {
         @State private var hovering = false
         @Environment(\.colorScheme) private var scheme
 
+        private var twoLine: Bool { CommandPalette.twoLine(offer) }
+
         var body: some View {
             HStack(spacing: 11) {
                 Mark(offer: offer, tint: tint, picked: picked, stamp: stamp)
@@ -232,80 +246,92 @@ struct CommandPalette: View {
 
                 // One weight, picked or not. Going semibold on the selected
                 // row widened it enough to squeeze the muted half out of the
-                // row — so the one row you were about to press Return on was
-                // the one that stopped telling you which space it lived in.
-                // The pill and the tinted hint say "selected" without moving
-                // anything.
-                Text(offer.key)
-                    .font(.system(size: 13.5, weight: .medium))
-                    .foregroundStyle(Palette.ink)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .layoutPriority(1)
-
-                // A host cut down to "mail.go…" has stopped being an answer
-                // to anything, so it is shown whole and the title — still
-                // readable from its first two thirds — is what gives way
-                // when the row runs out of width.
-                if !offer.detail.isEmpty {
-                    Text(offer.detail)
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(Palette.muted)
+                // row — the pill and the tinted ↩ say "selected" without
+                // moving anything.
+                //
+                // Fork (uitype): a page's host goes on a line of its own under
+                // the title, so neither cuts the other short; the title is the
+                // first thing given room.
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(offer.key)
+                        .font(.system(size: 13.5, weight: .medium))
+                        .foregroundStyle(Palette.ink)
                         .lineLimit(1)
-                        .fixedSize()
-                        .layoutPriority(2)
+                        .truncationMode(.tail)
+                    if twoLine {
+                        HStack(spacing: 6) {
+                            Text(offer.detail)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            // Last to give way: see Suggestion.badge.
+                            if !offer.badge.isEmpty {
+                                Text(offer.badge).lineLimit(1).fixedSize()
+                            }
+                        }
+                        .font(.system(size: 12))
+                        .foregroundStyle(Palette.muted)
+                    }
                 }
+                .layoutPriority(1)
 
-                // Last to give way: see Suggestion.badge.
-                if !offer.badge.isEmpty {
-                    Text(offer.badge)
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(Palette.muted)
-                        .lineLimit(1)
-                        .fixedSize()
-                        .layoutPriority(3)
+                // A command's or a search's one line keeps its quiet half beside it.
+                if !twoLine {
+                    if !offer.detail.isEmpty {
+                        Text(offer.detail)
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Palette.muted)
+                            .lineLimit(1)
+                    }
+                    if !offer.badge.isEmpty {
+                        Text(offer.badge)
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Palette.muted)
+                            .lineLimit(1)
+                            .fixedSize()
+                    }
                 }
 
                 Spacer(minLength: 14)
 
-                // Shown only on the row Return would take — "Switch to Tab"
-                // set down the right of six rows is a column of grey noise
-                // saying the same thing six times — but laid out on every
-                // row, so selecting one changes what the row looks like and
-                // never what it is shaped like.
-                if !aside.isEmpty {
-                    Text(aside)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Palette.muted.opacity(0.85))
-                        .lineLimit(1)
-                        .fixedSize()
+                // Fork (uitype): one column at the right, and only on the row
+                // Return would take (or the one under the pointer) — laid out
+                // on every row it held the titles short of room they had.
+                if picked || hovering {
+                    HStack(spacing: 10) {
+                        if !aside.isEmpty {
+                            Text(aside)
+                                .font(.system(size: 11))
+                                .foregroundStyle(Palette.muted)
+                        }
+                        if !offer.hint.isEmpty {
+                            Text(offer.hint)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(picked ? tint : Palette.muted)
+                        }
+                        // The key that does it, as a key: on the row Return takes.
+                        if picked {
+                            Text("↩")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(tint)
+                                .frame(width: 22, height: 18)
+                                .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Palette.ground.opacity(0.7)))
+                                .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(tint.opacity(0.35), lineWidth: 1))
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .lineLimit(1)
+                    .fixedSize()
+                    .transition(.opacity)
                 }
-                if !offer.hint.isEmpty {
-                    Text(offer.hint)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(picked ? tint : Palette.muted.opacity(0.8))
-                        .lineLimit(1)
-                        .fixedSize()
-                        .opacity(picked || hovering ? 1 : 0)
-                }
-                // The key that does it, as a key: on the row Return takes.
-                Text("↩")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(tint)
-                    .frame(width: 22, height: 18)
-                    .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Palette.ground.opacity(0.7)))
-                    .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(tint.opacity(0.35), lineWidth: 1))
-                    .opacity(picked ? 1 : 0)
-                    .accessibilityHidden(true)
             }
             .padding(.horizontal, 12)
-            .frame(height: CommandPalette.rowHeight)
+            .frame(height: twoLine ? CommandPalette.pageRowHeight : CommandPalette.rowHeight)
             .background {
                 if picked {
                     // The space's colour, not a grey: a pale grey on a white
                     // card read as hover, not as "Return takes this".
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(fill.opacity(scheme == .dark ? 0.24 : 0.22))
+                        .fill(fill.opacity(scheme == .dark ? 0.12 : 0.22)) // Fork (uitype): 0.24 was a heavy brown in the dark
                 } else if hovering {
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .fill(Palette.hover)
