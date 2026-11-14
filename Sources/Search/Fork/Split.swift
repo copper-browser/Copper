@@ -172,18 +172,40 @@ final class Split: ObservableObject {
         landing = false
         picturing = false
         incoming = false
+        if rewrapped || still == nil { uncover(); return }
         let id = still?.id
-        let off: @MainActor () -> Void = { [weak self] in
-            guard let self, self.covering, self.still?.id == id else { return }
-            withAnimation(.easeOut(duration: 0.08)) { self.covering = false; self.still = nil }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            MainActor.assumeIsolated { if self?.still?.id == id { self?.uncover() } }
         }
-        guard let id, let web = browser.tabs.first(where: { $0.id == id })?.built else { off(); return }
+    }
+
+    /// The left page has drawn at its new width since the slide began.
+    private var rewrapped = false
+
+    /// Fork (uiflows r4): asked as the slide begins, the moment the left
+    /// page takes its new width — the next frame WebKit presents is the
+    /// re-wrapped page. Asked at the end instead, an idle page has nothing
+    /// to present and the cover waited out its fixed beat.
+    func watchRewrap(in browser: Browser) {
+        rewrapped = false
         let next = NSSelectorFromString("_doAfterNextPresentationUpdate:")
-        if web.responds(to: next) {
-            let block: @convention(block) () -> Void = { MainActor.assumeIsolated { off() } }
-            web.perform(next, with: block)
+        guard let id = still?.id, let web = browser.tabs.first(where: { $0.id == id })?.built, web.responds(to: next) else {
+            rewrapped = true
+            return
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { MainActor.assumeIsolated { off() } }
+        let block: @convention(block) () -> Void = { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.still?.id == id else { return }
+                self.rewrapped = true
+                if !self.landing { self.uncover() }
+            }
+        }
+        web.perform(next, with: block)
+    }
+
+    private func uncover() {
+        guard covering else { return }
+        withAnimation(.easeOut(duration: 0.07)) { covering = false; still = nil }
     }
 
     /// The cross on a pane's own toolbar. The tab goes, the split goes with
@@ -473,7 +495,7 @@ struct SplitStage: View {
     }
 
     /// Fork (uiflows r4): the split takes its final layout at once, under
-    /// the cover, and the new pane's card slides in over the old page (180
+    /// the cover, and the new pane's card slides in over the old page (170
     /// ms, an ease-out). Only the cover moves — a picture and a card drawn
     /// by SwiftUI — so no web view is resized mid-move: a page resized
     /// frame by frame was cropped for 330 ms, then re-wrapped in one jump.
@@ -488,9 +510,11 @@ struct SplitStage: View {
             split.covering = true
             split.incoming = !still
         }
-        // The next pass, once the cover is on screen with the card off to the right.
+        // The next pass, once the cover is on screen with the card off to the
+        // right and the pages have their final frames.
         DispatchQueue.main.async {
-            withAnimation(still ? nil : .easeOut(duration: 0.18), completionCriteria: .logicallyComplete) {
+            split.watchRewrap(in: browser)
+            withAnimation(still ? nil : .easeOut(duration: 0.17), completionCriteria: .logicallyComplete) {
                 split.incoming = false
             } completion: {
                 split.landed(in: browser)
