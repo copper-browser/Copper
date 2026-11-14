@@ -332,6 +332,7 @@ final class SpaceSlide: ObservableObject {
                 if to?.id != space.id {
                     to = space
                     anchor.arriving = space.id
+                    SpaceWarm.warm(space: space.id, in: browser) // Fork (space-perf): its page starts with the fingers
                 }
                 sliding = true
                 way = forward ? 1 : -1
