@@ -202,10 +202,13 @@ enum AgentTabs {
     }
 
     /// Before a call reads or drives its tab: stage it, and when that just
-    /// made the page visible, let WebKit tell the page before the call goes in.
+    /// made the page visible, let WebKit tell the page before the call goes
+    /// in — one painted frame (at most 100 ms), not the fixed 120 ms it was.
     static func ready(in browser: Browser) async {
-        guard let tab = target(in: browser), prepare(tab) else { return }
-        try? await Task.sleep(for: .milliseconds(120))
+        let began = Date()
+        defer { Tools.phases?.add("ready", since: began) }
+        guard let tab = target(in: browser), prepare(tab), let web = tab.built else { return }
+        await Tools.Page.frame(web)
     }
 
     /// The window a tab belongs to — the row that holds it, else whoever

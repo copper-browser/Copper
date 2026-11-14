@@ -185,6 +185,20 @@ enum Input {
         "f11": (103, "\u{F70E}"), "f12": (111, "\u{F70F}"),
     ]
 
+    /// What browser_press_key names in its error.
+    static let keyNames = "Enter, Tab, Escape, Backspace, Delete, Space, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Home, End, PageUp, PageDown, F1–F12"
+
+    /// A key `key` can press: a name in `special` or one character, after
+    /// modifiers it knows. Anything else used to be typed out as text
+    /// ("NotAKey" went in as seven letters).
+    static func known(_ named: String) -> Bool {
+        let (name, _) = split(named, modifiers: [])
+        guard special[name.lowercased()] != nil || name.count == 1 else { return false }
+        guard named.contains("+"), named.count > 1 else { return true }
+        let mods = ["alt", "option", "control", "ctrl", "meta", "cmd", "command", "controlormeta", "shift"]
+        return named.split(separator: "+").dropLast().allSatisfy { mods.contains($0.lowercased()) }
+    }
+
     /// "Control+Shift+K" → `K` with ⌃⇧ added to `modifiers`: the last part
     /// is the key.
     static func split(_ named: String, modifiers: NSEvent.ModifierFlags) -> (key: String, flags: NSEvent.ModifierFlags) {

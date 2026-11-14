@@ -220,9 +220,9 @@ extension CanvasChat {
 
     nonisolated static var tool: [String: Any] {
         ["name": toolName,
-         "description": "Post a message in a shared canvas's chat as the signed-in user (needs Copper Cloud; Personal and local canvases have no chat). mentions: people on the canvas by name or email — each is @mentioned (and notified on copper-cloud 0.6.0+). canvas_read returns recent chat under `chat`.",
+         "description": "Post in a shared canvas's chat as the user, @mentioning people by name or email. canvas_read shows recent chat.",
          "inputSchema": ["type": "object", "properties": [
-             "id": ["type": "string", "description": "Canvas id or name (from canvas_list); omit for the canvas tab in front"],
+             "id": ["type": "string", "description": "Canvas id or name; default the one in front"],
              "text": ["type": "string", "description": "The message (at most 4000 characters)"],
              "mentions": ["type": "array", "items": ["type": "string"], "description": "Names or emails of people on the canvas to @mention"],
              "reason": Tools.reasonProperty,

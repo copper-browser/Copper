@@ -70,7 +70,11 @@ enum Page {
         // Not counted: decoration (Trail) that nothing waits on, so a click's alert stays open for the agent.
         let key = ObjectIdentifier(web)
         if counted { waiting[key, default: 0] += 1 }
-        defer { if counted { let left = (waiting[key] ?? 1) - 1; waiting[key] = left > 0 ? left : nil } }
+        let began = Date()
+        defer {
+            if counted { let left = (waiting[key] ?? 1) - 1; waiting[key] = left > 0 ? left : nil }
+            Tools.phases?.add("js", since: began)
+        }
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any?, Error>) in
             web.evaluateJavaScript(script, in: frame, in: world) { result in
                 switch result {
@@ -91,7 +95,11 @@ enum Page {
         // `frame` isn't: an alert a click raises during settle stays open for browser_handle_dialog.
         let key = ObjectIdentifier(web)
         if counted { waiting[key, default: 0] += 1 }
-        defer { if counted { let left = (waiting[key] ?? 1) - 1; waiting[key] = left > 0 ? left : nil } }
+        let began = Date()
+        defer {
+            if counted { let left = (waiting[key] ?? 1) - 1; waiting[key] = left > 0 ? left : nil }
+            Tools.phases?.add("js", since: began)
+        }
         let once = Once()
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any?, Error>) in
             let timer = Task { @MainActor in
@@ -570,9 +578,16 @@ enum Page {
         return { error: 'covered by ' + describe(hit) + ' (it is on top, and would get the click)', blocked: true, cover: describe(hit) };
       }
       function fire(el, type, init) { el.dispatchEvent(new (type.indexOf('key') === 0 ? KeyboardEvent : type.indexOf('mouse') === 0 || type === 'click' || type === 'dblclick' || type === 'contextmenu' ? MouseEvent : Event)(type, Object.assign({ bubbles: true, cancelable: true, composed: true }, init || {}))); }
+      // A field the user can't change either: an error, never a quiet write.
+      function locked(el) {
+        if (el.disabled || el.getAttribute('aria-disabled') === 'true') return 'not editable: ' + el.tagName + ' is disabled';
+        if (el.readOnly && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return 'not editable: ' + el.tagName + ' is read-only (a picker may open when you click it)';
+        return '';
+      }
       function setValue(spec, value) {
         var el = find(spec);
         if (!el) return 'no element for ' + spec;
+        if (locked(el)) return locked(el);
         el.focus && el.focus();
         if (el.isContentEditable) {
           el.textContent = value;
@@ -606,6 +621,7 @@ enum Page {
         if (!el) return 'no element for ' + spec;
         if (el.tagName !== 'SELECT') { el = el.querySelector('select') || el; }
         if (el.tagName !== 'SELECT') return 'not a select';
+        if (locked(el)) return locked(el);
         var hit = 0;
         for (var i = 0; i < el.options.length; i++) {
           var o = el.options[i];
@@ -619,6 +635,7 @@ enum Page {
       function fill(spec, kind, value) {
         var el = find(spec);
         if (!el) return 'no element for ' + spec;
+        if (locked(el)) return locked(el);
         if (kind === 'checkbox' || kind === 'radio') {
           var want = value === 'true' || value === 'on' || value === '1' || value === 'checked';
           if (el.checked !== want) el.click();
@@ -641,7 +658,7 @@ enum Page {
         return 'ok';
       }
       function hover(spec) { var el = find(spec); if (!el) return 'no element for ' + spec; var r = el.getBoundingClientRect(); var init = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; fire(el, 'pointerover', init); fire(el, 'mouseover', init); fire(el, 'mouseenter', init); fire(el, 'mousemove', init); return 'ok'; }
-      function focus(spec) { var el = find(spec); if (el && el.focus) el.focus(); return el ? 'ok' : 'no element'; }
+      function focus(spec) { var el = find(spec); if (!el) return 'no element for ' + spec; if (locked(el)) return locked(el); if (el.focus) el.focus(); return 'ok'; }
       function submit(spec) { var el = find(spec); if (!el) return 'no element'; var f = el.tagName === 'FORM' ? el : el.form || el.closest('form'); if (!f) { fire(el, 'keydown', { key: 'Enter', code: 'Enter', keyCode: 13 }); fire(el, 'keyup', { key: 'Enter', code: 'Enter', keyCode: 13 }); return 'enter'; } if (f.requestSubmit) f.requestSubmit(); else f.submit(); return 'ok'; }
       // Without a window to press keys in: a keydown of the same shape, the
       // modifiers on it, and when the page leaves a ⌘/⌃ shortcut alone, the

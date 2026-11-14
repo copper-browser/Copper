@@ -195,20 +195,20 @@ enum CloudHistoryTool {
         func string(_ text: String) -> [String: Any] { ["type": "string", "description": text] }
         let list: [String: Any] = ["type": "array", "items": ["type": "string"]]
         var host = list, page = list
-        host["description"] = "Only visits to these sites, each with its subdomains (x.com matches www.x.com, not notx.com). Matched on this Mac by paging through the history; the cloud never filters by content."
-        page["description"] = "Only visits to exactly these pages (addresses; the query string is ignored, as History does)."
+        host["description"] = "Only these sites and their subdomains"
+        page["description"] = "Only these exact pages (query ignored)"
         let properties: [String: Any] = [
-            "since": string("From when (inclusive): 30m, 1h, 24h, 7d, 2w, or an RFC 3339 time"),
-            "until": string("Up to when (exclusive): the same forms"),
+            "since": string("From (inclusive): 30m, 1h, 7d, 2w or RFC 3339"),
+            "until": string("Until (exclusive), same forms"),
             "host": host,
             "page": page,
-            "device": string("Only rows from this device id, or \"this\" for this Mac"),
-            "all": ["type": "boolean", "description": "Delete all of the user's cloud history. Required when nothing else is given; not with the others."] as [String: Any],
+            "device": string("A device id, or \"this\""),
+            "all": ["type": "boolean", "description": "Everything; only alone"] as [String: Any],
             "reason": Tools.reasonProperty,
         ]
         return [
             "name": name,
-            "description": "Delete the user's browsing history on Copper Cloud — every Mac's rows on their account — by time, site, page or device, or all of it. History on this Mac and on their other Macs is untouched; what is deleted is not sent back up. Irreversible: only on the user's explicit request. Returns {deleted, matched, looked, scanned, requests, complete, what}.",
+            "description": "Delete the user's Copper Cloud browsing history (by time, site, page, device, or all); local history stays. Irreversible: only when the user explicitly asks.",
             "inputSchema": ["type": "object", "properties": properties] as [String: Any],
         ]
     }

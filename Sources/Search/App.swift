@@ -363,6 +363,7 @@ struct ContentView: View {
         VStack(spacing: 8) {
             clearTabsToast
             announcement
+            HandoffSlot(browser: browser) // Fork (agent-handoff): an agent handing a step to you (Fork/MCP/Handoff.swift)
             CaptureSlot(browser: browser, desk: browser.capture) // Fork (page-capture): asks, a refusal to undo, macOS's own "no" (Fork/Capture/CaptureBar.swift)
             if let offer = browser.offering {
                 keepAsking(offer)

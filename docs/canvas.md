@@ -737,8 +737,11 @@ narrow." On a canvas with chat, the last 50 messages ride on a whole answer as b
 10 on a first page, none on later pages or an overview.
 
 The tool's description and the server's instructions say the same to the agent: on a big canvas,
-`overview` first, then a `frame` or `region`, or follow `next`. The schema and wording are
-identical in Copper for Linux (`crates/copper-app/src/canvas/mcp.rs`).
+`overview` first, then a `frame` or `region`, or follow `next`. The schema is identical in Copper
+for Linux (`crates/copper-app/src/canvas/mcp.rs`); the Mac's descriptions are one line each
+(tools/list is paid by every agent session), and `canvas_apply`'s op shapes come once per
+caller with its first `canvas_read` answer (a second text block), or as the error of a
+`canvas_apply` with no ops.
 
 ### When the board takes a while to come up
 

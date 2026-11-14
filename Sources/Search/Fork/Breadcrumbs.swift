@@ -68,11 +68,13 @@ enum Breadcrumbs {
     }
 
     /// One agent tool call, from MCP, the agent pane or a linked app.
-    static func tool(_ name: String, tab: UUID?, started: Date, error: Error?) {
+    /// `phases`: where the time went (Tools.Phases), e.g. `ready=2,js=11,settle=34`.
+    static func tool(_ name: String, tab: UUID?, started: Date, error: Error?, phases: String = "") {
         let ms = Int(Date().timeIntervalSince(started) * 1000)
         var fields: [(String, String)] = [("name", name)]
         if let tab { fields.append(("tab", String(tab.uuidString.prefix(8)).lowercased())) }
         fields.append(("ms", String(ms)))
+        if !phases.isEmpty { fields.append(("phases", phases)) }
         fields.append(("result", error == nil ? "ok" : "error"))
         if let error { fields.append(("class", errorClass(error))) }
         note("tool", fields)

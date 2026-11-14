@@ -20,3 +20,27 @@ import Testing
     #expect(!Tools.Page.helper.contains("__copperLogs"))
     #expect(Tools.Page.consoleShim.contains("window.__copperLogs"))
 }
+
+@Test func pressKeyKnowsItsKeyNames() {
+    for good in ["Enter", "tab", "ArrowDown", "F5", "a", "Z", "+", "Shift+Tab", "Meta+a", "Control+Shift+K"] {
+        #expect(Input.known(good), "\(good)")
+    }
+    // Typed out as text before: an error now, so the agent learns the name is wrong.
+    for bad in ["NotAKey", "Enterr", "Foo+a", "Shift+NotAKey", "ab"] {
+        #expect(!Input.known(bad), "\(bad)")
+    }
+}
+
+@MainActor @Test func toolsListStaysUnderItsBudget() throws {
+    // What a loopback agent pays at the start of every session (MCP tools/list):
+    // ≤ 8k tokens at ~4 bytes a token. One-line descriptions; canvas_apply's
+    // op shapes ride on the first canvas_read instead (CanvasTools.opsGuide).
+    let all = Tools.listed(Tools.catalogue(jev: true) + [CloudHistoryTool.schema] + VoiceTools.catalogue)
+    let bytes = try JSONSerialization.data(withJSONObject: all).count
+    #expect(bytes <= 32_000, "tools/list is \(bytes) bytes")
+    #expect(!all.contains { ($0["inputSchema"] as? [String: Any])?["required"].map { ($0 as? [Any])?.isEmpty == true } == true })
+    for name in ["browser_mouse_click_xy", "browser_handoff", "browser_permissions", "canvas_apply"] {
+        #expect(all.contains { $0["name"] as? String == name }, "\(name)")
+    }
+    #expect(CanvasTools.opsGuide.contains("op:'connect'"))
+}

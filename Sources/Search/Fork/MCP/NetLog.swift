@@ -36,14 +36,19 @@ final class NetLog: NSObject {
 
     /// Start listening to this tab's page, once per web view.
     static func watch(_ tab: Tab) {
-        guard let web = tab.built, logs[ObjectIdentifier(web)] == nil, web.responds(to: setter) else { return }
-        logs = logs.filter { $0.value.web != nil }
+        guard let web = tab.built, log(for: web) == nil, web.responds(to: setter) else { return }
         let log = NetLog(web)
         logs[ObjectIdentifier(web)] = log // the delegate property is weak
         web.perform(setter, with: log)
     }
 
-    static func log(for web: WKWebView) -> NetLog? { logs[ObjectIdentifier(web)] }
+    /// A dead view's address is soon a new view's: an entry counts only while
+    /// its own view is alive, or a new page would be read from (and never
+    /// listened to under) the log of the one before it.
+    static func log(for web: WKWebView) -> NetLog? {
+        logs = logs.filter { $0.value.web != nil }
+        return logs[ObjectIdentifier(web)].flatMap { $0.web === web ? $0 : nil }
+    }
     static var available: Bool { WKWebView.instancesRespond(to: setter) }
 
     // MARK: - _WKResourceLoadDelegate

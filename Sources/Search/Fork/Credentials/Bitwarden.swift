@@ -86,6 +86,12 @@ final class Bitwarden: ObservableObject {
     private(set) var cachedCards: [AutofillCard] = []
 
     private var sessionKey: String?
+    /// Bumped by every sign-in, unlock, lock and sign-out Copper makes. A
+    /// `bw status` that began before one answers for the vault as it was:
+    /// launch's own status read, still running when an agent's
+    /// `copper bitwarden login` unlocked, came back "locked" after the unlock
+    /// and threw its new session away (c1.vault_unlock failed one run in two).
+    private var changes = 0
     private struct Secret {
         var password: String?
         var totp: String?
@@ -312,6 +318,7 @@ final class Bitwarden: ObservableObject {
     /// A session `bw login` just returned: kept, and persisted when asked to.
     func adopt(sessionKey key: String) {
         sessionKey = key
+        changes += 1
         persistSession()
     }
 
@@ -515,8 +522,11 @@ final class Bitwarden: ObservableObject {
             state = .missing
             return
         }
+        let seen = changes
         do {
             let data = try await run(["status"])
+            // Stale: whoever changed the vault reads its status after (or set it outright).
+            guard seen == changes else { return }
             let status = try JSONDecoder().decode(RawStatus.self, from: data)
             if let server = status.serverUrl, !server.isEmpty {
                 Store.settings.set(server, forKey: Self.serverKey)
@@ -550,6 +560,7 @@ final class Bitwarden: ObservableObject {
                 state = .unauthenticated
             }
         } catch {
+            guard seen == changes else { return }
             if sessionKey == nil, case .missing = state { return }
             if sessionKey == nil { state = .unauthenticated }
         }
@@ -577,6 +588,7 @@ final class Bitwarden: ObservableObject {
         }
         _ = try await run(["login", "--apikey", "--raw"],
                           env: ["BW_CLIENTID": id, "BW_CLIENTSECRET": secret], timeout: 30)
+        changes += 1
         await refreshStatus()
     }
 
@@ -592,6 +604,7 @@ final class Bitwarden: ObservableObject {
         let key = Self.session(from: data)
         guard !key.isEmpty else { throw Failure(message: "Bitwarden did not return a session") }
         sessionKey = key
+        changes += 1
         persistSession()
         await refreshStatus()
         await refreshCacheIfPossible()
@@ -612,6 +625,7 @@ final class Bitwarden: ObservableObject {
         let missing: Bool
         if case .missing = state { missing = true } else { missing = false }
         _ = try? await run(["lock"])
+        changes += 1
         sessionKey = nil
         clearCache()
         forgetPersistedSession()
@@ -625,6 +639,7 @@ final class Bitwarden: ObservableObject {
         let missing: Bool
         if case .missing = state { missing = true } else { missing = false }
         _ = try? await run(["logout"])
+        changes += 1
         sessionKey = nil
         clearCache()
         forgetPersistedSession()

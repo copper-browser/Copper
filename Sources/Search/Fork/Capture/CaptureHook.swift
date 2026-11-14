@@ -170,6 +170,7 @@ enum CaptureHook {
     static func permission(_ name: String, origin: WKSecurityOrigin, page web: WKWebView, in browser: Browser) -> WKPermissionDecision {
         let device: CaptureDevices
         switch name {
+        case "geolocation": return Permissions.geolocation(origin) ? .grant : .prompt // Fork (agent-permissions)
         case "microphone": device = .microphone
         case "camera": device = .camera
         default: return .prompt
