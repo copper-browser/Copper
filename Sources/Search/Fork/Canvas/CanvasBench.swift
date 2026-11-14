@@ -345,7 +345,10 @@ enum CanvasBench {
                     var page = (value as? String).flatMap { $0.data(using: .utf8) }.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]
                     if let ours = (try? ours.get()) as? [Bool], ours.count == 6 {
                         page?["keys"] = ours[0]; page?["forms"] = ours[1]
-                        for (i, key) in ["swipe", "veil", "images", "scroll"].enumerated() { page?[key] = ((page?[key] as? Bool) ?? false) || ours[i + 2] }
+                        for (i, key) in ["swipe", "veil", "images", "scroll"].enumerated() {
+                            let there = (page?[key] as? Bool) ?? false
+                            page?[key] = there || ours[i + 2]
+                        }
                     }
                     answer(["lean": CanvasHost.lean, "board": web.board, "magnifies": web.allowsMagnification, "userScripts": scripts,
                             "ready": CanvasHost.host(for: tab)?.isReady ?? false, "page": page ?? NSNull()])
