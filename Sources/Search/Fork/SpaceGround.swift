@@ -34,6 +34,8 @@ struct SpaceGround: View, Animatable {
     var toKey: String
     var t: CGFloat
     let dark: Bool
+    /// Fork (page-frame): a picture's width, when the ground is the window's (ThemeBackdrop.Still).
+    var span: CGFloat? = nil
 
     /// Animatable, so a timed slide's `withAnimation { phase = 1 }` runs
     /// this body with every value in between rather than jumping the
@@ -54,10 +56,16 @@ struct SpaceGround: View, Animatable {
                 // into something else, so the incoming ground fades in over
                 // the outgoing one — both drawn live, both whole-column, so
                 // there is still no edge, only a change.
-                ThemeBackdrop.Still(theme: from, dark: dark)
-                if x > 0.001 { ThemeBackdrop.Still(theme: to, dark: dark).opacity(x) }
+                ThemeBackdrop.Still(theme: from, dark: dark, span: span)
+                if x > 0.001 { ThemeBackdrop.Still(theme: to, dark: dark, span: span).opacity(x) }
             }
+            // Fork (page-frame): as wide as the column, never the window —
+            // the scene is a WebGL page, and under the page card only its
+            // margin would show.
             Scene(from: from, to: to, fromKey: fromKey, toKey: toKey, x: x, dark: dark)
+                .frame(width: span)
+                .mask { if let span { ThemeBackdrop.Still.fade(span) } else { Rectangle() } }
+                .frame(maxWidth: .infinity, alignment: .leading)
             ThemeBackdrop.Veil(tone: from.tone + (to.tone - from.tone) * x,
                                grain: from.grain + (to.grain - from.grain) * x)
         }
@@ -114,12 +122,15 @@ struct SpaceGround: View, Animatable {
 struct SpaceGroundView: View {
     let browser: Browser
     let dark: Bool
+    /// Fork (page-frame): the column's width when this is the window's ground.
+    var span: CGFloat? = nil
     @ObservedObject private var slide = SpaceSlide.shared
     @ObservedObject private var spaces = Spaces.shared
 
-    init(browser: Browser, dark: Bool) {
+    init(browser: Browser, dark: Bool, span: CGFloat? = nil) {
         self.browser = browser
         self.dark = dark
+        self.span = span
     }
 
     var body: some View {
@@ -128,6 +139,6 @@ struct SpaceGroundView: View {
         let from = on ? slide.from ?? space : space
         let to = on ? slide.to ?? space : space
         SpaceGround(from: from.look, to: to.look, fromKey: from.id.uuidString, toKey: to.id.uuidString,
-                    t: on ? slide.phase : 1, dark: dark)
+                    t: on ? slide.phase : 1, dark: dark, span: span)
     }
 }

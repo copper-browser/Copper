@@ -275,14 +275,14 @@ struct SpacePreview: View, Equatable {
 
         var body: some View {
             HStack(spacing: 0) {
-                SpaceGlyph(space: space, size: 16, dark: dark, ink: tint.muted, bare: true)
+                SpaceGlyph(space: space, size: 16, dark: dark, ink: tint.mark, bare: true)
                     .frame(width: 24, height: 24)
                     .padding(.leading, -4)
                     .padding(.trailing, 6)
                 HStack(spacing: 10) {
                     Text(space.title)
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(tint.muted)
+                        .foregroundStyle(tint.heading)
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Spacer(minLength: 4)

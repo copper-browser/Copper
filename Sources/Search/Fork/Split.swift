@@ -135,10 +135,11 @@ final class Split: ObservableObject {
     /// The name the stage measures the handle's drag against.
     static let space = "split.stage"
 
-    /// The space's colour, for the live pane's outline — the accent when the
-    /// space has no colour of its own, because grey would say nothing.
-    var tint: Color {
-        Spaces.shared.space(in: holder ?? Windows.current).hue.map { Color(hue: $0, saturation: 0.62, brightness: 0.72) } ?? Color.accentColor
+    /// The space's colours, for the live pane's outline (its mark, the
+    /// colour its chip and header already wear) and the ground the cards sit
+    /// on — never the system's blue, which belongs to no space.
+    func tint(dark: Bool) -> SpaceTint {
+        SpaceTint(space: Spaces.shared.space(in: holder ?? Windows.current), dark: dark)
     }
 
     /// Which pane a tab is in: left (active), right (side), or nowhere.
@@ -233,6 +234,10 @@ struct SplitStage: View {
     @ObservedObject var split = Split.shared
     @ObservedObject var spaces = Spaces.shared
     let active: Tab
+    /// Fork (page-frame): the sidebar layout, where the stage is a card (or
+    /// two) inset in the space's ground, which the window draws behind it.
+    var inset = false
+    @Environment(\.colorScheme) private var scheme
 
     /// How far the page area spills past the window's top and bottom edges.
     /// Zero in a sane layout; see `PaneSpill`.
@@ -245,14 +250,19 @@ struct SplitStage: View {
     /// loopback server, a linked bot) shows as a card. It takes its width
     /// from the page, never from the sidebar.
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: inset ? SplitMetrics.gutter : 0) {
             driven
             if agent.open {
-                Rectangle().fill(Palette.hairline).frame(width: 1)
+                if !inset { Rectangle().fill(Palette.hairline).frame(width: 1) }
                 AgentSlot(browser: browser) // Fork (addons): the slot's addon, else AgentPane (Fork/Addons/AddonUI.swift)
+                    .modifier(PaneCard(on: inset))
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
+        // Fork (page-frame): inset, the page and the pane are cards on the
+        // space's ground, with the margin round them (not left of them: the
+        // column is the margin there).
+        .padding(inset ? EdgeInsets(top: SplitMetrics.margin, leading: 0, bottom: SplitMetrics.margin, trailing: SplitMetrics.margin) : EdgeInsets())
         .animation(Motion.glide, value: agent.open)
     }
 
@@ -271,7 +281,7 @@ struct SplitStage: View {
             ?? DriveStyle.accent.opacity(trace.live ? 0.35 : 0)
         return stage
             .overlay {
-                RoundedRectangle(cornerRadius: split.on ? SplitMetrics.corner : 0, style: .continuous)
+                RoundedRectangle(cornerRadius: split.on || inset ? SplitMetrics.corner : 0, style: .continuous)
                     .strokeBorder(ring, lineWidth: here.isEmpty ? 1.5 : 2)
                     .allowsHitTesting(false)
             }
@@ -290,13 +300,15 @@ struct SplitStage: View {
         if split.on(in: browser), let id = split.side, let side = browser.tabs.first(where: { $0.id == id }) {
             let left = split.swapped ? side : active
             let right = split.swapped ? active : side
+            // Inset, the window's margin is the pair's: no second one inside it.
+            let margin = inset ? 0 : SplitMetrics.margin
             GeometryReader { geo in
                 // What the fraction divides: the width left once the margins
                 // and the gutter have taken theirs.
-                let span = max(geo.size.width - 2 * SplitMetrics.margin - SplitMetrics.gutter, 1)
+                let span = max(geo.size.width - 2 * margin - SplitMetrics.gutter, 1)
                 // And the height, once the margins and whatever the stage
                 // hangs off the window have taken theirs.
-                let tall = max(geo.size.height - spill.top - spill.bottom - 2 * SplitMetrics.margin, 1)
+                let tall = max(geo.size.height - spill.top - spill.bottom - 2 * margin, 1)
                 let least = min(SplitMetrics.least, span / 2)
                 let leftWidth = min(span - least, max(least, span * split.fraction))
 
@@ -305,24 +317,26 @@ struct SplitStage: View {
                         card(left, CGSize(width: leftWidth, height: tall))
                         card(right, CGSize(width: span - leftWidth, height: tall))
                     }
-                    .padding(.horizontal, SplitMetrics.margin)
-                    .padding(.top, SplitMetrics.margin + spill.top)
-                    .padding(.bottom, SplitMetrics.margin + spill.bottom)
+                    .padding(.horizontal, margin)
+                    .padding(.top, margin + spill.top)
+                    .padding(.bottom, margin + spill.bottom)
 
-                    SplitHandle(span: span, inset: SplitMetrics.margin)
-                        .frame(height: tall + 2 * SplitMetrics.margin)
+                    SplitHandle(span: span, inset: margin)
+                        .frame(height: tall + 2 * margin)
                         .offset(
-                            x: SplitMetrics.margin + leftWidth + SplitMetrics.gutter / 2 - SplitMetrics.grip / 2,
+                            x: margin + leftWidth + SplitMetrics.gutter / 2 - SplitMetrics.grip / 2,
                             y: spill.top
                         )
                 }
                 .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
                 .background(PaneSpill.probe { spill = $0 })
             }
-            .background(backdrop)
+            .background { if !inset { backdrop } }
             .coordinateSpace(name: Split.space)
             .onChange(of: browser.activeID) { was, _ in split.reconcile(browser, was: was) }
             .onChange(of: browser.tabs.map(\.id)) { _, _ in split.reconcile(browser) }
+        } else if inset {
+            PageCard(tab: active)
         } else {
             Page(tab: active)
         }
@@ -338,17 +352,17 @@ struct SplitStage: View {
         }
     }
 
-    /// Deliberately stronger than the sidebar's wash. The sidebar's job is to
-    /// stay behind the tabs; this one has to be seen in a 7pt margin.
-    private var wash: Color { split.tint.opacity(0.22) }
+    /// The top-tab layout's ground for the pair: the space's own colour
+    /// half over the window's, so the gutter is the space's and not a blue
+    /// nobody chose. (Inset, the window draws the space's ground itself.)
+    private var wash: Color { split.tint(dark: scheme == .dark).ground.opacity(0.5) }
 
     private func card(_ tab: Tab, _ size: CGSize) -> some View {
         SplitCard(
             browser: browser,
             tab: tab,
             live: tab.id == browser.activeID,
-            tint: split.tint,
-            wash: wash,
+            tint: split.tint(dark: scheme == .dark).mark.opacity(0.85),
             size: CGSize(width: max(size.width, 1), height: max(size.height, 1))
         )
     }
