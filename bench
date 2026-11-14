@@ -26,10 +26,12 @@
                                        a trackpad scroll of DY points (+ is down) in N events (60), one per
                                        display-link tick at H Hz (120; the display may give less): began,
                                        changed…, ended; at window point X,Y (the page's centre) — --test
-                                       runs only; → events, hz, tick_ms/send_ms p50 p90 max, missed_ticks
+                                       runs only; → events, hz, tick_ms/send_ms p50 p90 max, missed_ticks,
+                                       clock (display link, or "timer" while the display is asleep)
     ./bench keylat KEY [--window N]    one press of ⌘t, ⌘k, ⎋ or a letter in at the app, timed in ms from
                                        just before it: handled, the next Core Animation commit, the display
-                                       tick after that (key→pixel) — --test runs only
+                                       tick after that (key→pixel; none while the display is asleep) —
+                                       --test runs only
     ./bench key ID TEXT [--app] [--hold] press keys on a tab as real key events — --test runs only;
                                        ⌘ ⇧ ⌥ ⌃ hold for the next key, ⇥ is Tab, ← → ↑ ↓ ⎋ ↩ are
                                        arrows/Escape/Return; --app sends through the app's own key monitor;
