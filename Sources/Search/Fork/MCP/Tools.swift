@@ -655,8 +655,8 @@ enum Tools {
                 throw Failure(text: "Nothing to wait for: pass text (to appear), textGone (to disappear) or time (seconds).")
             }
             if let seconds {
-                guard seconds.isFinite, seconds >= 0 else { throw Failure(text: "time must be a number of seconds, 0 or more (at most 30); got \(seconds)") }
-                try await Task.sleep(nanoseconds: UInt64(min(seconds, 30) * 1_000_000_000))
+                guard seconds.isFinite, seconds >= 0, seconds <= 30 else { throw Failure(text: "time must be a number of seconds, 0 or more (at most 30); got \(seconds)") }
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
             }
             let deadline = Date().addingTimeInterval(15)
             for (needle, wanted) in [(args["text"] as? String, true), (args["textGone"] as? String, false)] {
