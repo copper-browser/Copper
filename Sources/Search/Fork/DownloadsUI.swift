@@ -78,6 +78,7 @@ struct DownloadsDoor: View {
         .popover(isPresented: downloads.door(in: browser), arrowEdge: arrowEdge) {
             DownloadsPopover(browser: browser, downloads: downloads)
         }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { downloads.doorSpot = $0 }
         .animation(Motion.quick, value: hovering)
         .animation(Motion.settle, value: downloads.popoverOpen)
         .animation(Motion.settle, value: downloads.pulsing)

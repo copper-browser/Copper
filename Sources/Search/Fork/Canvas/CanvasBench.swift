@@ -135,7 +135,8 @@ extension CanvasTools {
                 extras.append(held.window)
             }
             let anchor = CanvasRenaming.shared.target.flatMap { CanvasRenaming.shared.rows[$0] }
-            guard let image = CanvasBench.composite(window, with: extras, anchor: anchor) else { return answer(["error": "no image"]) }
+            let door = Downloads.shared.showsDoor(in: browser) ? Downloads.shared.doorSpot : nil // Fork (uiflows r4)
+            guard let image = CanvasBench.composite(window, with: extras, anchor: anchor, under: door) else { return answer(["error": "no image"]) }
             answer(["path": CanvasBench.write(image, to: path) ? path : "", "size": [image.width, image.height], "extras": extras.map(\.className)])
         case "import":
             CanvasImport.bench(words.first ?? "status", answer: answer)
@@ -369,7 +370,8 @@ enum CanvasBench {
     /// popover on one: a popover that is nowhere near its window is laid
     /// beside `anchor` (window points, top left — the row it hangs from),
     /// where it would be on a window somebody could see.
-    static func composite(_ window: NSWindow, with extras: [NSWindow], anchor: CGRect? = nil) -> CGImage? {
+    /// `under`: a glyph the popover hangs below (the Downloads door), as AppKit would put it.
+    static func composite(_ window: NSWindow, with extras: [NSWindow], anchor: CGRect? = nil, under: CGRect? = nil) -> CGImage? {
         guard let base = Fork.layered([CGWindowID(window.windowNumber)]) else { return nil }
         let scale = CGFloat(base.width) / max(1, window.frame.width)
         func spot(_ extra: NSWindow) -> NSRect {
@@ -381,6 +383,11 @@ enum CanvasBench {
                 return NSRect(x: window.frame.midX - size.width / 2, y: window.frame.maxY - 28 - size.height, width: size.width, height: size.height)
             }
             guard !extra.frame.intersects(window.frame) else { return extra.frame }
+            if let under {
+                // Its frame has a 13 pt margin round the card; the arrow tip meets the glyph's foot.
+                return NSRect(x: window.frame.minX + under.midX - size.width / 2, y: window.frame.maxY - under.maxY - size.height + 4,
+                              width: size.width, height: size.height)
+            }
             guard let anchor else {
                 return NSRect(x: window.frame.midX - size.width / 2, y: window.frame.midY - size.height / 2, width: size.width, height: size.height)
             }
