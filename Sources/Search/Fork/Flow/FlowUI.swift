@@ -740,15 +740,17 @@ struct FlowSheet: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Palette.ink)
                     .padding(.horizontal, 17).padding(.vertical, 10)
-                    .background(Capsule().fill(Palette.ground))
-                    // A path stroke, not strokeBorder: the sheet's own window
-                    // drew strokeBorder's capsule with 1 pt ticks at both ends.
-                    .overlay(Capsule().inset(by: 0.5).stroke(Palette.hairline, lineWidth: 1))
-                    .contentShape(Capsule())
+                    // A rounded rectangle just short of a capsule: the sheet
+                    // drew a stroked Capsule with 1 pt ticks at both ends.
+                    .background(Self.shape.fill(Palette.ground))
+                    .overlay(Self.shape.strokeBorder(Palette.hairline, lineWidth: 1))
+                    .contentShape(Self.shape)
             }
-            .buttonStyle(Press(radius: 99))
-            .settingsFocusRing($focused, shape: Capsule())
+            .buttonStyle(Press(radius: 18))
+            .settingsFocusRing($focused, shape: Self.shape)
         }
+
+        static let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
     }
 
     /// The one button Return presses, in every state.
