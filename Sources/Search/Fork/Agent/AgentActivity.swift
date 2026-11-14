@@ -211,7 +211,7 @@ struct AgentActivity: View {
         case "browser_scroll": return "arrow.up.and.down"
         case "browser_wait_for": return "hourglass"
         case "browser_evaluate": return "chevron.left.forwardslash.chevron.right"
-        case "browser_sign_in", "browser_autofill": return "key"
+        case "browser_sign_in", "browser_autofill", "browser_vault_save", "browser_vault_note": return "key"
         default: return tool.contains("__") ? "puzzlepiece.extension" : "wrench.and.screwdriver"
         }
     }

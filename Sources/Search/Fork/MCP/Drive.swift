@@ -534,6 +534,8 @@ final class Drive: ObservableObject {
         case "browser_groups": return ("Tab groups: \((args["action"] as? String) ?? "list")", detail)
         case "browser_sign_in": return ((args["what"] as? String) == "otp" ? "Filling the one-time code from the vault" : "Signing in with a saved account", detail)
         case "browser_autofill": return ("Filling a saved \((args["kind"] as? String) ?? "item")", detail)
+        case "browser_vault_save": return ("Saving a login to the vault", detail)
+        case "browser_vault_note": return ("Saving a secure note to the vault", detail)
         case "browser_perf_probe": return ("Sampling the page's performance", detail)
         case "browser_crashes": return ("Reading Copper's crash history", detail)
         case "jev_observe": return ("Reading the page (Jev)", detail)
@@ -578,6 +580,7 @@ final class Drive: ObservableObject {
         case "browser_close": return "TABS"
         case "browser_sign_in": return "SIGN_IN"
         case "browser_autofill": return "AUTOFILL"
+        case "browser_vault_save", "browser_vault_note": return "VAULT"
         case "browser_perf_probe": return "PROBE"
         case "canvas_read", "canvas_list": return "READ"
         case _ where tool.hasPrefix("canvas_"): return "CANVAS"
@@ -591,7 +594,7 @@ final class Drive: ObservableObject {
         switch tool {
         case "browser_snapshot", "browser_get_text", "browser_console_messages", "browser_find", "browser_take_screenshot",
              "browser_hover", "browser_perf_probe", "jev_observe", "jev_extract", "browser_resize", "browser_groups", "browser_wait_for",
-             "browser_crashes", "cloud_history_delete":
+             "browser_crashes", "cloud_history_delete", "browser_vault_save", "browser_vault_note":
             return false
         // The canvas tools change a board, not the page: their result is
         // what they say they did (`result`), never "page changed".
@@ -615,6 +618,8 @@ final class Drive: ObservableObject {
         case "browser_select_option": return ((args["values"] as? [String]) ?? []).joined(separator: ", ")
         case "browser_autofill": return (args["name"] as? String) ?? (args["kind"] as? String) ?? ""
         case "browser_sign_in": return (args["account"] as? String) ?? ""
+        case "browser_vault_save": return (args["url"] as? String).flatMap { Bitwarden.site($0)?.host } ?? ""
+        case "browser_vault_note": return (args["name"] as? String) ?? ""
         default: return (args["ref"] as? String) ?? (args["selector"] as? String) ?? ""
         }
     }

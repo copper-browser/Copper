@@ -63,9 +63,9 @@ enum Tools {
     static func instructions(jev: Bool, voice: Bool = false) -> String {
         let listen = voice && !VoiceTools.instruction.isEmpty ? " " + VoiceTools.instruction : ""
         guard jev else {
-            return "Copper is the user's own browser, signed in as them; the current tab is the one they are looking at — work there unless the task names another tab. First action: call browser_snapshot with interactive: true on the current tab, then act with its refs. Call browser_tabs only when another tab is named. Take a screenshot when layout matters. Nothing is sandboxed — act as the user would. For sign-in forms call browser_sign_in first; it fills a saved account in-process and never returns the password. For checkout, address, or sign-up forms call browser_autofill (kind card|identity) — it fills from the vault and never returns the values; for a new or changed password call it with kind new-password. \(tabNote) \(reasonNote) \(CanvasTools.instructions)\(listen)"
+            return "Copper is the user's own browser, signed in as them; the current tab is the one they are looking at — work there unless the task names another tab. First action: call browser_snapshot with interactive: true on the current tab, then act with its refs. Call browser_tabs only when another tab is named. Take a screenshot when layout matters. Nothing is sandboxed — act as the user would. For sign-in forms call browser_sign_in first; it fills a saved account in-process and never returns the password. For checkout, address, or sign-up forms call browser_autofill (kind card|identity) — it fills from the vault and never returns the values; for a new or changed password call it with kind new-password. To keep a login or backup codes you were given, call browser_vault_save or browser_vault_note. \(tabNote) \(reasonNote) \(CanvasTools.instructions)\(listen)"
         }
-        return "Copper is the user's own browser, signed in as them; the current tab is the one they are looking at — work there unless the task names another tab. ANY task: the FIRST call is jev_run with the whole goal, every concrete place/date/name/filter and stop condition; no browser_tabs or snapshot first. Add url only for a named page that is not current. jev_observe = fast indexed read; jev_extract = JSON values; jev_step = one decision. BLOCKED → browser_snapshot/click/type for that part, then jev_run again. DONE is Jev's claim — verify with jev_observe/jev_extract. Screenshot when layout matters; nothing is sandboxed — act as the user. For sign-in forms call browser_sign_in first; it fills a saved account in-process and never returns the password. For checkout, address, or sign-up forms call browser_autofill (kind card|identity) — it fills from the vault and never returns the values; for a new or changed password call it with kind new-password. \(tabNote) \(reasonNote) \(CanvasTools.instructions)\(listen)"
+        return "Copper is the user's own browser, signed in as them; the current tab is the one they are looking at — work there unless the task names another tab. ANY task: the FIRST call is jev_run with the whole goal, every concrete place/date/name/filter and stop condition; no browser_tabs or snapshot first. Add url only for a named page that is not current. jev_observe = fast indexed read; jev_extract = JSON values; jev_step = one decision. BLOCKED → browser_snapshot/click/type for that part, then jev_run again. DONE is Jev's claim — verify with jev_observe/jev_extract. Screenshot when layout matters; nothing is sandboxed — act as the user. For sign-in forms call browser_sign_in first; it fills a saved account in-process and never returns the password. For checkout, address, or sign-up forms call browser_autofill (kind card|identity) — it fills from the vault and never returns the values; for a new or changed password call it with kind new-password. To keep a login or backup codes you were given, call browser_vault_save or browser_vault_note. \(tabNote) \(reasonNote) \(CanvasTools.instructions)\(listen)"
     }
 
     // MARK: - the catalogue
@@ -135,6 +135,20 @@ enum Tools {
                 "save": bool("new-password: save before filling; defaults to true (false fills only, and Copper offers to save after submit)"),
                 "submit": bool("Whether to submit after filling; defaults to false"),
             ], required: ["kind"]),
+            tool("browser_vault_save", "Save a website login into the user's Bitwarden vault (open in Copper) — e.g. a password you were given. Creates a Login, or, when the vault already has this site and username, changes its password (and totp/notes when given). With agent access set to folder, new logins go to the Agents folder, so browser_sign_in can use them at once; a saved login changes only when it is shared with agents. Returns {ok, id, created, updated, name, folder}; the values are never returned.", [
+                "url": string("The site: an address or a host (example.com)"),
+                "username": string("The account's username or email"),
+                "password": string("The password"),
+                "totp": string("Two-step seed: an otpauth://totp/ URI or the base32 secret"),
+                "notes": string("Notes for the item"),
+                "name": string("Item name; defaults to the host"),
+                "folder": string("Folder name; defaults to Agents when agent access is folder"),
+            ], required: ["url", "username", "password"]),
+            tool("browser_vault_note", "Save a secure note — backup codes, recovery codes — into the user's Bitwarden vault. Creates it, or replaces the text of the note with exactly this name when that note is shared with agents. Returns {ok, id, created, updated, name, folder}; the text is never returned.", [
+                "name": string("Note name, e.g. Google backup codes (me@example.com)"),
+                "text": string("The note's text"),
+                "folder": string("Folder name; defaults to Agents when agent access is folder"),
+            ], required: ["name", "text"]),
             tool("browser_navigate", "Navigate to a URL in the current tab", ["url": string("The URL to navigate to")], required: ["url"]),
             tool("browser_navigate_back", "Go back to the previous page"),
             tool("browser_navigate_forward", "Go forward to the next page"),
@@ -231,7 +245,7 @@ enum Tools {
 
     @MainActor
     private static func dispatch(_ name: String, _ args: [String: Any], in browser: Browser) async throws -> [Content] {
-        if !["browser_tabs", "browser_close", "browser_resize", "browser_groups", "browser_crashes", CloudHistoryTool.name].contains(name), !CanvasTools.names.contains(name),
+        if !["browser_tabs", "browser_close", "browser_resize", "browser_groups", "browser_crashes", "browser_vault_save", "browser_vault_note", CloudHistoryTool.name].contains(name), !CanvasTools.names.contains(name),
            !(name == "jev_run" && (args["newTab"] as? Bool) == true) {
             await AgentTabs.ready(in: browser)
         }
@@ -252,6 +266,14 @@ enum Tools {
         case "jev_run", "jev_step", "jev_observe", "jev_extract": return try await Ultrafast.call(name, args, in: browser)
         case _ where CanvasTools.names.contains(name): return try await CanvasTools.call(name, args, in: browser)
         case "browser_crashes": return [.text(try Crashes.answer(args))]
+        case "browser_vault_save", "browser_vault_note":
+            // Needs no tab: it writes to the vault, never to a page (BitwardenSave.swift).
+            let result = await Bitwarden.shared.vaultWrite(name == "browser_vault_note" ? "note" : "save", args)
+            guard result["ok"] as? Bool == true else { throw Failure(text: result["error"] as? String ?? "Bitwarden did not save") }
+            guard let data = try? JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]) else {
+                throw Failure(text: "could not encode the save result")
+            }
+            return [.text(String(decoding: data, as: UTF8.self))]
         case CloudHistoryTool.name: return try await CloudHistoryTool.call(args)
         default: break
         }

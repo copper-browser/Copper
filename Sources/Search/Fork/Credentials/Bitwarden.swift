@@ -922,26 +922,16 @@ final class Bitwarden: ObservableObject {
 
     /// The account exists in the vault with another password: change it there.
     func update(id: String, password: String) async throws {
-        try await requireUnlocked()
-        let current = try await run(["get", "item", id])
-        guard var object = try JSONSerialization.jsonObject(with: current) as? [String: Any]
-        else { throw Failure(message: "Bitwarden returned an invalid item") }
+        var object = try await rawItem(id: id)
         var login = object["login"] as? [String: Any] ?? [:]
         login["password"] = password
         object["login"] = login
-        let itemJSON = try JSONSerialization.data(withJSONObject: object, options: [])
-        let encoded = try await run(["encode"], stdin: itemJSON)
-        let value = Self.trimTrailingNewlines(String(decoding: encoded, as: UTF8.self))
-        guard !value.isEmpty else { throw Failure(message: "Bitwarden did not encode the item") }
-        _ = try await run(["edit", "item", id, value])
+        try await write(object, id: id)
         await refreshCacheIfPossible()
     }
 
     func create(host: String, user: String, password: String) async throws -> String {
-        try await requireUnlocked()
-        let templateData = try await run(["get", "template", "item"])
-        guard var object = try JSONSerialization.jsonObject(with: templateData) as? [String: Any]
-        else { throw Failure(message: "Bitwarden returned an invalid item template") }
+        var object = try await itemTemplate()
         object["type"] = 1
         object["name"] = host
         object["login"] = [
@@ -950,16 +940,52 @@ final class Bitwarden: ObservableObject {
             "totp": NSNull(),
             "uris": [["uri": "https://\(host)", "match": NSNull()]],
         ]
-        let itemJSON = try JSONSerialization.data(withJSONObject: object, options: [])
-        let encoded = try await run(["encode"], stdin: itemJSON)
-        let value = Self.trimTrailingNewlines(String(decoding: encoded, as: UTF8.self))
-        guard !value.isEmpty else { throw Failure(message: "Bitwarden did not encode the item") }
-        let created = try await run(["create", "item", value])
-        guard let object = try JSONSerialization.jsonObject(with: created) as? [String: Any],
-              let id = object["id"] as? String, !id.isEmpty
-        else { throw Failure(message: "Bitwarden did not return the new item id") }
+        let id = try await write(object)
         await refreshCacheIfPossible()
         return id
+    }
+
+    /// The whole item as `bw` keeps it, so an edit keeps every other field.
+    func rawItem(id: String) async throws -> [String: Any] {
+        try await requireUnlocked()
+        let data = try await run(["get", "item", id])
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { throw Failure(message: "Bitwarden returned an invalid item") }
+        return object
+    }
+
+    /// `bw get template item`, without its sample notes.
+    func itemTemplate() async throws -> [String: Any] {
+        try await requireUnlocked()
+        let data = try await run(["get", "template", "item"])
+        guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { throw Failure(message: "Bitwarden returned an invalid item template") }
+        object["notes"] = NSNull()
+        return object
+    }
+
+    /// Create (`id` nil) or replace a whole item or folder; returns its id.
+    /// The encoded JSON goes to `bw` on stdin (what `bw encode` makes:
+    /// base64 of the JSON), so no secret is ever on a command line.
+    @discardableResult
+    func write(_ object: [String: Any], id: String? = nil, kind: String = "item") async throws -> String {
+        try await requireUnlocked()
+        let json = try JSONSerialization.data(withJSONObject: object, options: [])
+        let encoded = Data(json.base64EncodedString().utf8)
+        let args = id.map { ["edit", kind, $0] } ?? ["create", kind]
+        let out = try await run(args, stdin: encoded, timeout: 30)
+        guard let saved = try JSONSerialization.jsonObject(with: out) as? [String: Any],
+              let savedID = saved["id"] as? String, !savedID.isEmpty
+        else { throw Failure(message: "Bitwarden did not return the \(kind) id") }
+        return savedID
+    }
+
+    /// The folder called `name` (any case), made when there is none.
+    func folder(named name: String) async throws -> Folder {
+        if let found = try await folders().first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
+            return found
+        }
+        return Folder(id: try await write(["name": name], kind: "folder"), name: name)
     }
 
     func generate() async throws -> String {

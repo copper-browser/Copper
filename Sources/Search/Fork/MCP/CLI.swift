@@ -931,7 +931,7 @@ enum CLI {
 
     // MARK: - Bitwarden
 
-    /// `copper bitwarden status|login -|cancel|lock|logout|sync|policy`: the vault
+    /// `copper bitwarden status|login -|cancel|lock|logout|sync|policy|save -|note -`: the vault
     /// in the running app, through the loopback server's `copper/bitwarden`
     /// method. Secrets never ride on argv: `login -` reads one JSON object
     /// from stdin. Output is always the JSON control result — a status
@@ -962,6 +962,19 @@ enum CLI {
             let fields = ["server", "email", "password", "clientId", "clientSecret", "otp", "otpMethod", "share", "stayUnlocked"]
             for field in fields { if let value = object[field], !(value is NSNull) { params[field] = value } }
             timeout = 120
+        case "save", "note":
+            guard args == ["-"] else {
+                error("bitwarden \(op) reads its JSON from stdin: `copper bitwarden \(op) -` (secrets are never accepted as arguments)")
+                return 2
+            }
+            let data = FileHandle.standardInput.readDataToEndOfFile()
+            guard data.count <= 64 * 1024,
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                error("bitwarden \(op) - : stdin must be one JSON object")
+                return 2
+            }
+            let fields = op == "save" ? ["name", "url", "host", "username", "password", "totp", "notes", "folder"] : ["name", "text", "folder"]
+            for field in fields { if let value = object[field], !(value is NSNull) { params[field] = value } }
         case "policy":
             var i = 0
             while i < args.count {
@@ -985,7 +998,7 @@ enum CLI {
         let request: [String: Any] = ["jsonrpc": "2.0", "id": 1, "method": "copper/bitwarden", "params": params]
         if dryRun {
             var shown = params
-            for secret in ["password", "clientId", "clientSecret", "otp"] where shown[secret] != nil { shown[secret] = "…" }
+            for secret in ["password", "clientId", "clientSecret", "otp", "totp", "notes", "text"] where shown[secret] != nil { shown[secret] = "…" }
             return dryRunDecision(RequestSpec(request: ["jsonrpc": "2.0", "id": 1, "method": "copper/bitwarden", "params": shown]), launchRequested: launchRequested)
         }
         guard var config = readConfig(), config.enabled, !config.token.isEmpty else {
@@ -1027,6 +1040,19 @@ enum CLI {
       sync                       pull the vault now (unlocked only)
       policy [--share folder|all] [--stay-unlocked on|off]
                                  what agents may use; keep the session across launches
+      save -                     keep a login; reads ONE JSON object from stdin:
+                                 {url (or host), username, password, totp? (otpauth URI
+                                  or base32 secret), notes?, name? (default: the host),
+                                  folder?}
+                                 The same site + username already saved: its password
+                                 (and totp/notes when given) change instead.
+      note -                     keep a secure note (backup codes); stdin:
+                                 {name, text, folder?} — the note with exactly that name
+                                 gets the new text.
+                                 save and note answer {ok, id, created, updated, name,
+                                 folder}, never a value. Unlocked only; with --share
+                                 folder new items go to the Agents folder, and only
+                                 items shared with agents can change.
 
     Exit 0 on ok, 1 when the result says {ok: false}, 2 on usage or when Copper is unreachable.
     """
@@ -1608,8 +1634,8 @@ enum CLI {
       claude [status|signin|paste -|signout|cancel]
                                                 Claude account sign-in and status; never prints a token
                                                 (copper claude --help)
-      bitwarden [status|login -|cancel|lock|logout|sync|policy]
-                                                the Bitwarden vault; JSON only, login reads stdin
+      bitwarden [status|login -|cancel|lock|logout|sync|policy|save -|note -]
+                                                the Bitwarden vault; JSON only, login/save/note read stdin
                                                 (copper bitwarden --help)
       crashes [list|show [N] [--symbolicate]|path]
                                                 Copper's crash history on this Mac; works with Copper down

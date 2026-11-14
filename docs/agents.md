@@ -90,6 +90,7 @@ forward; the pane opens itself only for work on the page on screen.
 | `browser_resize`, `browser_close` | the window; the tab |
 | `browser_groups` | Copper's tab groups: `list`, `assign {group}`, `remove` |
 | `browser_perf_probe` | Samples the current tab for rAF loops, DOM churn, animations, filters, canvases, timers, long tasks, and slow resources (`seconds`, `top`, `format`) |
+| `browser_vault_save`, `browser_vault_note` | keep a login or a secure note (backup codes) in the open Bitwarden vault; values never come back ([Saving to the vault](#saving-to-the-vault)) |
 | `browser_crashes` | Copper's own crash history on this Mac as JSON, newest first; `index: N` for one in full with the breadcrumbs before it ([crashes.md](crashes.md)) |
 | `cloud_history_delete` | Deletes the user's history on Copper Cloud (`since`, `until`, `host[]`, `page[]`, `device`, or `all: true`); history on the Mac stays. Loopback clients only — not listed through an agent link, refused to the agent pane. Sites and pages are matched on the Mac, never by the server (docs/cloud.md) |
 
@@ -153,6 +154,29 @@ password nobody kept.
 Jev exposes `AUTOFILL_CARD` when the page has card fields and a shared card, and
 `AUTOFILL_IDENTITY` for identity fields and a shared identity. Jev chooses the
 first permitted item and fills in-process; neither control returns vault values.
+
+### Saving to the vault
+
+An agent that was given a login (a password from a text message, a two-step
+seed) or backup codes keeps them in the Bitwarden vault Copper has open, with
+no desktop app and no Touch ID:
+
+```sh
+echo '{"url":"https://example.com","username":"me@x.com","password":"…","totp":"otpauth://…"}' | copper bitwarden save -
+echo '{"name":"Google backup codes (me@x.com)","text":"1234 5678\n…"}' | copper bitwarden note -
+```
+
+`save` takes `{url | host, username, password, totp?, notes?, name?, folder?}`;
+the same site and username already saved changes that login's password (and
+`totp`/`notes` when given) instead of adding a twin. `note` takes `{name, text,
+folder?}` and makes a Secure Note, or replaces the text of the note with exactly
+that name. MCP: `browser_vault_save` and `browser_vault_note`, same arguments.
+Both answer `{ok, id, created, updated, name, folder}` and never a value; an
+error line has every value sent cut out. Values come only in the JSON (stdin
+for the CLI), never as arguments. The vault must be unlocked. With agent access
+set to `folder`, new items go to the `Agents` folder (made if missing), so
+`copper signin` uses a new login at once; an existing item changes only when
+it is shared with agents. `Fork/Credentials/BitwardenSave.swift`.
 
 ### Why is this tab hot?
 `browser_perf_probe` samples the tab in one call instead of requiring a chain of evaluations: it groups frame loops and DOM mutations, inspects running animations and filters, and records canvases, timers, long tasks, and resources.

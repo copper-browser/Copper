@@ -68,7 +68,7 @@ extension Bitwarden {
         ]
     }
 
-    /// `op`: status | login | lock | logout | sync | policy. Always answers
+    /// `op`: status | login | lock | logout | sync | policy | save | note. Always answers
     /// `{ok, …statusReport()}`; a failure adds `error`, one sanitized line.
     /// `login` came back with a step rather than a session.
     struct StepNeeded: Error {
@@ -77,6 +77,8 @@ extension Bitwarden {
 
     func control(_ params: [String: Any]) async -> [String: Any] {
         let op = (params["op"] as? String ?? "status").trimmingCharacters(in: .whitespacesAndNewlines)
+        // A write answers for itself, without the status report (BitwardenSave.swift).
+        if op == "save" || op == "note" { return await vaultWrite(op, params) }
         // Whatever the caller sent that must never be echoed back, even
         // inside a message `bw` wrote.
         let secrets = ["password", "clientId", "clientSecret", "otp"]
