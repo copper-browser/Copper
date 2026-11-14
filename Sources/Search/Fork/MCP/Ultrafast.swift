@@ -1667,7 +1667,7 @@ enum Ultrafast {
                 if host.hasPrefix("www.") { host.removeFirst(4) }
                 let opening = Drive.shared.phase(.observe, "Opening \(host)")
                 do {
-                    try await Tools.settle(tab)
+                    try await Tools.settle(tab, navigating: true)
                 } catch {
                     Drive.shared.close(phase: opening)
                     Drive.shared.finish(.error, note: (error as? Failure)?.text ?? error.localizedDescription)
