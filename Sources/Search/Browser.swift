@@ -2038,6 +2038,7 @@ final class Browser: NSObject, ObservableObject {
     func summon() {
         reviewing = false
         cancelTabEdit()
+        Launcher.shared.begin() // Fork (command-bar-hooks): ⌘K reads the open tabs, bookmarks and commands once, as ⌘T does
         launching = false
         summoning = true
         typed = ""
@@ -2065,15 +2066,18 @@ final class Browser: NSObject, ObservableObject {
 
     /// Fork (new-tab-launcher): rows that arrived after the keystroke that
     /// asked for them — Google's completions, history ranked off the main
-    /// thread. The row you had walked (or Tabbed) to stays the row you are
-    /// on, by what it is rather than where it was; left alone, the highlight
-    /// stays on the first row — the best answer now in. (Fork/CardSections)
+    /// thread, on ⌘T's card or ⌘K's. The row you had walked (or Tabbed) to
+    /// stays the row you are on, by what it is rather than where it was; left
+    /// alone, the highlight stays on the first row — the best answer now in.
+    /// (Fork/CardSections)
     func relaunch(_ rows: [OmniboxSuggestion]) {
-        guard launching else { return }
+        // The same rows again — history for this word often only confirms
+        // what the last word's stand-ins showed — redraw nothing.
+        guard summoning, rows != offers else { return }
         let was = picked.flatMap { offers.indices.contains($0) ? offers[$0].url : nil }
         let index = picked
         offers = rows
-        ending = completion(in: rows)
+        ending = completion(in: launching ? rows : rows.filter { !CanvasLinks.isCanvas($0.url) })
         if rows.isEmpty { picked = nil }
         else if walked { picked = was.flatMap { url in rows.firstIndex { $0.url == url } } ?? index.map { min($0, rows.count - 1) } }
         else { picked = CardSections.first(count: rows.count) }
@@ -2099,7 +2103,7 @@ final class Browser: NSObject, ObservableObject {
             return
         }
         guard !summoning else {
-            offers = CommandBar.offers(for: typed, open: openPages(matching: typed), in: self)
+            offers = CommandBar.offers(for: typed, in: self)
             ending = completion(in: offers.filter { !CanvasLinks.isCanvas($0.url) }) // Fork (canvas-hooks): "canvas" never carries on into a canvas's id
             // The most recent page is already chosen, so ⌘K then Return is the
             // whole gesture.

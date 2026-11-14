@@ -36,6 +36,7 @@ struct CommandPalette: View {
     /// What is typed and offered. The browser no longer announces it to
     /// every view it has; see `Browser.Field`.
     @ObservedObject private var state: Browser.Field
+    @Environment(\.colorScheme) private var scheme
 
     init(browser: Browser, over: Bool) {
         self.browser = browser
@@ -67,10 +68,12 @@ struct CommandPalette: View {
                 .offset(x: -inset / 2, y: top)
         }
         .background(WindowRuler { place = $0 })
-        // ⌘T's rows change on every letter, and as Google and history land.
+        // The rows change on every letter, and as Google and history land.
         // A spring on each of those kept the card resizing for a third of a
-        // second behind every keystroke — it read as lag, not as motion.
-        .animation(browser.launching ? nil : Motion.settle, value: browser.offers)
+        // second behind every keystroke — it read as lag, not as motion, and
+        // redrew the card on every frame of it. Only ⌘K's resting list, with
+        // nothing typed, settles in.
+        .animation(browser.launching || !state.typed.isEmpty ? nil : Motion.settle, value: browser.offers)
         // Every row that names a site wants that site's mark, and most of
         // these rows have no page behind them to ask. See Fork/Marks.
         .onAppear { Marks.want(browser.offers.map(\.url)) }
@@ -125,7 +128,7 @@ struct CommandPalette: View {
                 browser: browser,
                 literal: true,
                 size: 17.5,
-                placeholder: browser.launching ? "Search or Enter URL…" : "Search or enter an address"
+                placeholder: "Search or enter an address"
             )
             .frame(height: 24)
         }
@@ -147,14 +150,14 @@ struct CommandPalette: View {
                         VStack(alignment: .leading, spacing: 1) {
                             if let heading = sections.headings[index] {
                                 Text(heading)
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(Palette.muted)
+                                    .font(.system(size: 11.5, weight: .medium))
+                                    .foregroundStyle(Palette.ink.opacity(0.6))
                                     .padding(.horizontal, 12)
                                     .frame(height: CommandPalette.headingHeight, alignment: .bottomLeading)
                                     .padding(.bottom, 2)
                                     .accessibilityAddTraits(.isHeader)
                             }
-                            Row(offer: offer, picked: browser.picked == index, tint: tint, stamp: marks.landed,
+                            Row(offer: offer, picked: browser.picked == index, tint: tint.mark, fill: tint.dot, stamp: marks.landed,
                                 aside: browser.launching && browser.picked == index ? Launcher.aside(for: offer, in: browser) : "")
                                 .contentShape(Rectangle())
                                 .onTapGesture { browser.take(offer) }
@@ -165,7 +168,18 @@ struct CommandPalette: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 8)
             }
-            .frame(height: groupedHeight)
+            // Taller than the room, the list runs out under a soft edge, and
+            // the arrows stop short of it: the row Return takes is never the
+            // one half-faded.
+            .safeAreaPadding(.bottom, overflowing ? CommandPalette.fade : 0)
+            .mask {
+                VStack(spacing: 0) {
+                    Rectangle()
+                    LinearGradient(colors: [.black, .black.opacity(overflowing ? 0 : 1)], startPoint: .top, endPoint: .bottom)
+                        .frame(height: CommandPalette.fade)
+                }
+            }
+            .frame(height: min(natural, room))
             .onChange(of: browser.picked) { _, picked in
                 guard let picked else { return }
                 withAnimation(Motion.quick) { reader.scrollTo(picked) }
@@ -173,22 +187,34 @@ struct CommandPalette: View {
         }
     }
 
-    /// As tall as the rows, and no taller than the window below the card.
-    private var groupedHeight: CGFloat {
+    /// As tall as the rows.
+    private var natural: CGFloat {
         let rows = CGFloat(browser.offers.count)
         let headings = CGFloat(sections.headings.keys.filter { $0 < browser.offers.count }.count)
-        let natural = rows * (CommandPalette.rowHeight + 1) + headings * (CommandPalette.headingHeight + 3) + 16
-        let room = place.height > 0 ? place.height * (1 - CommandPalette.drop) - 56 - 40 : 480
-        return min(natural, max(room, 200))
+        return rows * (CommandPalette.rowHeight + 1) + headings * (CommandPalette.headingHeight + 3) + 16
     }
 
-    /// The space's own colour, so the selected row belongs to where you are.
-    private var tint: Color { Spaces.shared.space(in: browser).tint }
+    /// No taller than the window below the card, less a margin that keeps
+    /// the card's foot well clear of the window's (window − 160 at most).
+    private var room: CGFloat {
+        guard place.height > 0 else { return 480 }
+        return max(min(place.height * (1 - CommandPalette.drop) - 80, place.height - 160) - 56, 200)
+    }
+
+    private var overflowing: Bool { natural > room }
+
+    private static let fade: CGFloat = 28
+
+    /// The space's own colour, deep enough to read as text in the light and
+    /// pale enough in the dark, so the selected row belongs to where you are.
+    private var tint: SpaceTint { SpaceTint(space: Spaces.shared.space(in: browser), dark: scheme == .dark).offColumn }
 
     private struct Row: View {
         let offer: Suggestion
         let picked: Bool
         let tint: Color
+        /// The selected row's ground: the space's colour at full strength.
+        let fill: Color
         /// Changes when a site mark lands, which is the only thing that can
         /// make a row draw differently without the row itself changing.
         let stamp: Int
@@ -197,6 +223,7 @@ struct CommandPalette: View {
         var aside: String = ""
 
         @State private var hovering = false
+        @Environment(\.colorScheme) private var scheme
 
         var body: some View {
             HStack(spacing: 11) {
@@ -261,13 +288,24 @@ struct CommandPalette: View {
                         .fixedSize()
                         .opacity(picked || hovering ? 1 : 0)
                 }
+                // The key that does it, as a key: on the row Return takes.
+                Text("↩")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 22, height: 18)
+                    .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Palette.ground.opacity(0.7)))
+                    .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(tint.opacity(0.35), lineWidth: 1))
+                    .opacity(picked ? 1 : 0)
+                    .accessibilityHidden(true)
             }
             .padding(.horizontal, 12)
             .frame(height: CommandPalette.rowHeight)
             .background {
                 if picked {
+                    // The space's colour, not a grey: a pale grey on a white
+                    // card read as hover, not as "Return takes this".
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(tint.opacity(0.17))
+                        .fill(fill.opacity(scheme == .dark ? 0.24 : 0.22))
                 } else if hovering {
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .fill(Palette.hover)
