@@ -12,12 +12,12 @@ drawn by the app itself, so nothing is brought forward). Names are
 `<surface>-<theme>-<size>.png`, so another build's set pairs 1:1.
 Writes OUTDIR/shots/*.png, OUTDIR/shots.json, OUTDIR/keys.json.
 """
-import json, os, re, shutil, signal, socket, subprocess, sys, time, uuid
+import hashlib, json, os, re, shutil, signal, socket, subprocess, sys, time, uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SITE_PORT = int(os.environ.get("UX_SITE_PORT", "4149"))
 SITE = f"http://127.0.0.1:{SITE_PORT}"
-SIZES = {"1440": (1440, 900), "full": (1728, 1117)}  # 1728×1117 = the M1 Pro's whole screen in points
+SIZES = {"1440": (1440, 900), "full": (1728, 1117), "900": (900, 700), "1100": (1100, 720)}  # full = the M1 Pro's whole screen in points; 900/1100 = narrow windows
 THEMES = ["light", "dark"]
 ONLY = set(filter(None, os.environ.get("UX_ONLY", "").split(",")))  # e.g. UX_ONLY=cmdk-sidebar,split-top for a quick rerun
 
@@ -33,8 +33,10 @@ BENCH = find_bench()
 
 
 class World:
-    def __init__(self, name, app, port, log):
+    def __init__(self, name, app, port, log, windowed=False, args=()):
         self.name, self.app, self.port, self.log, self.pid = name, app, port, log, None
+        self.windowed, self.args = windowed, list(args)  # windowed: a real window on the screen (key-window run, mini only)
+        self.label = f"hc.ux.{name}"
         self.folder = os.path.expanduser(f"~/Library/Application Support/Copper ({name})")
         self.suite = f"com.collinrijock.copper.test.{name}"
 
@@ -63,6 +65,8 @@ class World:
     def launch(self, size="1440x900"):
         assert self.port != 4123
         open(self.log, "w").close()
+        if self.windowed:
+            return self.launch_agent()
         subprocess.run(["open", "-n", "-g", "--stderr", self.log, "--env", f"SEARCH_PROBE={self.name}",
                         "--env", "SEARCH_HEADLESS=1", "--env", f"SEARCH_MCP_PORT={self.port}",
                         "--env", f"SEARCH_HEADLESS_SIZE={size}", self.app], check=True)
@@ -78,7 +82,41 @@ class World:
             time.sleep(0.5)
         raise RuntimeError(f"probe {self.name} did not come up (log {self.log})")
 
+    def launch_agent(self):
+        """A LaunchAgent in the GUI session (gui/UID): over ssh only launchd gives
+        an app a window server session it can put a key window in."""
+        plist = f"/tmp/{self.label}.plist"
+        env = "".join(f"<key>{k}</key><string>{v}</string>" for k, v in
+                      {"SEARCH_PROBE": self.name, "SEARCH_MCP_PORT": self.port}.items())
+        prog = "".join(f"<string>{a}</string>" for a in [f"{self.app}/Contents/MacOS/Copper", *self.args])
+        with open(plist, "w") as f:
+            f.write('<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict>'
+                    f"<key>Label</key><string>{self.label}</string><key>EnvironmentVariables</key><dict>{env}</dict>"
+                    "<key>KeepAlive</key><false/><key>RunAtLoad</key><true/>"
+                    "<key>LimitLoadToSessionType</key><string>Aqua</string>"
+                    f"<key>ProgramArguments</key><array>{prog}</array>"
+                    f"<key>StandardErrorPath</key><string>{self.log}</string>"
+                    f"<key>StandardOutPath</key><string>{self.log}</string></dict></plist>")
+        subprocess.run(["launchctl", "bootout", f"gui/{os.getuid()}/{self.label}"], capture_output=True)
+        subprocess.run(["launchctl", "bootstrap", f"gui/{os.getuid()}", plist], check=True)
+        for _ in range(120):
+            m = re.search(r'"PID" = (\d+);', subprocess.run(["launchctl", "list", self.label], capture_output=True, text=True).stdout)
+            if m:
+                self.pid = int(m.group(1))
+                try:
+                    self.b("probe", timeout=5)
+                    return
+                except Exception:
+                    pass
+            time.sleep(0.5)
+        raise RuntimeError(f"windowed probe {self.name} did not come up (log {self.log})")
+
     def quit(self):
+        if self.windowed:
+            subprocess.run(["launchctl", "bootout", f"gui/{os.getuid()}/{self.label}"], capture_output=True)
+            self.pid = None
+            time.sleep(1)
+            return
         if not self.pid:
             return
         try:
@@ -104,12 +142,15 @@ class World:
             pass
 
 
+PORTS = [int(p) for p in os.environ.get("UX_PORTS", "4140-4148").split("-")]  # a worker's own range, e.g. UX_PORTS=4231-4232
+
+
 def free_port():
-    for port in range(4140, 4149):
+    for port in range(PORTS[0], PORTS[-1] + 1):
         with socket.socket() as s:
             if s.connect_ex(("127.0.0.1", port)):
                 return port
-    sys.exit("no free port in 4140–4148")
+    sys.exit(f"no free port in {PORTS[0]}–{PORTS[-1]}")
 
 
 # ---------------------------------------------------------------- seeding
@@ -186,6 +227,21 @@ def seed_lived_in(folder):
     return [f"[{p['pin']}]" for p in pins] + personal  # pins show as "[G] title" in `bench tabs`
 
 
+def seed_narrow(folder):
+    """The lived-in seed with 8 spaces and long tab titles: what a narrow window has to fit."""
+    seed_lived_in(folder)
+    path = os.path.join(folder, "session.json")
+    shape = json.load(open(path))
+    shape["spaces"] += [{"name": n, "id": str(uuid.uuid4()).upper()} for n in ("Reading list", "Home renovation", "Taxes 2026", "Recipes")]
+    now, P = time.time(), shape["space"]
+    for title in ("The Complete Guide to Keyboard Navigation, Focus Rings and VoiceOver Labels in Native macOS Apps (2026 Edition)",
+                  "Quarterly planning — Product roadmap, hiring plan and budget review for the second half of the year",
+                  "Why every browser tab bar eventually becomes a sidebar: a long essay with far too many footnotes",
+                  "Pull request #4821: Make the command bar remember the last query across windows and spaces"):
+        shape["tabs"].append({"title": title, "url": f"{SITE}/docs.html?t={len(shape['tabs'])}", "space": P, "saved": False, "seen": now})
+    json.dump(shape, open(path, "w"))
+
+
 def arc_fixture(root):
     """A made-up Arc profile for Move in (never this Mac's Arc)."""
     os.makedirs(os.path.join(root, "User Data", "Default"), exist_ok=True)
@@ -208,8 +264,10 @@ class Shooter:
         os.makedirs(os.path.join(out, "shots"), exist_ok=True)
 
     def take(self, w, surface, sizes=("1440", "full"), themes=THEMES, settle=1.0):
+        """Every theme × size of SURFACE; answers the first picture's path."""
         if ONLY and surface not in ONLY:
-            return
+            return None
+        first = None
         for theme in themes:
             w.b("ui", "look", theme)
             for size in sizes:
@@ -218,6 +276,7 @@ class Shooter:
                 time.sleep(settle)
                 name = f"{surface}-{theme}-{size}.png"
                 path = os.path.join(self.out, "shots", name)
+                first = first or path
                 row = {"file": name, "surface": surface, "theme": theme, "size": size}
                 try:
                     pic = w.j("canvas", "picture", path)
@@ -228,6 +287,7 @@ class Shooter:
                 print(("ok  " if row["ok"] else "FAIL") + " " + name, flush=True)
         w.b("ui", "look", "light")
         w.b("resize", *SIZES["1440"], 1)
+        return first
 
     def skip(self, surface, why):
         if not ONLY or surface in ONLY:
@@ -248,8 +308,9 @@ def step(label, fn):
 def first_run(w, shoot, tmp):
     """Fresh world: what someone sees in the first minute (B1, B7/B11 empty states)."""
     shoot.take(w, "firstrun-window")
-    shoot.skip("onboarding", "headless worlds suppress the Welcome panel (Headless.swift: `welcoming` forced false); "
-                             "proposal: let `bench ui welcome on` show it in a test world")
+    shown = welcome(w, lambda name: shoot.take(w, name, sizes=("1440",)))
+    if not shown["pages"]:
+        shoot.skip("welcome", shown["note"])
     def movein():
         root = arc_fixture(os.path.join(tmp, "arc"))
         w.b("flow", "limit", "--only", "Arc")
@@ -277,6 +338,47 @@ def first_run(w, shoot, tmp):
         w.b("ui", panel, "on"); time.sleep(1.2)
         shoot.take(w, f"{panel}-empty", sizes=("1440",))
         w.b("ui", panel, "off"); time.sleep(1.2)
+
+
+PIX = os.environ.get("UX_PIX", os.path.expanduser("~/hc/bin/ux-pix"))
+WELCOME = ["hello", "bring", "hold", "links"]  # Welcome.swift's four pages
+
+
+def same_picture(a, b):
+    """True when two pictures match (ux-pix if built, else the bytes)."""
+    if not (a and b and os.path.exists(a) and os.path.exists(b)):
+        return False
+    if os.path.exists(PIX):
+        r = subprocess.run([PIX, "diff", a, b], capture_output=True, text=True).stdout
+        return json.loads(r or "{}").get("changed", 1) < 0.001
+    return hashlib.md5(open(a, "rb").read()).digest() == hashlib.md5(open(b, "rb").read()).digest()
+
+
+def welcome(w, snap):
+    """Every Welcome page (B1) via `bench ui welcome on`; headless worlds drop it unless the build has the
+    hc/hooks welcome hook. Pages advance by a click on Continue only (never Bring in / Make default)."""
+    w.b("ui", "welcome", "on"); time.sleep(1.5)
+    if not w.j("probe").get("welcome"):
+        return {"pages": 0, "files": [], "note": "n/a: hook missing (needs hc/hooks) — headless worlds suppress Welcome"}
+    files, prev, note = [], None, ""
+    for i, page in enumerate(WELCOME):
+        path = snap(f"welcome-{page}")
+        if same_picture(prev, path):
+            note = f"Continue (a click at its spot) didn't reach page {i + 1}"
+            break
+        files.append(f"welcome-{page}"); prev = path
+        if i < len(WELCOME) - 1:
+            win = next(x for x in w.j("probe")["windows"] if x["kind"] == "AppKitWindow" and x["visible"])
+            W, H = win["frame"][2], win["frame"][3]
+            w.b("ai", "click", W / 2 + 216, H - 57)  # Continue: the right end of the 520-pt foot, 40 pt off the bottom (Welcome.swift)
+            time.sleep(1.2)
+    w.b("ui", "welcome", "off"); time.sleep(1)
+    return {"pages": len(files), "files": files, "note": note}
+
+
+def calm(w):
+    """Close ⌘K / ⌘T without a key window (a posted ⎋ never lands): `newtab` without --keep ends in Browser.dismiss()."""
+    w.b("newtab", "", "--settle", "0.05"); time.sleep(0.8)
 
 
 def tab_id(w, title_start):
@@ -385,6 +487,21 @@ def lived_in(w, shoot):
         time.sleep(2)
     if step("password-offer", offer):
         shoot.take(w, "password-offer")
+
+
+def narrow(w, shoot):
+    """Narrow windows (B2/B9): 900×700 and 1100×720, 8 spaces, long titles, both layouts, light + dark."""
+    for i, c in enumerate(("Blue", "Green", "Teal", "Orange", "Indigo", "Pink", "Yellow"), 1):
+        step(f"colour {i}", lambda: w.b("spaces", "colour", i, c))
+    art = tab_id(w, "Field Notes")
+    w.b("wait", art, 10); time.sleep(1)
+    for layout, on in (("sidebar", "on"), ("top", "off")):
+        w.b("ui", "sidebar", on); time.sleep(0.8)
+        shoot.take(w, f"narrow-{layout}", sizes=("900", "1100"))
+        if step("narrow cmdk", lambda: w.b("summon", "")):
+            shoot.take(w, f"narrow-cmdk-{layout}", sizes=("900", "1100"))
+        calm(w); w.b("select", art); time.sleep(0.6)
+    w.b("ui", "sidebar", "on")
 
 
 # ---------------------------------------------------------------- keyboard + findability (B4, B8, B10)
@@ -525,7 +642,8 @@ def main():
 
     first = World(f"uxfirst-{tag}", app, port, os.path.join(out, "logs", "first.log"))
     try:
-        first.reset(common)
+        # Truly fresh: no "welcomed", so the first-run path a new profile gets (start card, default layout) is what's pictured.
+        first.reset([d for d in common if d[0] != "welcomed"])
         first.launch()
         first_run(first, shoot, tmp)
     finally:
@@ -543,12 +661,24 @@ def main():
             shutil.copytree(os.path.join(w.folder, "icons"), os.path.join(out, "icons"), dirs_exist_ok=True)
     finally:
         w.drop()
+    if not ONLY or any(o.startswith("narrow-") for o in ONLY):
+        n = World(f"uxnarrow-{tag}", app, port, os.path.join(out, "logs", "narrow.log"))
+        try:
+            n.reset(common + [("sidebar", "-bool", "true"), ("glyph", "-string", "icons"), ("look", "-string", "light")])
+            seed_narrow(n.folder)
+            n.launch()
+            narrow(n, shoot)
+        finally:
+            n.drop()
     json.dump(shoot.rows, open(os.path.join(out, "shots.json"), "w"), indent=1)
     if keys or not ONLY:
         json.dump(keys, open(os.path.join(out, "keys.json"), "w"), indent=1)
     load = os.getloadavg()
     json.dump({"label": label, "app": app, "seconds": round(time.time() - started), "load": [round(x, 2) for x in load],
-               "port": port, "shots": sum(1 for r in shoot.rows if r.get("ok")), "failed": [r for r in shoot.rows if not r.get("ok")]},
+               "port": port, "shots": sum(1 for r in shoot.rows if r.get("ok")),
+               # picture pixels per window point: 2.0 on a Retina panel at its default scaling; a "More Space"
+               # setting renders lower (e.g. 1.96), which thins text ink — compare only runs with the same scale.
+               "scale": next((round(r["px"][0] / SIZES[r["size"]][0], 3) for r in shoot.rows if r.get("ok") and r.get("px")), None), "failed": [r for r in shoot.rows if not r.get("ok")]},
               open(os.path.join(out, "run.json"), "w"), indent=1)
     shutil.rmtree(tmp, ignore_errors=True)
 

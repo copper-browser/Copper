@@ -48,7 +48,8 @@ class World:
         self.label = "hc.coverage." + name
         self.plist = "/tmp/%s.plist" % self.label
         self.token = None
-        assert port != 4123 and 4150 <= port <= 4159, "coverage ports are 4150-4159"
+        self.seed = None  # session.json for a fresh world (two spaces: c5.spaces_move needs a second)
+        assert port != 4123 and 4130 <= port <= 4239, "coverage ports: 4130-4239 (each worker its own range), never 4123"
 
     def env(self):
         env = {"SEARCH_PROBE": self.name, "SEARCH_MCP_PORT": str(self.port), "SEARCH_BW_PATH": os.path.join(HERE, "bw-mock.py")}
@@ -75,6 +76,12 @@ class World:
             for d in glob.glob(os.path.join(kit, "WebExtensions", stem + "-*")) + glob.glob(os.path.join(kit, "WebsiteDataStore", stem.lower() + "-*")):
                 shutil.rmtree(d, ignore_errors=True)
         self.defaults()
+        if fresh and self.seed:
+            os.makedirs(self.folder, exist_ok=True)
+            with open(os.path.join(self.folder, "session.json"), "w") as f:
+                json.dump(self.seed, f)
+        if fresh and os.environ.get("COV_JEV_KEYS", "1") != "0":
+            self.jev_keys()
         if not self.headless:
             # A windowed world serves agents only when agent.json says so (headless defaults it on).
             os.makedirs(self.folder, exist_ok=True)
@@ -103,6 +110,17 @@ class World:
                 return time.time() - t0
             time.sleep(0.25)
         raise RuntimeError("probe world did not come up on %d (see %s/copper.log)" % (self.port, self.log_dir))
+
+    def jev_keys(self):
+        """Only the Jev + text-model keys from the dev world (agentbench.sh's way), for c7.inject_jev; never printed."""
+        src = os.path.join(HOME, "Library/Application Support/Copper (dev)/intelligence.json")
+        if not os.path.exists(src):
+            return
+        dev = json.load(open(src))
+        keep = {k: dev[k] for k in ("jevKey", "jevEndpoint", "jevModel", "routerKey", "routerURL", "routerModel", "textModel") if k in dev}
+        os.makedirs(self.folder, exist_ok=True)
+        with os.fdopen(os.open(os.path.join(self.folder, "intelligence.json"), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
+            json.dump(keep, f)
 
     def stop(self):
         subprocess.run(["launchctl", "bootout", "gui/%d/%s" % (os.getuid(), self.label)], capture_output=True)
@@ -196,9 +214,9 @@ class Session:
             text = "\n".join(l[5:] for l in text.splitlines() if l.startswith("data:"))
         return json.loads(text), headers
 
-    def tools(self):
+    def tools(self, raw=False):
         r, _ = self._post({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}, 15)
-        return [t["name"] for t in r["result"]["tools"]]
+        return r["result"]["tools"] if raw else [t["name"] for t in r["result"]["tools"]]
 
     def call(self, tool, args=None, timeout=20, ok=True):
         t0 = time.time()
@@ -309,6 +327,7 @@ class Ctx:
         self.LH = "http://localhost:%d" % fixtures_port         # a real host name (passkeys need one)
         self.out = out_dir
         self.user_tab = None
+        self.tools = []
         self.state = {}
         self.sessions = []
 
@@ -340,6 +359,9 @@ def run(args):
     os.makedirs(out, exist_ok=True)
     world = World(args.app, args.world, args.port, out, headless=args.mode == "headless")
     ctx = Ctx(world, args.fixtures, out)
+    A, B = "AAAAAAAA-0000-4000-8000-0000000000C1", "BBBBBBBB-0000-4000-8000-0000000000C2"
+    world.seed = {"active": 0, "space": A, "spaces": [{"id": A, "name": "HC Alpha", "hue": 0.1}, {"id": B, "name": "HC Beta", "hue": 0.6}],
+                  "tabs": [{"url": ctx.F + "/index.html", "title": "HC coverage", "space": A, "saved": True}]}
     selected = [j for j in jobs.JOBS if not args.only or any(j.id == o or j.id.startswith(o) for o in args.only.split(","))]
     # c7.not_running_cli stops the world: last, by itself.
     selected.sort(key=lambda j: j.id == "c7.not_running_cli")
@@ -352,7 +374,7 @@ def run(args):
         boot = world.start(fresh=True)
         version = (world.health() or {}).get("version")
         ctx.setup()
-        tools = Session(world, "hc-tools").tools()
+        tools = ctx.tools = Session(world, "hc-tools").tools()
         results = [run_one(j, ctx, tools) for j in selected]
         runs.append({"results": results, "load": [round(x, 2) for x in load], "boot_s": round(boot, 1), "version": version})
         if not args.keep or n + 1 < args.repeat:
@@ -363,7 +385,7 @@ def run(args):
 
 def run_one(j, ctx, tools):
     t0 = time.time()
-    status, detail = "pass", ""
+    status, detail, metrics = "pass", "", None
     lacking = [t for t in j.needs if t not in tools]
     before = None
     try:
@@ -371,6 +393,8 @@ def run_one(j, ctx, tools):
             raise Missing("no %s tool" % " / ".join(lacking))
         before = ctx.user_tab_line() if j.watch_user else None
         detail = j.fn(ctx) or ""
+        if isinstance(detail, dict):  # a measured job (C8): numbers, not pass/fail
+            metrics, detail, status = detail, detail.pop("_note", ""), "measured"
     except Missing as e:
         status, detail = "missing", str(e)
     except NeedsSecret as e:
@@ -396,7 +420,7 @@ def run_one(j, ctx, tools):
         status = "fail"
         detail = (detail + " · " if detail else "") + "Copper stopped answering after this job; restarted the world"
         restart(ctx)
-    elif before is not None and status in ("pass", "fail"):
+    elif before is not None and status in ("pass", "fail", "measured"):
         after = ctx.user_tab_line()
         if after != before:
             status = "fail"
@@ -404,8 +428,12 @@ def run_one(j, ctx, tools):
             restart(ctx)
     ms = int((time.time() - t0) * 1000)
     print("%-28s %-12s %6d ms  %s" % (j.id, status, ms, detail[:150]), flush=True)
-    return {"id": j.id, "group": j.group, "title": j.title, "tool": j.tool, "status": status, "error": detail if status != "pass" else "",
-            "note": detail if status == "pass" else "", "ms": ms}
+    ok = status in ("pass", "measured")
+    row = {"id": j.id, "group": j.group, "title": j.title, "tool": j.tool, "status": status, "error": "" if ok else detail,
+           "note": detail if ok else "", "ms": ms}
+    if metrics is not None:
+        row["metrics"] = metrics
+    return row
 
 
 def _answers(ctx):
@@ -433,7 +461,9 @@ def score_of(results):
 
 def report(runs, tools, world, args, out):
     """One row per job: the status most runs gave (ties → the worse), flaky when runs disagree."""
-    order = ["fail", "missing", "needs-secret", "skip", "pass"]
+    import jobs
+    gates = {j.id: j.gate for j in jobs.JOBS if j.gate}
+    order = ["fail", "missing", "needs-secret", "skip", "measured", "pass"]
     results = []
     for i, first in enumerate(runs[0]["results"]):
         seen = [run["results"][i] for run in runs]
@@ -455,7 +485,11 @@ def report(runs, tools, world, args, out):
         g = groups.setdefault(r["group"], {"pass": 0, "total": 0})
         g["total"] += 1
         g["pass"] += r["status"] == "pass"
-    meta = {"label": args.label, "mode": args.mode, "app": os.path.abspath(args.app), "world": world.name, "port": world.port,
+    # C7 hard gates (SCOREBOARD): any of these failing caps C7 at 4, whatever the %.
+    gate_fails = ["%s (%s)" % (r["id"], gates[r["id"]]) for r in results if r["id"] in gates and r["status"] == "fail"]
+    gate_fails += ["%s (wrong-tab: moved the user's tab)" % r["id"] for r in results
+                   if "user's on-screen tab changed" in r["error"] and r["id"] not in gates]
+    meta = {"gate_fails": gate_fails, "label": args.label, "mode": args.mode, "app": os.path.abspath(args.app), "world": world.name, "port": world.port,
             "when": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "host": socket.gethostname(),
             "load_per_run": [r["load"] for r in runs], "boot_s": [r["boot_s"] for r in runs], "version": runs[0]["version"],
             "repeats": len(runs), "score_pct": score, "score_per_run": scores, "flaky": [r["id"] for r in results if r["flaky"]],
@@ -464,8 +498,8 @@ def report(runs, tools, world, args, out):
     with open(os.path.join(out, "coverage%s.json" % suffix), "w") as f:
         json.dump({"meta": meta, "jobs": {r["id"]: r for r in results}}, f, indent=1)
     names = {"C1": "Accounts + secrets", "C2": "Forms + inputs", "C3": "Files out", "C4": "Page + JS",
-             "C5": "Tabs + browser state", "C6": "Hard UI", "C7": "Reliability"}
-    icon = {"pass": "✅", "fail": "❌", "missing": "⬜", "needs-secret": "🔑", "skip": "➖"}
+             "C5": "Tabs + browser state", "C6": "Hard UI", "C7": "Reliability + safety", "C8": "Ergonomics (measured)"}
+    icon = {"pass": "✅", "fail": "❌", "missing": "⬜", "needs-secret": "🔑", "skip": "➖", "measured": "📏"}
     lines = ["# Coverage — %s (%s)" % (args.label, args.mode), "",
              "`%s` %s · %s · %s · load %s · %d tools listed" % (meta["app"], meta["version"] or "", meta["host"], meta["when"],
                                                             "/".join("%.2f" % r["load"][0] for r in runs), len(tools)), "",
@@ -473,7 +507,8 @@ def report(runs, tools, world, args, out):
                  score, counts.get("pass", 0), counts.get("fail", 0), counts.get("missing", 0),
                  "".join(" · %d %s" % (v, k) for k, v in counts.items() if k not in ("pass", "fail", "missing")), len(results),
                  " / ".join("%s%%" % x for x in scores), ", ".join(meta["flaky"]) or "none"), "",
-             "Score = pass / (pass + fail + missing). ✅ pass · ❌ fail · ⬜ missing (no tool) · 🔑 needs-secret · ➖ skip · 〰 flaky", "",
+             "**C7 safety gates failing** (each caps C7 at 4): %s" % (", ".join(gate_fails) or "none"), "",
+             "Score = pass / (pass + fail + missing). ✅ pass · ❌ fail · ⬜ missing (no tool) · 🔑 needs-secret · ➖ skip · 📏 measured (C8, not in the score) · 〰 flaky", "",
              "| Group | Pass |", "|---|---|"]
     for g in sorted(groups):
         lines.append("| %s %s | %d / %d |" % (g, names.get(g, ""), groups[g]["pass"], groups[g]["total"]))
@@ -482,6 +517,18 @@ def report(runs, tools, world, args, out):
         msg = (r["error"] or r["note"]).replace("|", "\\|").replace("\n", " ")[:220]
         mark = icon.get(r["status"], r["status"]) + (" 〰 " + "/".join(r["runs"]) if r["flaky"] else "")
         lines.append("| `%s` %s | %s | `%s` | %d | %s |" % (r["id"], r["title"], mark, r["tool"], r["ms"], msg))
+    measured = [r for r in results if r.get("metrics")]
+    if measured:
+        lines += ["", "## C8 measured (run 1)", "", "| Job | Measure | Value |", "|---|---|---|"]
+        for r in measured:
+            for k, v in r["metrics"].items():
+                if k != "cases":
+                    lines.append("| `%s` | %s | %s |" % (r["id"], k, json.dumps(v) if isinstance(v, (dict, list)) else v))
+        for r in measured:
+            if r["metrics"].get("cases"):
+                lines += ["", "`%s` cases (✅ names the next step · ❌ doesn't · ⚠ no error at all):" % r["id"], ""]
+                lines += ["- %s `%s`%s — %s" % (c["mark"], c["call"], " (\u201c%s\u201d)" % c["why"] if c.get("why") else "",
+                                               c["text"].replace("\n", " ")[:160]) for c in r["metrics"]["cases"]]
     with open(os.path.join(out, "coverage%s.md" % suffix), "w") as f:
         f.write("\n".join(lines) + "\n")
     print("\nscore %s%% (runs %s) · %s → %s/coverage%s.md" % (score, scores, counts, out, suffix))

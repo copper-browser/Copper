@@ -49,6 +49,16 @@ ARMS = {
     "classic": {"strategy": "classic", "vision": "off"},
     # a small LLM decides instead of Jev (perf/uibench's preset)
     "llm-haiku": {"strategy": "fast,llm=haiku", "vision": "off"},
+    # the shipped loop under upstream's published conditions, for a like-for-like with the ultrafast arm:
+    # Jev pinned to jev-1.13.0 (jev-latest answers as 1.14.0 since 2026-11) and a private tab per run
+    # (empty cookies and storage, nothing kept). Run it with AGENTBENCH_VIEWPORT=1120x780 and
+    # AGENTBENCH_TEXT_MODEL=default (the build's fast text model; the router has no mercury) — see README.
+    "same": {"model": "jev-1.13.0", "private": True},
+    # the shipped loop on jev-1.13.0 and nothing else changed: what the Jev version alone does
+    "jev113": {"model": "jev-1.13.0"},
+    # experiment arms (hc/jev): the shipped loop plus Return after a lone search box
+    "submit": {"strategy": "turbo,verify,submit"},
+    "submit113": {"strategy": "turbo,verify,submit", "model": "jev-1.13.0"},
     # browser-use jev-ultrafast in Chrome — prepared, NOT run until Collin OKs Chrome (ultrafast_arm.py)
     "ultrafast": None,
     # phi driving via browser_snapshot/browser_click — stub (see play_phi)
@@ -262,6 +272,8 @@ def play_copper(copper, task, arm, sid):
     args = {"goal": task["goal"], "url": task["url"](sid), "newTab": True, "json": True,
             "maxSteps": task["max_steps"], "elements": False}
     args.update(ARMS[arm])
+    if os.environ.get("AGENTBENCH_PRIVATE") == "1":
+        args["private"] = True  # every arm in a private tab (a build without the argument ignores it)
     begun = time.time()
     error, page = None, {}
     try:
@@ -281,6 +293,7 @@ def play_copper(copper, task, arm, sid):
         except Exception:
             pass
     run["harness_ms"] = int((time.time() - begun) * 1000)
+    run["private"] = bool(args.get("private"))
     if error:
         run["error"] = error
     return run, page
@@ -341,6 +354,7 @@ def record(task_id, task, arm, rnd, run, page, fixtures, sid):
         "status": status, "note": (run.get("note") or "")[:300], "error": run.get("error"),
         "wall_ms": run.get("elapsed_ms"), "harness_ms": run.get("harness_ms"),
         "decisions": run.get("decisions"), "actions": run.get("actions"),
+        "done_check": run.get("done_check"), "done_refused": run.get("done_refused"), "private": bool(run.get("private")),
         **{k: t.get(k) for k in ("observe_ms", "decide_ms", "text_ms", "act_ms", "settle_ms", "jev_ms", "shot_ms",
                                  "input_tokens", "requests", "stale", "pictured", "burst_actions", "model", "strategy", "vision")},
         "final_url": page.get("url") or (run.get("page") or {}).get("url"), "final_title": page.get("title"),
@@ -383,8 +397,8 @@ def summarize(results, meta):
          "(first decision → end, initial navigation excluded, as upstream). Wall stats over passes; "
          "IQR = p25–p75 (the noise band). Phase ms = medians of per-run sums over all runs.", ""]
     L += ["## By group × arm", "",
-          "| Group | Arm | Pass | Wall p50 | Wall p90 | IQR | Decisions p50 | Actions p50 | observe | decide | text | act | settle | Jev ms/dec | Tokens/run |",
-          "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
+          "| Group | Arm | Pass | False DONE | Wall p50 | Wall p90 | IQR | Decisions p50 | Actions p50 | Stale/run | observe | decide | text | act | settle | Jev ms/dec | Tokens/run |",
+          "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
     for g in groups:
         for a in arms:
             rs = [r for r in results if r["group"] == g and r["arm"] == a]
@@ -392,13 +406,15 @@ def summarize(results, meta):
                 continue
             ok = [r for r in rs if r["pass"]]
             w = [r["wall_ms"] for r in ok]
-            L.append("| {} | {} | {}/{} ({:.0f}%) | {} | {} | {}–{} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
-                g, a, len(ok), len(rs), 100 * len(ok) / len(rs), f(med(w)), f(pct(w, .9)), f(pct(w, .25)), f(pct(w, .75)),
+            false_done = sum(1 for r in rs if r["status"] == "done" and not r["verified"])  # said DONE, the checker says no
+            L.append("| {} | {} | {}/{} ({:.0f}%) | {}/{} | {} | {} | {}–{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
+                g, a, len(ok), len(rs), 100 * len(ok) / len(rs), false_done, len(rs), f(med(w)), f(pct(w, .9)), f(pct(w, .25)), f(pct(w, .75)),
                 f(med([r["decisions"] for r in ok])), f(med([r["actions"] for r in ok])),
+                f(statistics.mean([r.get("stale") or 0 for r in rs])),
                 *[f(med([r.get(k) for r in rs])) for k in ("observe_ms", "decide_ms", "text_ms", "act_ms", "settle_ms")],
                 f(med([r["jev_ms"] / r["decisions"] for r in rs if r.get("jev_ms") and r.get("decisions")])),
                 f(med([r.get("input_tokens") for r in rs]))))
-    L += ["", "## By task × arm (pass, wall p50 / p90 of passes)", "",
+    L += ["", "## By task × arm (pass · wall p50 / p90 · decisions p50 · text-model calls p50, all over passes)", "",
           "| Task | Published (ultrafast) | " + " | ".join(arms) + " |", "|---|---:|" + "---:|" * len(arms)]
     T = tasks("")
     for tid in [t for t in T if any(r["task"] == t for r in results)]:
@@ -406,7 +422,9 @@ def summarize(results, meta):
         for a in arms:
             rs = [r for r in results if r["task"] == tid and r["arm"] == a]
             ok = [r["wall_ms"] for r in rs if r["pass"]]
-            cells.append(f"{len(ok)}/{len(rs)} · {f(med(ok))} / {f(pct(ok, .9))}" if rs else "—")
+            good = [r for r in rs if r["pass"]]
+            calls = [sum(1 for st in r["steps"] if st.get("txt")) for r in good]
+            cells.append(f"{len(ok)}/{len(rs)} · {f(med(ok))} / {f(pct(ok, .9))} · {f(med([r['decisions'] for r in good]))} dec · {f(med(calls))} txt" if rs else "—")
         pub = T[tid].get("published_ms")
         L.append(f"| {T[tid].get('name', tid)} | {f(pub) + ' (1 run)' if pub else ''} | " + " | ".join(cells) + " |")
     L += ["", "## Failures (status · failed checks · note)", ""]
@@ -452,6 +470,7 @@ def main():
     ap.add_argument("--group")
     ap.add_argument("--tasks", help="only these task ids (comma list)")
     ap.add_argument("--round", type=int, default=1)
+    ap.add_argument("--viewport", help="WxH the runs must measure (the probe was started with SEARCH_BACKSTAGE_SIZE); --meta fails otherwise")
     ap.add_argument("--meta", action="store_true", help="write meta.json and exit")
     ap.add_argument("--summary", action="store_true", help="summarize runs.jsonl → summary.md")
     if "--selftest" in sys.argv:
@@ -478,6 +497,8 @@ def main():
         copper.call("browser_tabs", {"action": "new", "url": "about:blank"})
         vp = json.loads(copper.call("browser_evaluate", {"function": "() => [innerWidth, innerHeight, devicePixelRatio]"}))
         copper.call("browser_close", {})
+        if a.viewport and [int(x) for x in a.viewport.lower().split("x")] != vp[:2]:
+            sys.exit(f"viewport is {vp[0]}x{vp[1]}, not {a.viewport}: this build has no SEARCH_BACKSTAGE_SIZE")
         meta = {"label": os.path.basename(os.path.dirname(a.out.rstrip("/"))), "app": a.app, "build": info,
                 "machine": subprocess.run(["sysctl", "-n", "hw.model"], capture_output=True, text=True).stdout.strip(),
                 "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "load": os.getloadavg(), "arms": a.arms,

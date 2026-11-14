@@ -7,6 +7,14 @@
 #       env: ARMS=shipped,turbo,classic,llm-haiku  ROUNDS_ULTRAFAST=10 ROUNDS_WIKIGAME=1
 #            ROUNDS_UIBENCH=2 ROUNDS_REALWEB=2 TASKS=hotel,godel (only these task ids)
 #   perf/hillclimb/agentbench.sh up|down <path-to-Copper.app>   # probe world only (debugging)
+#       env (all optional): AGENTBENCH_WORLD=agentbench AGENTBENCH_PORT=4160 AGENTBENCH_FIXPORT=4161
+#            AGENTBENCH_REMOTE_DIR=hc/harness   where the devbox syncs the harness on the mini
+#            AGENTBENCH_VIEWPORT=1120x780       the page size of every run (default: the build's 1280×800)
+#            AGENTBENCH_TEXT_MODEL=<name>|default   textModel of the probe world (default: the dev world's;
+#                                               "default" leaves it unset = what a fresh install runs)
+#            AGENTBENCH_JEV_ENDPOINT=<url>      jevEndpoint of the probe world (parity/parity.py's recorder)
+#            AGENTBENCH_FLIGHTS_GAP=45          seconds between ultrafast rounds (Google throttles back-to-back Flights searches)
+#            AGENTBENCH_PRIVATE=1               every run in a private tab (empty cookies/storage; hc/jev builds on)
 #
 # On the devbox (Linux) it syncs the harness to the mini, runs itself there and
 # copies ~/hc/out/<label>/agentbench back to ~/plans/copper-hillclimb-2026-11-14/out/.
@@ -18,16 +26,18 @@ here="$(cd "$(dirname "$0")" && pwd)"
 if [ "$(uname)" = Linux ]; then
   label="${1:?usage: $0 <label> <Copper.app on the mini> [groups]}"; app="${2:?Copper.app path on the mini}"
   host="${AGENTBENCH_HOST:-mac-mini}"
-  rsync -az --exclude __pycache__ "$here/" "$host:hc/harness/"
-  envs=""; for v in ARMS ROUNDS_ULTRAFAST ROUNDS_WIKIGAME ROUNDS_UIBENCH ROUNDS_REALWEB TASKS ULTRAFAST_DIR AGENTBENCH_ALLOW_CHROME; do
+  remote="${AGENTBENCH_REMOTE_DIR:-hc/harness}"
+  rsync -az --exclude __pycache__ "$here/" "$host:$remote/"
+  envs=""; for v in ARMS ROUNDS_ULTRAFAST ROUNDS_WIKIGAME ROUNDS_UIBENCH ROUNDS_REALWEB TASKS ULTRAFAST_DIR AGENTBENCH_ALLOW_CHROME \
+      AGENTBENCH_WORLD AGENTBENCH_PORT AGENTBENCH_FIXPORT AGENTBENCH_VIEWPORT AGENTBENCH_TEXT_MODEL AGENTBENCH_JEV_ENDPOINT AGENTBENCH_PRIVATE; do
     [ -n "${!v:-}" ] && envs+="$v=$(printf %q "${!v}") "; done
-  ssh "$host" "cd hc/harness && $envs ./agentbench.sh $(printf %q "$label") $(printf %q "$app") ${3:-}" || echo "remote run exited $?"
+  ssh "$host" "cd $remote && $envs ./agentbench.sh $(printf %q "$label") $(printf %q "$app") ${3:-}" || echo "remote run exited $?"
   dest="$HOME/plans/copper-hillclimb-2026-11-14/out/$label/agentbench"
   mkdir -p "$dest" && rsync -az "$host:hc/out/$label/agentbench/" "$dest/"
   echo "copied to $dest"; exit 0
 fi
 
-world=agentbench; port=4160; fixport=4161
+world="${AGENTBENCH_WORLD:-agentbench}"; port="${AGENTBENCH_PORT:-4160}"; fixport="${AGENTBENCH_FIXPORT:-4161}"
 support="$HOME/Library/Application Support"
 folder="$support/Copper ($world)"
 label_="dev.hillclimb.$world"; plist="/tmp/hc-$world.plist"
@@ -53,6 +63,10 @@ dev = json.load(open(src))
 out = {k: dev[k] for k in keep if k in dev}
 missing = [k for k in ("jevKey", "routerKey") if k not in out]
 if missing: sys.exit("dev world intelligence.json lacks " + ",".join(missing))
+text = os.environ.get("AGENTBENCH_TEXT_MODEL", "")
+if text == "default": out.pop("textModel", None)
+elif text: out["textModel"] = text
+if os.environ.get("AGENTBENCH_JEV_ENDPOINT"): out["jevEndpoint"] = os.environ["AGENTBENCH_JEV_ENDPOINT"]
 q = os.path.join(folder, "intelligence.json")
 with open(os.open(q, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f: json.dump(out, f)
 print("world ready: agent.json + intelligence.json (" + ",".join(sorted(out)) + ")")
@@ -68,7 +82,9 @@ PY
  <key>EnvironmentVariables</key><dict>
   <!-- base measured a 1280×800 page at 1440x900 and at 1280x880 (runs record it); upstream used 1120×780 -->
   <key>SEARCH_PROBE</key><string>$world</string><key>SEARCH_HEADLESS</key><string>1</string>
-  <key>SEARCH_MCP_PORT</key><string>$port</string><key>SEARCH_HEADLESS_SIZE</key><string>${SEARCH_HEADLESS_SIZE:-1280x880}</string></dict>
+  <key>SEARCH_MCP_PORT</key><string>$port</string><key>SEARCH_HEADLESS_SIZE</key><string>${SEARCH_HEADLESS_SIZE:-1280x880}</string>
+  <!-- the page an agent's own tab gets (builds from hc/jev on; older builds ignore it and stay 1280×800) -->
+  <key>SEARCH_BACKSTAGE_SIZE</key><string>${AGENTBENCH_VIEWPORT:-1280x800}</string></dict>
  <key>KeepAlive</key><false/><key>RunAtLoad</key><true/>
  <key>LimitLoadToSessionType</key><string>Aqua</string>
  <key>ProgramArguments</key><array><string>$app/Contents/MacOS/Copper</string></array>
@@ -111,6 +127,7 @@ trap down EXIT
 up "$app" | tee -a "$out/run.log"
 py=(python3 "$here/agentbench/agentbench.py" --port "$port" --world "$world" --fixtures "http://127.0.0.1:$fixport"
     --out "$out" --arms "${ARMS:-shipped,turbo,classic,llm-haiku}" --app "$app")
+[ -n "${AGENTBENCH_VIEWPORT:-}" ] && py+=(--viewport "$AGENTBENCH_VIEWPORT")
 [ -n "${TASKS:-}" ] && py+=(--tasks "$TASKS")
 "${py[@]}" --meta | tee -a "$out/run.log"
 for g in ${groups//,/ }; do
@@ -118,6 +135,9 @@ for g in ${groups//,/ }; do
   case "$g" in ultrafast) def=10 ;; wikigame) def=1 ;; *) def=2 ;; esac
   rounds="${!var:-$def}"
   for r in $(seq 1 "$rounds"); do
+    # Google Flights answers searches made seconds apart with "Oops, something went wrong" (measured 2026-11-14:
+    # rounds ~20 s apart lost 2 runs in 7 to it, rounds ≥60 s apart 0 in 20), so rounds with Flights in them are spaced, outside the lock
+    [ "$g" = ultrafast ] && [ "$r" -gt 1 ] && sleep "${AGENTBENCH_FLIGHTS_GAP:-45}"
     # one locked batch = one round of one group (every task × every arm, arms alternating)
     # already-recorded (task, arm, round) runs are skipped, so a rerun resumes; exit 3 = the probe died
     for try in 1 2 3; do

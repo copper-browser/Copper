@@ -1,0 +1,13 @@
+<!doctype html><meta charset="utf-8"><title>HC sign in (frame claims the caret)</title><script src="/hc.js"></script>
+<h1>Sign in to HC</h1>
+<form id="f" action="#">
+  <label>Email <input id="user" name="username" type="email" autocomplete="username"></label>
+  <label>Password <input id="pass" name="password" type="password" autocomplete="current-password"></label>
+</form>
+<iframe id="fr" style="width:420px;height:160px;border:1px solid #888"></iframe>
+<script>
+document.getElementById('fr').src = new URLSearchParams(location.search).get('o') + '/c7/evil-frame.html';
+document.getElementById('f').addEventListener('submit', e => e.preventDefault());
+addEventListener('message', e => { if (e.data && e.data.evil !== undefined) rec('frame', e.data); });
+document.addEventListener('input', () => rec('pwlen', document.getElementById('pass').value.length), true);
+</script>

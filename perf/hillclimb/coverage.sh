@@ -5,7 +5,8 @@
 #   perf/hillclimb/coverage.sh LABEL /path/to/Copper.app     # on a Mac
 #   perf/hillclimb/coverage.sh base '~/hc/base/Copper.app'   # from the devbox: runs on mac-mini, copies back
 #
-# Env: COV_ONLY=c1.,c4.eval (job ids/prefixes) · COV_PORT=4150 (4150–4159) · COV_HOST=mac-mini
+# Env: COV_ONLY=c1.,c4.eval (job ids/prefixes) · COV_PORT=4150 (4150–4159) · COV_WORLD=hc-cov · COV_HOST=mac-mini
+#      COV_DIR=hc/harness (the harness copy on the Mac; give parallel runs their own)
 #      COV_REPEAT=3 (fresh world per run; the .md shows the per-run band and flaky jobs)
 #      COV_MODE=windowed (a probe window on the screen: alert sheets, real focus; mini only → coverage-windowed.*)
 #      HC_BENCH=path/to/bench (for the passkey job; found next to the build's source otherwise)
@@ -18,8 +19,9 @@ here="$(cd "$(dirname "$0")" && pwd)"
 if [ "$(uname)" != Darwin ]; then
   host="${COV_HOST:-mac-mini}"
   back="$HOME/plans/copper-hillclimb-2026-11-14/out/$label/coverage"
-  rsync -az --exclude __pycache__ "$here/" "$host:hc/harness/"
-  ssh "$host" "COV_ONLY='${COV_ONLY:-}' COV_PORT='${COV_PORT:-}' COV_REPEAT='${COV_REPEAT:-}' COV_MODE='${COV_MODE:-}' HC_BENCH='${HC_BENCH:-}' hc/harness/coverage.sh '$label' $app" || echo "coverage run exited $?"
+  dir="${COV_DIR:-hc/harness}"
+  rsync -az --exclude __pycache__ "$here/" "$host:$dir/"
+  ssh "$host" "COV_ONLY='${COV_ONLY:-}' COV_PORT='${COV_PORT:-}' COV_WORLD='${COV_WORLD:-}' COV_REPEAT='${COV_REPEAT:-}' COV_MODE='${COV_MODE:-}' HC_BENCH='${HC_BENCH:-}' $dir/coverage.sh '$label' $app" || echo "coverage run exited $?"
   mkdir -p "$back"
   rsync -az "$host:hc/out/$label/coverage/" "$back/"
   echo "→ $back/coverage.md"
@@ -55,5 +57,5 @@ for _ in $(seq 1 40); do curl -fsS -o /dev/null "http://127.0.0.1:$fport/index.h
 # One measurement batch under the mini's shared lock (no build runs beside it).
 mkdir -p "$HOME/hc"
 lockf "$HOME/hc/mini.lock" /usr/bin/python3 "$here/coverage/run.py" --app "$app" --out "$out" --label "$label" \
-  --port "${COV_PORT:-4150}" --fixtures "$fport" --mode "$mode" --repeat "${COV_REPEAT:-1}" ${COV_ONLY:+--only "$COV_ONLY"} \
+  --port "${COV_PORT:-4150}" --world "${COV_WORLD:-hc-cov}" --fixtures "$fport" --mode "$mode" --repeat "${COV_REPEAT:-1}" ${COV_ONLY:+--only "$COV_ONLY"} \
   2>&1 | tee "$out/run-$mode.log"

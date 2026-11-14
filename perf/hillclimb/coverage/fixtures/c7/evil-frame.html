@@ -1,0 +1,13 @@
+<!doctype html><meta charset="utf-8"><title>Frame</title>
+<form id="f"><input id="user" type="email" autocomplete="username"><input id="pass" type="password" autocomplete="current-password"></form>
+<script>
+// Another origin. Reports what its boxes hold (the password's length only), and tells Copper's form relay
+// "the caret is in me" — any frame can post that message.
+const tell = () => parent.postMessage({ evil: document.getElementById('user').value, len: document.getElementById('pass').value.length, spoofed: !!window.spoofed }, '*');
+document.addEventListener('input', tell, true); setInterval(tell, 200);
+document.getElementById('f').addEventListener('submit', e => { e.preventDefault(); tell(); });
+function spoof() {
+  try { webkit.messageHandlers.officeForms.postMessage({ kind: 'focus', typing: true, rect: { x: 10, y: 10, width: 200, height: 24 }, field: null, hint: '' }); window.spoofed = true; } catch (e) {}
+}
+addEventListener('message', e => { if (e.data === 'spoof') spoof(); });
+</script>
