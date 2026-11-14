@@ -1138,6 +1138,7 @@ final class Browser: NSObject, ObservableObject {
 
     private func relook() {
         Favicons.shared.relook(tabs.filter { !$0.asleep })
+        IconInk.reink(Spaces.shared.everyTab + tabs) // Fork (icon-ink): asleep and parked rows too
     }
 
     private func writeSession(now: Bool = false) {

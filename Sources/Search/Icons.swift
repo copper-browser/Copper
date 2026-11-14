@@ -45,7 +45,7 @@ final class Favicons {
     }
 
     private func known(_ key: String) -> NSImage? {
-        if let hit = memory[key] { return hit }
+        if let hit = memory[key] { return IconInk.legible(hit, dark: Favicons.dark) } // Fork (icon-ink): a one-colour glyph in this look's ink
         // Fork (new-tab-launcher): a file found missing once is not looked
         // for again. ⌘T draws a mark for every row on every keystroke, and
         // in the dark each one asks for an "@dark" file most sites never
@@ -59,7 +59,7 @@ final class Favicons {
         guard FileManager.default.fileExists(atPath: file.path) else { absent.insert(key); return nil }
         let image = NSImage(byReferencing: file)
         memory[key] = image
-        return image
+        return IconInk.legible(image, dark: Favicons.dark) // Fork (icon-ink)
     }
 
     private static func fresh(_ key: String) -> Bool {
@@ -86,7 +86,7 @@ final class Favicons {
         guard cached(host) == nil, let image = await Favicons.square(data) else { return }
         memory[host] = image
         Favicons.keep(image, for: host)
-        arrived?(host, image)
+        arrived?(host, IconInk.legible(image, dark: Favicons.dark)) // Fork (icon-ink)
     }
 
     /// Asks the page which icon it wants to be known by, fetches it, and keeps
@@ -157,7 +157,7 @@ final class Favicons {
             guard let image = await Favicons.square(data) else { continue }
             memory[key] = image
             if !shy { Favicons.keep(image, for: key) }
-            arrived?(host, image)
+            arrived?(host, IconInk.legible(image, dark: Favicons.dark)) // Fork (icon-ink)
             return
         }
         // Not asked again this session: hammering a site for an icon it

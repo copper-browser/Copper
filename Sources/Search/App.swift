@@ -293,14 +293,20 @@ struct ContentView: View {
         ZStack(alignment: .top) {
             // Black while a page has the screen, so the frame of our own window
             // that survives the transition is not a white band across the top.
-            (browser.active?.immersed == true ? Color.black : Palette.ground)
+            if browser.active?.immersed == true {
+                Color.black
+            } else if sidebar {
+                WindowGround(browser: browser) // Fork (page-frame): the space's ground under the column and round the page
+            } else {
+                Palette.ground
+            }
 
             HStack(spacing: 0) {
                 // The column of tabs, in the way that has one. It takes the
                 // full height, so the traffic lights sit in its own corner
                 // rather than over the page.
                 if sidebar {
-                    SideBar(browser: browser, prefs: browser.prefs)
+                    SideBar(browser: browser, prefs: browser.prefs, grounded: false) // Fork (page-frame): the window draws its ground
                         .transition(.move(edge: .leading))
                 }
 
@@ -313,7 +319,7 @@ struct ContentView: View {
 
                     // One stage, always.
                     if let tab = browser.active {
-                        SplitStage(browser: browser, active: tab)
+                        SplitStage(browser: browser, active: tab, inset: sidebar) // Fork (page-frame)
                             .overlay {
                                 if recent.showing {
                                     RecentStrip(browser: browser)
@@ -329,6 +335,7 @@ struct ContentView: View {
                             .overlay(alignment: .topLeading) {
                                 if let asked = browser.suggesting, asked.tab == tab.id {
                                     AccountList(browser: browser, asked: asked)
+                                        .padding(.top, sidebar ? SplitMetrics.margin : 0) // Fork (page-frame): the page card starts a margin down
                                         .transition(.opacity)
                                 }
                             }

@@ -449,30 +449,56 @@ struct ThemeBackdrop: View {
     struct Still: View {
         let theme: SpaceTheme
         let dark: Bool
+        /// Fork (page-frame): how wide the picture is laid — the column's
+        /// width, when this ground runs on under the page as well. A picture
+        /// is drawn for the column (the built-in one is a tall strip), so it
+        /// keeps the column's crop and fades into the theme's colour past
+        /// it rather than being blown up to the window. Nil is the whole
+        /// width.
+        var span: CGFloat? = nil
+
+        /// How far a picture is held down under light ink in the dark. At
+        /// 0.3 the bright parts of a pastel picture came out a mid grey the
+        /// column's titles read at 2.5–4.3:1; at this the brightest band of
+        /// the built-in picture keeps even the muted titles at AA (4.5:1),
+        /// and the saturation lifted with it keeps it a colour, not mud.
+        static let nightVeil = 0.65
 
         var body: some View {
             Colour(theme: theme, dark: dark)
             if theme.motion == nil, let name = theme.image, let picture = ThemeBackdrop.picture(name, blur: theme.blur) {
                 GeometryReader { geo in
-                    Image(nsImage: picture)
-                        .resizable()
-                        .interpolation(.high)
-                        .scaledToFill()
-                        .frame(width: geo.size.width, height: geo.size.height)
-                        .clipped()
+                    let wide = span.map { min($0, geo.size.width) } ?? geo.size.width
+                    ZStack {
+                        Image(nsImage: picture)
+                            .resizable()
+                            .interpolation(.high)
+                            .scaledToFill()
+                            .frame(width: wide, height: geo.size.height)
+                            .clipped()
+                            .saturation(dark ? 1.3 : 1)
+                        // A neutral veil first — white in the light, black in
+                        // the dark — so the picture's own darks (or lights) are
+                        // pulled towards the ground the ink was chosen for: over
+                        // a photo's shadowed band the brown titles were going
+                        // under. It greys the picture less than more colour would.
+                        (dark ? Color.black.opacity(Still.nightVeil) : Color.white.opacity(0.22))
+                        // The colour stays on the picture, thinly, so the ink
+                        // that is right for the colour stays right over it — thin
+                        // enough that a vivid picture keeps its colour; deeper in
+                        // the dark, where light ink needs the picture held down.
+                        Colour(theme: theme, dark: dark).opacity(dark ? 0.4 : 0.15)
+                    }
+                    .frame(width: wide, height: geo.size.height)
+                    .mask { if span != nil { Still.fade(wide) } else { Rectangle() } }
                 }
-                // A neutral veil first — white in the light, black in the
-                // dark — so the picture's own darks (or lights) are pulled
-                // towards the ground the ink was chosen for: over a photo's
-                // shadowed band the brown titles were going under. It greys
-                // the picture less than more colour would.
-                (dark ? Color.black.opacity(0.3) : Color.white.opacity(0.22))
-                // The colour stays on the picture, thinly, so the ink that is
-                // right for the colour stays right over it — thin enough that
-                // a vivid picture keeps its colour; deeper in the dark, where
-                // light ink needs the picture held down.
-                Colour(theme: theme, dark: dark).opacity(dark ? 0.35 : 0.15)
             }
+        }
+
+        /// The picture's last few points, into the colour beyond it.
+        static func fade(_ wide: CGFloat) -> some View {
+            LinearGradient(stops: [.init(color: .black, location: max(0, 1 - 24 / max(wide, 1))), .init(color: .clear, location: 1)],
+                           startPoint: .leading, endPoint: .trailing)
         }
     }
 

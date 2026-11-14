@@ -11,10 +11,18 @@ time; the others are parked and come back exactly as they were.
 mark and its name in full. Hover it for the tab count; click it (or the
 chevron) for the space menu. This is the label the column used to lack.
 
-**The strip at the foot.** Every space is a 22pt chip — its emoji, its
-symbol, or its first letter, on a soft square of its own colour. The current
-one sits on the column's paper-white pill, the same thing the live row wears.
-Hovering a chip names it at once, above the strip. When the chips outgrow the
+**Around the page.** In the sidebar layout the space's ground runs under the
+whole window, and the page sits on it as a card: a 7pt margin on the top,
+right and bottom, 11pt round corners, a hairline and a soft shadow — the same
+card a split view's two panes are, and the agent's pane beside it. A space's
+picture keeps the column's width and fades into its colour past it. The top
+tab layout keeps its page edge to edge.
+
+**The strip at the foot.** Every space is a 28pt chip — its emoji, its
+symbol, or its first letter on a small tile of its own colour, so no two
+spaces look the same. The current one sits on the column's paper-white pill,
+the same thing the live row wears. Hovering a chip names it at once, above
+the strip, and its tooltip gives its key (`Work · ⌃2`). When the chips outgrow the
 column the row scrolls sideways under a soft edge, with the current chip kept
 in view; nothing shrinks to a dot and no name is ever cut to a letter. Drag a
 chip to reorder the spaces. The `+` at the end makes a space *and opens its

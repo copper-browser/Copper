@@ -21,9 +21,15 @@ struct SideBar: View {
     @ObservedObject private var clearTabs = ClearTabs.shared
     @ObservedObject private var drag: SideDrag // Fork (saved-drag): the row in the hand, and where it would land
 
-    init(browser: Browser, prefs: Preferences) { // Fork (saved-drag): picks up this window's drag
+    /// Fork (page-frame): whether the column draws the space's ground itself
+    /// — the folded column out over the page does; beside the page the
+    /// window draws it under both (Fork/PageFrame.swift).
+    let grounded: Bool
+
+    init(browser: Browser, prefs: Preferences, grounded: Bool = true) { // Fork (saved-drag): picks up this window's drag
         self.browser = browser
         self.prefs = prefs
+        self.grounded = grounded
         _drag = ObservedObject(wrappedValue: SideDrag.of(browser))
     }
 
@@ -100,7 +106,7 @@ struct SideBar: View {
         // never slid, so there is no seam between two grounds.
         .background {
             ZStack {
-                SpaceGroundView(browser: browser, dark: scheme == .dark)
+                if grounded { SpaceGroundView(browser: browser, dark: scheme == .dark) }
                 if landing { tint.hover }
             }
         }
@@ -109,7 +115,7 @@ struct SideBar: View {
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { SpaceSlide.shared.place(column: $0, in: browser) }
         .onDisappear { SpaceSlide.shared.place(column: nil, in: browser) }
         .overlay(alignment: .trailing) {
-            Rectangle().fill(tint.hairline.opacity(0.6)).frame(width: 1)
+            if grounded { Rectangle().fill(tint.hairline.opacity(0.6)).frame(width: 1) }
         }
         .overlay(alignment: .trailing) { edge }
         // Fork: the wheel button closes the favourite or row under it — one
