@@ -81,32 +81,36 @@ enum Ultrafast {
         }
     }
 
-    /// `auto`: the numbered picture goes with this read only when the table
-    /// can't tell the controls apart — a button (or switch, checkbox…) with
-    /// no name of its own (an icon button, a swatch), three or more nameless
-    /// links (a gallery; one or two image links are on every Wikipedia
-    /// article and don't matter), or three or more with the same role and
-    /// name (a table of "Approve" buttons) — or when the last move changed
-    /// nothing. Measured (perf/uibench.py): text alone is ~0.6 s a task
-    /// faster; the numbered picture is the only way through unlabelled controls.
+    /// `auto`: the numbered picture goes with this read up front only when
+    /// a button (or switch, checkbox…) has no name of its own (an icon
+    /// button, a swatch) or the last move changed nothing. Otherwise Jev is
+    /// asked from the table and asked again with the picture only when the
+    /// target it chose shares its name with another (`sharesName`: a table of
+    /// "Approve" buttons, a gallery). Wikipedia's many "edit" and imageless
+    /// links sent a picture with 26 of 30 game runs (13k tokens a decision)
+    /// when any three alike did. Measured (perf/uibench.py): text alone is
+    /// ~0.6 s a task faster; the picture is the only way through unlabelled controls.
     static func needsPicture(_ obs: Observation, after last: Step?) -> Bool {
-        if let last, last.pageChanged == false, last.kind != "wait" { return true }
-        var seen: [String: Int] = [:]
-        var namelessLinks = 0
+        if let last, last.pageChanged == false, last.kind != "wait", !last.inFlight { return true }
         for action in obs.actions where (action["kind"] as? String) == "click" {
             let role = action["role"] as? String ?? ""
             let label = (action["label"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if label.isEmpty || label == role {
-                if role != "link" { return true }
-                namelessLinks += 1
-                if namelessLinks >= 3 { return true }
-                continue
-            }
-            let key = role + "|" + label.lowercased()
-            seen[key, default: 0] += 1
-            if seen[key]! >= 3 { return true }
+            if (label.isEmpty || label == role), role != "link" { return true }
         }
         return false
+    }
+
+    /// The chosen control and at least one other offered for the same move
+    /// go by the same name (none counts as a name): the table can't say which.
+    static func sharesName(_ obs: Observation, choice: String) -> Bool {
+        guard let chosen = obs.action(choice) else { return false }
+        func key(_ a: [String: Any]) -> String {
+            let role = a["role"] as? String ?? ""
+            let label = (a["label"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return (a["kind"] as? String ?? "") + "|" + (label == role ? "" : label)
+        }
+        let mine = key(chosen)
+        return obs.actions.filter { key($0) == mine }.count >= 2
     }
 
     /// One picture of the viewport, matched to one observation: JPEG bytes,
@@ -275,6 +279,10 @@ enum Ultrafast {
     static let unmetFloor = 0.5
     /// How long a click that shows no change is given to show one (`watch`).
     static let clickPatience: TimeInterval = 1.0
+    /// Under this, a DONE or BLOCKED gets a second look first (Session.tick):
+    /// in 220 hill-climb runs (r2) 11 of 17 wrong BLOCKEDs were under 0.6 and
+    /// no right one was; DONE: 2 wrong and 2 right under 0.6.
+    static let claimFloor = 0.6
     /// What Jev reads in `recent_actions` after a DONE was not taken.
     static let refusedNote: [String: Any] = [
         "action": "DONE was refused: the page still shows something the goal asks for as not applied or not done. Do what is missing.",
@@ -374,6 +382,11 @@ enum Ultrafast {
         /// was still moving then.
         var settleCapped: Bool? = nil
         var settleWhy: String? = nil
+        /// The data calls (xhr/fetch) the action started, as NetLog.brief
+        /// says them, and whether any was still out when the page was read
+        /// (`watch`): an answer not in yet is not "changed nothing".
+        var net: [String] = []
+        var inFlight = false
 
         var json: [String: Any] {
             var out: [String: Any] = ["n": number, "operation": operation, "kind": kind, "label": label,
@@ -387,6 +400,8 @@ enum Ultrafast {
             out["box"] = box.map { $0 as Any } ?? NSNull()
             out["settle_capped"] = settleCapped.map { $0 as Any } ?? NSNull()
             if let settleWhy, !settleWhy.isEmpty { out["settle_why"] = settleWhy }
+            if !net.isEmpty { out["net"] = net }
+            if inFlight { out["in_flight"] = true }
             return out
         }
 
@@ -840,7 +855,8 @@ enum Ultrafast {
         let read = "window.__jevFast.observe(" + (terms.map { encode($0) } ?? "") + ")"
         var settled: [String: Any]? = nil
         // A navigation already under way: the leaving document's settle may never answer.
-        if let action, (action["kind"] as? String) != "wait", !tab.loading || (action["kind"] as? String) == "read" {
+        // A WAIT settles too: what it waited for (Flights' results) is drawn in after.
+        if let action, !tab.loading || (action["kind"] as? String) == "read" {
             var plain = action
             plain["rect"] = nil
             plain["near"] = near
@@ -1082,7 +1098,7 @@ enum Ultrafast {
     /// the box is mapped back onto an observed element.
     static func choose(_ obs: Observation, goal: String, history: [Step], keys: Intelligence.Keys, signInAvailable: Bool = false, autofill: Set<String> = [],
                        vision: Vision = .off, shot: Shot? = nil, model: String? = nil, strategy: Strategy = Strategy(),
-                       doneRefused: Bool = false, noScroll: Bool = false) async throws -> Decision {
+                       doneRefused: Bool = false, blockedRefused: Bool = false, noScroll: Bool = false) async throws -> Decision {
         let (elements, targets, controls) = actionSpace(obs.actions, signInAvailable: signInAvailable, autofill: autofill)
         let quoted = strategy.literals ? literals(in: goal) : []
         let fills = targets["TYPE_TEXT"] ?? [:]
@@ -1098,7 +1114,8 @@ enum Ultrafast {
         for (key, value) in controls where !(noScroll && key.hasPrefix("SCROLL")) { operations[key] = value["label"] as? String ?? key }
         // A DONE just refused is not offered again until something has been done.
         if !doneRefused { operations["DONE"] = "Every requirement is visibly satisfied." }
-        operations["BLOCKED"] = "No supported operation can progress."
+        // A doubted BLOCKED (claimFloor) is not offered on the next decision.
+        if !blockedRefused { operations["BLOCKED"] = "No supported operation can progress." }
 
         // What the picture is, said once beside the rules, when there is one.
         let pictured = shot != nil && vision.usesPicture
@@ -1448,8 +1465,11 @@ enum Ultrafast {
             // (the field before was just filled). The target is still
             // resolved, visible and hit-tested below.
         } else if narrow, kind == "wait" {
-            // The page changed since WAIT was chosen: that is what it waited for.
-            if !(await fresh(web, obs)) { return false }
+            // The page changed since WAIT was chosen: that is what it waited
+            // for — once what it asked its server is back (≤ 3 s). Google
+            // Flights' results come a second after Search's page change;
+            // a WAIT done in 1 ms then read the half-drawn page.
+            if !(await fresh(web, obs)) { _ = await NetLog.answered(web, after: nil); return false }
         } else if kind == "click" || kind == "select" || (narrow && kind == "fill"), let node {
             // The form state and the target's own guard (`near` adds typing):
             // unrelated content loading in elsewhere doesn't make a click or a
@@ -1465,7 +1485,9 @@ enum Ultrafast {
         case "wait":
             // cosmetic only: the pointer breathes while nothing happens.
             Trail.wait(web)
-            if watch { await waitForChange(web) } else { try await Task.sleep(nanoseconds: 100_000_000) }
+            // Calls out: until they're back (≤ 3 s); else until the page changes.
+            if watch, NetLog.busy(web) { _ = await NetLog.answered(web, after: nil) }
+            else if watch { await waitForChange(web) } else { try await Task.sleep(nanoseconds: 100_000_000) }
         case "scroll":
             let delta = (action["delta"] as? NSNumber)?.doubleValue ?? 560
             // cosmetic only: a chevron at the edge the page moved towards.
@@ -1594,6 +1616,14 @@ enum Ultrafast {
         private(set) var doneRefusals = 0
         private var doneRefused = false
         private(set) var doneCheck: Double?
+        /// A DONE or BLOCKED under claimFloor gets one second look each per
+        /// run (the page settled and read again); a doubted BLOCKED is not
+        /// offered on that next decision.
+        private var doubted = Set<String>()
+        private var blockedRefused = false
+        private(set) var doubts = 0
+        /// Calendar months the goal names (calendarMonths): other months' days are not shown to Jev.
+        private lazy var months = Ultrafast.calendarMonths(goal)
         private var staleStreak = 0
         private var traced = false
         /// `reach`: the goal's words for the read, the nodes they named so
@@ -1685,14 +1715,17 @@ enum Ultrafast {
                 shot = nil
                 trace.close(phase: reading, detail: Ultrafast.read(obs))
             }
+            // Jev reads a date picker's days of the goal's month only (`lean`):
+            // Google Flights' two-month grid was ~60 named days a decision.
+            let shown = strategy.lean ? Ultrafast.elideCalendar(obs, months: months) : obs
             // What Jev sees this time: `auto` adds the numbered picture only
             // when the table alone can't tell the controls apart.
-            let seeing: Vision = vision == .auto ? (Ultrafast.needsPicture(obs, after: history.last) ? .marks : .off) : vision
+            let seeing: Vision = vision == .auto ? (Ultrafast.needsPicture(shown, after: history.last) ? .marks : .off) : vision
             if seeing.usesPicture, shot == nil {
                 // The picture goes with this read (the trail layer is hidden
                 // while it is taken).
                 let picturing = trace.phase(.observe, seeing == .marks ? "Taking a marked picture" : "Taking a picture")
-                let taken = try await Ultrafast.shot(tab, obs, vision: seeing)
+                let taken = try await Ultrafast.shot(tab, shown, vision: seeing)
                 shot = taken
                 shotMs = taken.ms
                 trace.close(phase: picturing, detail: "\(taken.width)×\(taken.height), \(taken.data.count / 1024) KB")
@@ -1717,16 +1750,31 @@ enum Ultrafast {
             autofillAvailable = available.autofill
             let asking = trace.phase(.ask, strategy.llm ? "Asking the model which move" : seeing.needsBox ? "Asking Jev which move, and where" : seeing.usesPicture ? "Asking Jev which move, with a picture" : "Asking Jev which move")
             let decideStarted = Date()
-            let decision: Decision
+            var decision: Decision
             if strategy.llm {
                 decision = try await Ultrafast.chooseLLM(obs, goal: goal, history: history, keys: keys, strategy: strategy)
             } else if seeing == .pixels, let shot {
                 decision = try await Ultrafast.choosePixels(tab, obs, goal: goal, history: history, keys: keys, shot: shot, model: model, strategy: strategy)
             } else {
-                decision = try await Ultrafast.choose(obs, goal: goal, history: history, keys: keys,
-                                                      signInAvailable: signInAvailable, autofill: autofillAvailable,
-                                                      vision: seeing, shot: seeing.usesPicture ? shot : nil, model: model, strategy: strategy,
-                                                      doneRefused: doneRefused, noScroll: barrenScrolls >= Session.barrenLimit)
+                func ask(_ seeing: Vision) async throws -> Decision {
+                    try await Ultrafast.choose(shown, goal: goal, history: history, keys: keys,
+                                               signInAvailable: signInAvailable, autofill: autofillAvailable,
+                                               vision: seeing, shot: seeing.usesPicture ? shot : nil, model: model, strategy: strategy,
+                                               doneRefused: doneRefused, blockedRefused: blockedRefused,
+                                               noScroll: barrenScrolls >= Session.barrenLimit)
+                }
+                decision = try await ask(seeing)
+                if vision == .auto, seeing == .off, decision.target != nil, Ultrafast.sharesName(shown, choice: decision.choice) {
+                    // Two controls by the chosen one's name: asked again with the numbered picture.
+                    let taken = try await Ultrafast.shot(tab, shown, vision: .marks)
+                    shot = taken
+                    spent.shotMs += taken.ms
+                    pictured += 1
+                    spent.jevMs += decision.latencyMs
+                    spent.tokens += decision.inputTokens
+                    spent.requests += decision.requests
+                    decision = try await ask(.marks)
+                }
             }
             let decideMs = Date().timeIntervalSince(decideStarted) * 1000
             spent.decideMs += decideMs
@@ -1742,6 +1790,24 @@ enum Ultrafast {
                 guard await Ultrafast.fresh(web, obs) else {
                     self.stale += 1; staleOps.append(decision.choice); settleBeforeRead = true
                     observation = nil; shot = nil; return nil
+                }
+                // Not sure (under claimFloor): the page settles in full — its
+                // load, its data calls — and is read and asked again, once per
+                // kind; a BLOCKED then off the table. Not for a human check or
+                // the end of barren scrolling: those BLOCKEDs are the answer.
+                let settledBlock = decision.choice == "BLOCKED" && (Ultrafast.humanCheck(on: obs) != nil || barrenScrolls >= Session.barrenLimit)
+                if decision.probability < Ultrafast.claimFloor, !settledBlock, !doubted.contains(decision.choice) {
+                    doubted.insert(decision.choice)
+                    doubts += 1
+                    if decision.choice == "BLOCKED" { blockedRefused = true }
+                    trace.outcome(Drive.Outcome(operation: decision.choice, label: "not sure: reading the page again", text: nil,
+                                                   probability: decision.probability, confidence: decision.confidence,
+                                                   pageChanged: nil, stale: true, candidates: []))
+                    await Ultrafast.settleFully(tab)
+                    settleBeforeRead = true
+                    observation = nil
+                    shot = nil
+                    return nil
                 }
                 if decision.choice == "DONE" { doneCheck = decision.unmet }
                 if decision.choice == "DONE", let unmet = decision.unmet, unmet >= Ultrafast.unmetFloor, doneRefusals < 2 {
@@ -1811,6 +1877,7 @@ enum Ultrafast {
             var actStarted: Date?
             var submitted = false
             var burstSteps: [Step] = []
+            var netMark: UInt64 = 0
             do {
                 if kind == "fill", text == nil {
                     let still: Bool
@@ -1840,6 +1907,12 @@ enum Ultrafast {
                     writing = nil
                     if stopped() { return nil }
                 }
+                // The same control again after it changed nothing (Google
+                // Flights' "Reload" over "Oops, something went wrong"): a
+                // moment between tries, longer each time (1 s, then 2 s).
+                let tries = history.reversed().prefix { $0.label == label && $0.kind == kind && $0.pageChanged == false }.count
+                if strategy.watch, kind == "click", tries > 0 { try await Task.sleep(nanoseconds: UInt64(min(tries, 2)) * 1_000_000_000) }
+                netMark = NetLog.mark(web)
                 let acted = trace.phase(.act, Ultrafast.actTitle(action, label: label))
                 acting = acted
                 actStarted = Date()
@@ -1878,6 +1951,7 @@ enum Ultrafast {
                 }
                 staleStreak = 0
                 doneRefused = false
+                blockedRefused = false
             } catch let stale as Stale {
                 if let actStarted { spent.actMs += Date().timeIntervalSince(actStarted) * 1000 }
                 staleStreak += 1
@@ -1918,7 +1992,16 @@ enum Ultrafast {
             let settling = trace.phase(.settle, "Watching the page settle")
             let settleStarted = Date()
             if strategy.near, submitted || (kind == "click" && burstSteps.isEmpty) { await Ultrafast.awaitLeaving(tab) }
-            var next = try await Ultrafast.observe(tab, after: burstSteps.isEmpty ? action : ["kind": "wait"], terms: terms, near: strategy.near)
+            // What the input asked the page's server: back before the read
+            // (≤ 3 s), so Jev isn't asked about a page whose answer is still
+            // out — and doesn't click again, which asks again.
+            if strategy.watch, submitted || kind == "click" || kind == "wait" {
+                let calls = await NetLog.answered(web, after: netMark)
+                step.net = calls.suffix(6).map(NetLog.brief)
+                step.inFlight = calls.contains { !$0.done }
+            }
+            // A burst's fields were typed on purpose: read at once (no settle).
+            var next = try await Ultrafast.observe(tab, after: burstSteps.isEmpty ? action : nil, terms: terms, near: strategy.near)
             let settle = next.settle
             // A click the page has not answered yet (its request is still out)
             // gets a second to show something before it is called "no change".
@@ -1963,8 +2046,9 @@ enum Ultrafast {
             trace.outcome(Drive.Outcome(operation: decision.operation, label: label, text: text,
                                            probability: decision.probability, confidence: decision.confidence,
                                            pageChanged: step.pageChanged, stale: false, candidates: decision.candidates))
+            // An action whose answer was still out isn't one that changed nothing.
             let last = history.suffix(3)
-            if last.count == 3, last.allSatisfy({ $0.pageChanged == false && $0.kind != "wait" }) {
+            if last.count == 3, last.allSatisfy({ $0.pageChanged == false && $0.kind != "wait" && !$0.inFlight }) {
                 status = "blocked"
                 note = "Three actions in a row changed nothing"
             }
@@ -1994,7 +2078,7 @@ enum Ultrafast {
                                       "text_calls": spent.textCalls, "text_reused": spent.textReused,
                                       "settles": spent.settles, "settles_capped": spent.settlesCapped,
                                       "burst_actions": history.filter(\.burst).count,
-                                      "pictured": pictured]
+                                      "pictured": pictured, "doubts": doubts]
             if !spent.textModel.isEmpty { out["text_model"] = spent.textModel }
             if !boxes.isEmpty { out["box_hits"] = boxes.filter { $0 }.count; out["box_asked"] = boxes.count }
             return out

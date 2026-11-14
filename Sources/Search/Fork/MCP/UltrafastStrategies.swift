@@ -159,7 +159,10 @@ extension Tools.Ultrafast {
     /// `literal` mode will type without a text model, and only into the
     /// field Jev matches each one to; a value it matches to no field costs
     /// one question, a value it misses is the text model's to write.
-    static func literals(in goal: String) -> [String] {
+    static func literals(in said: String) -> [String] {
+        // Curly apostrophes and single quotes as straight ones: "Gödel’s" is
+        // one word to every pattern below, and the value typed is plain.
+        let goal = said.replacingOccurrences(of: "[’‘ʼ]", with: "'", options: .regularExpression)
         var out: [String] = []
         func add(_ s: String) {
             let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -179,6 +182,8 @@ extension Tools.Ultrafast {
             (#"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+"#, [0]),
             ("(?i)\\b(?:from|von|van|desde|de|da) (\(place)) (?:to|nach|naar|à|a|vers|hasta|para|per) (\(place))\(end)", [1, 2]),
             ("\\b(?i:from|to|in|near|at|named|called|titled|von|nach|bei|ab|aus|vers|depuis|desde|hacia|naar) ((?!(?i:\(month))\\b)\(name)(?: \(name))*)", [1]),
+            // What a page or article is about, to its end: "the article about Gödel's incompleteness theorems".
+            ("\\b(?i:about|(?:article|page|entry) on) (\(place)(?: [\\p{L}\\p{N}][\\p{L}\\p{N}'.-]*){0,3}?)\(end)", [1]),
             (#"\b([A-Z]{3})\s*(?:→|->|–|—|-|>|/)\s*([A-Z]{3})\b"#, [1, 2]),
             ("(?i)\\b\(month)\\.? \\d{1,2}(?:st|nd|rd|th)?(?:,? \\d{4})?\\b", [0]),
             ("(?i)\\b\\d{1,2}(?:\\.|st|nd|rd|th|er|º)? (?:de )?\(month)\\.?(?:,? (?:de )?\\d{4})?\\b", [0]),
@@ -207,6 +212,72 @@ extension Tools.Ultrafast {
     januari februari maart mei augustus \
     janeiro fevereiro março marco maio junho julho setembro outubro dezembro
     """.split(whereSeparator: \.isWhitespace).map(String.init).filter { $0 != "\\" }
+
+    /// The month each name means, 1–12, in the languages `monthNames` has.
+    static let monthNumbers: [String: Int] = {
+        let rows = [
+            "january jan januar jänner janvier enero gennaio januari janeiro",
+            "february feb februar février fevrier febrero febbraio februari fevereiro",
+            "march mar märz maerz mars marzo maart março marco",
+            "april apr avril abril aprile",
+            "may mai mayo maggio mei maio",
+            "june jun juni juin junio giugno junho",
+            "july jul juli juillet julio luglio julho",
+            "august aug août aout agosto augustus",
+            "september sep sept septembre septiembre setiembre settembre setembro",
+            "october oct oktober octobre octubre ottobre outubro",
+            "november nov novembre noviembre novembro",
+            "december dec dezember décembre decembre diciembre dicembre dezembro",
+        ]
+        var out: [String: Int] = [:]
+        for (i, row) in rows.enumerated() { for name in row.split(separator: " ") { out[String(name)] = i + 1 } }
+        return out
+    }()
+
+    /// The calendar months a goal's dates fall in ("January 20, 2027",
+    /// "20. Januar 2027", "2027-01-20"; "20/01/2027" may be either order).
+    static func calendarMonths(_ goal: String) -> Set<Int> {
+        var out = Set<Int>()
+        for value in literals(in: goal) {
+            let words = value.lowercased().components(separatedBy: CharacterSet.letters.inverted).filter { !$0.isEmpty }
+            if let m = words.compactMap({ monthNumbers[$0] }).first { out.insert(m); continue }
+            let numbers = value.components(separatedBy: CharacterSet.decimalDigits.inverted).compactMap { Int($0) }
+            guard numbers.count == 3 else { continue }
+            if numbers[0] > 31 { if (1...12).contains(numbers[1]) { out.insert(numbers[1]) } } // 2027-01-20
+            else { for n in numbers.prefix(2) where (1...12).contains(n) { out.insert(n) } }
+        }
+        return out
+    }
+
+    /// A date picker's days that aren't in the goal's months, taken off what
+    /// Jev reads: a grid (20 or more controls named "Month D, YYYY") shows
+    /// only the months the goal names; "Next"/"Previous" still get there.
+    /// Nothing changes when the goal names no month or the page has no grid.
+    static func elideCalendar(_ obs: Observation, months: Set<Int>) -> Observation {
+        guard !months.isEmpty,
+              let re = try? NSRegularExpression(pattern: #"(?i)\b(january|february|march|april|may|june|july|august|september|october|november|december) \d{1,2}, \d{4}\b"#)
+        else { return obs }
+        func month(_ a: [String: Any]) -> Int? {
+            guard (a["kind"] as? String) == "click", let label = a["label"] as? String,
+                  let m = re.firstMatch(in: label, range: NSRange(label.startIndex..., in: label)),
+                  let r = Range(m.range(at: 1), in: label) else { return nil }
+            return monthNumbers[label[r].lowercased()]
+        }
+        let days = obs.actions.compactMap(month)
+        guard days.count >= 20 else { return obs }
+        var raw = obs.raw
+        raw["actions"] = obs.actions.filter { month($0).map(months.contains) ?? true }
+        return Observation(raw: raw)
+    }
+
+    /// Before a second look at a doubtful DONE/BLOCKED: the page's load and
+    /// its data calls finish (≤ 3 s each).
+    @MainActor
+    static func settleFully(_ tab: Tab) async {
+        let deadline = Date().addingTimeInterval(3)
+        while tab.loading, Date() < deadline { try? await Task.sleep(nanoseconds: 50_000_000) }
+        _ = await NetLog.answered(tab.web, after: nil)
+    }
 
     /// What a run looks for in links it can't see (`reach`): the goal's own
     /// words, folded the way the page script folds them (lowercase, no

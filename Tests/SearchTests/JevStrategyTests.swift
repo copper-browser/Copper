@@ -45,7 +45,10 @@ struct JevStrategyTests {
         #expect(U.literals(in: "Find one-way flights from Zurich to London on January 20, 2027, for one adult in economy. Stop when matching flight options are visible. Do not select or book a flight.")
                 == ["Zurich", "London", "January 20, 2027"])
         #expect(U.literals(in: "Use the destination search and filters to find Design stays in Lisbon with Free cancellation, then open Casa Flora.") == ["Lisbon"])
-        #expect(U.literals(in: "Find and open the Wikipedia article about Gödel’s incompleteness theorems.").isEmpty)
+        // What an article is about, to the end, with a curly apostrophe made straight (the text model wrote it before).
+        #expect(U.literals(in: "Find and open the Wikipedia article about Gödel’s incompleteness theorems.") == ["Gödel's incompleteness theorems"])
+        #expect(U.literals(in: "Open the article on Alan Turing.") == ["Alan Turing"])
+        #expect(U.literals(in: "Tell me about the weather.").isEmpty)
         #expect(U.literals(in: "Book a table at Chez Panisse in San Francisco for 2026-12-01.") == ["Chez Panisse", "San Francisco", "2026-12-01"])
         // A month is a date, never a place; lowercase words end a name.
         #expect(U.literals(in: "Show what is on in March and switch to the German-language version.").isEmpty)
@@ -137,19 +140,18 @@ struct JevHybridTests {
         #expect(U.needsPicture(obs([click(1, "button", "")]), after: nil))
     }
 
-    @Test func aFewImageLinksStayText() {
-        // Wikipedia: one or two links around images with no alt text.
-        let article = obs([click(1, "link", "Milk"), click(2, "link", "link"), click(3, "link", "link")])
+    @Test func imageLinksAndRepeatsWaitForTheChoice() {
+        // Wikipedia: imageless links and "edit" × 20 sent a picture with 26 of 30 game runs.
+        let article = obs([click(1, "link", "Milk"), click(2, "link", "link"), click(3, "link", "link"), click(4, "link", ""),
+                           click(5, "link", "edit"), click(6, "link", "edit"), click(7, "link", "edit")])
         #expect(!U.needsPicture(article, after: nil))
-        let gallery = obs([click(1, "link", "link"), click(2, "link", "link"), click(3, "link", "")])
-        #expect(U.needsPicture(gallery, after: nil))
-    }
-
-    @Test func repeatedLabelsGetPicture() {
-        let two = obs([click(1, "button", "Approve"), click(2, "button", "Approve")])
-        #expect(!U.needsPicture(two, after: nil))
-        let three = obs([click(1, "button", "Approve"), click(2, "button", "approve"), click(3, "button", "Approve")])
-        #expect(U.needsPicture(three, after: nil))
+        // The picture comes when the chosen one has a namesake (none is a name too).
+        #expect(!U.sharesName(article, choice: "e1"))
+        #expect(U.sharesName(article, choice: "e2") && U.sharesName(article, choice: "e4") && U.sharesName(article, choice: "e6"))
+        let invoices = obs([click(1, "button", "Approve"), click(2, "button", "approve"), click(3, "button", "Reject")])
+        #expect(!U.needsPicture(invoices, after: nil))
+        #expect(U.sharesName(invoices, choice: "e1") && !U.sharesName(invoices, choice: "e3"))
+        #expect(!U.sharesName(invoices, choice: "e9"))
     }
 
     @Test func aMoveThatChangedNothingGetsPicture() {
@@ -159,6 +161,36 @@ struct JevHybridTests {
         #expect(U.needsPicture(page, after: step))
         step.pageChanged = true
         #expect(!U.needsPicture(page, after: step))
+        // Its answer still out (Flights' Reload) is not "changed nothing".
+        step.pageChanged = false
+        step.inFlight = true
+        #expect(!U.needsPicture(page, after: step))
+    }
+}
+
+@Suite("A date picker's other months")
+struct JevCalendarTests {
+    private func days(_ month: String, _ count: Int, from node: Int) -> [[String: Any]] {
+        (1...count).map { click(node + $0, "button", "Wednesday, \(month) \($0), 2027, 86 US dollars") }
+    }
+
+    @Test func goalMonths() {
+        #expect(U.calendarMonths("Find one-way flights from Zurich to London on January 20, 2027.") == [1])
+        #expect(U.calendarMonths("One-way flights ZRH → LHR on 2027-01-20, 1 adult.") == [1])
+        #expect(U.calendarMonths("Flüge von Zürich nach London am 20. Januar 2027.") == [1])
+        #expect(U.calendarMonths("Change the date to 20/03/2027") == [3])
+        #expect(U.calendarMonths("Open Settings and save").isEmpty)
+    }
+
+    @Test func onlyTheGoalsMonthIsRead() {
+        let grid = [click(1, "button", "Next")] + days("December", 31, from: 100) + days("January", 31, from: 200)
+        let shown = U.elideCalendar(U.Observation(raw: ["actions": grid]), months: [1])
+        #expect(shown.actions.count == 32)
+        #expect(shown.action("e1") != nil && shown.action("e220") != nil && shown.action("e110") == nil)
+        // No month in the goal, or no grid: untouched.
+        #expect(U.elideCalendar(U.Observation(raw: ["actions": grid]), months: []).actions.count == grid.count)
+        let few = days("December", 5, from: 100)
+        #expect(U.elideCalendar(U.Observation(raw: ["actions": few]), months: [1]).actions.count == 5)
     }
 }
 
