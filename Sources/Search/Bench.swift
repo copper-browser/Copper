@@ -234,6 +234,13 @@ final class Bench {
         let verb = request["do"] as? String ?? ""
 
         switch verb {
+        case "wheel", "keylat":
+            // Fork (bench-hooks): input replayed and timed, answered when done (Fork/BenchHooks.swift).
+            BenchHooks.handle(verb, request, in: browser, answer: answer)
+
+        case "mouse" where (request["arg"] as? String)?.hasPrefix("double") == true:
+            BenchHooks.handle(verb, request, in: browser, answer: answer) // Fork (bench-hooks)
+
         case "spaces", "bar", "split", "summon", "window", "groups", "sections", "passkeys", "passwords", "privacy", "about", "agent", "ai", "swipe", "mouse", "heat", "downloads", "updates", "bw", "op", "flow", "history", "drive", "render", "ext-manager", "storage", "windows", "flight", "trails", "pace", "stage", "calendar", "pins":
             answer(Fork.bench(verb, request, in: browser))
 
@@ -638,7 +645,7 @@ final class Bench {
             // did without a person.
             if let on = request["settings"] as? Bool { browser.tuning = on }
             if let on = request["passwords"] as? Bool { browser.managing = on }
-            if let on = request["welcome"] as? Bool { browser.welcoming = on }
+            if let on = request["welcome"] as? Bool { Headless.benchWelcome = on; browser.welcoming = on } // Fork (bench-hooks)
             if let on = request["history"] as? Bool { browser.recalling = on }
             if let on = request["downloads"] as? Bool { browser.hoarding = on }
             if let on = request["bookmarks"] as? Bool { browser.bookmarking = on }

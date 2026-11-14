@@ -127,7 +127,8 @@ extension CardSections {
     /// one a key event handed to the field's editor, so it goes through the
     /// same key bindings and `AddressField` commands a real press does,
     /// without the window having to be key (a headless probe's never is).
-    /// ⇥ is Tab, ⇧⇥ Shift-Tab, ↑ ↓ → the arrows, ↩ Return. What the highlight did
+    /// ⇥ is Tab, ⇧⇥ Shift-Tab, ↑ ↓ → the arrows, ↩ Return; ⎋ goes in at
+    /// NSApp.sendEvent, where the app's Escape ladder hears it. What the highlight did
     /// after each, and whether the editor had them (`via: field`) or the
     /// field was not first responder and the browser was told directly
     /// (`via: model`).
@@ -145,11 +146,20 @@ extension CardSections {
             case "\u{2191}": key = (126, "\u{F700}", "↑")
             case "\u{2192}": key = (124, "\u{F703}", "→")
             case "\u{21A9}": key = (36, "\r", "↩")
+            case "\u{238B}": key = (53, "\u{1B}", "⎋")
             default: key = nil
             }
             defer { shift = false }
             guard let key else { continue }
-            if let editor, let event = NSEvent.keyEvent(
+            if key.code == 53, let event = NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window?.windowNumber ?? 0, context: nil, characters: key.chars,
+                charactersIgnoringModifiers: key.chars, isARepeat: false, keyCode: key.code
+            ) {
+                // Escape is the app's key monitor's (App.swift take()), not the
+                // field's: in at the app, the way a press arrives.
+                NSApp.sendEvent(event)
+            } else if let editor, let event = NSEvent.keyEvent(
                 with: .keyDown, location: .zero, modifierFlags: shift ? [.shift] : [],
                 timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window?.windowNumber ?? 0, context: nil,
                 characters: key.chars, charactersIgnoringModifiers: key.chars, isARepeat: false, keyCode: key.code
@@ -167,7 +177,7 @@ extension CardSections {
             let picked = browser.picked
             steps.append(["key": key.name, "picked": picked ?? -1,
                           "row": picked.flatMap { browser.offers.indices.contains($0) ? browser.offers[$0].key : nil } ?? "",
-                          "typed": browser.typed, "fieldText": editor?.string ?? ""])
+                          "typed": browser.typed, "fieldText": editor?.string ?? "", "summoning": browser.summoning])
         }
         return (steps, editor == nil ? "model" : "field")
     }

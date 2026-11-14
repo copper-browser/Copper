@@ -119,7 +119,8 @@ cp LICENSE "$APP/Contents/Resources/LICENSE"
 if [ "$CONFIG" = "release" ]; then
   rm -rf "$APP.dSYM"
   dsymutil "$BINARY" -o "$APP.dSYM" 2>/dev/null || echo "no dSYM this time" >&2
-  strip -x "$APP/Contents/MacOS/$NAME"
+  # COPPER_KEEP_SYMBOLS=1: names left in, for a profiler's samples (perf work).
+  [ "${COPPER_KEEP_SYMBOLS:-}" = 1 ] || strip -x "$APP/Contents/MacOS/$NAME"
 fi
 
 # The icon, drawn fresh each time — it is thirty lines of Swift, not an asset
