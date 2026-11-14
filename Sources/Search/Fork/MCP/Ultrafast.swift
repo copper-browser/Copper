@@ -669,7 +669,7 @@ enum Ultrafast {
         const page_key=cache.pageKey(), guards={};
         for (const a of actions) if (!(a.node in guards)) guards[a.node]=cache.guard(cache.nodes.get(a.node));
         // Compare meaning and identity. Geometry is resolved and hit-tested again just before input.
-        const semantics=actions.map(({rect,...action})=>action);
+        const semantics=actions.map(({rect,href,...action})=>action);
         const marker=JSON.stringify([performance.timeOrigin,location.href,scrollX,scrollY,innerWidth,innerHeight,
           document.title,text,semantics,formState()]);
         const omitted_actions=Math.max(0,actions.length-250);

@@ -586,7 +586,7 @@ extension Tools.Ultrafast {
             guard let calls = NetLog.dataCalls(web, after: from) else { return }
             if calls.contains(where: { NetLog.pending($0) }) { awaited = true }
             else if awaited, NetLog.quiet(calls, linger: waitLinger) { return }
-            if Date().timeIntervalSince(looked) >= 0.1 {
+            if Date().timeIntervalSince(looked) >= 0.2 {
                 looked = Date()
                 if !(await fresh(web, obs)) { return }
             }
