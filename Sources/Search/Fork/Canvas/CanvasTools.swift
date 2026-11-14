@@ -44,7 +44,7 @@ enum CanvasTools {
 
     /// The catalogue as tools/list sends it: all of it with a canvas in use,
     /// otherwise only `doors` (14 tools' schemas, paid by every session).
-    @MainActor static func listed(inUse: Bool = CanvasTools.inUse) -> [[String: Any]] {
+    static func listed(inUse: Bool) -> [[String: Any]] {
         inUse ? catalogue : catalogue.filter { doors.contains($0["name"] as? String ?? "") }
     }
 

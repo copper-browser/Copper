@@ -168,8 +168,7 @@ enum Tools {
 
     /// What tools/list offers: `catalogue` with the canvas tools only while a
     /// canvas is in use (`CanvasTools.listed`).
-    @MainActor
-    static func offered(jev: Bool, canvas: Bool = CanvasTools.inUse) -> [[String: Any]] {
+    static func offered(jev: Bool, canvas: Bool) -> [[String: Any]] {
         (jev ? Ultrafast.catalogue + playwright : playwright) + CanvasTools.listed(inUse: canvas)
     }
 

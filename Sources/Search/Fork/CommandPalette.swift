@@ -252,7 +252,7 @@ struct CommandPalette: View {
                 for (shadow, opacity, blur, drop) in [(edge, dark ? 0.32 : 0.09, 3.0, 1.0), (wide, dark ? 0.5 : 0.26, 48.0, 20.0)] {
                     shadow.frame = bounds
                     shadow.shadowPath = path
-                    shadow.shadowOpacity = Float(opacity)
+                    shadow.shadowOpacity = Swift.Float(opacity)
                     shadow.shadowRadius = blur // SwiftUI's .shadow radius, 1:1
                     shadow.shadowOffset = CGSize(width: 0, height: -drop)
                 }
