@@ -499,7 +499,7 @@ final class MCP: ObservableObject {
             // cloud_history_delete and the Listen transcript's tools only for
             // loopback clients (no `driver`): never offered through an agent
             // link (CloudHistoryTool, VoiceTools).
-            return reply(["tools": Tools.catalogue(jev: config.jev) + (driver == nil ? [CloudHistoryTool.schema] + VoiceTools.catalogue : [])])
+            return reply(["tools": Tools.listed(Tools.catalogue(jev: config.jev) + (driver == nil ? [CloudHistoryTool.schema] + VoiceTools.catalogue : []))])
         case "tools/call" where VoiceTools.names.contains(params["name"] as? String ?? ""):
             // Fork (voice): reading the Listen transcript drives nothing — no
             // announcement, Drive ticket, staged tab or breadcrumb, and a

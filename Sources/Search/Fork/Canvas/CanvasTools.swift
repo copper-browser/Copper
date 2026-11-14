@@ -24,7 +24,7 @@ enum CanvasTools {
     private static func string(_ description: String) -> [String: Any] { ["type": "string", "description": description] }
     private static func bool(_ description: String) -> [String: Any] { ["type": "boolean", "description": description] }
     private static func ids(_ description: String) -> [String: Any] { ["type": "array", "items": ["type": "string"], "description": description] }
-    private static let which = string("Canvas id or name (from canvas_list); omit for the canvas tab in front, else Personal")
+    private static let which = string("Canvas id or name; default the one in front, else Personal")
 
     static let names: Set<String> = ["canvas_list", "canvas_open", "canvas_read", "canvas_apply", "canvas_select",
                                      "canvas_focus", "canvas_create", "canvas_invite", "canvas_share_link", "canvas_join", "canvas_screenshot",
@@ -32,16 +32,16 @@ enum CanvasTools {
 
     static var catalogue: [[String: Any]] {
         [
-            tool("canvas_list", "List the user's canvases (whiteboards): id, name, kind (personal|shared|local), whether one is open in a tab, and how many collaborators are live in it"),
-            tool("canvas_open", "Make sure a canvas has a tab (in the background unless foreground is true) and return its summary", [
+            tool("canvas_list", "The user's canvases (whiteboards): id, name, kind, open tab, people live in it"),
+            tool("canvas_open", "Give a canvas a tab (background unless foreground) and return its summary", [
                 "id": which, "name": string("Canvas name, if you have no id"),
                 "foreground": bool("Bring its tab to the front; default false"),
             ]),
             tool("canvas_read", readDescription, readProperties),
-            tool("canvas_apply", "Change a canvas in one transaction (opens its tab in the background if needed). Returns {applied, ids, errors}. Ops: {op:'add', shape:{type:'sticky'|'text'|'frame'|'arrow'|'image'|'link'|'checklist'|'timeline', id?, x?, y?, w?, h?, color?, text?|title?|url?|from?/to?|label?}} (omit x/y to place it in free space near the view; give it your own id, e.g. 'n1', to connect it later in the same call). A link with live:true (or type:'web') shows the site itself on the board, an iframe everyone on the board can browse — each person signed in as themselves; it defaults to 960×640 and needs an http(s) url; update {live:false} turns it back into a card. A checklist is a clickable RSVP / to-do card: {type:'checklist', title, columns?:['Yes','No'] (1–4; one column = to-do boxes), rows:['Ann', …] (≤60), picks?:{'Ann':'Yes'}, notes?:{'Ann':'Back at 6'}, assignees?:{'Fix login':['Grace Hopper','ann@example.com']}} — it is stored as a sticky with view:'checklist' whose text is the list ('### Title' then '- [ ] Ann' / '- [x] Ann · No' lines, a row's comment as indented '  > …' lines under it, then one indented '  @Name' line per assignee), so older Coppers show it as a note with task boxes; each row has at most one pick and one comment (multi-line text, shown collapsed under the row) and up to 12 assignees (people on the canvas named by name, email or id — each newly assigned one is notified like a chat @mention; anyone else by a name of their own); in update, picks, notes and assignees name a row by label, null clears it (assignees replace the row's list), and rows/columns/title replace them in the text (rows keep their picks, comments and assignees by label). {op:'update', id, patch:{view:'checklist', columns?}} turns a sticky that holds a heading and a task list into a card, ticks kept; view:null turns it back into a note. A timeline: {type:'timeline', title?, start:'YYYY-MM-DD', end, step?:'day'|'week'|'month'|'quarter'|'year', items?:[{date, end?, label, text?, color?}]} (text makes a bubble, end a section), stored as a sticky with view:'timeline' whose text is the timeline; update takes the same (items replaces the list) plus addItems:[…] and editItems:{ref: patch|null} (ref: 'YYYY-MM-DD · label', a label, a date or an index; null removes). {op:'update', id, patch:{…}}; {op:'move', id, dx, dy}; {op:'resize', id, w, h}; {op:'delete', id}; {op:'connect', from:id, to:id, label?} (an arrow); comment threads on a shape, Figma-style: {op:'comment', on:shapeId, text} starts one (its ids[i] is the thread id), {op:'reply', thread, text} adds onto one (a resolved thread opens again), {op:'resolve', thread, resolved:true|false} resolves or reopens; {op:'clear', confirm:true} only when the user explicitly asked to wipe the board.", [
+            tool("canvas_apply", "Change a canvas in one transaction: ops add, update, move, resize, delete, connect, comment, reply, resolve, clear. Returns {applied, ids, errors}. The op shapes come with your first canvas_read (or call with ops: [])", [
                 "id": which,
-                "ops": ["type": "array", "items": ["type": "object"], "description": "The operations, applied in order in one transaction"] as [String: Any],
-                "as": string("Name to attribute the change to; defaults to the calling agent"),
+                "ops": ["type": "array", "items": ["type": "object"], "description": "Applied in order"] as [String: Any],
+                "as": string("Who it is attributed to; default you"),
             ], required: ["ops"]),
             tool("canvas_select", "Select shapes on a canvas (what the user sees highlighted)", [
                 "id": which, "shapeIds": ids("Shape ids from canvas_read; empty clears the selection"),
@@ -52,7 +52,7 @@ enum CanvasTools {
             tool("canvas_create", "Make a new canvas: shared on the user's cloud when signed in, on this Mac only otherwise. Returns its summary.", [
                 "name": string("The canvas's name"),
             ], required: ["name"]),
-            tool("canvas_invite", "Invite someone by email to a shared canvas (needs Copper Cloud; the Personal canvas is never shared). Inviting someone already invited reminds them, on a cloud that can.", [
+            tool("canvas_invite", "Invite (or remind) someone by email to a shared canvas", [
                 "id": string("Canvas id or name"), "email": string("Their email address"),
             ], required: ["id", "email"]),
             tool("canvas_share_link", "Create or reuse the invite link for a shared canvas", ["id": string("Canvas id or name")], required: ["id"]),
@@ -62,14 +62,18 @@ enum CanvasTools {
         ]
     }
 
-    // The canvas_read text and schema, word for word the same as Copper for
-    // Linux's (crates/copper-app/src/canvas/mcp.rs) — docs/canvas.md has them.
-    static let readDescription = "Read a canvas: {canvas, viewport, shapes:[{id,type,x,y,w,h,color,text|title|label|url,live?,by,frame?}], agents, selection, total, returned, next?}; a checklist card (a sticky with view:'checklist') also has title, columns, rows:[{label,pick,by?,at?,note?,noteBy?,noteAt?,assignees?:[{name,id?,email?}]}] (note: the row's comment, when it has one; assignees: who the row is assigned to, id their Copper Cloud user id) and tally {column: count}; a timeline (view:'timeline') has title, start, end, step and items:[{date, end?, label, text?, color?, kind:'note'|'bubble'|'section'}]; comments:[{id, anchor (shape id), anchorDeleted?, resolved, resolvedBy?, messages:[{id, by, at, text, edited?}]}] lists the comment threads people left on shapes (a frame is often a slide). Text is cut at 500 characters unless full is true. A big canvas comes a page at a time — at most limit shapes (default 200) and about 48 KB per answer, frames first, then by y, x and id, each comment thread with its shape: while the answer has next, call again with cursor set to it (the cursor keeps the filters) until next is absent; total is how many shapes match. On a big canvas start with overview:true (counts by type, bounds, the frames with their ids, titles and shape counts, comment counts — no shapes), then read one frame (frame:<id>) or one area (region), or narrow with ids, types or query. Read before you write."
+    // The canvas_read schema is the same as Copper for Linux's
+    // (crates/copper-app/src/canvas/mcp.rs); the words are cut to a line here — docs/canvas.md.
+    static let readDescription = "Read a canvas: shapes, comments, agents, selection, a page at a time (call again with cursor while there is next). On a big canvas start with overview:true, then a frame or region. Read before you write."
+
+    /// canvas_apply's op shapes, handed over with a caller's first canvas_read
+    /// (and to canvas_apply with no ops) rather than paid in every tools/list.
+    static let opsGuide = "canvas_apply ops: {op:'add', shape:{type:'sticky'|'text'|'frame'|'arrow'|'image'|'link'|'checklist'|'timeline', id?, x?, y?, w?, h?, color?, text?|title?|url?|from?/to?|label?}} (omit x/y to place it in free space near the view; give it your own id, e.g. 'n1', to connect it later in the same call). A link with live:true (or type:'web') shows the site itself on the board, an iframe everyone on the board can browse — each person signed in as themselves; it defaults to 960×640 and needs an http(s) url; update {live:false} turns it back into a card. A checklist is a clickable RSVP / to-do card: {type:'checklist', title, columns?:['Yes','No'] (1–4; one column = to-do boxes), rows:['Ann', …] (≤60), picks?:{'Ann':'Yes'}, notes?:{'Ann':'Back at 6'}, assignees?:{'Fix login':['Grace Hopper','ann@example.com']}} — it is stored as a sticky with view:'checklist' whose text is the list ('### Title' then '- [ ] Ann' / '- [x] Ann · No' lines, a row's comment as indented '  > …' lines under it, then one indented '  @Name' line per assignee), so older Coppers show it as a note with task boxes; each row has at most one pick and one comment (multi-line text, shown collapsed under the row) and up to 12 assignees (people on the canvas named by name, email or id — each newly assigned one is notified like a chat @mention; anyone else by a name of their own); in update, picks, notes and assignees name a row by label, null clears it (assignees replace the row's list), and rows/columns/title replace them in the text (rows keep their picks, comments and assignees by label). {op:'update', id, patch:{view:'checklist', columns?}} turns a sticky that holds a heading and a task list into a card, ticks kept; view:null turns it back into a note. A timeline: {type:'timeline', title?, start:'YYYY-MM-DD', end, step?:'day'|'week'|'month'|'quarter'|'year', items?:[{date, end?, label, text?, color?}]} (text makes a bubble, end a section), stored as a sticky with view:'timeline' whose text is the timeline; update takes the same (items replaces the list) plus addItems:[…] and editItems:{ref: patch|null} (ref: 'YYYY-MM-DD · label', a label, a date or an index; null removes). {op:'update', id, patch:{…}}; {op:'move', id, dx, dy}; {op:'resize', id, w, h}; {op:'delete', id}; {op:'connect', from:id, to:id, label?} (an arrow); comment threads on a shape, Figma-style: {op:'comment', on:shapeId, text} starts one (its ids[i] is the thread id), {op:'reply', thread, text} adds onto one (a resolved thread opens again), {op:'resolve', thread, resolved:true|false} resolves or reopens; {op:'clear', confirm:true} only when the user explicitly asked to wipe the board."
 
     static let readProperties: [String: Any] = [
         "id": which,
         "full": bool("Whole texts instead of the first 500 characters"),
-        "overview": bool("No shapes: total, counts by type, bounds, frames [{id, title, x, y, w, h, shapes}], comments {threads, open}, agents and selection. Read this first on a big canvas"),
+        "overview": bool("Counts, bounds, frames and comments, no shapes; first on a big canvas"),
         "frame": string("A frame's shape id (from overview): the frame and the shapes inside it"),
         "region": ["type": "object", "description": "Board-unit rectangle: the shapes that intersect it",
                    "properties": ["x": ["type": "number"], "y": ["type": "number"], "w": ["type": "number"], "h": ["type": "number"]] as [String: Any],
@@ -79,7 +83,7 @@ enum CanvasTools {
                   "items": ["type": "string", "enum": ["sticky", "text", "frame", "arrow", "image", "link", "web", "checklist", "timeline"]] as [String: Any]] as [String: Any],
         "query": string("Case-insensitive text to find in text, titles, labels and urls"),
         "limit": ["type": "integer", "minimum": 1, "maximum": 500, "description": "Shapes per answer; default 200, at most 500"] as [String: Any],
-        "cursor": string("The next value of the previous answer, to read the page after it"),
+        "cursor": string("The last answer's next, for the page after it"),
     ]
 
     /// What canvas_read hands the page: the options it knows, as given.
@@ -92,6 +96,9 @@ enum CanvasTools {
     }
 
     static let instructions = "Canvases are the user's whiteboards — each is a copper://canvas/<id> tab; Personal always exists and is private. Use canvas_* tools, never browser_* clicks, to change one. Coordinates are board units: x grows right, y grows down, (0,0) is arbitrary; shapes have x, y (top-left), w, h. Always canvas_read first — on a big canvas read overview:true first, then a frame or region, or follow next a page at a time: reuse its ids, place new shapes beside existing ones (or omit x/y to auto-place near the view), and change a shape with update/move/resize instead of re-adding it. canvas_apply runs every op in one transaction and returns {applied, ids, errors}; colors are yellow, pink, blue, green, purple, gray, white or #hex; connect draws an arrow between two shapes; clear needs confirm:true and only on an explicit request. For a big batch (dozens of shapes) send several canvas_apply calls of at most 40 ops each rather than one huge call, and give added shapes your own ids (shape.id) so connect ops can name them."
+
+    /// Callers that have had `opsGuide` (Drive.Who keys).
+    @MainActor private static var guided = Set<String>()
 
     // MARK: - dispatch
 
@@ -141,10 +148,12 @@ enum CanvasTools {
                 let of = total.map { $0 != shapes ? " of \($0)" : "" } ?? ""
                 Tools.summary?.line = "Read \(shapes)\(of) shape\(shapes == 1 && of.isEmpty ? "" : "s") on \(entry.name)\(read["next"] != nil ? " (more to read)" : "")"
             }
-            return [.text(json(read))]
+            // The op shapes once per caller, before its first write.
+            let caller = AgentTabs.callerKey ?? "pane"
+            return [.text(json(read))] + (guided.insert(caller).inserted ? [.text(opsGuide)] : [])
 
         case "canvas_apply":
-            guard let ops = args["ops"] as? [Any], !ops.isEmpty else { throw Failure(text: "ops (a non-empty array) required") }
+            guard let ops = args["ops"] as? [Any], !ops.isEmpty else { throw Failure(text: "ops (a non-empty array) required. \(opsGuide)") }
             guard ops.count <= 1000 else { throw Failure(text: "at most 1000 ops per call") }
             let entry = try resolve(args, in: browser)
             let host = try await open(entry, in: browser, foreground: false)

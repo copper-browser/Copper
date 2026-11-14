@@ -23,19 +23,19 @@ enum StateTools {
         [
             FileChooser.tool,
             tool("browser_pdf_save", "Save your tab's page as a PDF (letter-proportioned pages). Into the downloads folder unless filename says where.", [
-                "filename": string("Where to save: an absolute path, or a name under the downloads folder; default <page title>.pdf"),
+                "filename": string("Absolute path or a name in Downloads; default the title"),
             ]),
             tool("browser_downloads", "Downloads your tab started (or a popup it opened): name, state, bytes, and where the file is.", [
                 "wait": number("Seconds to wait for running downloads to finish, at most 60; default 0"),
             ]),
             NetLog.tool,
-            tool("browser_cookies", "Your tab's site's cookies in its cookie jar: list (all or by name), set, or delete. HttpOnly values, and changes to HttpOnly cookies, need the site shared in Settings › Passwords › Agent access.", [
+            tool("browser_cookies", "List, set or delete your tab's site's cookies (HttpOnly ones need the site shared with agents).", [
                 "action": string("Default list", ["enum": ["list", "set", "delete"]]),
-                "name": string("Cookie name: filters list; required for set and delete"),
+                "name": string("Required for set and delete"),
                 "value": string("Value, for set"),
-                "domain": string("For set: the tab's host (default) or a parent domain of it; for delete: only this domain"),
+                "domain": string("Default the tab's host; a parent domain is allowed"),
                 "path": string("Default /"),
-                "expires": number("For set: Unix time in seconds; omit for a session cookie"),
+                "expires": number("Unix seconds; omit for a session cookie"),
                 "httpOnly": bool("For set"),
                 "secure": bool("For set"),
                 "sameSite": string("For set", ["enum": ["Strict", "Lax", "None"]]),
@@ -50,7 +50,9 @@ enum StateTools {
                 "url": string("For add; default your tab's address"),
                 "title": string("For add; default the page's title"),
             ]),
-            tool("browser_spaces", "Copper's spaces (sets of tabs, each window shows one): list them without switching, or move your own tab — one you opened, off the user's screen — into one.", [
+            Permissions.tool,
+            Handoff.tool,
+            tool("browser_spaces", "List Copper's spaces, or move your own off-screen tab into one.", [
                 "action": string("Default list", ["enum": ["list", "move"]]),
                 "space": string("For move: the space's name, index or id from list"),
             ]),
@@ -65,6 +67,8 @@ enum StateTools {
         case "browser_history": return true
         case "browser_bookmarks": return (args["action"] as? String) != "add" || args["url"] != nil
         case "browser_spaces": return (args["action"] as? String) != "move"
+        case "browser_permissions": return args["site"] is String
+        case "browser_handoff": return true // waits for the person; never stages the tab
         default: return false
         }
     }
@@ -79,6 +83,8 @@ enum StateTools {
         case "browser_history": return try history(args, in: browser)
         case "browser_bookmarks": return try bookmarks(args, in: browser)
         case "browser_spaces": return try spaces(args, in: browser)
+        case "browser_permissions": return try await Permissions.call(args, in: browser)
+        case "browser_handoff": return try await Handoff.call(args, in: browser)
         default: throw Tools.Failure(text: "Unknown tool \(name)")
         }
     }

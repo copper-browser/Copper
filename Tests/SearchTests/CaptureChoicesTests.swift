@@ -389,3 +389,13 @@ private let meet = "meet.google.com"
     // screen had its camera paused: the bar offers it instead.
     #expect(CaptureTurn.on(paused: .camera, othersLive: .microphone) == .offer)
 }
+
+@Test func revokeTakesOneDeviceAndLeavesTheOther() {
+    var choices = CaptureChoices()
+    choices.allow("example.com", .both)
+    choices.revoke("example.com", .camera)
+    #expect(choices.covers("example.com", .microphone))
+    #expect(!choices.covers("example.com", .camera))
+    choices.revoke("example.com", .microphone)
+    #expect(choices.allowed["example.com"] == nil)
+}

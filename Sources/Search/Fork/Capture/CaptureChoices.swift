@@ -112,6 +112,12 @@ struct CaptureChoices: Equatable {
 
     mutating func forget(_ site: String) { allowed[site] = nil }
 
+    /// Fork (agent-permissions): browser_permissions revoke, per device.
+    mutating func revoke(_ site: String, _ devices: CaptureDevices) {
+        let left = (allowed[site] ?? []).subtracting(devices)
+        allowed[site] = left.isEmpty ? nil : left
+    }
+
     mutating func forgetAll() { allowed = [:] }
 
     /// For Copper's settings.

@@ -501,6 +501,9 @@ final class Drive: ObservableObject {
             return ("Filling \(n) field\(n == 1 ? "" : "s")", detail)
         case "browser_press_key": return ("Pressing \((args["key"] as? String) ?? "a key")", detail)
         case "browser_hover": return (sentence("Hovering"), detail)
+        case "browser_mouse_click_xy": return (named.isEmpty ? "Clicking a point on the page" : "Clicking \(named)", detail)
+        case "browser_handoff": return ("Waiting for you to finish a step", (args["message"] as? String) ?? detail)
+        case "browser_permissions": return ("Changing what a site may use", detail)
         case "browser_handle_dialog": return ((args["accept"] as? Bool) == true ? "Readying to accept the page's next dialog" : "Readying to dismiss the page's next dialog", detail)
         case "browser_select_option":
             let values = ((args["values"] as? [String]) ?? []).joined(separator: ", ")
@@ -565,6 +568,7 @@ final class Drive: ObservableObject {
         case "browser_type", "browser_fill_form": return "TYPE"
         case "browser_press_key": return "KEY"
         case "browser_hover": return "HOVER"
+        case "browser_mouse_click_xy": return "CLICK"
         case "browser_handle_dialog": return "DIALOG"
         case "browser_select_option": return "SELECT"
         case "browser_drag": return "DRAG"

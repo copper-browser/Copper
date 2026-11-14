@@ -35,11 +35,18 @@ struct AgentPane: View {
     /// Whether the transcript is scrolled to its end. New content follows
     /// only then; scrolled up to read, the reader keeps their place.
     @State private var atBottom = true
+    /// How many blocks the transcript draws: the newest `AgentPane.recent`,
+    /// more each time the reader asks for earlier ones.
+    @State private var shownBlocks = AgentPane.recent
     /// Dragged by the pane's leading edge; kept between launches.
     @AppStorage("agent.paneWidth") private var stored: Double = Double(AgentPane.width)
     @State private var dragFrom: Double?
 
     static let width: CGFloat = 400
+    /// Every block is laid out again on each change a driver makes, so an
+    /// hour of agent sessions (a card each) made every tool call wait on the
+    /// main thread: 120 cards took browser_snapshot from 3 to 35 ms.
+    static let recent = 30
     static let widths: ClosedRange<Double> = 340...620
 
     private var width: CGFloat { fixedWidth ?? CGFloat(min(max(stored, AgentPane.widths.lowerBound), AgentPane.widths.upperBound)) }
@@ -281,7 +288,15 @@ struct AgentPane: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        ForEach(AgentPane.blocks(agent.items, busy: agent.busy)) { block in
+                        let blocks = AgentPane.blocks(agent.items, busy: agent.busy)
+                        if blocks.count > shownBlocks {
+                            Button("Show earlier (\(blocks.count - shownBlocks))") { shownBlocks += AgentPane.recent }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 11.5, weight: .medium))
+                                .foregroundStyle(Palette.muted)
+                                .frame(maxWidth: .infinity)
+                        }
+                        ForEach(blocks.suffix(shownBlocks)) { block in
                             view(block).id(block.id)
                         }
                         Color.clear.frame(height: 1).id("bottom")

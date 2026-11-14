@@ -18,7 +18,7 @@ enum Web {
     /// main thread before its request left — the pool built, every installed
     /// font listed again for its first process — against ~6 ms in a shared
     /// one. Set by key, the property being deprecated, not gone.
-    @MainActor private static let pool = WKWebViewConfiguration().value(forKey: "processPool")
+    @MainActor static let pool = WKWebViewConfiguration().value(forKey: "processPool") // Fork (agent-permissions): read by Permissions.GeoProvider
 
     /// What every view says it is after "AppleWebKit … (KHTML, like Gecko)"
     /// — web tabs and extension views alike (see Extensions.init).
