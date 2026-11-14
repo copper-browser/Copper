@@ -19,7 +19,12 @@ import WebKit
 
 extension Tools {
 enum Page {
-    struct Failure: Error { let text: String }
+    /// LocalizedError so whoever shows it (MCP.handle, the CLI, the pane)
+    /// shows the text, not "Page.Failure error 1".
+    struct Failure: LocalizedError {
+        let text: String
+        var errorDescription: String? { text }
+    }
 
     // MARK: - JavaScript
 
@@ -33,10 +38,14 @@ enum Page {
     }
 
     /// Run in the page, with the helper installed first if it isn't yet.
+    /// `script` is an expression. One round trip when the helper is already
+    /// in this document, which is every call but the first.
     @MainActor
     static func js(_ web: WKWebView, _ script: String) async throws -> Any? {
-        let installed = try await raw(web, "typeof window.__copper === 'object'") as? Bool ?? false
-        if !installed { _ = try await raw(web, helper) }
+        let missing = "__copper:missing"
+        let result = try await raw(web, "typeof window.__copper === 'object' ? (\(script)) : \(quote(missing))")
+        guard result as? String == missing else { return result }
+        _ = try await raw(web, helper)
         return try await raw(web, script)
     }
 
@@ -52,14 +61,69 @@ enum Page {
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any?, Error>) in
             web.evaluateJavaScript(script) { value, error in
                 if let error {
-                    let ns = error as NSError
-                    let detail = (ns.userInfo["WKJavaScriptExceptionMessage"] as? String) ?? ns.localizedDescription
-                    continuation.resume(throwing: Failure(text: "JavaScript: \(detail)"))
+                    continuation.resume(throwing: Failure(text: "JavaScript: \(detail(error))"))
                 } else {
                     continuation.resume(returning: value)
                 }
             }
         }
+    }
+
+    /// An async function body run in the page (callAsyncJavaScript), so a
+    /// Promise it returns is awaited. `timeout` caps the wait: a Promise that
+    /// never settles, or a document torn down mid-call, answers nothing.
+    @MainActor
+    static func call(_ web: WKWebView, _ body: String, _ arguments: [String: Any] = [:], timeout: TimeInterval, late: String) async throws -> Any? {
+        let once = Once()
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any?, Error>) in
+            let timer = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                guard !Task.isCancelled, once.take() else { return }
+                continuation.resume(throwing: Failure(text: late))
+            }
+            web.callAsyncJavaScript(body, arguments: arguments, in: nil, in: .page) { result in
+                guard once.take() else { return }
+                timer.cancel()
+                switch result {
+                case .success(let value): continuation.resume(returning: value)
+                case .failure(let error): continuation.resume(throwing: Failure(text: "JavaScript: \(detail(error))"))
+                }
+            }
+        }
+    }
+
+    /// One animation frame of the page, or 50 ms, whichever comes first.
+    @MainActor
+    static func frame(_ web: WKWebView) async {
+        _ = try? await call(web, "return await new Promise(r => { requestAnimationFrame(() => r(true)); setTimeout(() => r(true), 50); });", timeout: 0.1, late: "")
+    }
+
+    /// Whichever of an answer and a timeout comes first wins.
+    private final class Once: @unchecked Sendable {
+        private var used = false
+        func take() -> Bool {
+            if used { return false }
+            used = true
+            return true
+        }
+    }
+
+    private static func detail(_ error: Error) -> String {
+        let ns = error as NSError
+        return (ns.userInfo["WKJavaScriptExceptionMessage"] as? String) ?? ns.localizedDescription
+    }
+
+    /// A helper's answer as a result: its failures ("no element for …",
+    /// "not editable: DIV", "no option matched …") thrown, so they reach the
+    /// agent as errors and never as a quiet success.
+    @MainActor
+    @discardableResult
+    static func act(_ web: WKWebView, _ script: String) async throws -> String {
+        let said = render(try await js(web, script))
+        if said.hasPrefix("no ") || said.hasPrefix("not ") {
+            throw Failure(text: "\(said). Take a fresh browser_snapshot and use a ref from it.")
+        }
+        return said
     }
 
     /// A JavaScript value as text for the agent.
@@ -83,16 +147,30 @@ enum Page {
     }
 
     /// Scroll the target into view and answer its rectangle in viewport
-    /// CSS pixels — the space clicks are posted in.
+    /// CSS pixels — the space clicks are posted in. With `hit` (anything
+    /// about to be clicked or typed into), the point at its middle must be
+    /// the element's own: a cookie wall or a hidden field is an error naming
+    /// it, never a click that lands on something else. A cover that is on its
+    /// way out (a fading toast, a closing sheet) gets three tries.
     @MainActor
-    static func prepare(_ web: WKWebView, _ target: Tools.Locator) async throws -> CGRect {
-        let result = try await js(web, "window.__copper.rect(\(quote(target.script)))")
+    static func prepare(_ web: WKWebView, _ target: Tools.Locator, hit: Bool = true) async throws -> CGRect {
+        var result = try await js(web, "window.__copper.rect(\(quote(target.script)), \(hit))")
+        for _ in 0..<3 where (result as? [String: Any])?["blocked"] as? Bool == true {
+            try await Task.sleep(nanoseconds: 100_000_000)
+            result = try await js(web, "window.__copper.rect(\(quote(target.script)), \(hit))")
+        }
         guard let dict = result as? [String: Any],
               let x = (dict["x"] as? NSNumber)?.doubleValue, let y = (dict["y"] as? NSNumber)?.doubleValue,
               let w = (dict["width"] as? NSNumber)?.doubleValue, let h = (dict["height"] as? NSNumber)?.doubleValue
         else {
-            let why = (result as? [String: Any])?["error"] as? String ?? "not found"
-            throw Tools.Failure(text: "\(target.script): \(why). Take a fresh browser_snapshot — refs change when the page does.")
+            let dict = result as? [String: Any]
+            let why = dict?["error"] as? String ?? "not found"
+            let next = dict?["cover"] != nil
+                ? "Close or dismiss what covers it first (find its button with browser_snapshot), then try again."
+                : dict?["blocked"] as? Bool == true
+                ? "Open or scroll to whatever reveals it first, or pick another ref from a fresh browser_snapshot."
+                : "Take a fresh browser_snapshot — refs change when the page does."
+            throw Tools.Failure(text: "\(target.script): \(why). \(next)")
         }
         // The page's CSS pixels to the view's points: page zoom is the only
         // scale between them.
@@ -113,8 +191,11 @@ enum Page {
         }
         if fullPage {
             // WebKit snapshots the viewport; the whole document is had by
-            // growing the view for one frame. Only when asked.
-            let height = try await raw(web, "Math.min(document.documentElement.scrollHeight, 20000)") as? NSNumber
+            // growing the view for one frame. Only when asked. A lazy page
+            // draws a section when it scrolls into view, so the page is
+            // walked a screen at a time first, and put back where it was.
+            var height = (try? await call(web, walk, timeout: 10, late: "")) as? NSNumber
+            if height == nil { height = try await raw(web, "Math.min(document.documentElement.scrollHeight, 20000)") as? NSNumber }
             if let height, height.doubleValue > web.bounds.height {
                 let before = web.frame
                 web.frame = CGRect(origin: before.origin, size: CGSize(width: before.width, height: height.doubleValue))
@@ -140,13 +221,27 @@ enum Page {
         return data
     }
 
+    /// The full-page walk: a screen at a time to the bottom (a frame and
+    /// 40 ms on each), then back. Answers the height to draw.
+    static let walk = """
+    const tall = () => Math.min(document.documentElement.scrollHeight, 20000);
+    const x = scrollX, y = scrollY, step = Math.max(innerHeight * 0.9, 200);
+    const beat = () => new Promise(r => { requestAnimationFrame(() => setTimeout(r, 40)); setTimeout(r, 120); });
+    for (let top = step; top < tall(); top += step) { scrollTo({ left: x, top, behavior: 'instant' }); await beat(); }
+    scrollTo({ left: x, top: y, behavior: 'instant' });
+    await beat();
+    return tall();
+    """
+
     // MARK: - the helper
 
-    static let helper = #"""
+    /// The console, kept for browser_console_messages. Put in at document
+    /// start for a tab an agent opened (Tab.arm → `arm`), so what a page logs
+    /// while it loads is there; in any other tab, when the helper first goes in.
+    static let consoleShim = #"""
     (function () {
-      if (window.__copper) return true;
-      var refs = new Map(), byRef = new Map(), next = 1;
-      var logs = [];
+      if (window.__copperLogs) return;
+      var logs = window.__copperLogs = [];
       ['log', 'warn', 'error', 'info'].forEach(function (level) {
         var original = console[level];
         console[level] = function () {
@@ -155,6 +250,22 @@ enum Page {
         };
       });
       window.addEventListener('error', function (e) { logs.push({ level: 'error', text: String(e.message) }); });
+    })();
+    """#
+
+    /// Tab.arm(hiding:): the console shim for the next document of a tab an
+    /// agent opened. Tabs the user opened are left alone.
+    @MainActor
+    static func arm(_ controller: WKUserContentController, tab: UUID) {
+        guard AgentTabs.opened.contains(tab) else { return }
+        controller.addUserScript(WKUserScript(source: consoleShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+    }
+
+    static let helper = consoleShim + #"""
+    (function () {
+      if (window.__copper) return true;
+      var refs = new Map(), byRef = new Map(), next = 1;
+      var logs = window.__copperLogs;
 
       function ref(el) {
         var r = refs.get(el);
@@ -292,14 +403,47 @@ enum Page {
         if (count >= limit) lines.push('… (truncated at ' + limit + ' nodes; pass a selector or interactive: true for less)');
         return lines.join('\n');
       }
-      function rect(spec) {
+      // The element at a point, through open shadow roots.
+      function deepAt(x, y) {
+        var hit = document.elementFromPoint(x, y);
+        while (hit && hit.shadowRoot) { var inner = hit.shadowRoot.elementFromPoint(x, y); if (!inner || inner === hit) break; hit = inner; }
+        return hit;
+      }
+      function inside(node, el) {
+        for (var n = node; n; n = n.parentNode || (n instanceof ShadowRoot ? n.host : null)) if (n === el) return true;
+        return false;
+      }
+      function describe(el) {
+        var s = el.tagName.toLowerCase() + (el.id ? '#' + el.id : '');
+        if (!el.id && typeof el.className === 'string' && el.className.trim()) s += '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.');
+        var t = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+        return t ? s + ' ' + JSON.stringify(t.length > 60 ? t.slice(0, 57) + '…' : t) : s;
+      }
+      function hidden(el) {
+        var s = getComputedStyle(el);
+        if (s.display === 'none') return 'display: none';
+        if (s.visibility === 'hidden') return 'visibility: hidden';
+        if (s.opacity === '0') return 'opacity: 0';
+        var r = el.getBoundingClientRect();
+        return r.width === 0 && r.height === 0 ? 'no size' : '';
+      }
+      function rect(spec, hitTest) {
         var el = find(spec);
         if (!el) return { error: 'no element for ' + spec };
         if (el.scrollIntoView) el.scrollIntoView({ block: 'center', inline: 'center' });
         var r = el.getBoundingClientRect();
         // A tiny or offscreen box means a wrapper; the first sized child is the thing.
         if ((r.width < 2 || r.height < 2) && el.firstElementChild) r = el.firstElementChild.getBoundingClientRect();
-        return { x: r.left, y: r.top, width: r.width, height: r.height };
+        var out = { x: r.left, y: r.top, width: r.width, height: r.height };
+        if (!hitTest || el.tagName === 'OPTION') return out;
+        var x = r.left + r.width / 2, y = r.top + r.height / 2;
+        var hit = x >= 0 && y >= 0 && x < innerWidth && y < innerHeight ? deepAt(x, y) : null;
+        // Its own, or its label's (a styled checkbox is often only its label).
+        if (hit && (inside(hit, el) || Array.prototype.some.call(el.labels || [], function (l) { return inside(hit, l); }))) return out;
+        var why = hidden(el);
+        if (why) return { error: 'not visible (' + why + ')', blocked: true };
+        if (!hit) return { error: 'outside the visible page, at ' + Math.round(x) + ',' + Math.round(y), blocked: true };
+        return { error: 'covered by ' + describe(hit) + ' (it is on top, and would get the click)', blocked: true, cover: describe(hit) };
       }
       function fire(el, type, init) { el.dispatchEvent(new (type.indexOf('key') === 0 ? KeyboardEvent : type.indexOf('mouse') === 0 || type === 'click' || type === 'dblclick' || type === 'contextmenu' ? MouseEvent : Event)(type, Object.assign({ bubbles: true, cancelable: true, composed: true }, init || {}))); }
       function setValue(spec, value) {
@@ -458,10 +602,19 @@ enum Page {
         count(watching.takeRecords()); watching.disconnect(); watching = null;
         return changed;
       }
+      // The nearest box around el that scrolls the way asked; null for the page.
+      function scroller(el, dx, dy) {
+        for (var n = el; n && n !== document.body && n !== document.documentElement; n = n.parentElement || (n.getRootNode().host || null)) {
+          var s = getComputedStyle(n);
+          if (dy && /auto|scroll|overlay/.test(s.overflowY) && n.scrollHeight > n.clientHeight) return n;
+          if (dx && /auto|scroll|overlay/.test(s.overflowX) && n.scrollWidth > n.clientWidth) return n;
+        }
+        return null;
+      }
       function scroll(spec, dx, dy) {
         var el = spec ? find(spec) : null;
-        if (el) { el.scrollBy(dx, dy); return 'ok'; }
-        window.scrollBy(dx, dy);
+        if (spec && !el) return 'no element for ' + spec;
+        (el && scroller(el, dx, dy) || window).scrollBy({ left: dx, top: dy, behavior: 'instant' });
         return 'ok';
       }
       function text(spec) {
