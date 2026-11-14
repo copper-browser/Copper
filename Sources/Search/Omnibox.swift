@@ -71,6 +71,8 @@ struct Omnibox: View {
             if !browser.offers.isEmpty {
                 Rectangle().fill(Palette.hairline).frame(height: 1)
                 list
+            } else if !over {
+                StartCard(browser: browser, inCard: true) // Fork (first-run): the browsers to move in from, the keys
             }
         }
         .background {

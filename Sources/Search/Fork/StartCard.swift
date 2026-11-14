@@ -14,14 +14,20 @@ struct StartCard: View {
     @ObservedObject var browser: Browser
     @AppStorage("start.offer", store: Store.settings) private var offer = false
     @Environment(\.colorScheme) private var scheme
+    /// Fork (uiflows r4): the start card is the launcher's lower half (the
+    /// field's card asks for it with `inCard`); an empty space's words stay
+    /// on the ground under it.
+    var inCard = false
 
     var body: some View {
         if offer, browser.tabs.allSatisfy(\.isBlank) {
-            card.onDisappear {
-                // A page opened: the card has done its job.
-                if !browser.tabs.allSatisfy(\.isBlank) { offer = false }
+            if inCard {
+                card.onDisappear {
+                    // A page opened: the card has done its job.
+                    if !browser.tabs.allSatisfy(\.isBlank) { offer = false }
+                }
             }
-        } else if browser.spaceIsEmpty {
+        } else if browser.spaceIsEmpty, !inCard {
             emptySpace
         }
     }
@@ -46,6 +52,14 @@ struct StartCard: View {
     }
 
     private var card: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Rectangle().fill(Palette.hairline).frame(height: 1)
+            cardBody
+        }
+        .transition(.opacity)
+    }
+
+    private var cardBody: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 Text(MoveFrom.found.isEmpty ? "Getting around" : "Move in from")
@@ -74,9 +88,6 @@ struct StartCard: View {
             }
         }
         .padding(16)
-        .background(Palette.ground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 1))
-        .transition(.opacity)
     }
 
     private func hint(_ keys: String, _ does: String, ink: Color = Palette.ink, cap: Color = Palette.wash) -> some View {
