@@ -423,7 +423,23 @@ def one_session(out, label, app, r, settle, idle, quiet):
     pins = {p["id"] for p in ask({"do": "pins"}).get("pins", [])}
     pin = lambda x: (x.get("id") or "")[:8].lower() in pins
     row["heat_idle"] = [{"mb": x.get("mb"), "cpu": round(x.get("cpu") or 0, 2), "title": (x.get("title") or "")[:40],
-                         "pid": x.get("pid"), "pin": pin(x)} for x in ask({"do": "heat"}).get("tabs", [])]
+                         "pid": x.get("pid"), "pin": pin(x), "id": x.get("id")} for x in ask({"do": "heat"}).get("tabs", [])]
+    # A6 (r3): each pin's own idle cost — its web process's wakeups and CPU over the idle minute (b → a), and
+    # whether WebKit counts its page hidden (document.visibilityState), which is what lets hidden-page timer
+    # throttling apply. Numbers for the owner's pins decision (NEEDS-COLLIN).
+    row["pins_idle"] = []
+    for h in row["heat_idle"]:
+        if not h["pin"]:
+            continue
+        x, y = b.get(h["pid"]), a.get(h["pid"])
+        vis = None
+        try:
+            vis = ask({"do": "eval", "id": h["id"], "js": "document.visibilityState"}, 5).get("value")
+        except Exception:
+            pass
+        row["pins_idle"].append({"title": h["title"], "pid": h["pid"], "mb": h["mb"], "visibility": vis,
+                                 "wakeups_per_s": round(((y["idle_wk"] - x["idle_wk"]) + (y["int_wk"] - x["int_wk"])) / idle, 1) if x and y else None,
+                                 "cpu_pct": round(100 * (y["cpu_ns"] - x["cpu_ns"]) / 1e9 / idle, 2) if x and y else None})
     row["spaces"] = space_switches()
     so, sys.stdout = sys.stdout, quiet  # perf.py prints its rows; we keep them in ours
     try:
@@ -512,6 +528,33 @@ def rawload(url, runs):
     return step, rows, proc
 
 
+PHASES = ("open", "commit", "paint", "finish", "after")
+
+
+def phases(m):
+    """A3 (r3): one load's main-thread busy split by the page's milestones (`bench pace` log + steps, builds
+    with them): open (request → policy ask), commit (ask → commit), paint (commit → first paint, the page's FCP
+    when the app has no paint step for it), finish (paint → load finished), after (finished → the end of the
+    window: settle, the timing read, the close). → {phase: ms} or {}."""
+    log, steps, epoch = m.get("pace_log"), m.get("pace_steps"), m.get("pace_epoch")
+    if not log or steps is None or not epoch or not m.get("origin"):
+        return {}
+    first = {}
+    for name, at in steps:
+        first.setdefault(name, at)
+    t0 = m["origin"] - (m.get("app_overhead_ms") or 0) - epoch  # the open, on the window's clock
+    fcp = m["origin"] + m["fcp"] - epoch if m.get("fcp") is not None else None
+    cut = [t0, first.get("page.ask"), first.get("page.commit"), first.get("page.paint") or fcp, first.get("page.finish"), 1e12]
+    for i in range(1, len(cut) - 1):  # a missing or out-of-order milestone takes the one before it
+        if cut[i] is None or cut[i] < cut[i - 1]:
+            cut[i] = cut[i - 1]
+    busy = {}
+    for k, name in enumerate(PHASES):
+        a, b = (0 if k == 0 else cut[k]), cut[k + 1]  # the open phase takes what came before the open's reply too
+        busy[name] = round(sum(max(0.0, min(s + ms, b) - max(s, a)) for s, ms in log), 1)
+    return busy
+
+
 def load(out, arms_):
     """A3: HC_LOADS loads of each page in a fresh Copper tab, each followed by one in a fresh bare WKWebView
     (paired, same network). Both clocks start in-app as the view is made (Copper's `open` reply carries its
@@ -537,7 +580,8 @@ def load(out, arms_):
                     for m in rows:
                         emit(out, "load", {"arm": label, "round": r, "who": "copper", "page": name, "load0": l0,
                                            **{k: m.get(k) for k in ("run", "app_overhead_ms", "req_to_fcp_ms", "req_to_load_ms", "fcp", "load",
-                                                                     "ttfb", "wait_ms", "busy", "longest", "resources", "bytes")}})
+                                                                     "ttfb", "wait_ms", "busy", "longest", "resources", "bytes")},
+                                           "phases": phases(m), "slow": [x for x in (m.get("pace_log") or []) if x[1] > 16]})
                     for m in raw:
                         emit(out, "load", {"arm": label, "round": r, "who": "raw", "page": name, "load0": l0,
                                            **{k: m.get(k) for k in ("run", "app_overhead_ms", "req_to_fcp_ms", "req_to_load_ms", "fcp", "load",
@@ -707,16 +751,41 @@ def hooks(out, arms_):
             wake.terminate()
 
 
+def closed(x):
+    return not x.get("summoning") and not x.get("launching")
+
+
+def close_all(tries=4):
+    """⎋ until neither the ⌘K bar nor the ⌘T card is up (r1's one ⎋ left the bar open, so its next ⌘K measured
+    a step down the list, not an open). → (closed?, the last ⎋'s answer)."""
+    esc = {}
+    for _ in range(tries):
+        esc = hook({"do": "keylat", "key": "⎋"})[0] or {}
+        if closed(esc):
+            return True, esc
+        time.sleep(0.3)
+    return False, esc
+
+
 def keylat(out, base):
-    """HC_PRESSES presses each of ⌘T and ⌘K; ⎋ closes the card/bar between presses."""
+    """HC_PRESSES presses each of ⌘T and ⌘K, each from a closed card/bar (⎋ until closed); a press that did not
+    start closed or did not raise its flag is a failed sample (`failed`), kept in the rows but not in the metrics."""
     for key, name, flag in KEYLAT_KEYS:
+        shut, _ = close_all()
         for i in range(N("HC_PRESSES", 20)):
             x, why = hook({"do": "keylat", "key": key})
             if why:  # no hook, or it can't answer here: one row says so, no more presses
                 return emit(out, "keylat", {**base, "missing": why})
+            failed = None if shut else "did not start closed"
+            if not failed and not x.get(flag):
+                failed = f"{name} did not raise {flag}"
             time.sleep(0.4)
             esc = hook({"do": "keylat", "key": "⎋"})[0] or {}
-            emit(out, "keylat", {**base, **x, "key": name, "i": i, "opened": x.get(flag), "esc": esc})
+            shut = closed(esc)
+            if not shut:  # a ⎋ that left it open is not "closing it"; press on until it is shut for the next sample
+                esc = {**esc, "failed": "⎋ left it open"}
+                shut, _ = close_all()
+            emit(out, "keylat", {**base, **x, "key": name, "i": i, "opened": x.get(flag), "esc": esc, "failed": failed})
             time.sleep(0.4)
 
 
@@ -778,6 +847,9 @@ METRICS = [
     ("A1.launch.ask_ms", "ms", "warm launch → restored page request (page.ask)"),
     ("A1.launch.first_pass_ms", "ms", "first run-loop pass of the launch"),
     ("A1.launch.busy_ms", "ms", "main-thread busy, launch → settled+3 s"),
+    ("A1.launch.restored_ms", "ms", "warm launch → the session restored in memory (Pace mark, r3 builds)"),
+    ("A1.launch.commit_ms", "ms", "warm launch → restored page committed"),
+    ("A1.launch.dressed_ms", "ms", "warm launch → the column's rows built (r3: after the page's first paint)"),
     ("A1.cold.paint_ms", "ms", "cold launch (fresh copy of the .app, see header) → restored page first paint"),
     ("A1.cold.window_ms", "ms", "cold launch → window on screen"),
     ("A1.cold.ask_ms", "ms", "cold launch → restored page request (page.ask)"),
@@ -800,6 +872,11 @@ METRICS = [
         (f"A3.load.{p}.app_overhead_ms", "ms", f"{n}: request → navigation timeOrigin (Copper)"),
         (f"A3.load.{p}.raw_app_overhead_ms", "ms", f"{n}: same, bare WKWebView"))],
     ("A3.load.busy_ms", "ms", "main-thread busy during one page load (all pages)"),
+    ("A3.load.phase.open_ms", "ms", "A3 busy split (bench pace log): open → the page's policy ask"),
+    ("A3.load.phase.commit_ms", "ms", "A3 busy split: ask → commit"),
+    ("A3.load.phase.paint_ms", "ms", "A3 busy split: commit → first paint"),
+    ("A3.load.phase.finish_ms", "ms", "A3 busy split: first paint → load finished"),
+    ("A3.load.phase.after_ms", "ms", "A3 busy split: finished → window end (settle, timing read, close)"),
     ("A4.idle.total_mb", "MB", "idle footprint, app + every WebKit process it owns, seeded session"),
     ("A4.idle.app_mb", "MB", "idle footprint of the Copper process alone"),
     ("A4.idle.pages_loaded", "", "pages loaded at idle (pins + restored)"),
@@ -839,6 +916,9 @@ METRICS = [
     ("A6.idle.app_cpu_pct", "%", "idle CPU, Copper process alone"),
     ("A6.idle.wakeups_per_s", "/s", "idle + interrupt wakeups per second, all its processes"),
     ("A6.idle.main_busy_ms_per_min", "ms", "main-thread busy per idle minute (bench pace)"),
+    ("A6.idle.pins_wakeups_per_s", "/s", "idle wakeups/s of the pinned tabs' web processes (each once); per pin: A6.pin.*"),
+    ("A6.idle.pins_cpu_pct", "%", "idle CPU of the pinned tabs' web processes; per pin: A6.pin.*"),
+    ("A6.idle.pins_visible", "", "pins whose page WebKit counts visible at idle (want 0: hidden pages get timer throttling)"),
     ("A6.idle.main_passes_per_min", "", "main run-loop passes per idle minute"),
     ("A7.address.key_ms", "ms", "⌘T card: main-thread ms to take one typed letter"),
     ("A7.address.key_max_ms", "ms", "⌘T card: worst letter per word"),
@@ -881,6 +961,9 @@ def collect(d, laptop):
             put(f"{prefix}.paint_ms", r, m.get("page.paint"))
             put(f"{prefix}.window_ms", r, m.get("window"))
             put(f"{prefix}.ask_ms", r, m.get("page.ask"))
+            put(f"{prefix}.restored_ms", r, m.get("restored"))  # builds with the mark (r3): the session is back in memory
+            put(f"{prefix}.dressed_ms", r, m.get("dressed"))  # r3: the column's rows built (after the page's paint)
+            put(f"{prefix}.commit_ms", r, m.get("page.commit"))
             put(f"{prefix}.busy_ms", r, r.get("launchBusy"))
             if ph == "launch":
                 put(f"{prefix}.first_pass_ms", r, r.get("firstPass"))
@@ -913,6 +996,20 @@ def collect(d, laptop):
                     by_pid = {h.get("pid") or id(h): h.get("mb") or 0 for h in heat if h.get("pin") == pin}
                     put(f"A4.{when}.{grp}_mb", r, sum(by_pid.values()))
                     put(f"A4.{when}.{grp}_pages", r, sum(1 for h in heat if h.get("pin") == pin))
+        # A6 (r3): per pin (by title: the seed is frozen, so arms share them) and the pins' share of the idle cost
+        pins = r.get("pins_idle") or []
+        for p in pins:
+            slug = re.sub(r"[^a-z0-9]+", "_", (p.get("title") or "?").lower()).strip("_")[:24] or "untitled"
+            put(f"A6.pin.{slug}.wakeups_per_s", r, p.get("wakeups_per_s"))
+            put(f"A6.pin.{slug}.cpu_pct", r, p.get("cpu_pct"))
+            put(f"A4.pin.{slug}.mb", r, p.get("mb"))
+        if pins:
+            seen = {}
+            for p in pins:
+                seen.setdefault(p.get("pid"), p)  # tabs can share a process: count it once
+            put("A6.idle.pins_wakeups_per_s", r, round(sum(p.get("wakeups_per_s") or 0 for p in seen.values()), 1))
+            put("A6.idle.pins_cpu_pct", r, round(sum(p.get("cpu_pct") or 0 for p in seen.values()), 2))
+            put("A6.idle.pins_visible", r, sum(1 for p in pins if p.get("visibility") != "hidden"))
         i = r.get("idle", {})
         mins = (i.get("seconds") or 60) / 60
         put("A6.idle.cpu_pct", r, i.get("cpu_pct"))
@@ -944,6 +1041,8 @@ def collect(d, laptop):
             put(f"A3.load.{p}.fcp_ms", r, r.get("req_to_fcp_ms"))
             put(f"A3.load.{p}.app_overhead_ms", r, r.get("app_overhead_ms"))
             put("A3.load.busy_ms", r, r.get("busy"))
+            for ph, ms in (r.get("phases") or {}).items():
+                put(f"A3.load.phase.{ph}_ms", r, ms)
         else:
             put(f"A3.load.{p}.raw_fcp_ms", r, r.get("req_to_fcp_ms"))
             put(f"A3.load.{p}.raw_app_overhead_ms", r, r.get("app_overhead_ms"))
@@ -988,6 +1087,8 @@ def collect(d, laptop):
         if r.get("display_asleep") and r.get("frame_ms") is None:
             missing[("A7.keylat.", r["arm"])] = "n/a: display asleep — no key→pixel (handled/commit kept)"
         for k, x in (("", r), ("esc", r.get("esc") or {})):
+            if r.get("failed") or x.get("failed"):  # not an open (or not a close) from a closed state: not this metric
+                continue
             name = k or r["key"]
             for f in ("handled_ms", "commit_ms", "frame_ms"):
                 put(f"A7.keylat.{name}.{f}", r, x.get(f))

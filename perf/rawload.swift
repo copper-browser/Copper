@@ -1,5 +1,7 @@
 // Control: a bare WKWebView "browser" — new web view per load, like a new tab.
-// rawload URL N [--fresh] [--store UUID]
+// rawload URL N [--fresh] [--store UUID] [--step FILE]
+// --step: each load waits for FILE to appear (and removes it), so a driver can interleave
+// these loads one for one with another browser's (perf/hillclimb A3).
 import AppKit
 import WebKit
 
@@ -10,6 +12,7 @@ let fresh = args.contains("--fresh")
 let warm = args.contains("--warm")
 let auto = args.contains("--auto")
 let early = args.contains("--early")
+let step = args.firstIndex(of: "--step").map { args[$0 + 1] }
 
 func makePool() -> WKProcessPool? {
     guard auto, let cls = NSClassFromString("_WKProcessPoolConfiguration") as? NSObject.Type else { return nil }
@@ -62,6 +65,14 @@ final class Runner: NSObject, WKNavigationDelegate {
             web = w
             window.contentView!.addSubview(w)
             w.load(URLRequest(url: url))
+        }
+        if let step {
+            // Polled before the clock starts, so the wait costs the load nothing.
+            guard FileManager.default.fileExists(atPath: step) else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) { self.next() }
+                return
+            }
+            try? FileManager.default.removeItem(atPath: step)
         }
         if fresh {
             config.websiteDataStore.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) { go() }
