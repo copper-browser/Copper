@@ -137,6 +137,43 @@ enum FlowModel {
         var localStorage = true // what sites keep in the page (FlowLocalStorage, no prompt)
         var passkeys = true   // Google Password Manager passkeys
         var extensions = true // Web Store extensions, reinstalled from the store
+
+        /// Fork (move-in-polish): what can actually come from this read — a
+        /// switch for something the browser has none of is off, so the move
+        /// and its summary never list "Arc has none". Sign-ins and site data
+        /// aren't counted before the move, so they stay as chosen. Nil: no
+        /// counts yet, nothing changes.
+        func fitted(to haul: Haul?) -> Choice {
+            guard let haul else { return self }
+            var out = self
+            if haul.tabCount == 0 { out.tabs = false }
+            if haul.bookmarkCount == 0 { out.bookmarks = false }
+            if haul.placeCount == 0 { out.history = false }
+            if haul.loginCount == 0 { out.passwords = false }
+            if haul.passkeyCount == 0 { out.passkeys = false }
+            if haul.extensions.isEmpty { out.extensions = false }
+            return out
+        }
+
+        var anything: Bool { tabs || bookmarks || history || passwords || cookies || localStorage || passkeys || extensions }
+
+        /// The big button, naming what it brings: "Bring over 3 tabs",
+        /// "Bring over 3 tabs and 120 bookmarks", "… and more" past two.
+        /// Only counted things are named; sign-ins alone say so.
+        func button(for haul: Haul?) -> String {
+            guard let haul else { return "Bring it all over" }
+            var parts: [String] = []
+            if tabs { parts.append(FlowSummary.plural(haul.tabCount, "tab")) }
+            if bookmarks { parts.append(FlowSummary.plural(haul.bookmarkCount, "bookmark")) }
+            if passwords { parts.append(FlowSummary.plural(haul.loginCount, "password")) }
+            if history { parts.append("history") }
+            if passkeys { parts.append(FlowSummary.plural(haul.passkeyCount, "passkey")) }
+            if extensions { parts.append(FlowSummary.plural(haul.extensions.count, "extension")) }
+            if parts.isEmpty { return cookies || localStorage ? "Bring over sign-ins" : "Nothing to bring" }
+            if parts.count == 1 { return "Bring over \(parts[0])" }
+            if parts.count == 2 { return "Bring over \(parts[0]) and \(parts[1])" }
+            return "Bring over \(parts[0]), \(parts[1]) and more"
+        }
     }
 
     enum Trouble: LocalizedError {

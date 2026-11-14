@@ -19,10 +19,15 @@ import SwiftUI
 final class FlowPresenter: NSObject {
     static let shared = FlowPresenter()
 
-    /// The sheet's width; its height follows the window it hangs from.
+    /// The sheet's width; its height is its step's (`want`), within the
+    /// window it hangs from. Fork (move-in-polish): it was always 640, so a
+    /// three-line summary sat in a tall empty sheet.
     static let width: CGFloat = 560
     static let idealHeight: CGFloat = 640
-    static let minHeight: CGFloat = 320
+    static let maxHeight: CGFloat = 720
+    static let minHeight: CGFloat = 240
+    /// What the sheet's content asks for (`FlowSheet` measures it).
+    private var wanted: CGFloat?
 
     private var sheet: FlowSheetWindow?
     private weak var host: NSWindow?
@@ -77,10 +82,20 @@ final class FlowPresenter: NSObject {
     /// The height the sheet takes over a window this tall: as much as it
     /// wants, but never past the window's edges, so a small window scrolls
     /// the middle of the sheet rather than clipping it.
-    static func height(for host: NSWindow?) -> CGFloat {
-        guard let host else { return idealHeight }
+    static func height(for host: NSWindow?, wanting wanted: CGFloat? = nil) -> CGFloat {
+        let ideal = min(wanted ?? idealHeight, maxHeight)
+        guard let host else { return max(minHeight, ideal) }
         let room = host.contentLayoutRect.height - 24
-        return max(minHeight, min(idealHeight, room))
+        return max(minHeight, min(ideal, room))
+    }
+
+    /// The content's height for this step. Changes under a few points are
+    /// noise from text settling, not a new step.
+    func want(_ height: CGFloat) {
+        let height = height.rounded(.up)
+        guard abs((wanted ?? 0) - height) > 4 else { return }
+        wanted = height
+        fit()
     }
 
     private func present(_ flow: Flow) {
@@ -95,6 +110,7 @@ final class FlowPresenter: NSObject {
             flow.close()
             return
         }
+        wanted = nil
         let size = NSSize(width: Self.width, height: Self.height(for: window))
         let content = NSHostingController(rootView: FlowSheet(browser: browser))
         // The sheet's size is ours, never the content's: a phase that draws
@@ -187,13 +203,16 @@ final class FlowPresenter: NSObject {
         watching.removeAll()
     }
 
-    /// The window it hangs from changed size: the sheet's height follows,
-    /// within its bounds. Its width never changes.
+    /// The window it hangs from changed size, or the step did: the sheet's
+    /// height follows, within its bounds, about the same centre (where macOS
+    /// puts a sheet). Its width never changes.
     private func fit() {
         guard let sheet, let host else { return }
-        let height = Self.height(for: host)
-        guard abs(sheet.frame.height - height) > 0.5 else { return }
-        sheet.setContentSize(NSSize(width: Self.width, height: height))
+        let height = Self.height(for: host, wanting: wanted)
+        guard abs(sheet.contentLayoutRect.height - height) > 0.5 else { return }
+        let old = sheet.frame
+        let outer = sheet.frameRect(forContentRect: NSRect(x: 0, y: 0, width: Self.width, height: height)).size
+        sheet.setFrame(NSRect(x: old.midX - outer.width / 2, y: old.midY - outer.height / 2, width: outer.width, height: outer.height), display: true)
         Flow.shared.log("resize", "\(Int(Self.width))×\(Int(height))")
     }
 

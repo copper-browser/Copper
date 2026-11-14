@@ -134,7 +134,8 @@ extension Browser {
         }.value
         await FlowBookmarks.takeInBackground(found, from: name, into: bookmarks)
         let count = FlowBookmarks.count(found.nodes)
-        announce(count == 0 ? "No bookmarks in \(name)" : "\(count) bookmarks from \(name)")
+        // Fork (move-in-polish): with Move in up, its summary says this; no toast under it.
+        if !Flow.shared.open { announce(count == 0 ? "No bookmarks in \(name)" : "\(count) bookmarks from \(name)") }
         return new
     }
 
@@ -146,7 +147,8 @@ extension Browser {
         }.value
         await FlowBookmarks.takeInBackground(found, from: source.name, into: bookmarks)
         let count = FlowBookmarks.count(found.nodes)
-        announce(count == 0 ? "No bookmarks in \(source.name)" : "\(count) bookmarks from \(source.name)")
+        // Fork (move-in-polish): with Move in up, its summary says this; no toast under it.
+        if !Flow.shared.open { announce(count == 0 ? "No bookmarks in \(source.name)" : "\(count) bookmarks from \(source.name)") }
         guard source.rootOverride == nil, count > 0 else { return (found, new) }
         let urls = FlowBookmarks.urls(found.nodes)
         DispatchQueue.global(qos: .utility).async {

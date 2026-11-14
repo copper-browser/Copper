@@ -62,13 +62,13 @@ extension SettingsPanel.Page {
         case .general: return "The default browser, how Copper looks, downloads, and moving in."
         case .tabs: return "The sidebar, switching between tabs, and what happens to tabs you leave."
         case .spaces: return "Each space's name, look, icon and profile. Drag the chips to reorder."
-        case .intelligence: return "The model behind the agent pane, Jev's fast lane, and voice."
-        case .agents: return "Let MCP clients, linked agent apps and terminal agents use this browser."
+        case .intelligence: return "The model the agent thinks with, Jev's quick clicks, and voice."
+        case .agents: return "Let agents in your terminal, editor or other apps use this browser."
         case .cloud: return "Connect, sign in, then choose what follows you between Macs."
         case .extensions: return "Chrome extensions, and the addons your Copper Cloud assigns."
         case .passwords: return "Saved sign-ins, password managers, passkeys and what agents may use."
         case .privacy: return "Blocking ads and trackers, site permissions, and clearing what sites keep."
-        case .about: return "Updates, feedback and the keyboard shortcuts."
+        case .about: return "The version you have, what's new, feedback and shortcuts."
         }
     }
 

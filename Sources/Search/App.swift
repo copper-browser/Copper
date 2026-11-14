@@ -778,6 +778,8 @@ struct ContentView: View {
                 browser.dismiss()
                 return true
             }
+            // Fork (agent-ux): an agent driving — the Stop pill's ⎋ — before the page has it.
+            if DriveStop.escape(in: browser) { return true }
             // Last of all, a pane beside the page — while the keyboard is
             // not in a page, where Escape is the page's. (Fork: Panes)
             return Panes.escape(event, in: browser)

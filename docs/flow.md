@@ -48,11 +48,18 @@ animation.
   AppKit sheet on the window that asked (else the key window). With two
   windows there is still one sheet, and rebuilding a window's page area
   behind it doesn't dismiss it.
-- **One size.** 560 points wide and up to 640 tall (less in a short window).
-  The content never sizes the sheet: a header, a middle that scrolls, and a
-  footer pinned to the bottom. A new phase redraws the middle in place.
+- **Its step's size.** 560 points wide and as tall as the step on screen
+  needs, up to 720 (less in a short window), about the same centre:
+  a header, a middle that scrolls past that, and a footer pinned to the
+  bottom. A new phase redraws the middle in place and the sheet follows.
+- **What it brings.** Once the browser is read, a kind it has none of is
+  switched off and greyed; the button names what will come (*Bring over 3
+  tabs*, *Bring over 1 tab and 120 bookmarks*). The summary is centred under
+  a check and ends with the one thing to do next; *Undo the tabs* is a
+  bordered button. While the sheet is up, its summary is the only report — no
+  toast under it.
 - **Keys.** Escape closes it (so does ✕, read as "Close"). Return presses the
-  primary button in every state: Bring it all over, Move in again, Done. ⌘W
+  primary button in every state: Bring over …, Move in again, Done. ⌘W
   closes the sheet, never the tab behind it; other ⌘ shortcuts (⌘T, ⌘K, ⌘L,
   ⌘N, ⌘,) wait until it is closed (`FlowKeys`). ⌘Q, ⌘H, ⌘M and ⌘` still
   work, and ⌘Q quits with the sheet up.

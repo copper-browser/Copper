@@ -512,7 +512,7 @@ struct SettingsPanel: View {
                     Text(Fork.name)
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(Palette.ink)
-                    Text(verbatim: "by Collin and Felipe") // Fork (settings-merge): the version is the Updates row below
+                    Text(verbatim: "Version \(Updater.version) (\(Updater.build)) · by Collin and Felipe") // Fork (settings-plain): icon, name, version
                         .font(.system(size: 12.5))
                         .foregroundStyle(SettingsInk.detail)
                         .textSelection(.enabled)
