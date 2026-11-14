@@ -55,7 +55,12 @@ final class Intelligence: ObservableObject {
         var jevModel = "jev-latest"
         var jevEndpoint = "https://api.typesafe.ai/v1/systemone"
         var routerKey = ""
-        var routerURL = "https://llm.dev.exowatt.com"
+        /// Fork (settings-plain): empty until someone says where their
+        /// gateway is — it showed Exowatt's internal one to everybody.
+        var routerURL = ""
+        /// The address an intelligence.json written before there was a
+        /// routerURL field meant, when it has a key (see `init(from:)`).
+        static let legacyRouterURL = "https://llm.dev.exowatt.com"
         var routerModel = "sonnet"
         var lane: Lane = .key
         var tier: Tier = .sonnet
@@ -90,7 +95,8 @@ final class Intelligence: ObservableObject {
             jevModel = try c.decodeIfPresent(String.self, forKey: .jevModel) ?? fresh.jevModel
             jevEndpoint = try c.decodeIfPresent(String.self, forKey: .jevEndpoint) ?? fresh.jevEndpoint
             routerKey = try c.decodeIfPresent(String.self, forKey: .routerKey) ?? fresh.routerKey
-            routerURL = try c.decodeIfPresent(String.self, forKey: .routerURL) ?? fresh.routerURL
+            routerURL = try c.decodeIfPresent(String.self, forKey: .routerURL)
+                ?? (routerKey.trimmingCharacters(in: .whitespaces).isEmpty ? fresh.routerURL : Keys.legacyRouterURL)
             routerModel = try c.decodeIfPresent(String.self, forKey: .routerModel) ?? fresh.routerModel
             lane = try c.decodeIfPresent(Lane.self, forKey: .lane) ?? fresh.lane
             tier = try c.decodeIfPresent(Tier.self, forKey: .tier) ?? fresh.tier
@@ -969,9 +975,13 @@ extension Intelligence {
         m = merge(local: local, cloud: nil)
         check(m.keys.routerURL == "https://my.gateway.example/" && m.sources["routerURL"] == "local", "no cloud: a custom local address wins")
         local = Keys()
-        local.routerURL = "https://llm.dev.exowatt.com/"
+        local.routerURL = " / "
         m = merge(local: local, cloud: nil)
-        check(m.sources["routerURL"] == "default", "the default address with a slash is still the default")
+        check(m.sources["routerURL"] == "default" && m.keys.routerURL.isEmpty, "a blank address is the default, which is none")
+        check(Keys().routerURL.isEmpty, "no gateway address until someone gives one")
+        if let old = try? JSONDecoder().decode(Keys.self, from: Data(#"{"routerKey":"sk-x"}"#.utf8)) {
+            check(old.routerURL == Keys.legacyRouterURL, "a key saved before the address field keeps the address it meant")
+        } else { check(false, "decode a key without an address") }
         m = merge(local: Keys(), cloud: nil)
         check(m.keys == Keys() && m.sources == ["jevKey": "none", "jevEndpoint": "default", "jevModel": "default", "routerKey": "none", "routerURL": "default", "lane": "local"], "no cloud, no keys")
         let bad = CloudProvided(router: .init(key: "sk-cloud", url: "ftp://nope"))

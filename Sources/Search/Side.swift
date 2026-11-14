@@ -665,7 +665,7 @@ struct SideRow: View { // Fork: was private; GroupedRows draws it
                 if hovering, !editing {
                     Image(systemName: "xmark")
                         .font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(tint.muted)
+                        .foregroundStyle(tint.ink.opacity(0.7)) // muted is ~4.4:1 on the column; this is ≥4.5
                         .frame(width: 15, height: 15)
                         .background(tint.ink.opacity(0.07), in: Circle())
                         .transition(.opacity)
@@ -674,7 +674,7 @@ struct SideRow: View { // Fork: was private; GroupedRows draws it
                 } else if tab.noisy {
                     Image(systemName: "speaker.wave.2.fill")
                         .font(.system(size: 8))
-                        .foregroundStyle(tint.muted)
+                        .foregroundStyle(tint.ink.opacity(0.7)) // muted is ~4.4:1 on the column; this is ≥4.5
                         .transition(.opacity)
                 } else if heat.isHot(tab), let reading = heat.reading(for: tab) {
                     Image(systemName: "flame.fill")
@@ -926,9 +926,9 @@ struct SideAddress: View {
     private struct Placeholder: View {
         let tint: SpaceTint
         var body: some View {
-            Text("Search or Enter URL…")
+            Text("Search or enter address") // Fork (first-run): one wording, readable
                 .font(.system(size: 14.5))
-                .foregroundStyle(tint.faint)
+                .foregroundStyle(tint.ink.opacity(0.7)) // muted is ~4.4:1 on the column; this is ≥4.5
                 .lineLimit(1)
         }
     }

@@ -157,6 +157,13 @@ final class Preferences: ObservableObject {
         NSApp.appearance = chosen.appearance
         sidebar = store.object(forKey: "sidebar") as? Bool
             ?? (store.string(forKey: "manner") == "side")
+        // Fork (first-run): a fresh profile starts in the sidebar, Arc's way;
+        // written down so it stays once the welcome has been walked through.
+        if Preferences.freshProfile(store) {
+            sidebar = true
+            store.set(true, forKey: "sidebar")
+            store.set(true, forKey: "start.offer") // Fork (first-run): the start card, Fork/StartCard.swift
+        }
         let width = store.object(forKey: "sidebar.width") as? Double ?? Double(Metrics.side)
         sideWidth = min(Metrics.sideMax, max(Metrics.sideMin, CGFloat(width)))
         glyph = store.string(forKey: "glyph").flatMap(Glyph.init) ?? .icons

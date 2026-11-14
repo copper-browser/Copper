@@ -136,34 +136,22 @@ struct DriveCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             DriveClock(run: run, live: live).fixedSize()
-            if live {
-                Button {
-                    if drive.run?.id == run.id { drive.stop() } else { drive.stop(run.who.key) }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "stop.fill").font(.system(size: 7.5))
-                        Text("Stop").font(.system(size: 11, weight: .medium))
-                    }
-                    .foregroundStyle(Palette.ink)
-                    .padding(.horizontal, 9).frame(height: 22)
-                    .background(Palette.ground, in: Capsule())
-                    .overlay(Capsule().strokeBorder(Palette.hairline, lineWidth: 1))
-                    .contentShape(Capsule())
-                    .fixedSize()
-                }
-                .buttonStyle(.plain)
-                .help(run.driver == .jev ? "Stop the run" : "Take the browser back — its next calls are refused")
-            }
+            // Fork (agent-ux): no Stop here — the live band at the top of the
+            // pane has the one Stop, in view however far this has scrolled.
         }
     }
 
-    /// "driving this tab · Copper" — who asked, and on which page.
+    /// Fork (agent-ux): the task, then the tab — "Booking a table · on
+    /// OpenTable". Who asked for a Jev run only when there is no task.
     private var byline: String {
         var bits: [String] = []
-        if run.driver == .jev, !run.who.via.isEmpty { bits.append("for \(run.who.via)") }
-        if !run.who.thread.isEmpty, run.who.thread != "this window" { bits.append(run.who.thread) }
+        if !run.who.thread.isEmpty, run.who.thread != "this window" {
+            bits.append(run.who.thread)
+        } else if run.driver == .jev, !run.who.via.isEmpty {
+            bits.append("for \(run.who.via)")
+        }
         let page = run.title.isEmpty ? (URL(string: run.url)?.host ?? "") : run.title
-        if !page.isEmpty { bits.append(page) }
+        if !page.isEmpty { bits.append("on \(page)") }
         return bits.isEmpty ? (live ? "is driving" : "drove a tab") : bits.joined(separator: " · ")
     }
 
@@ -179,7 +167,7 @@ struct DriveCard: View {
                 ForEach(Array(shown)) { cycle in DriveStep(cycle: cycle, jev: run.driver == .jev) }
             }
         }
-        if run.cycles.count > DriveCard.folded || run.cycles.contains(where: { !($0.outcome?.candidates.isEmpty ?? true) }) || open {
+        if run.cycles.count > DriveCard.folded || run.cycles.contains(where: { !($0.outcome?.candidates.isEmpty ?? true) || !($0.outcome?.error ?? "").isEmpty }) || open {
             Button {
                 withAnimation(Motion.glide) { agent.toggle(expanded: run.id) }
             } label: {
@@ -284,7 +272,7 @@ struct DriveLiveStrip: View {
             }
             .buttonStyle(.plain)
             .help("Show the run")
-            DriveStopPill(help: run.driver == .jev ? "Stop the run" : "Take the browser back — its next calls are refused") {
+            DriveStop(help: run.driver == .jev ? "Stop the run (⎋)" : "Take the browser back — its next calls are refused (⎋)") {
                 drive.stop()
             }
         }
@@ -331,7 +319,7 @@ struct DriveHandStrip: View {
             .buttonStyle(.plain)
             .help("Show its card")
             if drive.canStop(hand) {
-                DriveStopPill(help: "Take the browser back from \(hand.who.agent) — its next calls are refused") {
+                DriveStop(help: "Take the browser back from \(hand.who.agent) — its next calls are refused (⎋)") {
                     drive.stop(hand.who.key)
                 }
             }
@@ -341,26 +329,42 @@ struct DriveHandStrip: View {
     }
 }
 
-/// The small capsule Stop the live bands share.
-private struct DriveStopPill: View {
+/// Fork (agent-ux): the one Stop — the live bands', the pill's over the
+/// page — a labelled 24-point capsule with its key, ⎋ (Panes.escape).
+struct DriveStop: View {
+    /// ⎋ while something drives this window: the run stops, or the agent
+    /// whose hand is on the tab in view is refused, as its Stop would.
+    @MainActor static func escape(in browser: Browser) -> Bool {
+        let drive = Drive.shared
+        if drive.live { drive.stop(); return true }
+        guard let tab = browser.active,
+              let hand = drive.hands(on: tab.id).first(where: drive.canStop) else { return false }
+        drive.stop(hand.who.key)
+        return true
+    }
+
     let help: String
     let action: () -> Void
+    @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 4) {
-                Image(systemName: "stop.fill").font(.system(size: 7))
-                Text("Stop").font(.system(size: 11, weight: .medium))
+            HStack(spacing: 5) {
+                Image(systemName: "stop.fill").font(.system(size: 8))
+                Text("Stop").font(.system(size: 11.5, weight: .medium))
+                Text("⎋").font(.system(size: 11)).foregroundStyle(Palette.muted)
             }
             .foregroundStyle(Palette.ink)
-            .padding(.horizontal, 8).frame(height: 20)
-            .background(Palette.ground, in: Capsule())
+            .padding(.horizontal, 10).frame(height: 24)
+            .background(hovering ? Palette.hover : Palette.ground, in: Capsule())
             .overlay(Capsule().strokeBorder(Palette.hairline, lineWidth: 1))
             .contentShape(Capsule())
             .fixedSize()
         }
         .buttonStyle(.plain)
+        .onHover { hovering = $0 }
         .help(help)
+        .accessibilityLabel("Stop")
     }
 }
 
@@ -373,7 +377,7 @@ private struct DriveBand: ViewModifier {
         content
             .padding(.leading, 16)
             .padding(.trailing, 8)
-            .frame(height: 30)
+            .frame(height: 34)
             .background(swatch.fill.opacity(over ? 0.16 : 0.10))
             .overlay(alignment: .bottom) { Rectangle().fill(Palette.hairline).frame(height: 1) }
             .animation(Motion.quick, value: over)
@@ -402,8 +406,8 @@ struct DriveStep: View {
                 Ring(size: 9)
             } else if let started = cycle.phases.first?.started, let ended = cycle.ended {
                 Text(DriveStyle.ms(Int(ended.timeIntervalSince(started) * 1000)))
-                    .font(.system(size: 10.5)).monospacedDigit()
-                    .foregroundStyle(Palette.faint)
+                    .font(.system(size: 11)).monospacedDigit()
+                    .foregroundStyle(Palette.muted) // Fork (agent-ux): was faint, 1.3:1
                     .fixedSize()
             }
         }
@@ -416,8 +420,8 @@ struct DriveStep: View {
             return cycle.phases.last?.title ?? "Starting"
         }
         if let error = outcome.error, !error.isEmpty {
-            let head = cycle.phases.first?.title ?? outcome.operation.capitalized
-            return "\(head) — \(error.split(separator: "\n").first.map(String.init) ?? error)"
+            // Fork (agent-ux): a sentence; the tool's own words are behind Details.
+            return DriveStep.plain(head: cycle.phases.first?.title ?? outcome.operation.capitalized)
         }
         if !jev {
             let head = cycle.phases.first?.title ?? outcome.operation.capitalized
@@ -444,6 +448,12 @@ struct DriveStep: View {
             }
             return outcome.label.isEmpty ? verb : "\(verb) \(outcome.label)"
         }
+    }
+
+    /// "Changing the canvas" → "Changing the canvas didn't work".
+    static func plain(head: String) -> String {
+        let head = head.trimmingCharacters(in: CharacterSet(charactersIn: " .…"))
+        return head.isEmpty ? "That step didn't work" : "\(head) didn't work"
     }
 
     /// An SF symbol per kind of move.
@@ -508,8 +518,8 @@ struct DriveTimeline: View {
     private func cycleRows(_ cycle: Drive.Cycle) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Text(String(format: "%02d", cycle.number))
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(Palette.faint)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Palette.muted)
                 .frame(width: 16, alignment: .leading)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 5) {
@@ -539,7 +549,7 @@ struct DriveTimeline: View {
                 Spacer(minLength: 6)
                 if let ms = phase.ms {
                     Text(DriveStyle.ms(ms))
-                        .font(.system(size: 10.5, design: .monospaced)).monospacedDigit()
+                        .font(.system(size: 11, design: .monospaced)).monospacedDigit()
                         .foregroundStyle(Palette.muted)
                 } else {
                     Ring(size: 9)
@@ -586,14 +596,14 @@ struct DriveTimeline: View {
                     Spacer(minLength: 6)
                     if let result = outcome.result {
                         Text("→ \(result)")
-                            .font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+                            .font(.system(size: 11)).foregroundStyle(Palette.muted)
                             .lineLimit(2).truncationMode(.tail)
                             .multilineTextAlignment(.trailing)
                             .fixedSize(horizontal: false, vertical: true)
                             .help(result)
                     } else if let changed = outcome.pageChanged {
                         Text(changed ? "→ page changed" : "→ no change")
-                            .font(.system(size: 10.5)).foregroundStyle(Palette.muted).fixedSize()
+                            .font(.system(size: 11)).foregroundStyle(Palette.muted).fixedSize()
                     }
                 }
             } else {
@@ -630,14 +640,14 @@ struct DriveTimeline: View {
     @ViewBuilder
     private func tail(_ outcome: Drive.Outcome) -> some View {
         if outcome.stale {
-            Text("page moved · re-read").font(.system(size: 10.5)).foregroundStyle(Palette.muted).fixedSize()
+            Text("page moved · re-read").font(.system(size: 11)).foregroundStyle(Palette.muted).fixedSize()
         } else {
             HStack(spacing: 5) {
                 Text(percent(outcome.probability))
-                    .font(.system(size: 10.5, design: .monospaced)).monospacedDigit()
+                    .font(.system(size: 11, design: .monospaced)).monospacedDigit()
                     .foregroundStyle(Palette.muted)
                 if let changed = outcome.pageChanged {
-                    Text(changed ? "→ page changed" : "→ no change").font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+                    Text(changed ? "→ page changed" : "→ no change").font(.system(size: 11)).foregroundStyle(Palette.muted)
                 }
             }
             .fixedSize()
@@ -663,7 +673,7 @@ struct DriveTimeline: View {
                 HStack(spacing: 4) {
                     Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold))
                         .rotationEffect(.degrees(open ? 90 : 0))
-                    Text("\(outcome.candidates.count) offered").font(.system(size: 10.5))
+                    Text("\(outcome.candidates.count) offered").font(.system(size: 11))
                 }
                 .foregroundStyle(Palette.muted)
             }
@@ -671,7 +681,7 @@ struct DriveTimeline: View {
             if open {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(Array(outcome.candidates.enumerated()), id: \.offset) { _, line in
-                        Text(line).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Palette.muted)
+                        Text(line).font(.system(size: 11, design: .monospaced)).foregroundStyle(Palette.muted)
                             .lineLimit(1).truncationMode(.tail)
                     }
                 }
@@ -681,46 +691,64 @@ struct DriveTimeline: View {
     }
 }
 
-/// Over the page while a run is live: a word that it is not your hands on the
-/// wheel — whose they are — and the one button that takes it back. Small
-/// enough to ignore, close enough to hit. The dot is solid while a call is
-/// in flight and breathes while the driver thinks between calls.
+/// Over the page while a run is live: "<Agent> · <task> · Stop" over the tab
+/// it drives, "<Agent> · on <tab> · Stop" over any other — a click there goes
+/// to that tab. Stop (or ⎋) takes the wheel back. A tab an agent has its
+/// hand on wears the bar (HandBar) instead, in the same place and format.
+/// Fork (agent-ux): it said "phi is driving" over whichever page was in
+/// front, with a ring round it, as if that page were the one being driven.
 struct DrivePill: View {
+    let browser: Browser
+    /// The run is on a tab not in view: the pill names it and goes there.
+    let elsewhere: Bool
     @ObservedObject private var drive = Drive.shared
     @State private var breathing = false
 
+    private var tab: Tab? { AgentTabs.find(drive.run?.tabID) }
+
     var body: some View {
+        let name = drive.run?.who.agent ?? drive.run?.driver.name ?? "Agent"
+        let title = tab.map { $0.title.isEmpty ? ($0.address?.host ?? "another tab") : $0.title } ?? "another tab"
+        let thread = drive.run.map { $0.who.thread == "this window" ? "" : $0.who.thread } ?? ""
+        let goal = drive.run.map { $0.goal.isEmpty ? thread : $0.goal } ?? ""
+        let task = elsewhere || goal.isEmpty ? "on \(title)" : goal
         HStack(spacing: 6) {
             Circle()
                 .fill(DriveStyle.accent)
                 .frame(width: 6, height: 6)
                 .opacity(drive.busy ? 1 : (breathing ? 0.35 : 1))
-            Button { Agent.shared.reveal() } label: {
-                Text("\(drive.run?.driver.name ?? "Agent") is driving")
-                    .font(.system(size: 11, weight: .medium))
+            Button { jump() } label: {
+                (Text(name).fontWeight(.semibold) + Text("  ·  \(task)"))
+                    .font(.system(size: 11.5))
                     .foregroundStyle(Palette.ink)
-                    .lineLimit(1)
+                    .lineLimit(1).truncationMode(.tail)
+                    .frame(maxWidth: 300, alignment: .leading)
+                    .fixedSize(horizontal: true, vertical: false)
             }
             .buttonStyle(.plain)
-            .help("Show what it is doing")
-            Button { drive.stop() } label: {
-                Image(systemName: "stop.fill")
-                    .font(.system(size: 8))
-                    .foregroundStyle(DriveStyle.accent)
-                    .frame(width: 16, height: 16)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help(drive.run?.driver == .jev ? "Stop the run" : "Take the browser back")
+            .help(elsewhere ? "Go to the tab it is driving" : "Show what it is doing")
+            DriveStop(help: drive.run?.driver == .jev ? "Stop the run (⎋)" : "Take the browser back (⎋)") { drive.stop() }
         }
-        .padding(.leading, 9)
-        .padding(.trailing, 4)
-        .frame(height: 22)
-        .background(Palette.ground.opacity(0.92), in: Capsule())
+        .padding(.leading, 10)
+        .padding(.trailing, 3)
+        .frame(height: 30)
+        .background(Palette.ground.opacity(0.94), in: Capsule())
         .overlay(Capsule().strokeBorder(Palette.hairline, lineWidth: 1))
         .shadow(color: .black.opacity(0.12), radius: 6, y: 1)
         .onAppear {
             withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { breathing = true }
+        }
+    }
+
+    /// To the driven tab: this window's row, else its space.
+    private func jump() {
+        guard elsewhere, let tab else { return Agent.shared.reveal() }
+        if browser.tabs.contains(where: { $0.id == tab.id }) {
+            browser.select(tab)
+        } else if let space = Spaces.shared.spaceID(of: tab) {
+            Spaces.shared.select(space, in: browser, landing: tab.id)
+        } else {
+            Agent.shared.reveal()
         }
     }
 }

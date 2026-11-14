@@ -19,19 +19,26 @@ struct FlowSheet: View {
                 .padding(.horizontal, 26)
                 .padding(.top, 24)
                 .padding(.bottom, 16)
+                .measured()
             ScrollView(.vertical) {
                 middle
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 26)
                     .padding(.bottom, 12)
+                    .measured()
             }
             .scrollIndicators(.automatic)
             footer
                 .padding(.horizontal, 26)
                 .padding(.top, 14)
                 .padding(.bottom, 22)
+                .measured()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        // Fork (move-in-polish): the sheet takes its step's height.
+        .onPreferenceChange(FlowSheetHeight.self) { height in
+            MainActor.assumeIsolated { FlowPresenter.shared.want(height) }
+        }
         .background(Palette.ground)
         // A sheet that comes up while something else animates (Settings
         // closing) must not animate its own first layout, and a new phase
@@ -336,21 +343,21 @@ struct FlowSheet: View {
 
     private var checklist: some View {
         VStack(alignment: .leading, spacing: 0) {
-            row(flow.selected?.isArc == true ? "Tabs and spaces" : "Tabs and windows", hint: tabHint, binding: binding(\.tabs))
+            row(flow.selected?.isArc == true ? "Tabs and spaces" : "Tabs and windows", hint: tabHint, binding: binding(\.tabs), enabled: has { $0.tabCount })
             Rule()
-            row("Bookmarks", hint: count { $0.bookmarkCount == 0 ? "none found" : FlowSummary.plural($0.bookmarkCount, "bookmark") }, binding: binding(\.bookmarks))
+            row("Bookmarks", hint: count { $0.bookmarkCount == 0 ? "none found" : FlowSummary.plural($0.bookmarkCount, "bookmark") }, binding: binding(\.bookmarks), enabled: has { $0.bookmarkCount })
             Rule()
-            row("History", hint: count { $0.placeCount == 0 ? "none found" : FlowSummary.plural($0.placeCount, "place") }, binding: binding(\.history))
+            row("History", hint: count { $0.placeCount == 0 ? "none found" : FlowSummary.plural($0.placeCount, "place") }, binding: binding(\.history), enabled: has { $0.placeCount })
             Rule()
-            row("Passwords", hint: count { $0.loginCount == 0 ? "none saved" : FlowSummary.plural($0.loginCount, "password") }, binding: binding(\.passwords))
+            row("Passwords", hint: count { $0.loginCount == 0 ? "none saved" : FlowSummary.plural($0.loginCount, "password") }, binding: binding(\.passwords), enabled: has { $0.loginCount })
             Rule()
-            row("Passkeys", hint: count { $0.passkeyCount == 0 ? "none found" : FlowSummary.plural($0.passkeyCount, "passkey") }, binding: binding(\.passkeys))
+            row("Passkeys", hint: count { $0.passkeyCount == 0 ? "none found" : FlowSummary.plural($0.passkeyCount, "passkey") }, binding: binding(\.passkeys), enabled: has { $0.passkeyCount })
             Rule()
             row("Sign-ins", hint: "", binding: binding(\.cookies))
             Rule()
             row("Site data", hint: "", binding: binding(\.localStorage))
             Rule()
-            row("Extensions", hint: count { $0.extensions.isEmpty ? "none found" : FlowSummary.plural($0.extensions.count, "extension") }, binding: binding(\.extensions))
+            row("Extensions", hint: count { $0.extensions.isEmpty ? "none found" : FlowSummary.plural($0.extensions.count, "extension") }, binding: binding(\.extensions), enabled: has { $0.extensions.count })
         }
         .padding(.horizontal, 13)
         .background(Palette.wash.opacity(0.38), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -404,6 +411,7 @@ struct FlowSheet: View {
             // The shared switch says its own name, value and action.
             Switch(on: enabled ? binding : .constant(false), label: title)
                 .disabled(!enabled)
+                .opacity(enabled ? 1 : 0.4)
         }
         .padding(.vertical, 9)
     }
@@ -478,6 +486,13 @@ struct FlowSheet: View {
         return text(haul)
     }
 
+    /// Fork (move-in-polish): a kind the browser has none of is off and
+    /// still; before the counts are in, every switch is the person's.
+    private func has(_ n: (FlowModel.Haul) -> Int) -> Bool {
+        guard let haul = flow.counted else { return true }
+        return n(haul) > 0
+    }
+
     private func binding(_ keyPath: WritableKeyPath<FlowModel.Choice, Bool>) -> Binding<Bool> {
         Binding(get: { flow.choice[keyPath: keyPath] }, set: { flow.choice[keyPath: keyPath] = $0 })
     }
@@ -530,13 +545,28 @@ struct FlowSheet: View {
     }
 
     private func done(_ report: Flow.Report) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .center, spacing: 14) {
+            // Fork (move-in-polish): the result in the middle, a check over it,
+            // and the one thing to do next under it.
+            Image(systemName: report.summary.contains(where: \.ok) ? "checkmark.circle.fill" : "minus.circle")
+                .font(.system(size: 30, weight: .regular))
+                .foregroundStyle(Palette.ink)
+                .accessibilityHidden(true)
             Text(report.title)
                 .font(.system(size: 19, weight: .medium)).foregroundStyle(Palette.ink)
+                .multilineTextAlignment(.center)
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(report.summary, id: \.category) { line in
                     stepRow(line.category, line.ok ? .arrived : .missed, line.detail)
                 }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            if let next = Self.next(report) {
+                Text(next)
+                    .font(.system(size: 12.5)).foregroundStyle(Palette.muted)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 2)
             }
             ForEach(report.stayed, id: \.self) { line in
                 Text(line)
@@ -557,6 +587,18 @@ struct FlowSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 6)
+    }
+
+    /// The one next step after a move, by what came.
+    static func next(_ report: Flow.Report) -> String? {
+        let came = Set(report.summary.filter(\.ok).map(\.category))
+        if came.contains(.tabs) { return "Your tabs came over as spaces. ⌃1–9 switches between them." }
+        if came.contains(.bookmarks) { return "Your bookmarks are behind the bookmark button. ⌘K finds them too." }
+        if came.contains(.history) { return "Start typing an address: Copper already knows where you go." }
+        if came.contains(.passwords) { return "Sign in anywhere: Copper offers your saved passwords." }
+        return nil
     }
 
     @ViewBuilder
@@ -565,8 +607,7 @@ struct FlowSheet: View {
         case .done(let report):
             HStack(spacing: 16) {
                 if flow.canUndo {
-                    Button("Undo the tabs") { flow.undo() }
-                        .buttonStyle(.plain).font(.system(size: 12.5)).foregroundStyle(Palette.ink)
+                    secondary("Undo the tabs") { flow.undo() } // Fork (move-in-polish): a button, not loose words
                 }
                 if report.guideOffered, flow.guide != .opened {
                     Button(flow.guide == .opening ? "Opening the guide…" : "Open the Chrome guide") {
@@ -619,7 +660,7 @@ struct FlowSheet: View {
                                 .font(.system(size: 12.5)).foregroundStyle(Palette.muted)
                         }
                         Spacer()
-                        primary("Bring it all over", disabled: !flow.canMove) {
+                        primary(flow.selected?.isSafari == true ? "Bring it all over" : flow.effectiveChoice.button(for: flow.counted), disabled: !flow.canMove) {
                             guard let source = flow.selected else { return }
                             Task { await flow.move(source, into: browser) }
                         }
@@ -627,6 +668,18 @@ struct FlowSheet: View {
                 }
             }
         }
+    }
+
+    /// Fork (move-in-polish): a bordered button beside the primary, the same size.
+    private func secondary(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(title, action: action)
+            .buttonStyle(.plain)
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(Palette.ink)
+            .padding(.horizontal, 17).padding(.vertical, 10)
+            .background(Palette.ground, in: Capsule())
+            .overlay(Capsule().strokeBorder(Palette.hairline, lineWidth: 1))
+            .contentShape(Capsule())
     }
 
     /// The one button Return presses, in every state.
@@ -639,5 +692,18 @@ struct FlowSheet: View {
             .background(Palette.ink.opacity(disabled ? 0.35 : 1), in: Capsule())
             .keyboardShortcut(.defaultAction)
             .disabled(disabled)
+    }
+}
+
+/// Fork (move-in-polish): the heights of the sheet's three parts, summed —
+/// what the sheet would be with nothing scrolled.
+struct FlowSheetHeight: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value += nextValue() }
+}
+
+private extension View {
+    func measured() -> some View {
+        background(GeometryReader { Color.clear.preference(key: FlowSheetHeight.self, value: $0.size.height) })
     }
 }

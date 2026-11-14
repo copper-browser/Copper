@@ -182,9 +182,10 @@ struct HandCapsule: View {
             HandSquare(hand: hand, size: 14)
                 .opacity(hand.busy ? 1 : (breathing ? 0.55 : 1))
             Button { Agent.shared.reveal() } label: {
+                // Fork (agent-ux): "<Agent> · <task>", then Stop — the pill's format.
                 (Text(hand.who.agent).fontWeight(.semibold)
-                 + Text(hand.who.thread.isEmpty ? "" : "  ·  \(hand.who.thread)"))
-                    .font(.system(size: 11))
+                 + Text(hand.who.thread.isEmpty || hand.who.thread == "this window" ? "" : "  ·  \(hand.who.thread)"))
+                    .font(.system(size: 11.5))
                     .foregroundStyle(Palette.ink)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -194,20 +195,12 @@ struct HandCapsule: View {
             .buttonStyle(.plain)
             .help("Show what it is doing")
             if drive.canStop(hand) {
-                Button { drive.stop(hand.who.key) } label: {
-                    Image(systemName: "stop.fill")
-                        .font(.system(size: 8))
-                        .foregroundStyle(swatch.fill)
-                        .frame(width: 16, height: 16)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(hand.driver == .jev ? "Stop the run" : "Take the browser back")
+                DriveStop(help: hand.driver == .jev ? "Stop the run (⎋)" : "Take the browser back (⎋)") { drive.stop(hand.who.key) }
             }
         }
-        .padding(.leading, 5)
-        .padding(.trailing, 5)
-        .frame(height: 24)
+        .padding(.leading, 6)
+        .padding(.trailing, 3)
+        .frame(height: 30)
         .background(Palette.ground.opacity(0.94), in: Capsule())
         .background(swatch.fill.opacity(0.16), in: Capsule())
         .overlay(Capsule().strokeBorder(swatch.fill.opacity(0.75), lineWidth: 1.25))

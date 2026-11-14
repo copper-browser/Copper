@@ -125,7 +125,7 @@ struct CommandPalette: View {
                 browser: browser,
                 literal: true,
                 size: 17.5,
-                placeholder: browser.launching ? "Search or Enter URL…" : "Search or enter an address"
+                placeholder: "Search or enter address"
             )
             .frame(height: 24)
         }
