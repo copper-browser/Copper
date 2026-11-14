@@ -237,9 +237,9 @@ struct FlowSheet: View {
             .font(.system(size: 12, weight: .medium))
             .lineLimit(1)
             .fixedSize()
-            .foregroundStyle(Palette.ground)
+            .foregroundStyle(Palette.onAccent)
             .padding(.horizontal, 11).padding(.vertical, 6)
-            .background(Palette.ink, in: Capsule())
+            .background(Palette.accent, in: Capsule()) // Fork (ui-system)
             .accessibilityHint(source.isSafari ? "Opens Privacy & Security, Full Disk Access" : "Opens Privacy & Security, Files & Folders")
         Button("Use an export instead…") { flow.showExport(for: source) }
             .buttonStyle(.plain)
@@ -634,9 +634,9 @@ struct FlowSheet: View {
         Button(title, action: action)
             .buttonStyle(.plain)
             .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(Palette.ground)
+            .foregroundStyle(Palette.onAccent)
             .padding(.horizontal, 17).padding(.vertical, 10)
-            .background(Palette.ink.opacity(disabled ? 0.35 : 1), in: Capsule())
+            .background(Palette.accent.opacity(disabled ? 0.35 : 1), in: Capsule()) // Fork (ui-system)
             .keyboardShortcut(.defaultAction)
             .disabled(disabled)
     }

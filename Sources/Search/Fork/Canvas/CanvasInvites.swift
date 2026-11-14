@@ -121,10 +121,10 @@ struct CanvasInvitePill: View {
             Button("Open") { open() }
                 .buttonStyle(.plain)
                 .font(.system(size: 12))
-                .foregroundStyle(Palette.ground)
+                .foregroundStyle(Palette.onAccent)
                 .padding(.horizontal, 11)
                 .padding(.vertical, 5)
-                .background(Palette.ink, in: Capsule())
+                .background(Palette.accent, in: Capsule()) // Fork (ui-system)
                 .disabled(joining)
                 .help("Join “\(invite.canvasName)” and open it")
             Button {

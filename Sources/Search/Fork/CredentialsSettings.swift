@@ -755,7 +755,7 @@ struct AgentAccessCard: View {
 
         private func badge(_ text: String, tint: Color = Palette.muted) -> some View {
             Text(text)
-                .font(.system(size: 9.5, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(tint)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)

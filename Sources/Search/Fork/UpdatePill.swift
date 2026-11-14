@@ -295,15 +295,17 @@ final class UpdatePill: ObservableObject {
 
 /// The pill's colours from the space: a deep, full shade of the column's own
 /// hue — the column is the same hue thinned, so this stands off it without
-/// being a colour from somewhere else — or the system accent on a grey
-/// space. The fill is opaque on purpose: over a picture or an animated scene
+/// being a colour from somewhere else — or Copper's own accent on a grey
+/// space (Fork (ui-system): it was the system's blue). The fill is opaque on purpose: over a picture or an animated scene
 /// a translucent pill would take its contrast from whatever is behind it.
 ///
 /// The words are white, so the fill is taken as deep as white needs — to a
-/// luminance near 0.16, about 5:1 — rather than to one brightness for every
-/// hue: blue and pink are dark at any brightness, green and teal are so
-/// light to the eye that one number made them highlighter. Never below
-/// 0.52 brightness, where a green turns to mud; those land near 4:1. Yellow
+/// luminance near 0.12, about 6:1, so the soft top light still leaves
+/// 4.5:1 under the words (Fork (ui-system): at 0.16 it measured 4.2:1) —
+/// rather than to one brightness for every hue: blue and pink are dark at
+/// any brightness, green and teal are so light to the eye that one number
+/// made them highlighter. Never below 0.42 brightness, where a green turns
+/// to mud. Yellow
 /// cannot be deep and still be yellow, so it goes the other way: a bright
 /// gold with the hue's own near-black words.
 struct UpdateInk {
@@ -313,16 +315,12 @@ struct UpdateInk {
     let light: Bool
 
     /// The fill's target luminance under white words.
-    private static let deep = 0.16
+    private static let deep = 0.12
 
     init(_ tint: SpaceTint) {
-        guard let hue = tint.hue else {
-            let accent = NSColor.controlAccentColor.usingColorSpace(.sRGB).map {
-                SpaceTheme.Stop(r: $0.redComponent, g: $0.greenComponent, b: $0.blueComponent)
-            } ?? SpaceTheme.Stop(r: 0.0, g: 0.48, b: 1.0)
-            self.init(fill: accent)
-            return
-        }
+        // Fork (ui-system): a grey space's pill is Copper's accent (#BD522B's
+        // hue), taken as deep as the rest.
+        let hue = tint.hue ?? 0.044
         let (s, _) = SpaceTheme.strength(hue)
         // A dark column wants its colour a touch quieter than a light one.
         let saturation = tint.dark ? min(1, s + 0.1) : min(1, s + 0.24)
@@ -332,7 +330,7 @@ struct UpdateInk {
             self.init(fill: gold.color, label: Color(hue: h, saturation: 0.9, brightness: 0.18), light: true)
             return
         }
-        var low = 0.52, high = 0.9
+        var low = 0.42, high = 0.9
         if SpaceTheme.Stop(hue: h, saturation: saturation, brightness: low).luminance < Self.deep {
             for _ in 0..<12 {
                 let mid = (low + high) / 2

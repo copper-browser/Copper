@@ -509,12 +509,18 @@ struct AgentPane: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 8) {
-            TextField("", text: $agent.draft, prompt: Text(placeholder).foregroundColor(Palette.muted), axis: .vertical)
+            TextField("", text: $agent.draft, axis: .vertical)
                 .textFieldStyle(.plain)
-                .font(.system(size: 13))
                 .lineLimit(1...8)
                 .focused($focused)
                 .disabled(!agent.ready)
+                // Fork (ui-system): the prompt drawn in muted ink — a plain
+                // field ignores a prompt's colour and showed it at ~1.7:1.
+                .background(alignment: .topLeading) {
+                    if agent.draft.isEmpty { Text(placeholder).foregroundStyle(Palette.muted).allowsHitTesting(false).accessibilityHidden(true) }
+                }
+                .accessibilityLabel(placeholder)
+                .font(.system(size: 13))
                 // What the field shows is what goes (Fork/Voice/ComposerInsert.swift).
                 .onSubmit { ComposerInsert.syncDraft(in: Windows.window(of: browser)); agent.send(in: browser) }
                 // Return sends (the field's submit); ⇧Return is a new line,

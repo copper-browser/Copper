@@ -203,7 +203,7 @@ struct VaultPopup: View {
                 } else if fills {
                     Text("This site")
                         .font(.system(size: 10.5))
-                        .foregroundStyle(Palette.faint)
+                        .foregroundStyle(Palette.muted)
                 }
             }
             .padding(.horizontal, 10)

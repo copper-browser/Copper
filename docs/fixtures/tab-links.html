@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Tab reaches links</title>
+<!-- docs/fixtures/tab-links-e2e.sh: Tab from the password box must reach
+     the button, and Tab from there the link, as in Chrome and Arc. -->
+<form onsubmit="return false">
+  <input id="user" autocomplete="off">
+  <input id="pass" type="password" autocomplete="off">
+  <button id="go">Sign in</button>
+</form>
+<p><a id="help" href="#help">Forgot your password?</a></p>

@@ -20,7 +20,7 @@ struct SettingsSearchField: View {
             ZStack(alignment: .leading) {
                 if finder.query.isEmpty {
                     Text("Search settings")
-                        .foregroundStyle(SettingsInk.detail.opacity(0.85))
+                        .foregroundStyle(SettingsInk.detail) // Fork (ui-system): 4.6:1 on the field, not 3.6
                         .allowsHitTesting(false)
                 }
                 TextField("", text: $finder.query)

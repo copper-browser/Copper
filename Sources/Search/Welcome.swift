@@ -82,7 +82,7 @@ struct WelcomePanel: View {
             if sources.isEmpty {
                 Text("No other browser found on this Mac — nothing to bring.")
                     .font(.system(size: 13))
-                    .foregroundStyle(Palette.faint)
+                    .foregroundStyle(Palette.muted)
             } else {
                 VStack(alignment: .leading, spacing: 14) {
                     if sources.count > 1 {
@@ -157,7 +157,7 @@ struct WelcomePanel: View {
                     if asked, !isDefault {
                         Text("macOS asks in its own dialog")
                             .font(.system(size: 13))
-                            .foregroundStyle(Palette.faint)
+                            .foregroundStyle(Palette.muted)
                     }
                 }
             }
@@ -166,7 +166,7 @@ struct WelcomePanel: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Three things worth knowing")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Palette.faint)
+                    .foregroundStyle(Palette.muted)
                     .textCase(.uppercase)
                     .tracking(0.6)
                     .padding(.top, 6)
@@ -294,10 +294,10 @@ struct WelcomePanel: View {
             Button(action: act) {
                 Text(title)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(filled ? Palette.ground : Palette.ink)
+                    .foregroundStyle(filled ? Palette.onAccent : Palette.ink) // Fork (ui-system)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 9)
-                    .background(filled ? Palette.ink : (hovering ? Palette.hover : Palette.wash), in: Capsule())
+                    .background(filled ? Palette.accent : (hovering ? Palette.hover : Palette.wash), in: Capsule())
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -320,7 +320,7 @@ struct WelcomePanel: View {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.system(size: 13.5)).foregroundStyle(Palette.ink)
-                    Text(detail).font(.system(size: 11.5)).foregroundStyle(Palette.faint)
+                    Text(detail).font(.system(size: 11.5)).foregroundStyle(Palette.muted)
                 }
                 Spacer()
                 Switch(on: $on, label: title) // Fork (settings-a11y)

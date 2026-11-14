@@ -28,7 +28,7 @@ struct SettingsFieldGround: ViewModifier {
             .background(fill, in: shape)
             .overlay {
                 shape
-                    .strokeBorder(Palette.ink.opacity(0.35), lineWidth: 1.5)
+                    .strokeBorder(Palette.accent, lineWidth: 1.5) // Fork (ui-system)
                     .opacity(focused ? 1 : 0)
                     .animation(Motion.quick, value: focused)
                     .allowsHitTesting(false)

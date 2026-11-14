@@ -11,6 +11,9 @@ import SwiftUI
 struct Plate<Content: View, Foot: View>: View {
     let title: String
     var width: CGFloat = 560
+    /// Fork (ui-system): false while the panel is empty — a count of nought
+    /// and a Clear with nothing to clear are not worth a rule and a row.
+    var footed = true
     let close: () -> Void
     @ViewBuilder let content: () -> Content
     @ViewBuilder let foot: () -> Foot
@@ -18,12 +21,14 @@ struct Plate<Content: View, Foot: View>: View {
     init(
         _ title: String,
         width: CGFloat = 560,
+        footed: Bool = true,
         close: @escaping () -> Void,
         @ViewBuilder content: @escaping () -> Content,
         @ViewBuilder foot: @escaping () -> Foot
     ) {
         self.title = title
         self.width = width
+        self.footed = footed
         self.close = close
         self.content = content
         self.foot = foot
@@ -45,7 +50,7 @@ struct Plate<Content: View, Foot: View>: View {
             content()
                 .padding(.horizontal, 22)
 
-            if Foot.self != EmptyView.self {
+            if Foot.self != EmptyView.self, footed {
                 Rectangle().fill(Palette.hairline).frame(height: 1)
                     .padding(.top, 18)
                 foot()
@@ -190,7 +195,7 @@ struct Hunt: View {
                 .accessibilityHidden(true) // Fork (settings-a11y)
             ZStack(alignment: .leading) {
                 if text.isEmpty {
-                    Text(prompt).foregroundStyle(Palette.muted.opacity(0.7))
+                    Text(prompt).foregroundStyle(Palette.muted) // Fork (ui-system): a prompt is words, ≥4.5:1
                         .accessibilityHidden(true) // Fork (settings-a11y): the field says it
                 }
                 TextField("", text: $text)
@@ -217,11 +222,76 @@ struct Hunt: View {
         // there wears while the keyboard is in it (Fork/SettingsField.swift).
         .overlay {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Palette.ink.opacity(0.35), lineWidth: 1.5)
+                .strokeBorder(Palette.accent, lineWidth: 1.5) // Fork (ui-system)
                 .opacity(inSettings && focus.wrappedValue ? 1 : 0)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
+    }
+}
+
+/// Fork (ui-system): a panel's list as tall as what is in it, scrolling only
+/// once the panel runs out of room (`sheet` holds a panel to 70% of the
+/// window) — never a 400 pt box around one row.
+struct Fitted<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+    @State private var tall: CGFloat?
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            content()
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { tall = $0 }
+        }
+        .frame(maxHeight: tall)
+    }
+}
+
+/// Fork (ui-system): what an empty panel says — a symbol, what it is, one
+/// line of what fills it, and at most one thing to do about it.
+struct EmptyState<Action: View>: View {
+    let symbol: String
+    let title: String
+    let line: String
+    @ViewBuilder let action: () -> Action
+
+    init(_ symbol: String, _ title: String, _ line: String, @ViewBuilder action: @escaping () -> Action) {
+        self.symbol = symbol
+        self.title = title
+        self.line = line
+        self.action = action
+    }
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Image(systemName: symbol)
+                .font(.system(size: 28, weight: .light))
+                .foregroundStyle(Palette.muted)
+                .frame(height: 34)
+                .padding(.bottom, 4)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Palette.ink)
+            Text(line)
+                .font(.system(size: 13))
+                .foregroundStyle(Palette.muted)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            if Action.self != EmptyView.self {
+                action().padding(.top, 10)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24)
+        .padding(.top, 26)
+        .padding(.bottom, 22)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+extension EmptyState where Action == EmptyView {
+    init(_ symbol: String, _ title: String, _ line: String) {
+        self.init(symbol, title, line) { EmptyView() }
     }
 }
 
