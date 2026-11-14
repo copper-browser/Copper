@@ -31,7 +31,7 @@ import Testing
     }
 }
 
-@Test func toolsListStaysUnderItsBudget() throws {
+@MainActor @Test func toolsListStaysUnderItsBudget() throws {
     // What a loopback agent pays at the start of every session (MCP tools/list):
     // ≤ 8k tokens at ~4 bytes a token. One-line descriptions; canvas_apply's
     // op shapes ride on the first canvas_read instead (CanvasTools.opsGuide).
