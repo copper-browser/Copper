@@ -12,8 +12,9 @@ python3 perf/hillclimb/agentbench/agentbench.py --out <that dir> --summary   # r
 ```
 
 On the Mac it: writes the probe world `Copper (agentbench)` (agent.json with its own token, port
-4160, Jev on; intelligence.json = only `jevKey jevEndpoint jevModel routerKey routerURL routerModel
-textModel` copied from `Copper (dev)`, never printed), starts the build as a launchd job in the GUI
+4160, Jev on; intelligence.json = only `jevKey jevEndpoint jevModel routerKey routerURL routerModel` copied from
+`Copper (dev)`, never printed; no `textModel` unless `AGENTBENCH_TEXT_MODEL` names one — the bench runs what a fresh
+install ships, `dev` takes the dev world's haiku as rounds 1–2 did), starts the build as a launchd job in the GUI
 session (`SEARCH_HEADLESS=1`; the page measured 1280×800 in base whatever `SEARCH_HEADLESS_SIZE` said — upstream used 1120×780; each run records it), starts
 `fixtures/server.py` on 4161, then works through the whole plan (every group × round × task × arm, the arms of a
 task alternating) in `lockf -k ~/hc/mini.lock` holds of `AGENTBENCH_CHUNK` seconds (300): the lock is shared and
@@ -22,10 +23,19 @@ every wait for it is long. A Google Flights run waits `AGENTBENCH_FLIGHTS_GAP` (
 skipped, so a rerun resumes. Stops both at exit. Never touches port 4123 or the installed Copper.
 
 When `ARMS` has `same`, a second probe world `Copper (agentbench-same)` runs on port+2 (`AGENTBENCH_SAME_PORT`)
-at upstream's conditions: page `AGENTBENCH_SAME_VIEWPORT` (1120×780; the headless window and the agent's
-backstage both that size) and no `textModel` (the build's default text model). `--meta` fails if a world's
+at upstream's conditions. Since round 3 (Collin, 2026-11-14) the bench compares Copper's own methods with each
+other — no upstream/Chrome arm — so no arm uses it. `--meta` fails if a world's
 page isn't the size asked; `meta.json` has both worlds as configured, and `--summary` adds `resolved`: per arm,
 the Jev that answered, the text model that wrote values and the page size measured after each run.
+
+`meta.json` also has `sha` (the build's commit: run with `AGENTBENCH_SRC=<its git worktree>` on the devbox),
+`harness_sha` and `binary_sha256` (the first 16 hex of the Copper executable), so two runs say what they measured.
+
+Google Flights: each run records `provider_error` (the final page says Google's "Oops, something went wrong"),
+`results_req` (the GetShoppingResults calls the steps logged, builds from hc3/jev) and the From/To `inputs`; the
+summary has a table of them per arm. `flights_probe.py` steps Flights one `jev_step` at a time and captures the
+Reload control, the page and the tab's requests right after Search (round 3: a visible "Oops, something went wrong.
+Reload" panel, GetShoppingResults answered 200 within 0.5 s — Google's error, not a hidden or transient node).
 
 ## Suite
 

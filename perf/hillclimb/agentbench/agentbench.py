@@ -56,11 +56,8 @@ ARMS = {
     "classic": {"strategy": "classic", "vision": "off"},
     # a small LLM decides instead of Jev (perf/uibench's preset)
     "llm-haiku": {"strategy": "fast,llm=haiku", "vision": "off"},
-    # the shipped loop under upstream's published conditions, for a like-for-like with the ultrafast arm:
-    # Jev pinned to jev-1.13.0 (jev-latest answers as 1.14.0 since 2026-11) and a private tab per run
-    # (empty cookies and storage, nothing kept), in its own probe world (SAME_WORLD_ARMS) at 1120×780
-    # with the build's default text model (the router has no mercury) — see README.
-    "same": {"model": "jev-1.13.0", "private": True},
+    # the shipped loop seeing by picture: Jev 1.14 boxes the control to act on (Session picks jev-1.14.0)
+    "box": {"vision": "box"},
     # the shipped loop on jev-1.13.0 and nothing else changed: what the Jev version alone does
     "jev113": {"model": "jev-1.13.0"},
     # experiment arms (hc/jev): the shipped loop plus Return after a lone search box
@@ -75,8 +72,8 @@ ARMS = {
     "phi-mcp": None,
 }
 
-# arms that run in the second probe world (agentbench.sh: <world>-same, 1120×780, the build's text model)
-SAME_WORLD_ARMS = {"same"}
+# arms that run in the second probe world (agentbench.sh: <world>-same); none since round 3 (no upstream proxy)
+SAME_WORLD_ARMS = set()
 
 # ---------------------------------------------------------------- tasks
 
@@ -142,9 +139,9 @@ def check_godel(page, run):
     return {"article": same_title(wiki_title(page.get("url")), "Gödel's incompleteness theorems")}
 
 
-ZURICH = r"^(Z[uü]rich( Airport)?( \(ZRH\))?|ZRH)$"   # the city, or its airport (Jev picks "Zurich Airport (ZRH)" too)
+ZURICH = r"(?i)^(z[uü]rich|zrh)\b|\bzrh\b|\bz[uü]rich airport\b"   # the city, or its airport, however Google writes it back
 LONDON = r"^London$"
-HEATHROW = r"^(London( Heathrow)?( Airport)?( \(LHR\))?|Heathrow( Airport)?|LHR)$"
+HEATHROW = r"(?i)^london$|heathrow|\blhr\b"
 
 
 def check_flights(page, run, origin=ZURICH, destination=LONDON):
@@ -161,8 +158,8 @@ def check_flights(page, run, origin=ZURICH, destination=LONDON):
     return {
         "search_page": host == "www.google.com" and path == "/travel/flights/search",
         "one_way": "One way" in text and "Round trip" not in text,
-        "origin": bool(re.match(origin, inputs.get("Where from?") or "")),
-        "destination": bool(re.match(destination, inputs.get("Where to?") or "")),
+        "origin": bool(re.search(origin, inputs.get("Where from?") or "")),
+        "destination": bool(re.search(destination, inputs.get("Where to?") or "")),
         "date": FLIGHT_DATE[0].encode() in tfs,
         "results": bool(flights) and all(FLIGHT_DATE[2] in f for f in flights if f != "Select flight"),
     }
@@ -296,7 +293,7 @@ def tasks(fixtures):
 
 # What a checker reads after the run, in the run's tab. A sync function (async evaluate is a known Copper gap).
 READ_PAGE = """() => ({
-  url: location.href, title: document.title,
+  url: location.href, title: document.title, ready: document.readyState,
   text: (document.body ? document.body.innerText : '').slice(0, 30000),
   inputs: [...document.querySelectorAll('input')].filter(e => e.offsetParent)
     .map(e => [e.getAttribute('aria-label') || e.placeholder || e.name || '', e.value]).slice(0, 80),
@@ -352,7 +349,13 @@ def play_copper(copper, task, arm, sid):
         error = f"{type(e).__name__}: {e}"[:300]
         run = {"status": "error", "note": error, "elapsed_ms": int((time.time() - begun) * 1000), "steps": [], "totals": {}}
     try:
-        page = json.loads(copper.call("browser_evaluate", {"function": READ_PAGE}, timeout=30))
+        # A page still loading (Amazon's product page right after the click: no title yet) is read
+        # again for up to 5 s, so the checker judges the page, not the moment.
+        for _ in range(10):
+            page = json.loads(copper.call("browser_evaluate", {"function": READ_PAGE}, timeout=30))
+            if page.get("title") or page.get("ready") == "complete":
+                break
+            time.sleep(0.5)
     except Exception as e:  # the checker then fails on an empty page
         page = {"read_error": f"{type(e).__name__}: {e}"[:200]}
     finally:
@@ -420,6 +423,12 @@ def record(task_id, task, arm, rnd, run, page, fixtures, sid):
     reused = t.get("text_reused") or 0
     # uibench's verdict is the app's own (it doesn't need DONE, as in perf/uibench.py); elsewhere DONE + checker
     passed = verified if task["check"] == "app" else (status == task.get("expect", "done") and verified)
+    extra = {}
+    if task.get("flights"):
+        # Google's own failure, not Jev's: its results call answered and the page says so
+        extra["provider_error"] = "Oops, something went wrong" in (page.get("text") or "")
+        extra["results_req"] = [n for s in steps for n in (s.get("net") or []) if "GetShoppingResults" in n]
+        extra["inputs"] = [x for x in page.get("inputs") or [] if x and x[0] in ("Where from?", "Where to?")][:4]
     return {
         "at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "load1": round(os.getloadavg()[0], 2),
         "group": task["group"], "task": task_id, "arm": arm, "round": rnd, "sid": sid,
@@ -434,12 +443,13 @@ def record(task_id, task, arm, rnd, run, page, fixtures, sid):
                                  "text_model", "settles", "settles_capped")},
         "fills": fills, "text_calls": calls, "text_reused": reused, "literal_fills": max(0, fills - calls - reused),
         "final_url": page.get("url") or (run.get("page") or {}).get("url"), "final_title": page.get("title"),
-        "read_error": page.get("read_error"), "viewport": page.get("viewport"),
+        "read_error": page.get("read_error"), "viewport": page.get("viewport"), "doubts": t.get("doubts"), **extra,
         "steps": [{"op": s.get("operation"), "kind": s.get("kind"), "label": (s.get("label") or "")[:60], "text": s.get("text"),
                    "p": s.get("probability"), "obs": round(s.get("observe_ms") or 0), "dec": round(s.get("decide_ms") or 0),
                    "jev": round(s.get("jev_ms") or 0), "txt": round(s.get("text_ms") or 0), "act": round(s.get("act_ms") or 0),
                    "set": round(s.get("settle_ms") or 0), "tok": s.get("input_tokens"), "burst": s.get("burst"),
-                   "cap": s.get("settle_capped"), "why": s.get("settle_why"), "url": (s.get("url") or "")[:120]} for s in steps],
+                   "cap": s.get("settle_capped"), "why": s.get("settle_why"), "url": (s.get("url") or "")[:120],
+                   "net": s.get("net"), "fly": s.get("in_flight")} for s in steps],
     }
 
 
@@ -491,7 +501,8 @@ def summarize(results, meta):
     groups = [g for g in ("ultrafast", "wikigame", "uibench", "realweb", "paraphrase", "probes") if any(r["group"] == g for r in results)]
     worlds = meta.get("worlds") or {"main": {k: meta.get(k) for k in ("jevModel", "textModel", "viewport")}}
     L = [f"# Agentbench — {meta.get('label', '?')}", "",
-         f"Build: `{meta.get('app', '?')}` ({meta.get('build', '?')}) on {meta.get('machine', '?')}. "
+         f"Build: `{meta.get('app', '?')}` ({meta.get('build', '?')}, commit {meta.get('sha') or '?'}, binary {meta.get('binary_sha256') or '?'}; "
+         f"harness {meta.get('harness_sha') or '?'}) on {meta.get('machine', '?')}. "
          f"Load avg during runs: median {f(med([r['load1'] for r in results]))}, max {f(max([r['load1'] for r in results] or [0]))}.", "",
          "Probe worlds (configured): " + "; ".join(f"{w}: Jev {c.get('jevModel') or '?'}, text model {c.get('textModel') or '(build default)'}, "
                                                     f"viewport {c.get('viewport')}" for w, c in worlds.items()) + ".",
@@ -527,7 +538,7 @@ def summarize(results, meta):
                 f(med([r["jev_ms"] / r["decisions"] for r in rs if r.get("jev_ms") and r.get("decisions")])),
                 f(med([r.get("input_tokens") for r in rs])), f(statistics.mean([text_calls(r) for r in rs]))))
     L += ["", "## By task × arm (pass · wall p50 / p90 · decisions p50 over passes · values typed from the goal / by the text model, per run)", "",
-          "| Task | Published (ultrafast) | " + " | ".join(arms) + " |", "|---|---:|" + "---:|" * len(arms)]
+          "| Task | " + " | ".join(arms) + " |", "|---|" + "---:|" * len(arms)]
     T = tasks("")
     for tid in [t for t in T if any(r["task"] == t for r in results)]:
         cells = []
@@ -538,13 +549,43 @@ def summarize(results, meta):
             lit = med([literal_fills(r) for r in rs])
             txt = med([text_calls(r) for r in rs])
             cells.append(f"{len(ok)}/{len(rs)} · {f(med(ok))} / {f(pct(ok, .9))} · {f(med([r['decisions'] for r in good]))} dec · {f(lit)} lit / {f(txt)} txt" if rs else "—")
-        pub = T[tid].get("published_ms")
-        L.append(f"| {T[tid].get('name', tid)} | {f(pub) + ' (1 run)' if pub else ''} | " + " | ".join(cells) + " |")
+        L.append(f"| {T[tid].get('name', tid)} | " + " | ".join(cells) + " |")
+    # Best method per task: the highest pass rate, then the fastest median pass
+    best = []
+    for tid in [t for t in T if any(r["task"] == t for r in results)]:
+        scored = []
+        for a in arms:
+            rs = [r for r in results if r["task"] == tid and r["arm"] == a]
+            if rs:
+                ok = [r["wall_ms"] for r in rs if r["pass"]]
+                scored.append((-len(ok) / len(rs), med(ok) if ok else float("inf"), a, len(ok), len(rs)))
+        if scored:
+            rate, wall, a, k, n = min(scored)
+            best.append(f"{T[tid].get('name', tid)}: **{a}** ({k}/{n}" + (f", {f(wall)} ms" if k else "") + ")")
+    L += ["", "Best method per task (pass rate, then wall p50): " + " · ".join(best) + "."]
+    fl = [r for r in results if r["task"].startswith("flights")]
+    if fl:
+        L += ["", "## Google Flights: Google's own errors (\"Oops, something went wrong\" on the final page) and Reload clicks", "",
+              "| Arm | Runs | Pass | Provider error at the end | Runs that clicked Reload | Reload clicks p50 (those runs) | Results call statuses |",
+              "|---|---:|---:|---:|---:|---:|---|"]
+        for a in arms:
+            rs = [r for r in fl if r["arm"] == a]
+            if not rs:
+                continue
+            reloads = [sum(1 for s in r.get("steps") or [] if (s.get("label") or "").startswith("Reload")) for r in rs]
+            statuses = {}
+            for r in rs:
+                for n in r.get("results_req") or []:
+                    statuses[n.split()[0]] = statuses.get(n.split()[0], 0) + 1
+            L.append(f"| {a} | {len(rs)} | {sum(r['pass'] for r in rs)} | {sum(1 for r in rs if r.get('provider_error'))} | "
+                     f"{sum(1 for x in reloads if x)} | {f(med([x for x in reloads if x]))} | "
+                     + (", ".join(f"{k}×{v}" for k, v in sorted(statuses.items())) or "— (builds before hc3/jev log none)") + " |")
     L += ["", "## Failures (status · failed checks · note)", ""]
     for r in results:
         if not r["pass"]:
             bad = ",".join(k for k, v in (r.get("checks") or {}).items() if not v)
-            L.append(f"- {r['task']} · {r['arm']} · r{r['round']}: {r['status']} · {bad or '-'} · {(r.get('error') or r.get('note') or '')[:120]}")
+            tag = " · Google error" if r.get("provider_error") else ""
+            L.append(f"- {r['task']} · {r['arm']} · r{r['round']}: {r['status']} · {bad or '-'}{tag} · {(r.get('error') or r.get('note') or '')[:120]}")
     return "\n".join(L) + "\n"
 
 
@@ -572,6 +613,9 @@ def selftest():
     assert not ok("flights", dict(fl, inputs=[["Where from?", "Zurich Airport (ZRH)"], ["Where to?", "London Heathrow Airport (LHR)"]]))
     assert ok("flights-iata", dict(fl, inputs=[["Where from?", "Zurich Airport (ZRH)"], ["Where to?", "London Heathrow Airport (LHR)"]]))
     assert ok("flights-de", fl) and ok("flights-lc", fl)
+    assert ok("flights-iata", dict(fl, inputs=[["Where from?", "ZRH"], ["Where to?", "Heathrow"]]))
+    assert ok("flights-iata", dict(fl, inputs=[["Where from?", "Zürich Airport"], ["Where to?", "London Heathrow Airport"]]))
+    assert not ok("flights", dict(fl, inputs=[["Where from?", "Basel"], ["Where to?", "London"]]))
     assert ok("hotel-lc", {"url": "http://x/fixture.html?scenario=travel#casa-flora", "text": HOTEL_TEXT.replace("Lisbon", "lisbon")})
     assert not ok("hotel", {"url": "http://x/fixture.html?scenario=travel#casa-flora", "text": HOTEL_TEXT.replace("Lisbon", "lisbon")})
     assert [t for t, v in T.items() if v.get("flights")] == ["flights", "flights-lc", "flights-iata", "flights-de"]
@@ -595,7 +639,7 @@ def main():
     ap.add_argument("--same-viewport", help="WxH the same world's runs must measure; --meta fails otherwise")
     ap.add_argument("--fixtures", default="http://127.0.0.1:4161")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--arms", default="shipped,turbo,classic,llm-haiku")
+    ap.add_argument("--arms", default="shipped,classic,llm-haiku,box")
     ap.add_argument("--app", default="")
     ap.add_argument("--group", help="one group (with --round: one batch of one round)")
     ap.add_argument("--groups", help="comma list of groups to plan (with --rounds); default: --group")
@@ -659,7 +703,15 @@ def main():
             configured[w] = {"world": name, "port": port, "viewport": vp,
                              "arms": [x for x in arms if (x in SAME_WORLD_ARMS) == (w == "same")],
                              **{k: intel.get(k) for k in ("jevModel", "textModel", "routerModel")}}
+        exe = os.path.join(a.app, "Contents/MacOS/Copper")
+        binary = None
+        if os.path.exists(exe):
+            import hashlib
+            with open(exe, "rb") as fh:
+                binary = hashlib.sha256(fh.read()).hexdigest()[:16]
         meta = {"label": os.path.basename(os.path.dirname(a.out.rstrip("/"))), "app": a.app, "build": info,
+                "sha": os.environ.get("AGENTBENCH_SHA") or None, "harness_sha": os.environ.get("AGENTBENCH_HARNESS_SHA") or None,
+                "binary_sha256": binary,
                 "machine": subprocess.run(["sysctl", "-n", "hw.model"], capture_output=True, text=True).stdout.strip(),
                 "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "load": os.getloadavg(), "arms": a.arms,
                 "worlds": configured, **{k: configured["main"][k] for k in ("viewport", "jevModel", "textModel", "routerModel")}}

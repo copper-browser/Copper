@@ -4,16 +4,17 @@
 #
 #   perf/hillclimb/agentbench.sh <label> <path-to-Copper.app> [groups]
 #       groups: comma list of ultrafast,wikigame,uibench,realweb,paraphrase,probes (default: the first four)
-#       env: ARMS=shipped,turbo,classic,llm-haiku  ROUNDS_ULTRAFAST=10 ROUNDS_WIKIGAME=3
+#       env: ARMS=shipped,classic,llm-haiku,box  ROUNDS_ULTRAFAST=10 ROUNDS_WIKIGAME=3
 #            ROUNDS_UIBENCH=2 ROUNDS_REALWEB=2 ROUNDS_PARAPHRASE=2 ROUNDS_PROBES=2 TASKS=hotel,godel (only these task ids)
 #   perf/hillclimb/agentbench.sh up|down <path-to-Copper.app>   # probe world only (debugging)
 #       env (all optional): AGENTBENCH_WORLD=agentbench AGENTBENCH_PORT=4160 AGENTBENCH_FIXPORT=4161
 #            AGENTBENCH_REMOTE_DIR=hc/harness   where the devbox syncs the harness on the mini
 #            AGENTBENCH_VIEWPORT=1120x780       the page size of every run (default: the build's 1280×800)
-#            AGENTBENCH_TEXT_MODEL=<name>|default   textModel of the probe world (default: the dev world's;
-#                                               "default" leaves it unset = what a fresh install runs)
-#            The `same` arm runs in a second probe world, <world>-same on AGENTBENCH_SAME_PORT (port+2), at
-#            upstream's conditions: AGENTBENCH_SAME_VIEWPORT (1120x780) and the build's default text model.
+#            AGENTBENCH_TEXT_MODEL=<name>|default|dev  textModel of the probe world (default: "default" = unset =
+#                                               what a fresh install runs; "dev" = the dev world's, haiku before r3)
+#            (An arm in agentbench.py's SAME_WORLD_ARMS runs in a second probe world, <world>-same on
+#            AGENTBENCH_SAME_PORT (port+2), at AGENTBENCH_SAME_VIEWPORT; none since round 3.)
+#            AGENTBENCH_SRC=<git worktree of the build>  its HEAD goes into meta.json (devbox side)
 #            AGENTBENCH_JEV_ENDPOINT=<url>      jevEndpoint of the probe world (parity/parity.py's recorder)
 #            AGENTBENCH_FLIGHTS_GAP=45          seconds between Google Flights runs (Google throttles back-to-back searches)
 #            AGENTBENCH_CHUNK=300               seconds of runs per hold of the shared lock
@@ -31,7 +32,11 @@ if [ "$(uname)" = Linux ]; then
   host="${AGENTBENCH_HOST:-mac-mini}"
   remote="${AGENTBENCH_REMOTE_DIR:-hc/harness}"
   rsync -az --exclude __pycache__ "$here/" "$host:$remote/"
-  envs=""; for v in ARMS ROUNDS_ULTRAFAST ROUNDS_WIKIGAME ROUNDS_UIBENCH ROUNDS_REALWEB ROUNDS_PARAPHRASE ROUNDS_PROBES TASKS ULTRAFAST_DIR AGENTBENCH_ALLOW_CHROME \
+  # what was measured: the build's commit (AGENTBENCH_SRC) and the harness's, into meta.json
+  [ -n "${AGENTBENCH_SRC:-}" ] && AGENTBENCH_SHA="$(git -C "$AGENTBENCH_SRC" rev-parse HEAD)$(git -C "$AGENTBENCH_SRC" diff --quiet HEAD || echo -dirty)"
+  AGENTBENCH_HARNESS_SHA="$(git -C "$here" rev-parse HEAD)$(git -C "$here" diff --quiet HEAD -- . || echo -dirty)"
+  export AGENTBENCH_SHA AGENTBENCH_HARNESS_SHA
+  envs=""; for v in AGENTBENCH_SHA AGENTBENCH_HARNESS_SHA ARMS ROUNDS_ULTRAFAST ROUNDS_WIKIGAME ROUNDS_UIBENCH ROUNDS_REALWEB ROUNDS_PARAPHRASE ROUNDS_PROBES TASKS ULTRAFAST_DIR AGENTBENCH_ALLOW_CHROME \
       AGENTBENCH_WORLD AGENTBENCH_PORT AGENTBENCH_FIXPORT AGENTBENCH_VIEWPORT AGENTBENCH_TEXT_MODEL AGENTBENCH_JEV_ENDPOINT AGENTBENCH_PRIVATE \
       AGENTBENCH_SAME_PORT AGENTBENCH_SAME_VIEWPORT AGENTBENCH_FLIGHTS_GAP AGENTBENCH_CHUNK; do
     [ -n "${!v:-}" ] && envs+="$v=$(printf %q "${!v}") "; done
@@ -70,7 +75,7 @@ missing = [k for k in ("jevKey", "routerKey") if k not in out]
 if missing: sys.exit("dev world intelligence.json lacks " + ",".join(missing))
 text = os.environ.get("AGENTBENCH_TEXT_MODEL", "")
 if text == "default": out.pop("textModel", None)
-elif text: out["textModel"] = text
+elif text and text != "dev": out["textModel"] = text
 if os.environ.get("AGENTBENCH_JEV_ENDPOINT"): out["jevEndpoint"] = os.environ["AGENTBENCH_JEV_ENDPOINT"]
 q = os.path.join(folder, "intelligence.json")
 with open(os.open(q, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f: json.dump(out, f)
@@ -112,7 +117,7 @@ PLIST
 }
 
 up_all() {
-  up "$1" "$world" "$port" "${AGENTBENCH_VIEWPORT:-}" "${AGENTBENCH_TEXT_MODEL:-}"
+  up "$1" "$world" "$port" "${AGENTBENCH_VIEWPORT:-}" "${AGENTBENCH_TEXT_MODEL:-default}"
   case ",${ARMS:-}," in *,same,*) up "$1" "$same_world" "$same_port" "$same_viewport" default ;; esac
 }
 
@@ -136,7 +141,7 @@ touch "$lock"
 trap down EXIT
 up_all "$app" | tee -a "$out/run.log"
 py=(python3 "$here/agentbench/agentbench.py" --port "$port" --world "$world" --fixtures "http://127.0.0.1:$fixport"
-    --out "$out" --arms "${ARMS:-shipped,turbo,classic,llm-haiku}" --app "$app" --same-world "$same_world" --same-port "$same_port")
+    --out "$out" --arms "${ARMS:-shipped,classic,llm-haiku,box}" --app "$app" --same-world "$same_world" --same-port "$same_port")
 [ -n "${AGENTBENCH_VIEWPORT:-}" ] && py+=(--viewport "$AGENTBENCH_VIEWPORT")
 case ",${ARMS:-}," in *,same,*) py+=(--same-viewport "$same_viewport") ;; esac
 [ -n "${TASKS:-}" ] && py+=(--tasks "$TASKS")
