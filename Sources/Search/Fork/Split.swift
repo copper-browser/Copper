@@ -32,6 +32,7 @@ final class Split: ObservableObject {
         holder = nil
         landing = false
         still = nil
+        picturing = false
     }
 
     /// Which tabs are kept side by side, both ways round. Arc's split views
@@ -117,24 +118,29 @@ final class Split: ObservableObject {
 
     /// Fork (motion): the page that was on screen, as it looked before the
     /// split made it narrower. Drawn over it while the pane glides in (its
-    /// web view re-wraps a beat behind the glide: clipped, then one snap)
-    /// and faded off once it has re-wrapped (`SplitStage`).
-    @Published var still: (id: Tab.ID, picture: NSImage)?
+    /// web view re-wraps well behind the glide: clipped, then one snap)
+    /// and taken off once it has (`landed`).
+    @Published private(set) var still: (id: Tab.ID, picture: NSImage)?
+    /// The picture is asked for and not back yet: the glide waits for it
+    /// (`SplitStage`), since the web view takes its new width the moment the
+    /// glide starts and a picture taken after that is cut to it.
+    private(set) var picturing = false
 
     func open(with tab: Tab, in browser: Browser) {
         guard tab.id != browser.activeID else { return }
         growing = !on(in: browser)
-        // Asked before the pane exists, so WebKit draws it at the old width.
+        landing = growing || landing
         if growing, let left = browser.active, let web = left.built, !web.unpainted, web.bounds.width > 1 {
             let id = left.id
+            picturing = true
             web.takeSnapshot(with: nil) { [weak self] image, _ in
                 MainActor.assumeIsolated {
-                    guard let self, let image, self.landing else { return }
-                    self.still = (id, image)
+                    guard let self, self.picturing else { return }
+                    self.picturing = false
+                    if let image, self.landing { self.still = (id, image) }
                 }
             }
         }
-        landing = growing || landing
         // A tab on another window's stage is handed over first, as select
         // would; that window lands on another of its own.
         Spaces.shared.claim(tab, for: browser)
@@ -146,7 +152,26 @@ final class Split: ObservableObject {
         tab.touch()
     }
 
-    func close() { unpair(side); side = nil; swapped = false; holder = nil; landing = false; still = nil }
+    func close() { unpair(side); side = nil; swapped = false; holder = nil; landing = false; still = nil; picturing = false }
+
+    /// Fork (motion): the pane has glided in. Its cross can show, and the
+    /// picture comes off once the page under it has drawn at its new width —
+    /// at once, never faded (two layouts of one text crossing is worse than
+    /// one swap). WebKit says when through a name outside the public
+    /// framework; one that doesn't answer gets a fixed beat.
+    func landed(in browser: Browser) {
+        landing = false
+        picturing = false
+        guard let shown = still, let web = browser.tabs.first(where: { $0.id == shown.id })?.built else { still = nil; return }
+        let id = shown.id
+        let off: @MainActor () -> Void = { [weak self] in if self?.still?.id == id { self?.still = nil } }
+        let next = NSSelectorFromString("_doAfterNextPresentationUpdate:")
+        if web.responds(to: next) {
+            let block: @convention(block) () -> Void = { MainActor.assumeIsolated { off() } }
+            web.perform(next, with: block)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { MainActor.assumeIsolated { off() } }
+    }
 
     /// The cross on a pane's own toolbar. The tab goes, the split goes with
     /// it, and the other pane's page is what you are left looking at — which
@@ -159,6 +184,7 @@ final class Split: ObservableObject {
         holder = nil
         landing = false
         still = nil
+        picturing = false
         browser.close(tab)
         if let other, other.id != tab.id, browser.tabs.contains(where: { $0.id == other.id }) {
             browser.select(other)
@@ -405,27 +431,34 @@ struct SplitStage: View {
             .coordinateSpace(name: Split.space)
             .onAppear {
                 guard split.growing else { return }
-                // An ease-out, not glide's spring: a spring's last few points of
-                // overshoot each re-lay the pages out, and the split kept
-                // shuffling for 300 ms after it looked done.
-                // Fork (motion): the cross comes once the pane has landed; the
-                // picture of the old page goes once its page has re-wrapped.
-                let still = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-                withAnimation(still ? nil : .easeOut(duration: 0.28), completionCriteria: .logicallyComplete) {
-                    split.growing = false
-                } completion: {
-                    split.landing = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        withAnimation(.easeOut(duration: 0.12)) { split.still = nil }
-                    }
+                // Fork (motion): once the picture of the page is back (a frame
+                // or two), or after 120 ms without it.
+                if split.picturing {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { glide() }
+                } else {
+                    glide()
                 }
             }
+            .onChange(of: split.still?.id) { _, id in if id != nil { glide() } }
             .onChange(of: browser.activeID) { was, _ in split.reconcile(browser, was: was) }
             .onChange(of: browser.tabs.map(\.id)) { _, _ in split.reconcile(browser) }
         } else if card {
             PageCard(tab: active)
         } else {
             Page(tab: active)
+        }
+    }
+
+    /// The new pane slides out to its share. An ease-out, not glide's
+    /// spring: a spring's last few points of overshoot each re-lay the pages
+    /// out, and the split kept shuffling for 300 ms after it looked done.
+    private func glide() {
+        guard split.growing else { return }
+        let still = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        withAnimation(still ? nil : .easeOut(duration: 0.28), completionCriteria: .logicallyComplete) {
+            split.growing = false
+        } completion: {
+            split.landed(in: browser)
         }
     }
 

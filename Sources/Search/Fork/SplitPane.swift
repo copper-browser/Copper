@@ -90,7 +90,8 @@ struct SplitCard: View {
 
     /// Fork (motion): drawn at its own size from the page's top-left corner
     /// and cut where the card ends — the page as it was, its right side
-    /// sliding under the new pane, until the page under it has re-wrapped.
+    /// sliding under the new pane, until the page under it has re-wrapped
+    /// (`Split.landed`).
     @ViewBuilder private var picture: some View {
         if let still {
             Image(nsImage: still)
@@ -100,7 +101,7 @@ struct SplitCard: View {
                 .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: SplitMetrics.corner, bottomTrailingRadius: SplitMetrics.corner, style: .continuous))
                 .padding(.top, bar)
                 .allowsHitTesting(false)
-                .transition(.asymmetric(insertion: .identity, removal: .opacity))
+                .transition(.identity)
         }
     }
 
