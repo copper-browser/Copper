@@ -2139,13 +2139,13 @@ enum Ultrafast {
                     "url": string("Open this first"),
                     "newTab": bool("Open url in a background tab of your own"),
                     "focus": bool("With newTab: show it to the user"),
-                    "private": bool("With newTab: private (empty cookies, nothing kept)"),
+                    "private": bool("With newTab: private, nothing kept"),
                     "tab": string("Tab id from browser_tabs"),
                     "maxSteps": number("Cap on actions; default \(maxSteps)"),
-                    "elements": bool("Append the element table; default true"),
+                    "elements": bool("Default true"),
                     "vision": string("auto (default), off, screenshot, marks, box, pixels"),
                     "model": string("jev-latest, jev-preview, jev-1.14.0"),
-                    "json": bool("One JSON object instead of the text report"),
+                    "json": bool("JSON, not the text report"),
                     "strategy": string("Comma-separated: classic, fast, literal, burst, lean, paste, watch, turbo, verify, submit, llm[=model]; default this Mac's Fast mode"),
                 ], "required": ["goal"]] as [String: Any],
             ],
@@ -2155,9 +2155,8 @@ enum Ultrafast {
                 "inputSchema": ["type": "object", "properties": [
                     "goal": string("Same text to continue"),
                     "tab": string("Tab id from browser_tabs"),
-                    "vision": string("As jev_run, at session start"),
-                    "model": string("As jev_run, at session start"),
-                    "strategy": string("As jev_run, at session start"),
+                    // As jev_run's, at the session's start.
+                    "vision": ["type": "string"], "model": ["type": "string"], "strategy": ["type": "string"],
                 ], "required": ["goal"]] as [String: Any],
             ],
             [

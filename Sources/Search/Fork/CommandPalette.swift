@@ -98,6 +98,10 @@ struct CommandPalette: View {
                 // Fork (ui-motion): no travel under Reduce Motion.
                 .modifier(Arrive(travel: reduceMotion ? 0 : 6))
                 .frame(width: CommandPalette.width)
+                // Fork (r4): the first card after launch waits the one frame
+                // its window takes to be measured, rather than open at a guess
+                // and move.
+                .opacity(place.height > 0 ? 1 : 0)
                 // The card belongs to the window, not to the page area it
                 // happens to be drawn in, so it is shifted back over the
                 // column of tabs by half that column's width.
