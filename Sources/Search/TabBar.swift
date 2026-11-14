@@ -455,7 +455,7 @@ private struct TabPill: View {
         .padding(.trailing, editing ? 11 : 7)
         // Fork (uitype): the cross and the ring take no room at rest; they are
         // drawn over the title's end, which fades out under them (Side.swift).
-        .mask { RowEndFade(on: !editing && slotShown, clear: 7 + 15 + 3) }
+        .modifier(RowEndFade(on: !editing && slotShown, clear: 7 + 15 + 3))
         .overlay(alignment: .trailing) {
             if !editing { slot.padding(.trailing, 7) }
         }

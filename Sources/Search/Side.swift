@@ -681,7 +681,7 @@ struct SideRow: View { // Fork: was private; GroupedRows draws it
         // kept for them cut every title 22 pt short. They are drawn over the
         // title's end, which fades out under them.
         .padding(.trailing, editing ? 10 : 8)
-        .mask { RowEndFade(on: !editing && slotShown) }
+        .modifier(RowEndFade(on: !editing && slotShown))
         .overlay(alignment: .trailing) {
             if !editing { slot.padding(.trailing, 8) }
         }
@@ -798,17 +798,24 @@ struct SideRow: View { // Fork: was private; GroupedRows draws it
 /// Fork (uitype): a row's or a tab's end, faded out under the cross or the
 /// ring drawn over it (24 pt of fade, then clear under the 15 pt slot, its
 /// 8 pt of air and a little more) — so the slot costs the title nothing
-/// while it is empty. Off, it is one opaque rectangle.
-struct RowEndFade: View {
+/// while it is empty. Off, no mask at all: a mask is an offscreen pass, and
+/// on every row of a 185-tab column it cost the space slide 33 frames.
+struct RowEndFade: ViewModifier {
     let on: Bool
     var clear: CGFloat = 8 + 15 + 3
 
-    var body: some View {
-        HStack(spacing: 0) {
-            Rectangle()
-            LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
-                .frame(width: on ? 24 : 0)
-            Color.clear.frame(width: on ? clear : 0)
+    func body(content: Content) -> some View {
+        if on {
+            content.mask {
+                HStack(spacing: 0) {
+                    Rectangle()
+                    LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: 24)
+                    Color.clear.frame(width: clear)
+                }
+            }
+        } else {
+            content
         }
     }
 }

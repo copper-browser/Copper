@@ -378,7 +378,7 @@ struct SpacePreview: View, Equatable {
             }
             // As `SideRow`: the sound over the title's faded end, no slot kept.
             .padding(.trailing, 8)
-            .mask { RowEndFade(on: tab.noisy) }
+            .modifier(RowEndFade(on: tab.noisy))
             .overlay(alignment: .trailing) {
                 if tab.noisy {
                     Image(systemName: "speaker.wave.2.fill")
