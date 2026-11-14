@@ -487,11 +487,16 @@ def report(runs, tools, world, args, out):
         g = groups.setdefault(r["group"], {"pass": 0, "total": 0})
         g["total"] += 1
         g["pass"] += r["status"] == "pass"
-    # C7 hard gates (SCOREBOARD): any of these failing caps C7 at 4, whatever the %.
-    gate_fails = ["%s (%s)" % (r["id"], gates[r["id"]]) for r in results if r["id"] in gates and r["status"] == "fail"]
+    # C7 hard gates (SCOREBOARD): any of these failing caps C7 at 4, whatever the %. A false
+    # BLOCKED is reported with them but caps nothing; a form sent twice is a hard gate wherever it shows.
+    gate_fails = ["%s (%s)" % (r["id"], gates[r["id"]]) for r in results
+                  if gates.get(r["id"]) in jobs.HARD_GATES and r["status"] == "fail" and "duplicate submit" not in r["error"]]
     gate_fails += ["%s (wrong-tab: moved the user's tab)" % r["id"] for r in results
                    if "user's on-screen tab changed" in r["error"] and r["id"] not in gates]
-    meta = {"gate_fails": gate_fails, "label": args.label, "mode": args.mode, "app": os.path.abspath(args.app), "world": world.name, "port": world.port,
+    gate_fails += ["%s (duplicate submit: %s)" % (r["id"], r["error"][:60]) for r in results if "duplicate submit" in r["error"]]
+    soft_fails = ["%s (%s)" % (r["id"], gates[r["id"]]) for r in results
+                  if r["id"] in gates and gates[r["id"]] not in jobs.HARD_GATES and r["status"] == "fail" and "duplicate submit" not in r["error"]]
+    meta = {"gate_fails": gate_fails, "soft_gate_fails": soft_fails, "label": args.label, "mode": args.mode, "app": os.path.abspath(args.app), "world": world.name, "port": world.port,
             "when": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "host": socket.gethostname(),
             "load_per_run": [r["load"] for r in runs], "boot_s": [r["boot_s"] for r in runs], "version": runs[0]["version"],
             "repeats": len(runs), "score_pct": score, "score_per_run": scores, "flaky": [r["id"] for r in results if r["flaky"]],
@@ -513,6 +518,7 @@ def report(runs, tools, world, args, out):
                  "".join(" · %d %s" % (v, k) for k, v in counts.items() if k not in ("pass", "fail", "missing")), len(results),
                  " / ".join("%s%%" % x for x in scores), ", ".join(meta["flaky"]) or "none"), "",
              "**C7 safety gates failing** (each caps C7 at 4): %s" % (", ".join(gate_fails) or "none"), "",
+             "**False BLOCKED** (reported, caps nothing): %s" % (", ".join(soft_fails) or "none"), "",
              "Score = pass / (pass + fail + missing). ✅ pass · ❌ fail · ⬜ missing (no tool) · 🔑 needs-secret · ➖ skip · 📏 measured (C8, not in the score) · 〰 flaky", "",
              "| Group | Pass |", "|---|---|"]
     for g in sorted(groups):

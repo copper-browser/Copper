@@ -146,7 +146,10 @@ LONDON = r"^London$"
 HEATHROW = r"(?i)^london$|heathrow|\blhr\b"
 
 
-def check_flights(page, run, origin=ZURICH, destination=LONDON):
+def check_flights(page, run, origin=ZURICH, destination=LONDON, codes=(b"ZRH",)):
+    """codes: airports that count when the search's own address carries them (tfs is protobuf: 0x12 0x03 + the code).
+    The ZRH → LHR runs ended on the right results with no inputs to read (r3: 6/6 'fails', URL carried both).
+    Field 13 (j) is where from, field 14 (r) where to; 08 01 = an airport."""
     host, path = host_path(page.get("url"))
     q = urllib.parse.parse_qs(urllib.parse.urlsplit(page.get("url") or "").query).get("tfs", [""])[0]
     try:
@@ -160,8 +163,8 @@ def check_flights(page, run, origin=ZURICH, destination=LONDON):
     return {
         "search_page": host == "www.google.com" and path == "/travel/flights/search",
         "one_way": "One way" in text and "Round trip" not in text,
-        "origin": bool(re.search(origin, inputs.get("Where from?") or "")),
-        "destination": bool(re.search(destination, inputs.get("Where to?") or "")),
+        "origin": bool(re.search(origin, inputs.get("Where from?") or "")) or b"j\x07\x08\x01\x12\x03" + codes[0] in tfs,
+        "destination": bool(re.search(destination, inputs.get("Where to?") or "")) or (len(codes) > 1 and b"r\x07\x08\x01\x12\x03" + codes[1] in tfs),
         "date": FLIGHT_DATE[0].encode() in tfs,
         "results": bool(flights) and all(FLIGHT_DATE[2] in f for f in flights if f != "Select flight"),
     }
@@ -259,7 +262,7 @@ def tasks(fixtures):
     T["flights-iata"] = dict(group="paraphrase", url=flights_url, flights=True,
                              goal="One-way flights ZRH → LHR on 2027-01-20, 1 adult, economy. "
                                   "Stop when matching flight options are visible. Do not select or book a flight.",
-                             check=lambda page, run: check_flights(page, run, destination=HEATHROW), max_steps=40)
+                             check=lambda page, run: check_flights(page, run, destination=HEATHROW, codes=(b"ZRH", b"LHR")), max_steps=40)
     T["flights-de"] = dict(group="paraphrase", url=flights_url, flights=True,
                            goal="Finde einfache Flüge (nur Hinflug) von Zürich nach London am 20. Januar 2027 für einen "
                                 "Erwachsenen in der Economy Class. Hör auf, sobald passende Flüge angezeigt werden. "
@@ -693,6 +696,11 @@ def selftest():
     assert ok("flights-iata", dict(fl, inputs=[["Where from?", "ZRH"], ["Where to?", "Heathrow"]]))
     assert ok("flights-iata", dict(fl, inputs=[["Where from?", "Zürich Airport"], ["Where to?", "London Heathrow Airport"]]))
     assert not ok("flights", dict(fl, inputs=[["Where from?", "Basel"], ["Where to?", "London"]]))
+    # r3's ZRH → LHR results: no inputs read back, the address says both airports; LHR is no "London" for the city goals.
+    iata = dict(fl, url="https://www.google.com/travel/flights/search?tfs=CBwQAhoeEgoyMDI3LTAxLTIwagcIARIDWlJIcgcIARIDTEhSQAFIAXABggELCP___________wGYAQI&hl=en", inputs=[])
+    assert ok("flights-iata", iata) and not ok("flights", iata)
+    assert not ok("flights-iata", dict(iata, url=iata["url"].replace("TEhS", "TENZ")))  # LCY
+    assert not ok("flights-iata", dict(iata, url=iata["url"].replace("WlJI", "TEhS")))  # from LHR
     assert ok("hotel-lc", {"url": "http://x/fixture.html?scenario=travel#casa-flora", "text": HOTEL_TEXT.replace("Lisbon", "lisbon")})
     assert not ok("hotel", {"url": "http://x/fixture.html?scenario=travel#casa-flora", "text": HOTEL_TEXT.replace("Lisbon", "lisbon")})
     assert [t for t, v in T.items() if v.get("flights")] == ["flights", "flights-lc", "flights-iata", "flights-de"]

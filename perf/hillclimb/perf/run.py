@@ -5,6 +5,7 @@
     run.py launch  OUT ARM...       A1: warm launches alternating arms, `bench pace` marks
     run.py cold    OUT ARM...       A1 cold: each launch from a fresh copy of the .app (COLD_NOTE)
     run.py session OUT ARM...       A2 A4 A6 A7: per launch: idle cost, memory, space + tab switches, typing
+    run.py idle    OUT ARM...       A4 A6 only: the session's idle minute per launch (wakeups per process), nothing after
     run.py load    OUT ARM...       A3: Copper page loads vs bare WKWebView (rawload.swift), same pages, paired one
                                     for one on the same clock (#142), HC_LOADS=21 per page per arm (run 0 dropped)
     run.py smooth  OUT ARM...       A5: scripted scroll frame times (run on the Retina laptop)
@@ -85,6 +86,12 @@ def display_asleep():
         return bool(cg.CGDisplayIsAsleep(cg.CGMainDisplayID()))
     except OSError:
         return None
+
+
+def reduce_motion():
+    """The Mac's Reduce Motion (an idle animated column draws ~5× the main passes with it off)."""
+    r = subprocess.run(["defaults", "read", "com.apple.universalaccess", "reduceMotion"], capture_output=True, text=True)
+    return r.stdout.strip() == "1"
 
 
 def emit(out, phase, row):
@@ -404,12 +411,24 @@ def session(out, arms_):
                     emit(out, "session_error", {"arm": label, "round": r, "attempt": attempt, "error": repr(e)[:300]})
 
 
-def one_session(out, label, app, r, settle, idle, quiet):
-    t = start(app)
-    pid = t["pid"]
-    time.sleep(settle)
-    row = {"arm": label, "round": r, **t}
-    # A4 + A6: idle
+def idle_phase(out, arms_):
+    """A4 + A6 alone (r4): per launch, the idle minute of `session` (cost, wakeups per process, pins), then quit."""
+    settle, idle = N("HC_SETTLE", 30), N("HC_IDLE", 60)
+    for r in range(N("HC_ROUNDS", 6)):
+        for label, app in order(arms_, r):
+            with locked():
+                t = start(app)
+                time.sleep(settle)
+                row = {"arm": label, "round": r, **t}
+                idle_minute(row, t["pid"], idle)
+                perf.quit_world(WORLD)
+                emit(out, "session", row)
+
+
+def idle_minute(row, pid, idle):
+    """A4 + A6: footprint, then HC_IDLE seconds of nothing: CPU, wakeups (all, and per kind of process: the app, GPU,
+    network, each pin, the other pages, the rest), main passes; each pin's own cost. Fills ROW, → the pin test."""
+    row["reduce_motion"] = reduce_motion()
     row["mem_idle"] = mem(pid)
     ask({"do": "pace", "op": "reset"})
     b = procs(pid)
@@ -424,6 +443,22 @@ def one_session(out, label, app, r, settle, idle, quiet):
     pin = lambda x: (x.get("id") or "")[:8].lower() in pins
     row["heat_idle"] = [{"mb": x.get("mb"), "cpu": round(x.get("cpu") or 0, 2), "title": (x.get("title") or "")[:40],
                          "pid": x.get("pid"), "pin": pin(x), "id": x.get("id")} for x in ask({"do": "heat"}).get("tabs", [])]
+    # A6 (r4): wakeups/s and CPU per kind of process — where the idle wakeups come from
+    kinds = {}
+    for h in row["heat_idle"]:
+        kinds.setdefault(h["pid"], "pins" if h["pin"] else "pages")  # a process shared by a pin and a page counts as the pin's
+    by = {}
+    for p, x in a.items():
+        y = b.get(p)
+        if not y:
+            continue
+        k = ("app" if p == pid else kinds.get(p) or ("gpu" if "GPU" in x["name"] else "net" if "Networking" in x["name"]
+             else "web_other" if "WebContent" in x["name"] else "other"))
+        e = by.setdefault(k, {"procs": 0, "wakeups_per_s": 0.0, "cpu_pct": 0.0})
+        e["procs"] += 1
+        e["wakeups_per_s"] = round(e["wakeups_per_s"] + ((x["idle_wk"] - y["idle_wk"]) + (x["int_wk"] - y["int_wk"])) / idle, 1)
+        e["cpu_pct"] = round(e["cpu_pct"] + 100 * (x["cpu_ns"] - y["cpu_ns"]) / 1e9 / idle, 2)
+    row["idle"]["by_kind"] = by
     # A6 (r3): each pin's own idle cost — its web process's wakeups and CPU over the idle minute (b → a), and
     # whether WebKit counts its page hidden (document.visibilityState), which is what lets hidden-page timer
     # throttling apply. Numbers for the owner's pins decision (NEEDS-COLLIN).
@@ -440,6 +475,15 @@ def one_session(out, label, app, r, settle, idle, quiet):
         row["pins_idle"].append({"title": h["title"], "pid": h["pid"], "mb": h["mb"], "visibility": vis,
                                  "wakeups_per_s": round(((y["idle_wk"] - x["idle_wk"]) + (y["int_wk"] - x["int_wk"])) / idle, 1) if x and y else None,
                                  "cpu_pct": round(100 * (y["cpu_ns"] - x["cpu_ns"]) / 1e9 / idle, 2) if x and y else None})
+    return pin
+
+
+def one_session(out, label, app, r, settle, idle, quiet):
+    t = start(app)
+    pid = t["pid"]
+    time.sleep(settle)
+    row = {"arm": label, "round": r, **t}
+    pin = idle_minute(row, pid, idle)
     row["spaces"] = space_switches()
     so, sys.stdout = sys.stdout, quiet  # perf.py prints its rows; we keep them in ours
     try:
