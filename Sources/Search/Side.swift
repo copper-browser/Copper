@@ -137,7 +137,10 @@ struct SideBar: View {
         .onChange(of: browser.tabs.map(\.id)) { _, _ in sections.arrived(in: browser) }
         .onChange(of: browser.activeID) { _, now in sections.note(now) }
         .animation(Motion.quick, value: landing)
-        .animation(Motion.glide, value: browser.activeID)
+        // Fork (sidebar-perf): the live row's glide is animated where the
+        // pill is (the favourites and the rows), not over the whole column —
+        // the lights, the address, the ground and the strip redrew every
+        // frame of it (about half of a tab switch's main-thread time).
         .animation(Motion.glide, value: browser.editingTab)
         .animation(Motion.settle, value: browser.tabs.map(\.id))
         .animation(Motion.settle, value: browser.pinnedCount)
@@ -240,6 +243,7 @@ struct SideBar: View {
             }
         } }
         .coordinateSpace(name: "pins")
+        .animation(Motion.glide, value: browser.activeID) // Fork (sidebar-perf): see body
     }
 
     /// The one square actually held stays glued to the fingers; every other
@@ -343,6 +347,7 @@ struct SideBar: View {
                 // Fork (scroll-bounce): elastic up and down, never sideways.
                 .background(SideScrollElasticity())
             }
+            .animation(Motion.glide, value: browser.activeID) // Fork (sidebar-perf): see body
             .scrollBounceBehavior(.always, axes: .vertical)
             .frame(maxHeight: .infinity)
             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { drag.pinLine = $0 } // Fork (saved-drag): above it, the favourites
