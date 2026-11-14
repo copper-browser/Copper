@@ -175,7 +175,8 @@ TIMING_JS = """
 """
 
 
-def load(world, url, runs, fresh=False, settle=1.5, user=False):
+def load(world, url, runs, fresh=False, settle=1.5, user=False, between=None):
+    """N loads of URL in a new tab. BETWEEN(i), if given, runs after each one (an interleaved control arm)."""
     out = []
     for i in range(runs):
         try:
@@ -184,14 +185,19 @@ def load(world, url, runs, fresh=False, settle=1.5, user=False):
             pass
         if user:
             # The person's path: ⌘T, the address, Return — a foreground tab.
-            reply = ask(world, {"do": "newtab", "text": url, "go": True, "settle": 0.4, "how": "open"})
             t0 = time.time()
+            reply = ask(world, {"do": "newtab", "text": url, "go": True, "settle": 0.4, "how": "open"})
+            t0 = reply["t0"] / 1000 if reply.get("t0") else t0  # Return, on the app's clock
             tabs = ask(world, {"do": "tabs"}).get("tabs", [])
             tid = next((t["id"] for t in tabs if t.get("active")), None)
         else:
             t0 = time.time()
             tab = ask(world, {"do": "open", "url": url})
             tid = tab.get("id")
+            # The app's own clock when it started on the open, as rawload.swift starts its clock at the web
+            # view: the socket round trip is the harness's, not Copper's. Older builds don't send it.
+            if tab.get("t0"):
+                t0 = tab["t0"] / 1000
             try:
                 ask(world, {"do": "select", "id": tid})
             except Exception:
@@ -225,6 +231,8 @@ def load(world, url, runs, fresh=False, settle=1.5, user=False):
         else:
             ask(world, {"do": "close", "id": tid})
         time.sleep(0.5)
+        if between:
+            between(i)
     return out
 
 

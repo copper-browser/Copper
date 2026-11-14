@@ -15,7 +15,7 @@ ARM = label=/path/to/Copper.app. Rows land in OUT/raw/<phase>.jsonl. Every launc
 probe world from HC_SEED (a frozen copy of a real session: tabs, spaces, history, icons; never
 cookies or passwords) so every launch of every arm starts from the same state.
 """
-import ctypes, fcntl, glob, json, os, platform, re, shutil, signal, socket, statistics, subprocess, sys, time
+import contextlib, ctypes, fcntl, glob, json, os, platform, re, shutil, signal, socket, statistics, subprocess, sys, time
 from contextlib import contextmanager
 
 HOME = os.path.expanduser("~")
@@ -58,17 +58,29 @@ def order(arms_, r):
     return arms_ if r % 2 == 0 else arms_[::-1]
 
 
+_held = False
+
+
 @contextmanager
 def locked():
-    if not LOCK:
+    global _held
+    if not LOCK or _held:  # already held for the whole round (round_locked)
         yield
         return
     with open(os.path.expanduser(LOCK), "a") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
+        _held = True
         try:
             yield
         finally:
+            _held = False
             fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def round_locked():
+    """HC_LOCK_ROUND=1: one lock per ABBA round (both arms back to back) instead of per launch, for a
+    long queue for the lock; the per-launch `locked()` inside then takes nothing."""
+    return locked() if os.environ.get("HC_LOCK_ROUND") == "1" else contextlib.nullcontext()
 
 
 def load_avg():
@@ -259,7 +271,7 @@ def serve(directory, port):
 
 def rawload_app():
     """perf/rawload.swift wrapped in an .app (it needs a window server). A build: locked on the mini."""
-    app = os.path.join(HOME, "hc", "RawLoad.app")
+    app = os.path.join(TOOLS, "RawLoad.app")  # per tools dir: a --step build never swaps under another worker
     binp = os.path.join(app, "Contents", "MacOS", "RawLoad")
     src = os.path.join(TOOLS, "perf", "rawload.swift")
     if os.path.exists(binp) and os.path.getmtime(binp) > os.path.getmtime(src):
@@ -279,16 +291,17 @@ def rawload_app():
 def launch(out, arms_):
     """A1: restored-page paint per launch, arms alternating. Round 0 is dropped in the summary."""
     for r in range(N("HC_LAUNCHES", 8)):
-        for label, app in order(arms_, r):
-            with locked():
-                t = start(app)
-                time.sleep(3)  # let `settled` land; launchBusy then covers the launch
-                pace = ask({"do": "pace"})
-                emit(out, "launch", {"arm": label, "round": r, **t, "marks": pace.get("marks", {}),
-                                     "launchBusy": pace.get("launchBusy"),
-                                     "firstPass": (pace.get("launchSlow") or [[0, None]])[0][1],
-                                     "launchSlow": pace.get("launchSlow")})
-                perf.quit_world(WORLD)
+        with round_locked():
+            for label, app in order(arms_, r):
+                with locked():
+                    t = start(app)
+                    time.sleep(3)  # let `settled` land; launchBusy then covers the launch
+                    pace = ask({"do": "pace"})
+                    emit(out, "launch", {"arm": label, "round": r, **t, "marks": pace.get("marks", {}),
+                                         "launchBusy": pace.get("launchBusy"),
+                                         "firstPass": (pace.get("launchSlow") or [[0, None]])[0][1],
+                                         "launchSlow": pace.get("launchSlow")})
+                    perf.quit_world(WORLD)
 
 
 # A1 cold without sudo (no `purge`): what it does and doesn't cover is COLD_NOTE, printed in perf.md.
@@ -456,46 +469,58 @@ LOAD_PAGES = [("local", SITE), ("wikipedia", "https://en.wikipedia.org/wiki/WebK
 
 
 def rawload(url, runs):
+    """Bare WKWebView control, stepped: → (step, rows, proc). step(i) starts its load i and waits for its row,
+    so Copper's and the bare view's loads alternate one for one on the same network (rawload --step)."""
     app = rawload_app()
-    path = f"/tmp/hc-rawload-{os.getpid()}.txt"
-    if os.path.exists(path):
-        os.unlink(path)
-    subprocess.run(["open", "-W", "-n", "-g", app, "--stdout", path, "--args", url, str(runs)], check=True, timeout=300)
+    path, go = f"/tmp/hc-rawload-{os.getpid()}.txt", f"/tmp/hc-rawload-{os.getpid()}.go"
+    for p in (path, go):
+        if os.path.exists(p):
+            os.unlink(p)
+    proc = subprocess.Popen(["open", "-W", "-n", "-g", app, "--stdout", path, "--args", url, str(runs), "--step", go])
     rows = []
-    for line in open(path):
-        if line.startswith("{"):
-            m = json.loads(line)
+
+    def step(i):
+        open(go, "w").close()
+        t = time.time()
+        while len(rows) <= i and time.time() - t < 60:
+            time.sleep(0.05)
+            lines = list(open(path)) if os.path.exists(path) else []
+            rows[:] = [json.loads(l) for l in lines if l.startswith("{") and l.endswith("\n")]
+        for m in rows:
             m.pop("list", None); m.pop("events", None)
-            rows.append(m)
-    os.unlink(path)
-    return rows
+    return step, rows, proc
 
 
 def load(out, arms_):
-    """A3: N loads of each page in a fresh Copper tab, then N in a fresh bare WKWebView, interleaved
-    per page so the network is the same for both. The first of each N is dropped (cold DNS/cache)."""
-    n = N("HC_LOADS", 6)
+    """A3 (#142's paired measurement): HC_LOADS loads of each page in a fresh Copper tab, each followed by one
+    in a fresh bare WKWebView, so both see the same network. Both clocks start in-app as the view is made
+    (Copper's `open` reply carries its t0; older builds fall back to the socket clock). Run 0 of each arm is
+    dropped (cold DNS/cache): n = HC_LOADS − 1 pairs per page."""
+    n = N("HC_LOADS", 21)
     quiet = open(os.devnull, "w")
     for r in range(N("HC_LOAD_ROUNDS", 1)):
-        for label, app in order(arms_, r):
-            with locked():
-                l0 = start(app)["load0"]
-                time.sleep(10)
-                for name, url in LOAD_PAGES:
-                    so, sys.stdout = sys.stdout, quiet
-                    try:
-                        rows = perf.load(WORLD, url, n)
-                    finally:
-                        sys.stdout = so
-                    for m in rows:
-                        emit(out, "load", {"arm": label, "round": r, "who": "copper", "page": name, "load0": l0,
-                                           **{k: m.get(k) for k in ("run", "app_overhead_ms", "req_to_fcp_ms", "req_to_load_ms", "fcp", "load",
-                                                                     "ttfb", "wait_ms", "busy", "longest", "resources", "bytes")}})
-                    for m in rawload(url, n):
-                        emit(out, "load", {"arm": label, "round": r, "who": "raw", "page": name, "load0": l0,
-                                           **{k: m.get(k) for k in ("run", "app_overhead_ms", "req_to_fcp_ms", "req_to_load_ms", "fcp", "load",
-                                                                     "ttfb", "finish_ms", "resources", "bytes")}})
-                perf.quit_world(WORLD)
+        with round_locked():
+            for label, app in order(arms_, r):
+                with locked():
+                    l0 = start(app)["load0"]
+                    time.sleep(10)
+                    for name, url in LOAD_PAGES:
+                        step, raw, proc = rawload(url, n)
+                        so, sys.stdout = sys.stdout, quiet
+                        try:
+                            rows = perf.load(WORLD, url, n, between=step)
+                        finally:
+                            sys.stdout = so
+                        proc.wait(timeout=60)
+                        for m in rows:
+                            emit(out, "load", {"arm": label, "round": r, "who": "copper", "page": name, "load0": l0,
+                                               **{k: m.get(k) for k in ("run", "app_overhead_ms", "req_to_fcp_ms", "req_to_load_ms", "fcp", "load",
+                                                                         "ttfb", "wait_ms", "busy", "longest", "resources", "bytes")}})
+                        for m in raw:
+                            emit(out, "load", {"arm": label, "round": r, "who": "raw", "page": name, "load0": l0,
+                                               **{k: m.get(k) for k in ("run", "app_overhead_ms", "req_to_fcp_ms", "req_to_load_ms", "fcp", "load",
+                                                                         "ttfb", "finish_ms", "resources", "bytes")}})
+                    perf.quit_world(WORLD)
 
 
 def scroll_pages():
@@ -624,17 +649,18 @@ def hook(req, timeout=60):
 def hooks(out, arms_):
     """One launch per arm per round: `bench keylat` for ⌘T and ⌘K, then `bench wheel` on every scroll page."""
     for r in range(N("HC_HOOK_ROUNDS", 1)):
-        for label, app in order(arms_, r):
-            with locked():
-                base = {"arm": label, "round": r, "load0": start(app)["load0"]}
-                time.sleep(10)
-                keylat(out, base)
-                # the wheel on the laptop only (HC_WHEEL=1 forces it): ProMotion, and the mini's fg window
-                # can be covered by other probes' windows, which stops the page's rAF
-                for page, url in scroll_pages() if LAPTOP or os.environ.get("HC_WHEEL") == "1" else []:
-                    if not wheel(out, {**base, "page": page}, url):
-                        break
-                perf.quit_world(WORLD)
+        with round_locked():
+            for label, app in order(arms_, r):
+                with locked():
+                    base = {"arm": label, "round": r, "load0": start(app)["load0"]}
+                    time.sleep(10)
+                    keylat(out, base)
+                    # the wheel on the laptop only (HC_WHEEL=1 forces it): ProMotion, and the mini's fg window
+                    # can be covered by other probes' windows, which stops the page's rAF
+                    for page, url in scroll_pages() if LAPTOP or os.environ.get("HC_WHEEL") == "1" else []:
+                        if not wheel(out, {**base, "page": page}, url):
+                            break
+                    perf.quit_world(WORLD)
 
 
 def keylat(out, base):
