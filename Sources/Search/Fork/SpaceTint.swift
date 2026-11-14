@@ -125,6 +125,33 @@ struct SpaceTint {
     /// dark enough to read on a light square and light enough on a dark one.
     var mark: Color { mix(hue == nil ? 0 : 0.66, dark ? 0.92 : 0.40) }
 
+    /// Fork (space-chips): this space's mark drawn on another space's column
+    /// — the chips at the foot all sit on the current one — so it is light
+    /// or dark for that column, not for its own.
+    func mark(on column: SpaceTint) -> Color {
+        guard let hue else { return column.muted }
+        return Color(hue: hue, saturation: 0.66, brightness: column.dark ? 0.92 : 0.40)
+    }
+
+    /// Fork (space-chips): the tile a space with no emoji or symbol wears its
+    /// initial on, in its own colour at full strength — so five such spaces
+    /// at the foot are five colours and five letters, not five grey dots.
+    var tile: SpaceTheme.Stop {
+        guard let hue else { return SpaceTheme.Stop(r: 0.55, g: 0.55, b: 0.57) }
+        return SpaceTheme.Stop(hue: hue, saturation: 0.7, brightness: night ? 0.72 : 0.62)
+    }
+
+    /// The initial on the tile: white, or near-black (`tileDark`) on a tile
+    /// too light for white (yellow, orange in the dark) — whichever of the
+    /// two has more contrast on it.
+    var tileInk: Color { tileInkIsWhite ? .white : Color(white: SpaceTint.tileDark) }
+    var tileInkIsWhite: Bool {
+        let l = tile.luminance
+        let dark = SpaceTheme.Stop(r: SpaceTint.tileDark, g: SpaceTint.tileDark, b: SpaceTint.tileDark).luminance
+        return 1.05 / (l + 0.05) >= (l + 0.05) / (dark + 0.05)
+    }
+    static let tileDark = 0.12
+
     /// The square behind a mark, for every space but the current one: the
     /// dot, thinned until it is a colour rather than a button.
     var chipFill: Color { dot.opacity(dark ? 0.30 : 0.22) }
@@ -135,5 +162,8 @@ struct SpaceTint {
     /// the dark — warm brown on salmon, the way Arc sets its own.
     var ink: Color { dark ? mix(0.06, 0.96) : mix(0.9, 0.19) }
     var muted: Color { ink.opacity(0.62) }
+    /// Fork (space-chips): the space's name over its rows — a step stronger
+    /// than `muted`, which came to 4.4:1 there on the default column.
+    var heading: Color { ink.opacity(0.76) }
     var faint: Color { ink.opacity(0.45) }
 }

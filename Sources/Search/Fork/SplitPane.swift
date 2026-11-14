@@ -21,9 +21,11 @@ import SwiftUI
 // A web view is also a real AppKit layer: `.clipShape` does not round it, and
 // wrapping the subtree that holds it in `.clipShape` or `.shadow` hands it the
 // wrong frame again. So the card never clips or shadows the subtree — the
-// corners are painted back out afterwards (`CornerCut`), the shadow belongs to
-// the background shape alone, and the toolbar is an overlay, which does land
-// on top of an AppKit layer where a sibling would not.
+// page's bottom corners are cut on the stage's own layer (`PageCorners`,
+// Fork/PageFrame.swift), the shadow belongs to the background shape alone,
+// and the toolbar is an overlay, which does land on top of an AppKit layer
+// where a sibling would not. (The corners used to be painted back out in the
+// colour behind the card, which a picture or a gradient behind it defeats.)
 
 enum SplitMetrics {
     /// The air between the two cards.
@@ -49,53 +51,35 @@ struct SplitCard: View {
     let live: Bool
     /// The space's colour, for the live pane's outline.
     let tint: Color
-    /// What is behind the cards, so the corners can be painted back out in it.
-    let wash: Color
     /// The room the stage measured for this card. Not negotiable: see above.
     let size: CGSize
 
     var body: some View {
         Page(tab: tab)
+            .environment(\.pageCorners, PageCorners(radius: SplitMetrics.corner, bottomOnly: true))
             .frame(width: size.width, height: max(size.height - SplitMetrics.bar, 1))
             .padding(.top, SplitMetrics.bar)
             .frame(width: size.width, height: size.height)
             .background(plate)
             .overlay(alignment: .top) { SplitBar(browser: browser, tab: tab, live: live) }
-            // The web view is square whatever we ask of it, so the corners are
-            // painted back out in the colour behind the card. No layer tree
-            // argues with paint.
-            .overlay { CornerCut(radius: SplitMetrics.corner).fill(Palette.ground, style: FillStyle(eoFill: true)) }
-            .overlay { CornerCut(radius: SplitMetrics.corner).fill(wash, style: FillStyle(eoFill: true)) }
             .overlay { edge }
             .animation(Motion.quick, value: live)
     }
 
     /// The card's own ground, and the only thing carrying the shadow — put the
     /// shadow on the subtree instead and the page inside it loses its place.
-    private var plate: some View {
-        RoundedRectangle(cornerRadius: SplitMetrics.corner, style: .continuous)
-            .fill(Palette.ground)
-            .shadow(color: .black.opacity(live ? 0.16 : 0.09), radius: live ? 10 : 6, y: 2)
-    }
+    private var plate: some View { PageCard.plate(lifted: live) }
 
     /// The live pane is outlined in the space's colour. The other is not
     /// outlined at all — that is the whole point of the outline.
-    private var edge: some View {
-        RoundedRectangle(cornerRadius: SplitMetrics.corner, style: .continuous)
-            .strokeBorder(live ? tint : Palette.hairline.opacity(0.9), lineWidth: live ? 2 : 1)
-            .allowsHitTesting(false)
-    }
-}
-
-/// Everything outside a rounded rectangle, so it can be filled with whatever
-/// is behind the card and leave the corners looking cut.
-private struct CornerCut: Shape {
-    let radius: CGFloat
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path(rect)
-        path.addPath(Path(roundedRect: rect, cornerRadius: radius, style: .continuous))
-        return path
+    @ViewBuilder private var edge: some View {
+        if live {
+            RoundedRectangle(cornerRadius: SplitMetrics.corner, style: .continuous)
+                .strokeBorder(tint, lineWidth: 1.5)
+                .allowsHitTesting(false)
+        } else {
+            PageCard.edge
+        }
     }
 }
 
@@ -127,7 +111,7 @@ struct SplitBar: View {
                 Mark(icon: tab.icon, letter: tab.monogram, size: 13, dim: !live)
                 Text(name)
                     .font(.system(size: 12))
-                    .foregroundStyle(live ? Palette.ink.opacity(0.7) : Palette.muted)
+                    .foregroundStyle(Palette.ink.opacity(live ? 0.8 : 0.62)) // Fork (page-frame): the other pane's title at AA (muted was 2.7:1)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }

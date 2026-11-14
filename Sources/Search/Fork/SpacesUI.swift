@@ -30,8 +30,10 @@ struct SpaceGlyph: View {
     let dark: Bool
     /// The letter or symbol's colour; the space's own mark colour by default.
     var ink: Color?
-    /// Arc's way: the icon on its own, filling its square, and a small dot
-    /// for a space that has no icon — never a letter.
+    /// Arc's way: the icon on its own, filling its square. A space with no
+    /// icon wears its initial on a small tile of its own colour (Fork:
+    /// space-chips) — the dot it used to wear was the same grey dot for
+    /// every space.
     var bare = false
 
     var body: some View {
@@ -44,9 +46,11 @@ struct SpaceGlyph: View {
                     .font(.system(size: size * (bare ? 0.78 : 0.48), weight: .semibold))
                     .foregroundStyle(ink ?? tint.mark)
             } else if bare {
-                Circle()
-                    .fill(ink ?? tint.mark)
-                    .frame(width: size * 0.42, height: size * 0.42)
+                Text(space.letter)
+                    .font(.system(size: size * 0.52, weight: .bold, design: .rounded))
+                    .foregroundStyle(tint.tileInk)
+                    .frame(width: size * 0.86, height: size * 0.86)
+                    .background(RoundedRectangle(cornerRadius: size * 0.26, style: .continuous).fill(tint.tile.color))
             } else {
                 Text(space.letter)
                     .font(.system(size: size * 0.5, weight: .semibold))
@@ -133,7 +137,7 @@ struct SpaceHeader: View {
         // icon is its own door, to Settings › Spaces; the rest is the menu.
         HStack(spacing: 0) {
             Button { SpaceEditing.shared.open(space.id) } label: {
-                SpaceGlyph(space: space, size: 16, dark: scheme == .dark, ink: tint.muted, bare: true)
+                SpaceGlyph(space: space, size: 16, dark: scheme == .dark, ink: tint.mark, bare: true)
                     .frame(width: 24, height: 24)
                     .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(overMark ? tint.hover : .clear))
                     .contentShape(Rectangle())
@@ -169,7 +173,7 @@ struct SpaceHeader: View {
         HStack(spacing: 10) {
             Text(space.title)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(tint.muted)
+                .foregroundStyle(tint.heading)
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 4)
@@ -182,7 +186,7 @@ struct SpaceHeader: View {
             }
             Image(systemName: "ellipsis")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(tint.muted)
+                .foregroundStyle(tint.heading)
                 .frame(width: 16)
                 .opacity(over ? 1 : 0)
         }
@@ -286,7 +290,8 @@ struct SpaceStrip<Tools: View>: View {
     private func chip(_ space: Space, index: Int) -> some View {
         let held = dragging == space.id
         return SpaceChip(space: space, current: space.id == spaces.current(in: browser), dark: scheme == .dark,
-                         over: hovering == space.id, ink: ink.ink, glow: ink.hover)
+                         over: hovering == space.id, ink: SpaceTint(space: space, dark: scheme == .dark).mark(on: ink),
+                         glow: ink.hover, plate: ink.pill)
             .id(space.id)
             .anchorPreference(key: ChipFrames.self, value: .bounds) { [space.id: $0] }
             .offset(x: held ? travel - CGFloat(index - from) * step : 0)
@@ -296,7 +301,7 @@ struct SpaceStrip<Tools: View>: View {
             .onTapGesture { SpaceEditing.shared.pressed(space.id, in: browser) }
             .gesture(reorder(space, index: index))
             .onHover { over in hovering = over ? space.id : (hovering == space.id ? nil : hovering) }
-            .help(space.id == spaces.current(in: browser) ? "\(space.title) — click to customize" : space.title)
+            .help(SpaceChip.help(space, index: index, current: space.id == spaces.current(in: browser)))
             .contextMenu { SpaceMenu(browser: browser, space: space) }
     }
 
@@ -401,28 +406,38 @@ struct SpaceChip: View {
     let current: Bool
     let dark: Bool
     let over: Bool
-    /// The column's ink, for the dot a space without an icon wears.
+    /// The symbol's colour: the space's own mark, made for the column it
+    /// sits on (`SpaceTint.mark(on:)`).
     var ink: Color? = nil
     /// The column's hover, for the square under the pointer — the column's
     /// and not the window's, so it shows on a column toned dark.
     var glow: Color? = nil
+    /// The column's live pill, under the current space's chip — the column's
+    /// one word for "this one". (Fork: space-chips)
+    var plate: Color? = nil
 
     static let size: CGFloat = 28
     static let gap: CGFloat = 5
 
-    /// Arc's: the current space's icon in full colour, every other one
-    /// greyed and thinned until the pointer lands on it.
+    /// Every space in its own colour (Fork: space-chips) — greyed to one
+    /// colour they could not be told apart — the others a little thinner
+    /// than the current one, which sits on the live pill.
     var body: some View {
         SpaceGlyph(space: space, size: 17, dark: dark, ink: ink, bare: true)
-            .saturation(current || over ? 1 : 0)
-            .opacity(current ? 1 : (over ? 0.8 : 0.42))
+            .opacity(current || over ? 1 : 0.72)
             .frame(width: SpaceChip.size, height: SpaceChip.size)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(over && !current ? (glow ?? Color.black.opacity(dark ? 0 : 0.05)) : .clear)
+                    .fill(current ? (plate ?? Color.white.opacity(dark ? 0.16 : 0.48))
+                          : over ? (glow ?? Color.black.opacity(dark ? 0 : 0.05)) : .clear)
             )
             .animation(Motion.quick, value: over)
             .animation(Motion.quick, value: current)
+    }
+    /// The tooltip: the name, and the key that goes there (⌃1–⌃9).
+    static func help(_ space: Space, index: Int, current: Bool) -> String {
+        let key = index < 9 ? " · ⌃\(index + 1)" : ""
+        return current ? "\(space.title)\(key) — click to customize" : "\(space.title)\(key)"
     }
 }
 

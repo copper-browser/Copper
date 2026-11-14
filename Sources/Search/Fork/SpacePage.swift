@@ -831,7 +831,7 @@ struct SpaceColumnPreview: View {
             .padding(8)
 
             HStack(spacing: 8) {
-                SpaceGlyph(space: space, size: 13, dark: night, ink: tint.muted, bare: true)
+                SpaceGlyph(space: space, size: 13, dark: night, ink: tint.mark, bare: true)
                 Text(space.title)
                     .font(.system(size: 12.5, weight: .semibold))
                     .foregroundStyle(tint.muted)
@@ -858,7 +858,8 @@ struct SpaceColumnPreview: View {
                 Image(systemName: "books.vertical").font(.system(size: 11)).foregroundStyle(tint.ink.opacity(0.72))
                 Spacer(minLength: 2)
                 ForEach(all.prefix(5)) { other in
-                    SpaceChip(space: other, current: other.id == space.id, dark: night, over: false, ink: tint.ink)
+                    SpaceChip(space: other, current: other.id == space.id, dark: night, over: false,
+                              ink: SpaceTint(space: other, dark: night).mark(on: tint), plate: tint.pill)
                         .scaleEffect(0.78)
                         .frame(width: 22, height: 22)
                 }

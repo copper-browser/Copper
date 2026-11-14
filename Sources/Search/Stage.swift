@@ -11,6 +11,7 @@ import WebKit
 /// what turns that into a redraw.
 struct Page: View {
     @ObservedObject var tab: Tab
+    @Environment(\.pageCorners) private var corners // Fork (page-frame): the card's corners, for what is drawn over the page
 
     var body: some View {
         ZStack {
@@ -38,6 +39,7 @@ struct Page: View {
                 // seen the moment the tab is picked, not faded in over the
                 // window's ground — it is the page as it already was.
                 Cover(picture: cover, ground: tab.coverGround)
+                    .clipShape(corners.shape)
                     .allowsHitTesting(false)
                     .transition(.asymmetric(insertion: .identity, removal: .opacity))
             }
@@ -50,11 +52,13 @@ struct Page: View {
                     .foregroundStyle(Palette.muted)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Palette.ground)
+                    .clipShape(corners.shape)
                     .transition(.opacity)
             }
 
             if let failure = tab.failure {
                 Trouble(message: failure) { tab.reload() }
+                    .clipShape(corners.shape)
                     .transition(.opacity)
             }
 
@@ -157,6 +161,7 @@ struct WebStage: NSViewRepresentable {
 
     func updateNSView(_ view: StageView, context: Context) {
         view.show(page)
+        view.round(context.environment.pageCorners) // Fork (page-frame)
     }
 }
 
