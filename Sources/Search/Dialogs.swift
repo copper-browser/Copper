@@ -64,6 +64,7 @@ extension Browser {
         initiatedByFrame frame: WKFrameInfo,
         completionHandler: @escaping ([URL]?) -> Void
     ) {
+        if FileChooser.answer(webView, parameters, completionHandler) { return } // Fork: agent-upload
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = parameters.allowsDirectories
