@@ -65,7 +65,8 @@ import Testing
         #expect(try Tools.number(["y": 120], "y", within: 1_000) == 120)
         #expect(try Tools.number([:], "y", within: 1_000) == nil)
         #expect(try Tools.number(["y": NSNull()], "y", within: 1_000) == nil)
-        for bad: Any in [1e100, -1e100, Double.infinity, true, "300"] {
+        let bads: [Any] = [1e100, -1e100, Double.infinity, true, "300"]
+        for bad in bads {
             #expect(throws: Tools.Failure.self) { try Tools.number(["deltaY": bad], "deltaY", within: 1_000_000) }
         }
         do { _ = try Tools.number(["deltaY": 1e100], "deltaY", within: 1_000_000) } catch let error as Tools.Failure {
