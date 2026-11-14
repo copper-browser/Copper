@@ -222,7 +222,8 @@ enum StateTools {
             var properties: [HTTPCookiePropertyKey: Any] = [.name: name, .value: value, .domain: domain, .path: path]
             if httpOnly { properties[HTTPCookiePropertyKey("HttpOnly")] = "TRUE" }
             if (args["secure"] as? Bool) == true { properties[.secure] = "TRUE" }
-            if let expires = (args["expires"] as? NSNumber)?.doubleValue { properties[.expires] = Date(timeIntervalSince1970: expires) }
+            // Fork (agent-args): a date a cookie list can print again (Int(_:) traps past Int's range).
+            if let expires = try Tools.number(args, "expires", within: 1e11) { properties[.expires] = Date(timeIntervalSince1970: expires) }
             switch (args["sameSite"] as? String)?.lowercased() {
             case "strict": properties[.sameSitePolicy] = HTTPCookieStringPolicy.sameSiteStrict
             case "lax": properties[.sameSitePolicy] = HTTPCookieStringPolicy.sameSiteLax
@@ -255,7 +256,7 @@ enum StateTools {
         let found = query.isEmpty ? browser.history.recent(limit) : Array(browser.history.everything(matching: query).prefix(limit))
         guard !found.isEmpty else { return [.text(query.isEmpty ? "History is empty." : "Nothing in history matches “\(query)”.")] }
         let when = ISO8601DateFormatter()
-        let lines = found.map { "- [\($0.title.isEmpty ? $0.key : $0.title)](\($0.url.absoluteString)) · last \(when.string(from: $0.last)) · \($0.count) visit\($0.count == 1 ? "" : "s")" }
+        let lines = found.map { "- [\($0.title.isEmpty ? $0.key : Tools.oneLine($0.title, limit: 80).replacingOccurrences(of: "]", with: ")"))](\($0.url.absoluteString)) · last \(when.string(from: $0.last)) · \($0.count) visit\($0.count == 1 ? "" : "s")" }
         return [.text("### History\(query.isEmpty ? " (most recent)" : " matching “\(query)”")\n" + lines.joined(separator: "\n"))]
     }
 

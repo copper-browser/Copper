@@ -123,10 +123,12 @@ enum Credentials {
         }
     }
 
-    static func save(host: String, user: String, password: String) async throws {
+    /// `origin`: the page's (`location.origin`) the login was saved from, so
+    /// an agent fills it there and nowhere else (Fork: origin-save).
+    static func save(host: String, user: String, password: String, origin: String? = nil) async throws {
         switch saveTarget {
         case .keychain:
-            guard Vault.save(host: host, user: user, password: password) else {
+            guard Vault.save(host: host, user: user, password: password, origin: origin) else {
                 throw Failure(message: "Could not save the credential to the keychain")
             }
         case .bitwarden:
@@ -136,7 +138,7 @@ enum Credentials {
                case .bitwarden(let id) = existing.id {
                 try await Bitwarden.shared.update(id: id, password: password)
             } else {
-                _ = try await Bitwarden.shared.create(host: host, user: user, password: password)
+                _ = try await Bitwarden.shared.create(host: host, user: user, password: password, origin: origin)
             }
         case .onePassword:
             // The same account already in 1Password for this site: a new
@@ -145,7 +147,7 @@ enum Credentials {
                case .onePassword(let id) = existing.id {
                 try await OnePassword.shared.update(id: id, password: password)
             } else {
-                _ = try await OnePassword.shared.create(host: host, user: user, password: password)
+                _ = try await OnePassword.shared.create(host: host, user: user, password: password, origin: origin)
             }
         }
     }
@@ -159,7 +161,7 @@ enum Credentials {
     /// `KeychainCodes.accounts()`, read once per list rather than per row.
     private static func keychainCredential(_ login: Login, codes: Set<String>) -> Credential {
         Credential(id: .keychain(host: login.host, user: login.user), source: .keychain,
-                   host: login.host, user: login.user, sites: [login.host], name: login.user,
+                   host: login.host, user: login.user, sites: [login.origin ?? login.host], name: login.user, // Fork (origin-save)
                    hasTOTP: codes.contains(KeychainCodes.account(host: login.host, user: login.user)),
                    used: login.used, folder: nil, agentHint: .none)
     }

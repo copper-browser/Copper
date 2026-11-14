@@ -24,6 +24,28 @@ enum Tools {
         var errorDescription: String? { text }
     }
 
+    /// A number argument: nil when absent, else finite and within ±`limit`
+    /// — or a Failure that names it. Int(_:) traps on 1e100 (Fork: agent-args).
+    static func number(_ args: [String: Any], _ key: String, within limit: Double) throws -> Double? {
+        guard let raw = args[key], !(raw is NSNull) else { return nil }
+        guard let n = raw as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID(), n.doubleValue.isFinite, abs(n.doubleValue) <= limit else {
+            throw Failure(text: "\(key) must be a number from -\(Int(limit)) to \(Int(limit)); got \(raw)")
+        }
+        return n.doubleValue
+    }
+
+    /// Words the page chose (a title, an element's label) for a tool's
+    /// answer: one line, at most `limit` characters, in quotes — so they
+    /// read as the page's, never as Copper's or the user's (Fork: agent-world).
+    static func pageWords(_ text: String, limit: Int = 100) -> String { Page.quote(oneLine(text, limit: limit)) }
+
+    /// The same words unquoted, for a tab list's `[title]` (no `]` to close it early).
+    static func oneLine(_ text: String, limit: Int) -> String {
+        let line = text.components(separatedBy: .controlCharacters).joined(separator: " ")
+            .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return line.count > limit ? String(line.prefix(limit)) + "…" : line
+    }
+
     /// Where a tool leaves its one-line summary for `_meta.summary`
     /// (MCP.handle reads it back). Task-local, so two calls in flight never
     /// see each other's line.
@@ -318,12 +340,14 @@ enum Tools {
             let said = close(try closable(browser))
             return [.text("\(said) \(tabList(browser))")]
         case "browser_resize":
-            guard let w = args["width"] as? NSNumber, let h = args["height"] as? NSNumber else { throw Failure(text: "width and height") }
+            guard let w = try number(args, "width", within: 20_000), let h = try number(args, "height", within: 20_000), w >= 100, h >= 100 else {
+                throw Failure(text: "width and height required: points, 100 to 20000")
+            }
             guard let window = Windows.window(of: browser) ?? Links.window ?? NSApp.windows.first(where: { $0.isVisible }) else { throw Failure(text: "no window") }
             var frame = window.frame
-            frame.size = CGSize(width: w.doubleValue, height: h.doubleValue)
+            frame.size = CGSize(width: w, height: h)
             window.setFrame(frame, display: true, animate: false)
-            return [.text("Window is \(Int(w.doubleValue))×\(Int(h.doubleValue))")]
+            return [.text("Window is \(Int(w))×\(Int(h))")]
         case "browser_groups": return try groups(args, in: browser)
         case "jev_run", "jev_step", "jev_observe", "jev_extract": return try await Ultrafast.call(name, args, in: browser)
         case _ where CanvasTools.names.contains(name): return try await CanvasTools.call(name, args, in: browser)
@@ -401,7 +425,7 @@ enum Tools {
             return [.text("Clicked \(args["element"] as? String ?? target.label). \(pageLine(tab))")]
         case "browser_mouse_click_xy":
             // Playwright's vision tool: a point, not an element — for canvases and maps.
-            guard let x = (args["x"] as? NSNumber)?.doubleValue, let y = (args["y"] as? NSNumber)?.doubleValue, x.isFinite, y.isFinite else {
+            guard let x = try number(args, "x", within: 100_000), let y = try number(args, "y", within: 100_000) else {
                 throw Failure(text: "x and y required: CSS pixels from the viewport's top-left, as in browser_take_screenshot")
             }
             let hit = try await Page.js(web, Self.elementAt(x, y)) as? String ?? ""
@@ -419,7 +443,7 @@ enum Tools {
                 _ = try await Page.js(web, Self.clickAt(x, y))
             }
             try await settle(tab, budget: 3)
-            return [.text("Clicked (\(Int(x)), \(Int(y))) on \(hit). \(pageLine(tab))")]
+            return [.text("Clicked (\(Int(x)), \(Int(y))) on the page's \(pageWords(hit)). \(pageLine(tab))")]
         case "browser_hover":
             let target = try locator(args)
             let rect = try await Page.prepare(web, target)
@@ -434,7 +458,7 @@ enum Tools {
             // The page's word for it: a :hover menu opens only if this is true.
             let state = try await Page.js(web, at: target, "window.__copper.hovered(\(Page.quote(target.script)))") as? [String: Any]
             guard state?["hover"] as? Bool == true else {
-                let covered = state?["covered"] as? Bool == true ? " Something else is on top of it at its centre (\(state?["top"] as? String ?? "?")) — hover that, or scroll it clear." : ""
+                let covered = state?["covered"] as? Bool == true ? " Something else is on top of it at its centre (the page's \(pageWords(state?["top"] as? String ?? "?"))) — hover that, or scroll it clear." : ""
                 // WebKit tracks the pointer in a window that isn't key for its scrollbars only.
                 let asleep = web.window?.isKeyWindow == true ? "" : " This tab is in the user's window, which is not in front, and WebKit hovers nothing there: work in a tab of your own (browser_tabs new), where hover works."
                 throw Failure(text: "Hover did not reach \(named): the page does not show it as :hover.\(covered)\(asleep) Take a fresh browser_snapshot — refs change when the page does.")
@@ -645,8 +669,8 @@ enum Tools {
             }
             return [.text(pageLine(tab))]
         case "browser_scroll":
-            let dy = (args["deltaY"] as? NSNumber)?.doubleValue
-            let dx = (args["deltaX"] as? NSNumber)?.doubleValue ?? 0
+            let dy = try number(args, "deltaY", within: 1_000_000)
+            let dx = try number(args, "deltaX", within: 1_000_000) ?? 0
             if let ref = args["ref"] as? String, dy == nil {
                 _ = try await Page.prepare(web, Locator(ref: ref), hit: false)
                 return [.text("Scrolled \(ref) into view")]
@@ -691,7 +715,12 @@ enum Tools {
     /// by default: an agent that has none is told to name one.
     @MainActor
     static func closable(_ browser: Browser) throws -> Tab {
-        if let tab = AgentTabs.find(AgentTabs.pinned) ?? AgentTabs.own() { return tab }
+        // A named tab, or nothing: one closed meanwhile is never swapped for your own.
+        if let pinned = AgentTabs.pinned {
+            guard let tab = AgentTabs.find(pinned) else { throw Failure(text: AgentTabs.missing()) }
+            return tab
+        }
+        if let tab = AgentTabs.own() { return tab }
         if AgentTabs.callerKey == "pane", let tab = browser.active { return tab }
         if let caller = AgentTabs.callerKey, AgentTabs.lost.contains(caller) { throw Failure(text: AgentTabs.missing()) }
         throw Failure(text: "you have no tab of your own to close — name one with tab (from browser_tabs list); the user's tab was not touched")
@@ -730,10 +759,10 @@ enum Tools {
             let pin = tab.pin != nil ? " (pinned)" : ""
             // Only a tab that is actually burning gets a figure; the rest stay quiet.
             let heat = Heat.shared.reading(for: tab).flatMap { $0.sustained >= 10 ? " {cpu \(Int($0.sustained))%}" : nil } ?? ""
-            lines.append("- \(index): \(marker)[\(tab.title)] (\(tab.address?.absoluteString ?? "about:blank")) {tab \(AgentTabs.short(tab))}\(pin)\(group)\(heat)")
+            lines.append("- \(index): \(marker)[\(oneLine(tab.title, limit: 80).replacingOccurrences(of: "]", with: ")"))] (\(tab.address?.absoluteString ?? "about:blank")) {tab \(AgentTabs.short(tab))}\(pin)\(group)\(heat)")
         }
         let gpu = Heat.shared.gpu.flatMap { $0 >= 10 ? "\nGPU process (shared by all tabs): \(Int($0))% of a core" : nil } ?? ""
-        return "### Open tabs\n" + lines.joined(separator: "\n") + gpu
+        return "### Open tabs (each [title] is the page's own words)\n" + lines.joined(separator: "\n") + gpu
     }
 
     @MainActor
@@ -797,7 +826,7 @@ enum Tools {
             groups.remove(tab)
             return [.text("Removed from its group")]
         case "list":
-            let lines = groups.all.map { g in "- \(g.name): " + groups.members(of: g.id, in: browser).map { "[\($0.title)]" }.joined(separator: ", ") }
+            let lines = groups.all.map { g in "- \(g.name): " + groups.members(of: g.id, in: browser).map { "[\(oneLine($0.title, limit: 80).replacingOccurrences(of: "]", with: ")"))]" }.joined(separator: ", ") }
             return [.text(lines.isEmpty ? "No groups" : lines.joined(separator: "\n"))]
         default:
             throw Failure(text: "action must be list, assign or remove")
@@ -893,7 +922,7 @@ enum Tools {
     @MainActor
     static func pageLine(_ tab: Tab) -> String {
         let place = AgentTabs.onScreen(tab) ? "" : " (background — not on the user's screen)"
-        return "### Page\n- URL: \(tab.address?.absoluteString ?? "about:blank")\n- Title: \(tab.title)\n- Tab: \(AgentTabs.short(tab))\(place)"
+        return "### Page\n- URL: \(tab.address?.absoluteString ?? "about:blank")\n- Title (the page's own words): \(pageWords(tab.title))\n- Tab: \(AgentTabs.short(tab))\(place)"
     }
 
     /// After an action: when it set off a navigation, until the new

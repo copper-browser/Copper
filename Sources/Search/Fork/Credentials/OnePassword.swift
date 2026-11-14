@@ -903,7 +903,7 @@ final class OnePassword: ObservableObject {
 
     /// A new Login item in the chosen vault, from a JSON template on stdin.
     @discardableResult
-    func create(host: String, user: String, password: String) async throws -> String {
+    func create(host: String, user: String, password: String, origin: String? = nil) async throws -> String {
         guard isUnlocked else { throw Failure(.notSignedIn, "1Password is locked") }
         guard let vault = saveVault else { throw Failure(.other, "No 1Password vault Copper can save to") }
         let template: [String: Any] = [
@@ -913,7 +913,7 @@ final class OnePassword: ObservableObject {
                 ["id": "username", "type": "STRING", "purpose": "USERNAME", "label": "username", "value": user],
                 ["id": "password", "type": "CONCEALED", "purpose": "PASSWORD", "label": "password", "value": password],
             ],
-            "urls": [["label": "website", "primary": true, "href": "\(Self.scheme(for: host))://\(host)"]],
+            "urls": [["label": "website", "primary": true, "href": origin ?? "\(Self.scheme(for: host))://\(host)"]], // Fork (origin-save)
         ]
         let body = try JSONSerialization.data(withJSONObject: template)
         let data = try await run(["item", "create", "--vault", vault.id, "--format", "json", "-"], stdin: body, timeout: 30)

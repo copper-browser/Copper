@@ -338,10 +338,18 @@ enum CanvasBench {
         """
         web.evaluateJavaScript(js) { value, _ in
             // The typing script and the forms script live in Copper's own world (Fork/MCP/Frames.swift).
-            web.evaluateJavaScript("[!!window.__copperBoardKeys, !!window.__officeForms]", in: nil, in: .copper) { ours in
+            // So do the swipe, veil, image and scroll relays (Fork: agent-world, Tab.copperRelays).
+            let mine = "[!!window.__copperBoardKeys, !!window.__officeForms, !!window.__officeSwipe, !!window.__officeVeil, !!window.__officeImages, !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.\(ScrollRelay.name))]"
+            web.evaluateJavaScript(mine, in: nil, in: .copper) { ours in
                 MainActor.assumeIsolated {
                     var page = (value as? String).flatMap { $0.data(using: .utf8) }.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]
-                    if let ours = (try? ours.get()) as? [Bool], ours.count == 2 { page?["keys"] = ours[0]; page?["forms"] = ours[1] }
+                    if let ours = (try? ours.get()) as? [Bool], ours.count == 6 {
+                        page?["keys"] = ours[0]; page?["forms"] = ours[1]
+                        for (i, key) in ["swipe", "veil", "images", "scroll"].enumerated() {
+                            let there = (page?[key] as? Bool) ?? false
+                            page?[key] = there || ours[i + 2]
+                        }
+                    }
                     answer(["lean": CanvasHost.lean, "board": web.board, "magnifies": web.allowsMagnification, "userScripts": scripts,
                             "ready": CanvasHost.host(for: tab)?.isReady ?? false, "page": page ?? NSNull()])
                 }

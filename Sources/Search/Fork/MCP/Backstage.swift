@@ -146,9 +146,11 @@ enum AgentTabs {
     /// The tab a call works on: the one it named, else the caller's own,
     /// else the one on screen — unless the caller's own tab is gone and the
     /// call would change the page (`missing` says why). Nil also when there
-    /// is no tab at all.
+    /// is no tab at all. A call that named a tab gets that tab or nothing:
+    /// closed while the call waited (staging it, a frame, the page), it
+    /// never moves on to the caller's own tab or the one on screen.
     static func target(in browser: Browser, caller: String? = callerKey) -> Tab? {
-        if let tab = find(pinned) { return tab }
+        if let pinned { return find(pinned) }
         if let tab = own(caller) { return tab }
         if let caller, lost.contains(caller), !reading { return nil }
         return browser.active
@@ -156,6 +158,9 @@ enum AgentTabs {
 
     /// Why `target` came back empty, in words the agent can act on.
     static func missing(_ caller: String? = callerKey) -> String {
+        if pinned != nil, find(pinned) == nil {
+            return "the tab you named was closed during the call — nothing was done in any other tab; browser_tabs list shows the tabs there are"
+        }
         if let caller, lost.contains(caller) {
             return "your tab was closed — open one with browser_tabs new (or name one with tab); the user's tab was not touched"
         }
@@ -173,7 +178,8 @@ enum AgentTabs {
 
     /// Without throwing, for the bookkeeping around a call (the tab badges).
     static func peek(_ args: [String: Any], in browser: Browser, caller: String?) -> Tab? {
-        if let named = try? resolve(args["tab"], in: browser) { return named }
+        // A named tab that is gone is no tab: not the caller's own, not the user's.
+        do { if let named = try resolve(args["tab"], in: browser) { return named } } catch { return nil }
         if let tab = own(caller) { return tab }
         return browser.active
     }

@@ -517,7 +517,7 @@ final class Drive: ObservableObject {
         case "browser_wait_for":
             if let text = args["text"] as? String, !text.isEmpty { return ("Waiting for “\(text.prefix(40))”", detail) }
             if let gone = args["textGone"] as? String, !gone.isEmpty { return ("Waiting for “\(gone.prefix(40))” to go", detail) }
-            if let t = (args["time"] as? NSNumber)?.doubleValue { return ("Waiting \(t.rounded() == t ? String(Int(t)) : String(format: "%.1f", t)) s", detail) }
+            if let t = (args["time"] as? NSNumber)?.doubleValue, t.isFinite, abs(t) < 1e6 { return ("Waiting \(t.rounded() == t ? String(Int(t)) : String(format: "%.1f", t)) s", detail) }
             return ("Waiting", detail)
         case "browser_scroll":
             if let dy = (args["deltaY"] as? NSNumber)?.doubleValue { return (dy < 0 ? "Scrolling up" : "Scrolling down", detail) }

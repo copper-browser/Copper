@@ -39,7 +39,7 @@ enum Permissions {
                 "grant": ["type": "array", "items": ["type": "string", "enum": kindsList], "description": "Permissions to grant"] as [String: Any],
                 "revoke": ["type": "array", "items": ["type": "string", "enum": kindsList], "description": "Permissions to revoke"] as [String: Any],
                 "site": ["type": "string", "description": "host or host:port; default your tab's"],
-                "latitude": ["type": "number", "description": "With geolocation: the position pages get"],
+                "latitude": ["type": "number", "description": "Required with a geolocation grant: the position pages get"],
                 "longitude": ["type": "number"],
                 "accuracy": ["type": "number", "description": "Metres, default 50"],
                 "reason": Tools.reasonProperty,
@@ -66,12 +66,14 @@ enum Permissions {
             throw Tools.Failure(text: "Copper doesn't show web notifications, so it can't grant them: a site would think its messages arrive. Leave notifications out and grant the rest.")
         }
         if grant.contains("geolocation") {
-            let lat = (args["latitude"] as? NSNumber)?.doubleValue, lon = (args["longitude"] as? NSNumber)?.doubleValue
+            let lat = try Tools.number(args, "latitude", within: 90), lon = try Tools.number(args, "longitude", within: 180)
             if let lat, let lon {
-                guard (-90...90).contains(lat), (-180...180).contains(lon) else { throw Tools.Failure(text: "latitude must be -90…90 and longitude -180…180") }
-                position = (lat, lon, (args["accuracy"] as? NSNumber)?.doubleValue ?? 50)
-            } else if (lat == nil) != (lon == nil) {
-                throw Tools.Failure(text: "Give both latitude and longitude, or neither.")
+                let accuracy = try Tools.number(args, "accuracy", within: 1_000_000) ?? 50
+                position = (lat, lon, max(accuracy, 1))
+            } else {
+                // Fork (geo-needs-place): a grant with nowhere to be is a page told "position unavailable" —
+                // or, after another site's grant, quietly given that site's position.
+                throw Tools.Failure(text: "geolocation needs latitude and longitude: Copper has no location of its own, so the page would only get \"position unavailable\". Call browser_permissions again with grant [\"geolocation\"], latitude and longitude (for example latitude 25.76, longitude -80.19). Nothing was granted.")
             }
             GeoProvider.install()
             geoSites.insert(site)
