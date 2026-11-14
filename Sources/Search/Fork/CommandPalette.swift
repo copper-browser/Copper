@@ -28,7 +28,11 @@ struct CommandPalette: View {
     /// way down is where the eye already is.
     private static let drop: CGFloat = 0.3
 
-    @State private var place = WindowRuler.Place()
+    @State private var place = CommandPalette.lastPlace
+    /// Fork (perf): where the last card stood. A card measures its window a
+    /// moment after it is drawn; starting from the last answer, it opens in
+    /// its place instead of at a guess for one frame and moving in a second.
+    private static var lastPlace = WindowRuler.Place()
     /// The site marks, arriving a moment after the rows they belong to.
     @ObservedObject private var marks = Marks.ticker
     /// The sections' headings, ⌘T's and ⌘K's alike (Fork/CardSections).
@@ -88,7 +92,7 @@ struct CommandPalette: View {
                 // column of tabs by half that column's width.
                 .offset(x: -inset / 2, y: top)
         }
-        .background(WindowRuler { place = $0 })
+        .background(WindowRuler { place = $0; CommandPalette.lastPlace = $0 })
         // The rows change on every letter, and as Google and history land.
         // A spring on each of those kept the card resizing for a third of a
         // second behind every keystroke — it read as lag, not as motion, and
