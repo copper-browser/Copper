@@ -23,6 +23,9 @@ final class NetLog: NSObject {
         let kind: String
         var status: Int?
         var error: String?
+        /// Order of asking, per log; `done` once WebKit says it ended.
+        var seq: UInt64 = 0
+        var done = false
     }
 
     static let cap = 300
@@ -31,6 +34,9 @@ final class NetLog: NSObject {
 
     private weak var web: WKWebView?
     private(set) var entries: [Entry] = []
+    /// The last request's `seq`, and the main-frame document's (a new page).
+    private(set) var sequence: UInt64 = 0
+    private(set) var documentAt: UInt64 = 0
 
     private init(_ web: WKWebView) { self.web = web }
 
@@ -61,13 +67,15 @@ final class NetLog: NSObject {
     @discardableResult
     private func record(_ load: NSObject, method: String? = nil, url: URL? = nil) -> Int {
         let kind = Self.kind(Self.read(load, "resourceType") as? Int ?? -1)
+        sequence += 1
         // A new document in the main frame (no parent frame): a new page.
-        if kind == "document", Self.read(load, "parentFrame") == nil { entries.removeAll() }
+        if kind == "document", Self.read(load, "parentFrame") == nil { entries.removeAll(); documentAt = sequence }
         entries.append(Entry(
             id: Self.id(load),
             method: method ?? (Self.read(load, "originalHTTPMethod") as? String) ?? "GET",
             url: (url ?? (Self.read(load, "originalURL") as? URL))?.absoluteString ?? "",
-            kind: kind
+            kind: kind,
+            seq: sequence
         ))
         if entries.count > Self.cap { entries.removeFirst(entries.count - Self.cap) }
         return entries.count - 1
@@ -81,6 +89,7 @@ final class NetLog: NSObject {
     @objc(webView:resourceLoad:didCompleteWithError:response:)
     func completed(_ web: WKWebView, _ load: NSObject, _ error: Error?, _ response: URLResponse?) {
         update(load) { entry in
+            entry.done = true
             if let http = response as? HTTPURLResponse { entry.status = http.statusCode }
             if let error { entry.error = (error as NSError).localizedDescription }
             else if entry.status == nil { entry.status = 200 } // file:, data: — no HTTP status, but it came
@@ -108,6 +117,42 @@ final class NetLog: NSObject {
     nonisolated static func kind(_ raw: Int) -> String {
         let names = ["manifest", "beacon", "csp-report", "document", "image", "fetch", "font", "media", "object", "ping", "script", "stylesheet", "xhr", "xslt"]
         return names.indices.contains(raw) ? names[raw] : "other"
+    }
+
+    // MARK: - what a page asked its server (Jev's waits)
+
+    /// The calls a page makes for data, not for its looks.
+    nonisolated static let calls: Set<String> = ["xhr", "fetch"]
+
+    /// Where the log is now: requests after this are the next action's.
+    static func mark(_ web: WKWebView) -> UInt64 { log(for: web)?.sequence ?? 0 }
+
+    /// A data call of this page still out.
+    static func busy(_ web: WKWebView) -> Bool {
+        guard let log = log(for: web) else { return false }
+        return log.entries.contains { calls.contains($0.kind) && !$0.done }
+    }
+
+    /// Until the page's data calls since `mark` (nil: since the page loaded)
+    /// are back, or `cap`: what they were. A page that left for another in
+    /// the meantime has nothing to wait for here (its load is waited for).
+    static func answered(_ web: WKWebView, after mark: UInt64?, cap: TimeInterval = 3) async -> [Entry] {
+        let deadline = Date().addingTimeInterval(cap)
+        func mine() -> [Entry]? {
+            guard let log = log(for: web), mark.map({ log.documentAt <= $0 }) ?? true else { return nil }
+            let since = mark ?? log.documentAt
+            return log.entries.filter { $0.seq > since && calls.contains($0.kind) }
+        }
+        while let out = mine(), out.contains(where: { !$0.done }), Date() < deadline {
+            try? await Task.sleep(nanoseconds: 25_000_000)
+        }
+        return mine() ?? []
+    }
+
+    /// `200 GetShoppingResults`, `pending batchexecute`: a call for the trace.
+    nonisolated static func brief(_ e: Entry) -> String {
+        let outcome = e.error != nil ? "failed" : !e.done ? "pending" : e.status.map(String.init) ?? "?"
+        return outcome + " " + String((URL(string: e.url)?.lastPathComponent ?? e.url).prefix(48))
     }
 
     // MARK: - the tool
