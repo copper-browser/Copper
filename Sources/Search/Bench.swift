@@ -331,9 +331,11 @@ final class Bench {
                 answer(["error": "open needs a url"])
                 return
             }
+            // When the app started on it (epoch ms): the load clock starts here, as a bare web view's does (perf/perf.py).
+            let t0 = (Date().timeIntervalSince1970 * 1000).rounded()
             let tab = browser.benchOpen(url)
             house(tab)
-            answer(describe(tab))
+            answer(describe(tab).merging(["t0": t0]) { a, _ in a })
 
         case "go":
             guard let tab = find(request, in: browser) else { answer(missing(request)); return }

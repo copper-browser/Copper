@@ -809,6 +809,7 @@ final class Launcher: ObservableObject {
             if request["go"] as? Bool == true {
                 let how = How(rawValue: request["how"] as? String ?? "") ?? .open
                 let index = request["pick"] as? Int ?? browser.picked ?? 0
+                out["t0"] = (Date().timeIntervalSince1970 * 1000).rounded() // the load clock (perf/perf.py), as `open`'s
                 if browser.offers.indices.contains(index) { take(browser.offers[index], in: browser, how: how) }
                 out["tookIndex"] = index
             } else if request["keep"] as? Bool != true {
