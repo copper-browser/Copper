@@ -259,7 +259,7 @@ def serve(directory, port):
 
 def rawload_app():
     """perf/rawload.swift wrapped in an .app (it needs a window server). A build: locked on the mini."""
-    app = os.path.join(HOME, "hc", "RawLoad.app")
+    app = os.path.join(TOOLS, "RawLoad.app")  # per tools dir: a --step build never swaps under another worker
     binp = os.path.join(app, "Contents", "MacOS", "RawLoad")
     src = os.path.join(TOOLS, "perf", "rawload.swift")
     if os.path.exists(binp) and os.path.getmtime(binp) > os.path.getmtime(src):
@@ -456,25 +456,34 @@ LOAD_PAGES = [("local", SITE), ("wikipedia", "https://en.wikipedia.org/wiki/WebK
 
 
 def rawload(url, runs):
+    """Bare WKWebView control, stepped: → (step, rows, proc). step(i) starts its load i and waits for its row,
+    so Copper's and the bare view's loads alternate one for one on the same network (rawload --step)."""
     app = rawload_app()
-    path = f"/tmp/hc-rawload-{os.getpid()}.txt"
-    if os.path.exists(path):
-        os.unlink(path)
-    subprocess.run(["open", "-W", "-n", "-g", app, "--stdout", path, "--args", url, str(runs)], check=True, timeout=300)
+    path, go = f"/tmp/hc-rawload-{os.getpid()}.txt", f"/tmp/hc-rawload-{os.getpid()}.go"
+    for p in (path, go):
+        if os.path.exists(p):
+            os.unlink(p)
+    proc = subprocess.Popen(["open", "-W", "-n", "-g", app, "--stdout", path, "--args", url, str(runs), "--step", go])
     rows = []
-    for line in open(path):
-        if line.startswith("{"):
-            m = json.loads(line)
+
+    def step(i):
+        open(go, "w").close()
+        t = time.time()
+        while len(rows) <= i and time.time() - t < 60:
+            time.sleep(0.05)
+            lines = list(open(path)) if os.path.exists(path) else []
+            rows[:] = [json.loads(l) for l in lines if l.startswith("{") and l.endswith("\n")]
+        for m in rows:
             m.pop("list", None); m.pop("events", None)
-            rows.append(m)
-    os.unlink(path)
-    return rows
+    return step, rows, proc
 
 
 def load(out, arms_):
-    """A3: N loads of each page in a fresh Copper tab, then N in a fresh bare WKWebView, interleaved
-    per page so the network is the same for both. The first of each N is dropped (cold DNS/cache)."""
-    n = N("HC_LOADS", 6)
+    """A3 (#142's paired measurement): HC_LOADS loads of each page in a fresh Copper tab, each followed by one
+    in a fresh bare WKWebView, so both see the same network. Both clocks start in-app as the view is made
+    (Copper's `open` reply carries its t0; older builds fall back to the socket clock). Run 0 of each arm is
+    dropped (cold DNS/cache): n = HC_LOADS − 1 pairs per page."""
+    n = N("HC_LOADS", 21)
     quiet = open(os.devnull, "w")
     for r in range(N("HC_LOAD_ROUNDS", 1)):
         for label, app in order(arms_, r):
@@ -482,16 +491,18 @@ def load(out, arms_):
                 l0 = start(app)["load0"]
                 time.sleep(10)
                 for name, url in LOAD_PAGES:
+                    step, raw, proc = rawload(url, n)
                     so, sys.stdout = sys.stdout, quiet
                     try:
-                        rows = perf.load(WORLD, url, n)
+                        rows = perf.load(WORLD, url, n, between=step)
                     finally:
                         sys.stdout = so
+                    proc.wait(timeout=60)
                     for m in rows:
                         emit(out, "load", {"arm": label, "round": r, "who": "copper", "page": name, "load0": l0,
                                            **{k: m.get(k) for k in ("run", "app_overhead_ms", "req_to_fcp_ms", "req_to_load_ms", "fcp", "load",
                                                                      "ttfb", "wait_ms", "busy", "longest", "resources", "bytes")}})
-                    for m in rawload(url, n):
+                    for m in raw:
                         emit(out, "load", {"arm": label, "round": r, "who": "raw", "page": name, "load0": l0,
                                            **{k: m.get(k) for k in ("run", "app_overhead_ms", "req_to_fcp_ms", "req_to_load_ms", "fcp", "load",
                                                                      "ttfb", "finish_ms", "resources", "bytes")}})

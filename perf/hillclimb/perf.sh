@@ -7,7 +7,7 @@
 #          bare WebKit, hooks (A7 keylat, A5 wheel); every batch under `flock ~/hc/mini.lock` (lockf(1)'s lock).
 #   laptop (MacBook*):      A1 + sessions headless (never steals focus), A5 scroll + canvas at Retina 2×, hooks
 #          (the 120 Hz wheel); laptop samples count only at 1-min load < 3 (waits up to HC_LOAD_WAIT=60 s for it).
-# Knobs (env): HC_PHASES, HC_LAUNCHES=8, HC_COLD=6, HC_ROUNDS=5, HC_SETTLE=30, HC_IDLE=60, HC_LOADS=6,
+# Knobs (env): HC_PHASES, HC_LAUNCHES=8, HC_COLD=6, HC_ROUNDS=5, HC_SETTLE=30, HC_IDLE=60, HC_LOADS=21 (A3: paired, run 0 dropped),
 #   HC_SMOOTH_RUNS=5, HC_PRESSES=20, HC_WHEEL_RUNS=5, HC_MODE=fg|headless, HC_SEED=~/hc/seed, HC_WORLD=hcperf,
 #   HC_PORT/HC_SITE_PORT/HC_FIXTURE_PORT/HC_CANVAS_PORT (any of 4130–4239, never 4123), HC_CANVAS_OUT=~/hc/canvas-out,
 #   HC_TOOLS=~/hc/tools (perf/ + docs/fixtures/canvas-*).
