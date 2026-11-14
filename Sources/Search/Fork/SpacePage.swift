@@ -265,15 +265,11 @@ struct SpacePage: View {
                 // A picture of the column, not tabs to read out one by one.
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Preview of the column")
-            Picker("", selection: Binding(get: { shown }, set: { previewNight = $0 == night ? nil : $0 })) {
-                Text("Light").tag(false)
-                Text("Dark").tag(true)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .controlSize(.small)
-            .frame(width: 120)
-            .accessibilityLabel("Preview in")
+            // Fork (ui-flows r3): the house choices (Look's own), not the
+            // system's segmented control, which read 3.9:1 in dark.
+            Segmented(options: [(false, "Light"), (true, "Dark")],
+                      selection: Binding(get: { shown }, set: { previewNight = $0 == night ? nil : $0 }),
+                      label: "Preview in")
         }
         .frame(width: SpacePage.rail)
     }

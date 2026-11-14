@@ -399,3 +399,21 @@ private enum DownloadFormat {
         return formatter
     }()
 }
+
+extension Browser {
+    /// Fork (ui-flows r3): Downloads as Arc has them — the list hanging from
+    /// the column's download glyph (⌘⇧J, the menu, ⌘K), not a panel over the
+    /// page. Without a column, or for "Show All…", the full panel.
+    func showDownloads(toggling: Bool = false) {
+        let downloads = Downloads.shared
+        guard prefs.sidebar, !folded, active?.immersed != true else {
+            if toggling { hoarding.toggle() } else { hoarding = true }
+            return
+        }
+        if downloads.showsDoor(in: self) {
+            if toggling { downloads.popoverOpen = false }
+        } else {
+            downloads.toggleDoor(in: self)
+        }
+    }
+}

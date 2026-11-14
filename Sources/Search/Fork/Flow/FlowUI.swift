@@ -39,7 +39,11 @@ struct FlowSheet: View {
         .onPreferenceChange(FlowSheetHeight.self) { height in
             MainActor.assumeIsolated { FlowPresenter.shared.want(height) }
         }
-        .background(Palette.ground)
+        // Fork (ui-flows r3): the panels' card (Plate): radius 16 and a
+        // hairline, so it holds its edge on a dark window too.
+        .background(Palette.ground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 1))
         // A sheet that comes up while something else animates (Settings
         // closing) must not animate its own first layout, and a new phase
         // replaces the old one outright: nothing morphs.
@@ -351,27 +355,38 @@ struct FlowSheet: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
+    /// Fork (ui-flows r3): a kind this browser has none of is not a dead
+    /// switch of its own; they fold into one muted line under the list.
     private var checklist: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            row(flow.selected?.isArc == true ? "Tabs and spaces" : "Tabs and windows", hint: tabHint, binding: binding(\.tabs), enabled: has { $0.tabCount })
-            Rule()
-            row("Bookmarks", hint: count { $0.bookmarkCount == 0 ? "none found" : FlowSummary.plural($0.bookmarkCount, "bookmark") }, binding: binding(\.bookmarks), enabled: has { $0.bookmarkCount })
-            Rule()
-            row("History", hint: count { $0.placeCount == 0 ? "none found" : FlowSummary.plural($0.placeCount, "place") }, binding: binding(\.history), enabled: has { $0.placeCount })
-            Rule()
-            row("Passwords", hint: count { $0.loginCount == 0 ? "none saved" : FlowSummary.plural($0.loginCount, "password") }, binding: binding(\.passwords), enabled: has { $0.loginCount })
-            Rule()
-            row("Passkeys", hint: count { $0.passkeyCount == 0 ? "none found" : FlowSummary.plural($0.passkeyCount, "passkey") }, binding: binding(\.passkeys), enabled: has { $0.passkeyCount })
-            Rule()
-            row("Sign-ins", hint: "stay signed in to your sites", binding: binding(\.cookies)) // Fork (ui-flows)
-            Rule()
-            row("Site data", hint: "what sites kept on this Mac, like settings and drafts", binding: binding(\.localStorage))
-            Rule()
-            row("Extensions", hint: count { $0.extensions.isEmpty ? "none found" : FlowSummary.plural($0.extensions.count, "extension") }, binding: binding(\.extensions), enabled: has { $0.extensions.count })
+        let kinds: [(title: String, hint: String, on: Binding<Bool>, n: (FlowModel.Haul) -> Int)] = [
+            (flow.selected?.isArc == true ? "Tabs and spaces" : "Tabs and windows", tabHint, binding(\.tabs), { $0.tabCount }),
+            ("Bookmarks", count { FlowSummary.plural($0.bookmarkCount, "bookmark") }, binding(\.bookmarks), { $0.bookmarkCount }),
+            ("History", count { FlowSummary.plural($0.placeCount, "place") }, binding(\.history), { $0.placeCount }),
+            ("Passwords", count { FlowSummary.plural($0.loginCount, "password") }, binding(\.passwords), { $0.loginCount }),
+            ("Passkeys", count { FlowSummary.plural($0.passkeyCount, "passkey") }, binding(\.passkeys), { $0.passkeyCount }),
+            ("Sign-ins", "Stay signed in to your sites", binding(\.cookies), { _ in 1 }), // Fork (ui-flows)
+            ("Site data", "What sites kept on this Mac, like settings and drafts", binding(\.localStorage), { _ in 1 }),
+            ("Extensions", count { FlowSummary.plural($0.extensions.count, "extension") }, binding(\.extensions), { $0.extensions.count }),
+        ]
+        let live = kinds.filter { has($0.n) }
+        let none = kinds.filter { !has($0.n) }.map(\.title)
+        return VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(live.enumerated()), id: \.offset) { index, kind in
+                    if index > 0 { Rule() }
+                    row(kind.title, hint: kind.hint, binding: kind.on)
+                }
+            }
+            .padding(.horizontal, 13)
+            .background(Palette.wash.opacity(0.38), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 1))
+            if !none.isEmpty {
+                Text("None in \(flow.selected?.name ?? "this browser"): \(none.joined(separator: ", ").lowercased())")
+                    .font(.system(size: 11.5)).foregroundStyle(Palette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 2)
+            }
         }
-        .padding(.horizontal, 13)
-        .background(Palette.wash.opacity(0.38), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 1))
         .disabled(flow.selected == nil)
         .opacity(flow.selected == nil ? 0.5 : 1)
     }
@@ -403,7 +418,7 @@ struct FlowSheet: View {
                 if !hint.isEmpty || link != nil {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         if !hint.isEmpty {
-                            Text(hint).font(.system(size: 11)).foregroundStyle(Palette.muted)
+                            Text(hint.prefix(1).uppercased() + hint.dropFirst()).font(.system(size: 11)).foregroundStyle(Palette.muted) // Fork (ui-flows r3): a sentence's capital
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         if let link {
@@ -540,6 +555,18 @@ struct FlowSheet: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// A summary line: the mark, then "Tabs: 3 tabs in 1 space" as one sentence.
+    private func doneRow(_ category: FlowSummary.Category, ok: Bool, _ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            mark(ok ? .arrived : .missed)
+                .frame(width: 12)
+            (Text(category.title + ": ").font(.system(size: 13, weight: .medium)).foregroundColor(Palette.ink)
+                + Text(text).font(.system(size: 13)).foregroundColor(ok ? Palette.ink : Palette.muted))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
     @ViewBuilder
     private func mark(_ state: FlowStep.State) -> some View {
         switch state {
@@ -565,9 +592,12 @@ struct FlowSheet: View {
             Text(report.title)
                 .font(.system(size: 19, weight: .medium)).foregroundStyle(Palette.ink)
                 .multilineTextAlignment(.center)
+            // Fork (ui-flows r3): every kind that was switched on, its value
+            // inline ("✓ Tabs: 3 tabs in 1 space") — one this browser had none
+            // of says so rather than vanishing from the list.
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(report.summary, id: \.category) { line in
-                    stepRow(line.category, line.ok ? .arrived : .missed, line.detail)
+                ForEach(FlowSummary.doneLines(report.summary, chosen: FlowStep.steps(for: flow.choice).map(\.category)), id: \.category) { line in
+                    doneRow(line.category, ok: line.ok, line.detail)
                 }
             }
             .fixedSize(horizontal: false, vertical: true)
