@@ -162,8 +162,8 @@ struct SpaceTint {
     /// the dark — warm brown on salmon, the way Arc sets its own.
     var ink: Color { dark ? mix(0.06, 0.96) : mix(0.9, 0.19) }
     var muted: Color { ink.opacity(0.62) }
-    /// Fork (space-chips): the space's name over its rows — a step stronger
-    /// than `muted`, which came to 4.4:1 there on the default column.
-    var heading: Color { ink.opacity(0.76) }
+    /// Fork (space-chips): the space's name over its rows — the resting
+    /// titles' strength; `muted` came to 4.0–4.4:1 there on a mid colour.
+    var heading: Color { ink.opacity(0.88) }
     var faint: Color { ink.opacity(0.45) }
 }

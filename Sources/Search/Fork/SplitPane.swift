@@ -111,7 +111,7 @@ struct SplitBar: View {
                 Mark(icon: tab.icon, letter: tab.monogram, size: 13, dim: !live)
                 Text(name)
                     .font(.system(size: 12))
-                    .foregroundStyle(Palette.ink.opacity(live ? 0.8 : 0.62)) // Fork (page-frame): the other pane's title at AA (muted was 2.7:1)
+                    .foregroundStyle(Palette.ink.opacity(live ? 0.8 : 0.7)) // Fork (page-frame): the other pane's title at AA (muted was 2.7:1)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
