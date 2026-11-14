@@ -392,12 +392,13 @@ enum Tools {
             trail(web, rect, label: args["element"] as? String, operation: "CLICK")
             if AgentTabs.onScreen(tab) { await Trail.glide(web, x: rect.midX / web.pageZoom, y: rect.midY / web.pageZoom) }
             Trail.click(web, x: rect.midX / web.pageZoom, y: rect.midY / web.pageZoom)
+            let asked = asks(web)
             if Input.canPost(to: web) {
                 Input.click(web, at: rect.center, button: button, count: double ? 2 : 1, modifiers: mods)
             } else {
                 _ = try await Page.js(web, at: target, "window.__copper.click(\(Page.quote(target.script)), \(double), \(Page.quote(button)))")
             }
-            try await settle(tab, budget: 3)
+            try await settle(tab, budget: 3, since: asked)
             return [.text("Clicked \(args["element"] as? String ?? target.label). \(pageLine(tab))")]
         case "browser_mouse_click_xy":
             // Playwright's vision tool: a point, not an element — for canvases and maps.
@@ -413,12 +414,13 @@ enum Tools {
             if AgentTabs.onScreen(tab) { await Trail.glide(web, x: x, y: y) }
             Trail.click(web, x: x, y: y)
             let button = (args["button"] as? String) ?? "left"
+            let asked = asks(web)
             if Input.canPost(to: web) {
                 Input.click(web, at: point, button: button, count: (args["doubleClick"] as? Bool) == true ? 2 : 1, modifiers: [])
             } else {
                 _ = try await Page.js(web, Self.clickAt(x, y))
             }
-            try await settle(tab, budget: 3)
+            try await settle(tab, budget: 3, since: asked)
             return [.text("Clicked (\(Int(x)), \(Int(y))) on \(hit). \(pageLine(tab))")]
         case "browser_hover":
             let target = try locator(args)
@@ -451,7 +453,9 @@ enum Tools {
             Trail.click(web, x: rect.midX / web.pageZoom, y: rect.midY / web.pageZoom)
             if Input.canPost(to: web) {
                 Input.click(web, at: rect.center, button: "left", count: 1, modifiers: [])
-                try await Task.sleep(nanoseconds: 60_000_000)
+                // Fork (perf): until the page has taken the click (and with it
+                // the focus), not a fixed 60 ms; focus() below makes sure.
+                await Input.settled(web)
                 try await Page.act(web, at: target, "window.__copper.focus(\(Page.quote(target.script)))")
                 if slowly {
                     Input.type(web, text)
@@ -896,23 +900,55 @@ enum Tools {
         return "### Page\n- URL: \(tab.address?.absoluteString ?? "about:blank")\n- Title: \(tab.title)\n- Tab: \(AgentTabs.short(tab))\(place)"
     }
 
+    /// Fork (perf): how many main-frame navigations each page has asked for
+    /// (Browser.decidePolicyFor, `asked`). A click's settle compares the
+    /// count from before the click with the count once the page has taken
+    /// it, instead of watching `isLoading` for 50 ms.
+    @MainActor private static var navigationAsks: [ObjectIdentifier: Int] = [:]
+
+    @MainActor static func asks(_ web: WKWebView) -> Int { navigationAsks[ObjectIdentifier(web)] ?? 0 }
+
+    /// A main-frame navigation to another document asked for (not a jump
+    /// to an anchor on this one: that loads nothing).
+    @MainActor static func asked(_ web: WKWebView, _ action: WKNavigationAction) {
+        guard action.targetFrame?.isMainFrame == true, let url = action.request.url else { return }
+        func bare(_ u: URL) -> Substring { u.absoluteString.prefix { $0 != "#" } }
+        if let here = web.url, url.fragment != nil, bare(url) == bare(here) { return }
+        navigationAsks[ObjectIdentifier(web), default: 0] += 1
+    }
+
     /// After an action: when it set off a navigation, until the new
-    /// document's DOMContentLoaded (or the budget); when it didn't, two
-    /// frames, so the page has drawn what the input changed. A navigation
-    /// has begun within a frame and 50 ms of the input, or a second of
-    /// browser_navigate (`navigating`), or it isn't coming.
+    /// document's DOMContentLoaded (or the budget); when it didn't, until
+    /// the page has drawn what the input changed. With `since` (the page's
+    /// `asks` from before the input): the input taken and one frame drawn —
+    /// a navigation it set off has asked for its page by then, the ask
+    /// travelling ahead of both answers on the page's one connection.
+    /// Without: a navigation has begun within a frame and 50 ms of the
+    /// input, or a second of browser_navigate (`navigating`), or it isn't
+    /// coming.
     @MainActor
-    static func settle(_ tab: Tab, budget: TimeInterval = 15, navigating: Bool = false) async throws {
+    static func settle(_ tab: Tab, budget: TimeInterval = 15, navigating: Bool = false, since: Int? = nil) async throws {
         let began = Date()
         defer { phases?.add("settle", since: began) }
         let web = tab.web
         let deadline = Date().addingTimeInterval(budget)
-        if !navigating { await Page.frame(web) }
-        let begun = Date().addingTimeInterval(navigating ? 1 : 0.05)
-        while !web.isLoading, Date() < begun { try await Task.sleep(nanoseconds: 10_000_000) }
-        guard web.isLoading else {
+        if let since, !navigating {
+            if Input.canPost(to: web) { await Input.settled(web) }
+            await Page.frame(web)
+            guard web.isLoading || asks(web) != since else { return }
+            // Asked, and not yet loading: the policy answer is on its way (or
+            // it was a download or another app's link, which never loads).
+            let begun = Date().addingTimeInterval(0.3)
+            while !web.isLoading, Date() < begun { try await Task.sleep(nanoseconds: 5_000_000) }
+            guard web.isLoading else { return }
+        } else {
             if !navigating { await Page.frame(web) }
-            return
+            let begun = Date().addingTimeInterval(navigating ? 1 : 0.05)
+            while !web.isLoading, Date() < begun { try await Task.sleep(nanoseconds: 10_000_000) }
+            guard web.isLoading else {
+                if !navigating { await Page.frame(web) }
+                return
+            }
         }
         // The document being left is marked; the new one is ready when it
         // answers unmarked and past "loading". If the mark landed in the new

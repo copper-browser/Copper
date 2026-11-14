@@ -133,9 +133,10 @@ enum CommandBar {
         let hits = launcher.history(for: typed, in: browser)
         guard !needle.isEmpty else {
             // This space's pages, kept ones first, then the most recent.
+            // Fork (ux): five, so the doors under them stay in view.
             let recent = open.filter(\.current)
                 .sorted { $0.kept == $1.kept ? $0.touched > $1.touched : $0.kept }
-                .prefix(6)
+                .prefix(5)
                 .compactMap(row(for:))
             return sectioned(dressed(recent + resting(browser)))
         }
@@ -281,19 +282,26 @@ enum CommandBar {
             row.glyph = command.glyph
             return row
         }
+        // Fork (ux): the history nudge is a line at the card's foot
+        // (CommandPalette), not a row ahead of the doors.
+        nudge = nil
         if browser.history.visitCount < 500,
            Flow.hasHistorySource(),
            !Store.settings.bool(forKey: "history.nudged"),
            let command = all.first(where: { $0.id == "history-import" }) {
-            var nudge = Suggestion(
+            var row = Suggestion(
                 key: "Bring in your Arc history so addresses complete →", title: "",
                 url: URL(string: "copper://command/\(command.id)")!, kind: .command
             )
-            nudge.glyph = command.glyph
-            rows.insert(nudge, at: 0)
+            row.glyph = command.glyph
+            nudge = row
         }
         return rows
     }
+
+    /// Fork (ux): the empty field's import nudge, if it wants one; worked out
+    /// with the resting rows, drawn by the card under them.
+    @MainActor static private(set) var nudge: Suggestion?
 
 
     /// One row per URL, carrying what Return would do with it. A bookmark,
