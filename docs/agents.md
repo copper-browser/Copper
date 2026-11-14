@@ -64,7 +64,17 @@ or an index). A JSON number is an index; so is a string of digits, unless it
 can only be an id: eight digits or more, or a leading zero (about one short id
 in fifty is all digits, `00000012` among them), or a number past the end of
 the row that begins exactly one tab's id. The caller is the agent session (`Drive.Who`, Hands.swift), so
-two threads keep two tabs. A caller's tab is worked on where it is: off
+two threads keep two tabs. Falling back to the user's tab is for an agent
+that never had one of its own. Once an agent's tab is gone (closed by the
+user, by `browser_close`, or with its window), calls that change a page are
+refused with "your tab was closed — open one with browser_tabs new" until it
+opens or selects another or names one with `tab`; reading calls
+(`browser_snapshot`, `browser_take_screenshot`, `browser_get_text`,
+`browser_find`, `browser_console_messages`, `browser_wait_for`,
+`browser_perf_probe`, `jev_observe`, `jev_extract`) still read the tab on
+screen. `browser_close`, and `browser_tabs close` with nothing named, close
+only the caller's own tab (or the one named with `tab`), never the user's;
+the agent pane, which works on the page on screen, is the exception. A caller's tab is worked on where it is: off
 screen, its web view hangs in a borderless window outside every display
 (`Fork/MCP/Backstage.swift`) that WebKit counts as visible and focused, so
 pages paint, rAF runs, screenshots are real and clicks go in as trusted
@@ -87,7 +97,7 @@ forward; the pane opens itself only for work on the page on screen.
 | `browser_evaluate` | `function: "() => …"` or `(element) => …` with `ref` |
 | `browser_wait_for` | `text`, `textGone`, `time` |
 | `browser_get_text`, `browser_find`, `browser_console_messages` | reading without a snapshot; refs for text you name; console since load |
-| `browser_resize`, `browser_close` | the window; the tab |
+| `browser_resize`, `browser_close` | the window; your own tab (refused when you have none — name one with `tab`) |
 | `browser_groups` | Copper's tab groups: `list`, `assign {group}`, `remove` |
 | `browser_perf_probe` | Samples the current tab for rAF loops, DOM churn, animations, filters, canvases, timers, long tasks, and slow resources (`seconds`, `top`, `format`) |
 | `browser_vault_save`, `browser_vault_note` | keep a login or a secure note (backup codes) in the open Bitwarden vault; values never come back ([Saving to the vault](#saving-to-the-vault)) |
@@ -96,12 +106,18 @@ forward; the pane opens itself only for work on the page on screen.
 
 ### Saved sign-in (no-secret contract)
 
-`browser_sign_in` fills a saved account on the current tab in-process. Its
+`browser_sign_in` fills a saved account on the current tab in-process. The
+account is the one for the site of the box with the caret: the page's, or an
+embedded frame's when the caret is in one (App Store Connect's sign-in comes
+from idmsa.apple.com). The secret goes into that frame only, and only while
+its document is still on that site; any frame can claim the caret, so a
+frame never receives the page's account. Its
 arguments are `account` (optional username), `what` (`password` by default or
 `otp`), and `submit` (true by default). With more than one shared match, omit
 `account` to get a username-only `candidates` list, or name the username. The
 result reports only `filled`, `account`, `host`, `source` (for password fills),
-`what` (for OTP), and `submitted`; the password, one-time code, and Bitwarden
+`what` (for OTP), and `submitted` (an OTP fill sends the code box's own form,
+else clicks the button nearest it); the password, one-time code, and Bitwarden
 session key never appear in the MCP result, CLI output, or Jev trace.
 `copper signin [--account USER] [--otp] [--no-submit] [--json]` is the CLI
 equivalent (`--json` may be placed with the command).
@@ -113,16 +129,17 @@ submit path. OTP fills use `browser_sign_in` with `what: "otp"` (or `copper
 signin --otp`); Jev `SIGN_IN` does not guess an OTP. Unshared credentials,
 missing fields, locked Bitwarden, and private (`shy`) tabs return an error;
 there is no agent prompt or audit record in this flattened lane. When a
-credential exists but is not shared, the error points to Settings › Passwords ›
-Agent access. The operation is not a page sandbox: with `--no-submit`, the
+credential (or the named account) exists but is not shared, the error points
+to Settings › Passwords › Agent access. The operation is not a page sandbox: with `--no-submit`, the
 password intentionally remains in the page, so do not use ordinary
 page-reading/evaluate tools on that tab.
 
 Sharing is controlled by Settings › Passwords › **Agent access**. The user can
 turn on the share-everything switch or enable individual per-item toggles. A
-Bitwarden item in the `Agents` folder is shared automatically; a custom field
-`copper-agent: deny` always means never shared, even when the broad switch is
-on. The policy is local to Copper and never editable through MCP or the CLI.
+Bitwarden item in the `Agents` folder (a 1Password item in a vault named
+`Agents` or tagged `copper-agent`) is shared automatically — cards and
+identities as well as logins; a custom field `copper-agent: deny` always means
+never shared, even when the broad switch is on. The policy is local to Copper and never editable through MCP or the CLI.
 
 ### Saved cards, identities, and custom fields
 

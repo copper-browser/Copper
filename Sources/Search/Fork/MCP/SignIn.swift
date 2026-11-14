@@ -19,14 +19,16 @@ enum SignIn {
 
     @MainActor
     static func run(_ args: [String: Any], in browser: Browser, source: Source) async throws -> [String: Any] {
-        guard let tab = AgentTabs.target(in: browser) else { throw Failure(message: "no active tab") }
+        guard let tab = AgentTabs.target(in: browser) else { throw Failure(message: AgentTabs.missing()) }
         AgentTabs.prepare(tab)
         guard !tab.shy else { throw Failure(message: "sign-in is unavailable in private tabs") }
-        guard let address = tab.address, let rawHost = address.host(), !rawHost.isEmpty else {
-            throw Failure(message: "current tab has no host")
-        }
-        var host = rawHost.lowercased()
-        if host.hasPrefix("www.") { host.removeFirst(4) }
+        // Fork (form-target): the account is the site's whose box has the
+        // caret — an embedded frame's when one has it — and the secret goes
+        // into that frame only. Picking by the page's host and filling the
+        // frame would hand the page's password to any frame that claims focus.
+        guard let target = tab.formTarget else { throw Failure(message: "current tab has no host") }
+        let host = target.host
+        let framed = target.frame == nil ? "" : " (the box with the caret is in an embedded frame from \(host); click the sign-in box you mean first)"
 
         let all = Credentials.candidates(for: host)
         let permitted = AgentAccess.permitted(for: host)
@@ -43,7 +45,7 @@ enum SignIn {
             if OnePassword.shared.isLocked {
                 throw Failure(message: "1password is locked — unlock it in Settings › Passwords")
             }
-            throw Failure(message: "no saved credential for \(host)")
+            throw Failure(message: "no saved credential for \(host)\(framed)")
         }
 
         let account = (args["account"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -52,6 +54,9 @@ enum SignIn {
             selected = permitted.first(where: { $0.user == account })
                 ?? permitted.first(where: { $0.user.caseInsensitiveCompare(account) == .orderedSame })
             if selected == nil {
+                if all.contains(where: { $0.user.caseInsensitiveCompare(account) == .orderedSame }) {
+                    throw Failure(message: "account \(account) for \(host) is not shared with agents — enable it in Settings › Passwords › Agent access")
+                }
                 throw Failure(message: "no shared account named \(account) for \(host); saved: \(permitted.map(\.user).joined(separator: ", "))")
             }
         } else if permitted.count == 1 {
@@ -73,7 +78,7 @@ enum SignIn {
         case "password":
             // The field first, the secret second: a page with nothing to fill
             // never causes a read from the vault.
-            guard await tab.hasPasswordField() else { throw Failure(message: "sign-in fields not found on the page") }
+            guard await tab.hasPasswordField(at: target) else { throw Failure(message: "sign-in fields not found on the page") }
             let secret: String
             do {
                 secret = try await Credentials.secret(credential.id)
@@ -87,7 +92,7 @@ enum SignIn {
                 throw error
             }
             let filled = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-                tab.fill(user: credential.user, password: secret) { ok in
+                tab.fill(user: credential.user, password: secret, at: target) { ok in
                     continuation.resume(returning: ok)
                 }
             }
@@ -95,7 +100,7 @@ enum SignIn {
             let submitted: Bool
             if submit {
                 submitted = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-                    tab.submitSignIn { ok in continuation.resume(returning: ok) }
+                    tab.submitSignIn(at: target) { ok in continuation.resume(returning: ok) }
                 }
             } else {
                 submitted = false
@@ -112,7 +117,7 @@ enum SignIn {
 
         case "otp":
             guard credential.hasTOTP else { throw Failure(message: "no one-time code for this account") }
-            guard await tab.hasOTPField() else { throw Failure(message: "no one-time-code field on the page") }
+            guard await tab.hasOTPField(at: target) else { throw Failure(message: "no one-time-code field on the page") }
             let code: String
             do {
                 code = try await Credentials.totp(credential.id)
@@ -126,13 +131,13 @@ enum SignIn {
                 throw error
             }
             let filled = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-                tab.fillOTP(code) { ok in continuation.resume(returning: ok) }
+                tab.fillOTP(code, at: target) { ok in continuation.resume(returning: ok) }
             }
             guard filled else { throw Failure(message: "no one-time-code field on the page") }
             let submitted: Bool
             if submit {
                 submitted = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-                    tab.submitSignIn { ok in continuation.resume(returning: ok) }
+                    tab.submitOTP(at: target) { ok in continuation.resume(returning: ok) }
                 }
             } else {
                 submitted = false

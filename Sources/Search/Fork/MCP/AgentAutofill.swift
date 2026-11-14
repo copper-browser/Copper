@@ -11,14 +11,12 @@ enum AgentAutofill {
 
     @MainActor
     static func run(_ args: [String: Any], in browser: Browser, source: Source) async throws -> [String: Any] {
-        guard let tab = AgentTabs.target(in: browser) else { throw Failure(message: "no active tab") }
+        guard let tab = AgentTabs.target(in: browser) else { throw Failure(message: AgentTabs.missing()) }
         AgentTabs.prepare(tab)
         guard !tab.shy else { throw Failure(message: "autofill is unavailable in private tabs") }
-        guard let address = tab.address, let rawHost = address.host(), !rawHost.isEmpty else {
-            throw Failure(message: "current tab has no host")
-        }
-        var host = rawHost.lowercased()
-        if host.hasPrefix("www.") { host.removeFirst(4) }
+        // Fork (form-target): the site of the box with the caret — an
+        // embedded frame's when one has it — as the human picker uses.
+        guard let host = tab.formHost else { throw Failure(message: "current tab has no host") }
         // Fork (new-password): needs no open vault — a locked one sends the
         // save to the keychain, as the picker's row does.
         if let raw = args["kind"] as? String,
@@ -123,7 +121,11 @@ enum AgentAutofill {
 
         case "field":
             guard let name else { throw Failure(message: "name is required for field") }
-            let all = Autofill.fields(for: host, matching: name)
+            // Fork (form-target): a field belongs to a site, as a password
+            // does — chosen by the site of the box with the caret, filled
+            // only into that frame.
+            guard let target = tab.formTarget else { throw Failure(message: "current tab has no host") }
+            let all = Autofill.fields(for: target.host, matching: name)
             guard let field = all.first(where: { Autofill.isAllowed($0.itemID) }) else {
                 if !all.isEmpty {
                     throw Failure(message: "field exists but is not shared with agents — enable it in Settings › Passwords › Agent access")
@@ -131,11 +133,11 @@ enum AgentAutofill {
                 throw Failure(message: "no saved field named \(name)")
             }
             let filled = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-                tab.fillField(label: name, value: field.value) { ok in continuation.resume(returning: ok) }
+                tab.fillField(label: name, value: field.value, at: target) { ok in continuation.resume(returning: ok) }
             }
             if !filled {
                 let focused = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-                    tab.fillFocused(field.value) { ok in continuation.resume(returning: ok) }
+                    tab.fillFocused(field.value, at: target) { ok in continuation.resume(returning: ok) }
                 }
                 guard focused else { throw Failure(message: "no field named \(name) on the page") }
             }
