@@ -130,7 +130,7 @@ final class Drive: ObservableObject {
         let started: Date
         var ended: Date?
         var ms: Int? { ended.map { Int($0.timeIntervalSince(started) * 1000) } }
-        enum Kind: String { case observe, ask, write, act, settle }
+        enum Kind: String { case observe, ask, write, act, settle, wait }
     }
 
     struct Outcome {
