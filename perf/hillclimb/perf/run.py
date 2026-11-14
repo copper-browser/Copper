@@ -940,6 +940,7 @@ METRICS = [
         (f"A5.scroll.{p}.janky", "", f"frames > 1.5× refresh per 4 s scroll, {p} page"))],
     ("A5.scroll.dropped", "", "frames dropped vs the page's refresh, per 4 s scripted scroll (all pages)"),
     ("A5.wheel.dropped_pct", "%", "real wheel (`bench wheel`, 120 Hz): % frames dropped vs 120 Hz per gesture, all pages", 1),
+    ("A5.wheel.dropped_own_pct", "%", "real wheel: % rAF frames dropped vs the page's own refresh (WebKit runs rAF at 60 Hz on ProMotion unless asked; scrolling itself is composited outside the page)", 1),
     *[x for p in SCROLL for x in (
         (f"A5.wheel.{p}.dropped_pct", "%", f"wheel, {p} page: % frames dropped vs 120 Hz per gesture", 1),
         (f"A5.wheel.{p}.frame_ms", "ms", f"wheel, {p} page: rAF frame interval, every frame of every gesture", 8.33))],
@@ -1129,6 +1130,8 @@ def collect(d, laptop):
                                                 "(HC_WAKE_DISPLAY=1 wakes it); hook send/tick times kept")
         elif r.get("frames"):
             put("A5.wheel.dropped_pct", r, r.get("dropped120_pct"))
+            if r.get("droppedOwn") is not None:
+                put("A5.wheel.dropped_own_pct", r, round(100 * r["droppedOwn"] / (r["frames"] + r["droppedOwn"]), 1))
             put(f"A5.wheel.{r['page']}.dropped_pct", r, r.get("dropped120_pct"))
             for x in r.get("d") or []:
                 put(f"A5.wheel.{r['page']}.frame_ms", r, x)
