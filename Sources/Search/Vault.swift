@@ -16,6 +16,10 @@ struct Login: Identifiable, Equatable, Hashable {
     var password: String
     /// When it was last used to sign in, if known. Newest first in lists.
     var used: Date?
+    /// Fork (origin-save): the scheme, host and port it was saved from
+    /// (`http://example.com`, `https://example.com:8443`), when the save
+    /// knew them. Nil: saved before they were kept, or imported.
+    var origin: String? = nil
 
     var id: String { host + "\u{1}" + user }
 }
@@ -114,7 +118,29 @@ enum Vault {
         // The keychain has no "last used" of its own; it rides in the comment.
         let used = (row[kSecAttrComment as String] as? String)
             .flatMap(Double.init).map(Date.init(timeIntervalSince1970:))
-        return Login(host: host, user: user, password: "", used: used)
+        return Login(host: host, user: user, password: "", used: used, origin: origin(of: row, host: host)) // Fork (origin-save)
+    }
+
+    /// Fork (origin-save): the scheme and port an item was saved with, as an
+    /// origin. Nil when it has no http(s) protocol (saved before they were kept).
+    private static func origin(of row: [String: Any], host: String) -> String? {
+        let scheme: String
+        switch row[kSecAttrProtocol as String] as? String {
+        case (kSecAttrProtocolHTTP as String)?: scheme = "http"
+        case (kSecAttrProtocolHTTPS as String)?: scheme = "https"
+        default: return nil
+        }
+        return Credentials.origin(scheme: scheme, host: host, port: (row[kSecAttrPort as String] as? NSNumber)?.intValue)
+    }
+
+    /// Fork (origin-save): the keychain attributes for where a login was saved from.
+    static func place(_ origin: String?) -> [String: Any] {
+        guard let origin, let url = URL(string: origin) else { return [:] }
+        switch url.scheme {
+        case "http": return [kSecAttrProtocol as String: kSecAttrProtocolHTTP, kSecAttrPort as String: url.port ?? 80]
+        case "https": return [kSecAttrProtocol as String: kSecAttrProtocolHTTPS, kSecAttrPort as String: url.port ?? 443]
+        default: return [:]
+        }
     }
 
     /// The same account with its password read in. Nil when the keychain
@@ -130,11 +156,11 @@ enum Vault {
     // MARK: - writing
 
     @discardableResult
-    static func save(host: String, user: String, password: String, used: Date? = nil) -> Bool {
+    static func save(host: String, user: String, password: String, used: Date? = nil, origin: String? = nil) -> Bool {
         guard !host.isEmpty, !password.isEmpty,
               let data = password.data(using: .utf8)
         else { return false }
-        if ProbeKeychain.active { return ProbeKeychain.save(host: host, user: user, password: password, used: used) } // Fork (probe-keychain)
+        if ProbeKeychain.active { return ProbeKeychain.save(host: host, user: user, password: password, used: used, origin: origin) } // Fork (probe-keychain)
 
         let identity: [String: Any] = [
             kSecClass as String: kSecClassInternetPassword,
@@ -146,6 +172,7 @@ enum Vault {
             kSecAttrLabel as String: label,
         ]
         if let used { fields[kSecAttrComment as String] = String(used.timeIntervalSince1970) }
+        fields.merge(place(origin)) { _, new in new } // Fork (origin-save): the latest save's scheme and port
 
         let status = SecItemUpdate(identity as CFDictionary, fields as CFDictionary)
         if status == errSecSuccess { return true }
@@ -264,7 +291,9 @@ enum Vault {
                 skipped += 1
                 continue
             }
-            let saved = keep.map { $0(host, row[userAt], password) } ?? save(host: host, user: row[userAt], password: password)
+            // Fork (origin-save): a row's own scheme and port, when its address has them.
+            let origin = URL(string: row[urlAt].trimmingCharacters(in: .whitespaces)).flatMap { $0.scheme == nil ? nil : Credentials.origin(of: $0) }
+            let saved = keep.map { $0(host, row[userAt], password) } ?? save(host: host, user: row[userAt], password: password, origin: origin)
             saved ? (kept += 1) : (skipped += 1)
         }
         return (kept, skipped)

@@ -49,9 +49,7 @@ extension CanvasHost {
         guard lean else { return }
         web.board = true
         let controller = web.configuration.userContentController
-        for name in [ScrollRelay.name, VeilRelay.name, ImageRelay.name, StoreRelay.name] {
-            controller.removeScriptMessageHandler(forName: name)
-        }
+        for name in Tab.copperRelays { controller.removeScriptMessageHandler(forName: name, contentWorld: .copper) }
         controller.removeScriptMessageHandler(forName: Passkeys.name, contentWorld: .page)
         // Nothing third-party loads on the board itself, and the blocker's
         // cosmetic rules are a stylesheet matched on every style pass. (A

@@ -389,7 +389,7 @@ final class Browser: NSObject, ObservableObject {
         // Preserve the old synchronous keychain path exactly when Bitwarden
         // (or 1Password — Fork) is not the active destination.
         guard offer.target != .keychain else {
-            guard Vault.save(host: login.host, user: login.user, password: login.password, used: Date()) else {
+            guard Vault.save(host: login.host, user: login.user, password: login.password, used: Date(), origin: login.origin) else {
                 announce("The keychain refused it")
                 return
             }
@@ -399,7 +399,7 @@ final class Browser: NSObject, ObservableObject {
         }
         Task { [weak self] in
             do {
-                try await Credentials.save(host: login.host, user: login.user, password: login.password)
+                try await Credentials.save(host: login.host, user: login.user, password: login.password, origin: login.origin)
                 self?.relist()
                 self?.announce(offer.changed ? "Password updated in \(offer.target.title) for \(login.host)" : "Password saved to \(offer.target.title)") // Fork: 1Password
             } catch {
@@ -569,19 +569,20 @@ final class Browser: NSObject, ObservableObject {
     /// current box from the saved login when one matches.
     private func chooseNewPassword() {
         lowering?.cancel()
+        // Fork (form-target): the form the row was picked for, held through every await.
         guard let tab = tabs.first(where: { $0.id == suggesting?.tab }) ?? active,
-              let host = tab.formHost
+              let target = tab.formTarget
         else { return }
         pickedInto = tab.id
         suggesting = nil
         Task { [weak self, weak tab] in
             guard let self, let tab else { return }
-            guard let page = await tab.newPasswordPage() else {
+            guard let page = await tab.newPasswordPage(at: target) else {
                 self.announce("Couldn't find the new password box anymore")
                 return
             }
             do {
-                _ = try await self.makeNewPassword(in: tab, host: host, page: page)
+                _ = try await self.makeNewPassword(in: tab, at: target, page: page)
             } catch {
                 self.announce(error.localizedDescription)
             }
@@ -592,17 +593,20 @@ final class Browser: NSObject, ObservableObject {
     /// the agent tool's (`browser_autofill kind=new-password`), so both save
     /// first and both say what happened. Answers how many new boxes took it.
     @discardableResult
-    func makeNewPassword(in tab: Tab, host: String, page: NewPasswordPage, named: String? = nil,
+    /// Fork (form-target): `target` is the form's frame and origin, fixed
+    /// before the first await — the fill goes there or nowhere.
+    func makeNewPassword(in tab: Tab, at target: Tab.FormTarget, page: NewPasswordPage, named: String? = nil,
                          save: Bool = true) async throws -> (made: NewPassword.Made, filled: Int) {
+        let host = target.host
         if save, Credentials.saveTarget != .keychain {
             announce("Saving a strong password to \(Credentials.saveTarget.title)…")
         }
-        let made = try await NewPassword.make(host: host, page: page, named: named,
+        let made = try await NewPassword.make(host: host, origin: target.origin, page: page, named: named,
                                               pickedHere: signedInWith[tab.id], save: save)
         // Remembered so the save offer after submit doesn't ask about the
         // password just kept.
         madePasswords[tab.id] = (host, made.user, made.password, made.deferred)
-        let filled = await tab.fillNewPassword(made.password, current: made.current)
+        let filled = await tab.fillNewPassword(made.password, current: made.current, at: target)
         guard filled > 0 else {
             throw NewPassword.Failure(message: made.deferred
                 ? "Couldn't find the new password box anymore"
@@ -1925,7 +1929,7 @@ final class Browser: NSObject, ObservableObject {
                 : Suggesting(tab: tab.id, spot: spot, credentials: credentials, rows: rows)
         }
 
-        tab.onCredentials = { [weak self] tab, host, user, password, fresh in
+        tab.onCredentials = { [weak self] tab, host, user, password, fresh, origin in
             guard let self, prefs.savesPasswords, !password.isEmpty, !tab.shy,
                   !Vault.isNever(host)
             else { return }
@@ -1960,7 +1964,7 @@ final class Browser: NSObject, ObservableObject {
                 }
             }
             let offer = Offer(
-                login: Login(host: host, user: user, password: password, used: nil),
+                login: Login(host: host, user: user, password: password, used: nil, origin: origin), // Fork (origin-save)
                 changed: target == .keychain && known.contains { $0.user == user },
                 target: target
             )

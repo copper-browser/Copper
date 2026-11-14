@@ -103,15 +103,19 @@ enum NewPassword {
     /// Makes the password and saves it; the caller fills the page with what
     /// comes back. `named` overrides the account the page names; `save:
     /// false` keeps nothing, and the save offer after submit asks instead.
-    static func make(host: String, page: NewPasswordPage, named: String? = nil, pickedHere: Credential? = nil,
+    /// `origin` is the form's document's (Fork: form-origin): the saved
+    /// login's current password goes into its box only when the login is
+    /// that origin's, and the new login is saved for it.
+    static func make(host: String, origin: String, page: NewPasswordPage, named: String? = nil, pickedHere: Credential? = nil,
                      save: Bool = true) async throws -> Made {
         let target = Credentials.saveTarget
         let (user, existing) = account(host: host, named: named ?? page.user, target: target, pickedHere: pickedHere)
         let password = StrongPassword.generate(rules: page.rules, avoiding: [user, user.split(separator: "@").first.map(String.init) ?? ""])
 
-        // The current password is read before the save replaces it.
+        // The current password is read before the save replaces it — and
+        // only a login of this very origin's: never another port's or http's.
         var current: String?
-        if page.hasCurrent, page.currentEmpty, let existing {
+        if page.hasCurrent, page.currentEmpty, let existing, Credentials.owns(existing, origin: origin) {
             current = try? await Credentials.secret(existing.id)
         }
         if !save || (target == .keychain && existing != nil) {
@@ -119,7 +123,7 @@ enum NewPassword {
                         target: target, updated: existing != nil, deferred: true)
         }
         do {
-            try await Credentials.save(host: host, user: user, password: password)
+            try await Credentials.save(host: host, user: user, password: password, origin: origin)
         } catch {
             throw Failure(message: "Couldn't save to \(target.title), so nothing was filled — \(error.localizedDescription)")
         }

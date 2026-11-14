@@ -260,7 +260,7 @@ final class Tab: ObservableObject, Identifiable {
     /// The site the sign-in was sent from — not the one it landed on —
     /// then the name and the password, and whether it came from a form that
     /// makes a new password (Fork: new-password).
-    var onCredentials: ((Tab, String, String, String, Bool) -> Void)?
+    var onCredentials: ((Tab, String, String, String, Bool, String?) -> Void)? // Fork (origin-save): last, the page's origin
     /// Fork (auto-codes): a box for a two-step code has just appeared.
     var onCodeBox: ((Tab) -> Void)?
     var onPickEnd: ((Tab) -> Void)?
@@ -397,18 +397,19 @@ final class Tab: ObservableObject, Identifiable {
         // included, so each name is cleared before being claimed — registering
         // one twice is a hard crash rather than an error.
         let controller = web.configuration.userContentController
-        controller.removeScriptMessageHandler(forName: ScrollRelay.name)
-        controller.removeScriptMessageHandler(forName: VeilRelay.name)
+        // Fork (agent-world): the scroll, veil, image and store relays are
+        // heard from Copper's own content world only, where their scripts
+        // run — a page's script has nothing of them to post to or call.
+        // Page voice stays in the page's: it is an API the page calls.
+        for name in Tab.copperRelays { controller.removeScriptMessageHandler(forName: name, contentWorld: .copper) }
         controller.removeScriptMessageHandler(forName: FormRelay.name, contentWorld: .copper)
         controller.removeScriptMessageHandler(forName: Passkeys.name, contentWorld: .page)
-        controller.removeScriptMessageHandler(forName: ImageRelay.name)
-        controller.removeScriptMessageHandler(forName: StoreRelay.name)
         controller.removeScriptMessageHandler(forName: PageVoiceRelay.name, contentWorld: .page) // Fork (page-voice)
         controller.addScriptMessageHandler(PageVoiceRelay.shared, contentWorld: .page, name: PageVoiceRelay.name)
-        controller.add(relay, name: ScrollRelay.name)
-        controller.add(veils_, name: VeilRelay.name)
-        controller.add(images, name: ImageRelay.name)
-        controller.add(shop, name: StoreRelay.name)
+        controller.add(relay, contentWorld: .copper, name: ScrollRelay.name)
+        controller.add(veils_, contentWorld: .copper, name: VeilRelay.name)
+        controller.add(images, contentWorld: .copper, name: ImageRelay.name)
+        controller.add(shop, contentWorld: .copper, name: StoreRelay.name)
         // Fork (agent-world): heard from Copper's own content world only — a page's script has no such handler to post to.
         controller.add(forms, contentWorld: .copper, name: FormRelay.name)
         CaptureHook.listen(controller) // Fork (page-capture): what the page asks for and hears back (Fork/Capture/CaptureHook.swift)
@@ -507,10 +508,10 @@ final class Tab: ObservableObject, Identifiable {
         TabShare.arm(controller) // Fork (tab-share): getDisplayMedia offers a tab (Fork/TabShare/TabShareScript.swift)
         listenForPasskeys(controller) // Fork (passkeys-hooks): follows Settings › Passwords
         controller.addUserScript(
-            WKUserScript(source: ScrollRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
+            WKUserScript(source: ScrollRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .copper) // Fork (agent-world)
         )
         controller.addUserScript(
-            WKUserScript(source: Veiling.picker, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+            WKUserScript(source: Veiling.picker, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .copper) // Fork (agent-world)
         )
         controller.addUserScript(
             // Every frame: a sign-in can be served inside one (Fork: frame-autofill).
@@ -526,13 +527,13 @@ final class Tab: ObservableObject, Identifiable {
         // Every frame: a swipe over an embedded map is the map's, and only the
         // map's own document can say so.
         controller.addUserScript(
-            WKUserScript(source: Swipe.watch, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+            WKUserScript(source: Swipe.watch, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .copper) // Fork (agent-world)
         )
         controller.addUserScript(
-            WKUserScript(source: ImageRelay.watch, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+            WKUserScript(source: ImageRelay.watch, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .copper) // Fork (agent-world)
         )
         controller.addUserScript(
-            WKUserScript(source: StoreRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
+            WKUserScript(source: StoreRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .copper) // Fork (agent-world)
         )
         // Fork (page-voice): window.copper.voice on the sites that may ask (Fork/Voice/PageVoice.swift).
         controller.addUserScript(
@@ -578,8 +579,11 @@ final class Tab: ObservableObject, Identifiable {
         built?.evaluateJavaScript(Veiling.style(css))
     }
 
-    func startPicking() { web.evaluateJavaScript("window.__officeVeil && window.__officeVeil.on()") }
-    func stopPicking() { web.evaluateJavaScript("window.__officeVeil && window.__officeVeil.off()") }
+    func startPicking() { web.evaluateJavaScript("window.__officeVeil && window.__officeVeil.on()", in: nil, in: .copper) }
+    func stopPicking() { web.evaluateJavaScript("window.__officeVeil && window.__officeVeil.off()", in: nil, in: .copper) }
+
+    /// Fork (agent-world): the handlers whose scripts run in Copper's own world.
+    static let copperRelays = [ScrollRelay.name, VeilRelay.name, ImageRelay.name, StoreRelay.name]
 
     func foundSignIn() { onSignIn?(self) }
 
@@ -719,7 +723,7 @@ final class Tab: ObservableObject, Identifiable {
     /// Whether the sign-in worked is only known afterwards: a page that
     /// comes back without a password box took it, one that still has the
     /// box refused it, and only the first is worth remembering.
-    private var sent: (host: String, user: String, password: String, fresh: Bool, frame: WKFrameInfo?, at: Date)?
+    private var sent: (host: String, user: String, password: String, fresh: Bool, frame: WKFrameInfo?, at: Date, origin: String?)?
 
     func sentSignIn(user: String, password: String, fresh: Bool = false, frame: WKFrameInfo? = nil) {
         // The host now, while the page is still the sign-in page: a moment
@@ -728,7 +732,8 @@ final class Tab: ObservableObject, Identifiable {
         // the frame's site.
         let embedded = frame.flatMap { $0.isMainFrame ? nil : $0 }
         guard let bare = Self.bare(embedded.map(\.securityOrigin.host) ?? address?.host()) else { return }
-        sent = (bare, user, password, fresh, embedded, Date())
+        let origin = embedded.map { Credentials.origin(of: $0.securityOrigin) } ?? address.map { Credentials.origin(of: $0) } // Fork (origin-save)
+        sent = (bare, user, password, fresh, embedded, Date(), origin ?? nil)
     }
 
     /// The page has moved on — a new document has loaded, or the sign-in
@@ -766,7 +771,7 @@ final class Tab: ObservableObject, Identifiable {
                 // still on its way.
                 if (still as? Bool) == true { return }
                 self.sent = nil
-                self.onCredentials?(self, sent.host, sent.user, sent.password, sent.fresh)
+                self.onCredentials?(self, sent.host, sent.user, sent.password, sent.fresh, sent.origin)
             }
         }
     }
@@ -845,7 +850,7 @@ final class Tab: ObservableObject, Identifiable {
 
     /// Fills every recognised box in the focused form without putting values
     /// into the JavaScript source itself.
-    func fillValues(_ values: [FieldKind: String], done: ((Int) -> Void)? = nil) {
+    func fillValues(_ values: [FieldKind: String], at target: FormTarget? = nil, done: ((Int) -> Void)? = nil) {
         let object = Dictionary(uniqueKeysWithValues: values.map { ($0.key.rawValue, $0.value) })
         guard let data = try? JSONSerialization.data(withJSONObject: object),
               let json = String(data: data, encoding: .utf8)
@@ -854,7 +859,8 @@ final class Tab: ObservableObject, Identifiable {
             return
         }
         forms(
-            "window.__officeForms && window.__officeForms.fillValues(\(json))"
+            "window.__officeForms && window.__officeForms.fillValues(\(json))",
+            at: target
         ) { result in
             done?((result as? NSNumber)?.intValue ?? (result as? Int) ?? 0)
         }
@@ -892,10 +898,11 @@ final class Tab: ObservableObject, Identifiable {
 
     /// Fork (new-password): the page's new-password form — whose it is and
     /// its rules — or nil when there is none.
-    func newPasswordPage() async -> NewPasswordPage? {
+    func newPasswordPage(at target: FormTarget? = nil) async -> NewPasswordPage? {
         await withCheckedContinuation { (continuation: CheckedContinuation<NewPasswordPage?, Never>) in
             forms(
-                "(window.__officeForms && window.__officeForms.newPasswordInfo()) || null"
+                "(window.__officeForms && window.__officeForms.newPasswordInfo()) || null",
+                at: target
             ) { result in
                 continuation.resume(returning: NewPasswordPage(result))
             }
@@ -906,23 +913,25 @@ final class Tab: ObservableObject, Identifiable {
     /// `current` into an empty current-password box. Passed as JSON
     /// arguments, never spliced into the source; answers how many new boxes
     /// took it.
-    func fillNewPassword(_ password: String, current: String?) async -> Int {
+    func fillNewPassword(_ password: String, current: String?, at target: FormTarget? = nil) async -> Int {
         guard let password = jsonLiteral(password) else { return 0 }
         let old = current.flatMap(jsonLiteral) ?? "null"
         return await withCheckedContinuation { (continuation: CheckedContinuation<Int, Never>) in
             forms(
-                "(window.__officeForms && window.__officeForms.fillNewPassword(\(password), \(old))) || 0"
+                "(window.__officeForms && window.__officeForms.fillNewPassword(\(password), \(old))) || 0",
+                at: target
             ) { result in
                 continuation.resume(returning: (result as? NSNumber)?.intValue ?? 0)
             }
         }
     }
 
-    func hasFields(_ group: FieldKind.Group) async -> Bool {
+    func hasFields(_ group: FieldKind.Group, at target: FormTarget? = nil) async -> Bool {
         guard let group = jsonLiteral(group.rawValue) else { return false }
         return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             forms(
-                "!!(window.__officeForms && window.__officeForms.hasFields(\(group)))"
+                "!!(window.__officeForms && window.__officeForms.hasFields(\(group)))",
+                at: target
             ) { result in
                 continuation.resume(returning: (result as? Bool) ?? false)
             }
@@ -969,12 +978,12 @@ final class Tab: ObservableObject, Identifiable {
     /// Show one hidden thing while the pointer rests on its row in the list.
     func peek(_ selector: String, keeping css: String) {
         web.evaluateJavaScript(
-            "window.__officeVeil && window.__officeVeil.peek(`\(escape(css))`, `\(escape(selector))`)"
+            "window.__officeVeil && window.__officeVeil.peek(`\(escape(css))`, `\(escape(selector))`)", in: nil, in: .copper
         )
     }
 
     func unpeek(_ css: String) {
-        web.evaluateJavaScript("window.__officeVeil && window.__officeVeil.unpeek(`\(escape(css))`)")
+        web.evaluateJavaScript("window.__officeVeil && window.__officeVeil.unpeek(`\(escape(css))`)", in: nil, in: .copper)
     }
 
     private func jsonLiteral(_ text: String) -> String? {
@@ -1210,7 +1219,7 @@ final class Tab: ObservableObject, Identifiable {
               let data = try? JSONSerialization.data(withJSONObject: ["installed": installed, "busy": busy.map { $0 as Any } ?? NSNull()]),
               let json = String(data: data, encoding: .utf8)
         else { return }
-        built.evaluateJavaScript("window.__officeStore && window.__officeStore.state(\(json))")
+        built.evaluateJavaScript("window.__officeStore && window.__officeStore.state(\(json))", in: nil, in: .copper)
     }
 
     /// The picture comes off the moment there is something better under it
@@ -1504,13 +1513,10 @@ final class Tab: ObservableObject, Identifiable {
         guard let web = built else { return }
         built = nil
         let controller = web.configuration.userContentController
-        controller.removeScriptMessageHandler(forName: ScrollRelay.name)
-        controller.removeScriptMessageHandler(forName: VeilRelay.name)
+        for name in Tab.copperRelays { controller.removeScriptMessageHandler(forName: name, contentWorld: .copper) } // Fork (agent-world)
         controller.removeScriptMessageHandler(forName: FormRelay.name, contentWorld: .copper)
         controller.removeScriptMessageHandler(forName: Passkeys.name, contentWorld: .page)
         Passkeys.drop(self) // Fork (passkey-picker): the page waiting on a passkey is gone
-        controller.removeScriptMessageHandler(forName: ImageRelay.name)
-        controller.removeScriptMessageHandler(forName: StoreRelay.name)
         controller.removeAllUserScripts()
         Tab.armed.removeObject(forKey: controller) // Fork (navperf)
         passkeysListening = false

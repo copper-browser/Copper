@@ -945,7 +945,7 @@ final class Bitwarden: ObservableObject {
         await refreshCacheIfPossible()
     }
 
-    func create(host: String, user: String, password: String) async throws -> String {
+    func create(host: String, user: String, password: String, origin: String? = nil) async throws -> String {
         var object = try await itemTemplate()
         object["type"] = 1
         object["name"] = host
@@ -953,7 +953,7 @@ final class Bitwarden: ObservableObject {
             "username": user,
             "password": password,
             "totp": NSNull(),
-            "uris": [["uri": "https://\(host)", "match": NSNull()]],
+            "uris": [["uri": origin ?? "https://\(host)", "match": NSNull()]], // Fork (origin-save): the page's scheme and port
         ]
         let id = try await write(object)
         await refreshCacheIfPossible()
