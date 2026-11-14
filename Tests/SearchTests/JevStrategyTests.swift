@@ -68,9 +68,9 @@ struct JevStrategyTests {
         #expect(U.textModels(keys) == ["haiku"])
     }
 
-    @Test func shippedVerifiesDone() {
-        #expect(U.Strategy.shipped.verify && !U.Strategy.parse("turbo")!.verify && U.Strategy.parse("verify")!.verify)
-        #expect(U.Strategy.shipped.submit && U.Strategy.shipped.name.hasSuffix("verify,submit"))
+    @Test func shippedSubmitsAndVerifyIsOptIn() {
+        #expect(!U.Strategy.shipped.verify && !U.Strategy.parse("turbo")!.verify && U.Strategy.parse("verify")!.verify)
+        #expect(U.Strategy.shipped.submit && U.Strategy.shipped.name.hasSuffix("watch,submit"))
     }
 
     @Test func visionParses() {

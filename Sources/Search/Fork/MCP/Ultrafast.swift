@@ -269,8 +269,9 @@ enum Ultrafast {
     was NOT applied or is still to do: for example a search that was typed but never submitted, a filter or option \
     the page reports as off, any or none, or results that are not showing yet.
     """
-    /// At or above this, a DONE is not taken at its word (measured on the
-    /// hill-climb suite's DONE decisions: finished pages answer under 0.1).
+    /// At or above this, a DONE is not taken at its word. Finished pages
+    /// mostly answer under 0.1, but two of 96 measured runs answered 0.51
+    /// and 0.53 on a finished page, so `verify` is not in Fast mode yet.
     static let unmetFloor = 0.5
     /// How long a click that shows no change is given to show one (`watch`).
     static let clickPatience: TimeInterval = 1.0
@@ -1742,7 +1743,7 @@ enum Ultrafast {
                     "vision": string("What Jev sees of the page beside the element table: auto (the default: text, plus a numbered picture only when controls have no names or many share one), off (text only), screenshot (a picture of the viewport in the state), marks (the picture with each element's index drawn on it), box (the picture, and Jev 1.14's Box question picks the target by where it is), pixels (the picture only — no table — and the click goes where the box says). Pictures are a TypeSafe preview."),
                     "model": string("The Jev to ask for this run (jev-latest, jev-preview, jev-1.14.0); default is the configured one. Box needs jev-1.14.0 or jev-preview."),
                     "json": bool("Return the run as one JSON object (status, timings, steps, page) instead of the text report; default false"),
-                    "strategy": string("Speed-ups, comma-separated. Unsaid, a run uses this Mac's Fast mode: turbo, verify and submit, with the pointer glide only when the tab is on screen (or classic, when Fast mode is off in Settings). classic is the original loop; fast (no pointer glide), literal (Jev matches the values the goal names to fields; no text model), burst (literal, and fills every matched plain field at once), lean (trimmed state), paste (a field's value goes in as one edit), watch (WAIT ends when the page changes; a click that shows no change gets a second to show one), turbo (all of those), verify (a DONE the page contradicts is not taken at its word), submit (Return after typing into a search box that is its form's only field), llm or llm=<model> (an LLM decides instead of Jev)."),
+                    "strategy": string("Speed-ups, comma-separated. Unsaid, a run uses this Mac's Fast mode: turbo and submit, with the pointer glide only when the tab is on screen (or classic, when Fast mode is off in Settings). classic is the original loop; fast (no pointer glide), literal (Jev matches the values the goal names to fields; no text model), burst (literal, and fills every matched plain field at once), lean (trimmed state), paste (a field's value goes in as one edit), watch (WAIT ends when the page changes; a click that shows no change gets a second to show one), turbo (all of those), verify (a DONE the page contradicts is not taken at its word), submit (Return after typing into a search box that is its form's only field), llm or llm=<model> (an LLM decides instead of Jev)."),
                 ], "required": ["goal"]] as [String: Any],
             ],
             [

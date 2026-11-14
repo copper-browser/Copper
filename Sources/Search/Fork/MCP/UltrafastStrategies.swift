@@ -26,7 +26,9 @@ import WebKit
 //   watch    WAIT ends when the page changes, and a click the page has not
 //            answered yet gets up to a second to show something.
 //   turbo    fast + burst + lean + paste + watch.
-//   verify   beside each decision Jev also says how likely something is
+//   verify   (not in Fast mode: at the 0.5 floor it refused 2 right DONEs in
+//            96 hill-climb runs and caught no wrong one; the run then ends
+//            BLOCKED.) Beside each decision Jev also says how likely something is
 //            visibly left undone; a DONE the page contradicts is not taken
 //            at its word (the next decision is asked without DONE on offer).
 //   submit   Return after typing into a search box that is its form's only
@@ -96,7 +98,6 @@ extension Tools.Ultrafast {
         static var shipped: Strategy {
             var s = Strategy.parse("turbo")!
             s.glideWatched = true
-            s.verify = true
             s.submit = true
             return s
         }

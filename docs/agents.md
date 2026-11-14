@@ -296,7 +296,7 @@ search string, a mercury-class model well under a second. Left empty, typing
 asks a fast small model on the gateway first (`llama`, ~0.6 s) and haiku
 behind it, and a value written for a field is reused when the same field is
 typed again in the run. DONE is the model's claim; the tool says so and the
-agent is told to check (`verify`, below, refuses the ones the page contradicts).
+agent is told to check.
 `private: true` with `newTab` runs in a private tab: empty cookies and
 storage, nothing kept.
 
@@ -343,7 +343,7 @@ games one way of seeing at a time and tables the arms (perf/README.md).
 
 Settings › Agents › Jev mode › *Fast mode* (on by default; `jevFast` in
 `intelligence.json`, `copper intelligence set --jev-fast on|off`) runs
-`turbo`, `verify` and `submit` with the pointer glide kept for a tab that is on screen; off runs
+`turbo` and `submit` with the pointer glide kept for a tab that is on screen; off runs
 `classic`, the original loop. `jev_run` / `jev_step` take `strategy`,
 comma-separated speed-ups that can be measured one at a time against the
 classic loop (`perf/uibench.py`):
@@ -357,9 +357,9 @@ classic loop (`perf/uibench.py`):
 | `paste` | a field's value goes in as one trusted edit (select all, insert text — the page hears it as typing, so an autocomplete opens) and is read back, instead of a key event per character |
 | `watch` | WAIT ends when the page changes (a MutationObserver, capped at 1.5 s) instead of after 100 ms; a click the page has not answered yet gets up to a second to show something before Jev is asked again (asked at once it clicks again, which starts the page's request over) |
 | `turbo` | all of the above |
-| `verify` | beside each decision Jev also says how likely something is visibly left undone; a DONE the page contradicts (≥ 50%) is refused, twice at most, and the next decision is asked without DONE on offer (`done_check`, `done_refused` in the JSON trace) |
+| `verify` | not part of Fast mode (at this floor it refused two right DONEs in 96 benchmark runs and caught no wrong one): beside each decision Jev also says how likely something is visibly left undone; a DONE the page contradicts (≥ 50%) is refused, twice at most, and the next decision is asked without DONE on offer (`done_check`, `done_refused` in the JSON trace) |
 | `submit` | Return after typing into a search box that is its form's only field and shows no suggestions: the search is made, not just written |
-| `watched` | like `fast`, but the glide stays when the tab is on the user's screen (Fast mode is `turbo` + `verify` + `submit` + `watched`) |
+| `watched` | like `fast`, but the glide stays when the tab is on the user's screen (Fast mode is `turbo` + `submit` + `watched`) |
 | `classic` | none of them: the original loop |
 | `llm`, `llm=<model>` | a small LLM decides instead of Jev: one chat call returns the operation, the target and any text (the comparison for *is Jev the fastest decider?*) |
 
