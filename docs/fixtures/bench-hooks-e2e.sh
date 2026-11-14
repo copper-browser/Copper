@@ -5,8 +5,8 @@
 #   1. `ui welcome on` keeps the welcome panel up in a headless world.
 #   2. ⎋ in `summon --keys` closes ⌘K; every step says whether it is up.
 #   3. `mouse double X Y` on the column's title band zooms the window, and
-#      a second one puts it back (Settings › Desktop & Dock's double-click
-#      action left as it is; "Minimize" or "None" are reported, not zoomed).
+#      another puts it back (Settings › Desktop & Dock's double-click action
+#      is left as it is; with "Minimize" or "None" the answer is all it checks).
 #   4. `wheel DY` scrolls a long page by DY, one event per display tick.
 #   5. `keylat ⌘k|⎋|⌘t|letter`: handled ≤ commit ≤ frame, and the bar or
 #      card is up or down after it.
@@ -72,18 +72,24 @@ out="$(bench summon "" --keys "⎋⎋")"
 [ "$(echo "$out" | field summoning)" = False ] || fail "summon: ⌘K still up after ⎋⎋: $out"
 echo "ok 2 summon --keys ⎋ closes the bar ($(echo "$out" | python3 -c 'import json,sys; print([s["summoning"] for s in json.load(sys.stdin)["keys"]])'))"
 
-# 3. A double-click on the column's title band, between the lights' door and back/forward.
+# 3. A double-click on the column's title band, between the lights' door and
+# back/forward. Headless, the window is parked off every screen, so AppKit's
+# zoom first takes it somewhere odd, then fills the screen, then puts it back:
+# double-click until it is back where it started, and it must have zoomed once.
 x=$(( $(bench probe | python3 -c 'import json,sys; print(json.load(sys.stdin)["lights"][-1][0])') + 60 ))
-out="$(bench mouse double "$x" 20)"
-action="$(echo "$out" | field action)"
-case "$action" in
-  Minimize|None) echo "ok 3 mouse double answered (double-click action is $action: $out)" ;;
-  *)
-    [ "$(echo "$out" | field zoomed)" = True ] || fail "mouse double: not zoomed: $out"
-    back="$(bench mouse double "$x" 20)"
-    [ "$(echo "$back" | field frameAfter)" = "$(echo "$out" | field frameBefore)" ] || fail "mouse double: second one did not put it back: $back"
-    echo "ok 3 mouse double zooms and puts back (hit $(echo "$out" | field hit))" ;;
-esac
+first=""; zoomed=False
+for _ in 1 2 3 4; do
+  out="$(bench mouse double "$x" 20)"
+  [ -n "$first" ] || first="$(echo "$out" | field frameBefore)"
+  [ "$(echo "$out" | field action)" = Maximize ] || { echo "ok 3 mouse double answered (double-click action: $(echo "$out" | field action))"; break; }
+  [ "$(echo "$out" | field zoomed)" = True ] && zoomed=True
+  [ "$(echo "$out" | field frameAfter)" = "$first" ] && break
+done
+if [ "$(echo "$out" | field action)" = Maximize ]; then
+  [ "$zoomed" = True ] || fail "mouse double: the window never zoomed: $out"
+  [ "$(echo "$out" | field frameAfter)" = "$first" ] || fail "mouse double: the window did not go back: $out"
+  echo "ok 3 mouse double zooms and puts back"
+fi
 
 # 4. The wheel scrolls the page by about DY.
 [ "$(bench eval "$id" 'scrollY')" = 0 ] || fail "wheel: page not at the top"
@@ -113,7 +119,7 @@ echo "ok 5 keylat orders handled ≤ commit ≤ frame"
 
 # 6. Symbols kept on request.
 if [ "${COPPER_KEEP_SYMBOLS:-}" = 1 ]; then
-  nm "$app" 2>/dev/null | grep -q 'BenchHooks' || fail "COPPER_KEEP_SYMBOLS=1: the binary was stripped"
+  [ "$(nm "$app" 2>/dev/null | grep -c BenchHooks)" -gt 0 ] || fail "COPPER_KEEP_SYMBOLS=1: the binary was stripped"
   echo "ok 6 COPPER_KEEP_SYMBOLS=1 kept the symbols"
 else
   grep -q 'COPPER_KEEP_SYMBOLS' "$root/build.sh" || fail "build.sh has no COPPER_KEEP_SYMBOLS"

@@ -75,7 +75,8 @@ enum BenchHooks {
     /// the harness's (a rAF recorder in the page).
     private static func wheel(_ request: [String: Any], browser: Browser, window: NSWindow, answer: @escaping ([String: Any]) -> Void) {
         guard let dy = request["dy"] as? Double else { answer(["error": "wheel needs DY"]); return }
-        let steps = max(2, request["steps"] as? Int ?? 60)
+        // At most 600, so even at 30 Hz it is over before the bench's 25 s.
+        let steps = min(600, max(2, request["steps"] as? Int ?? 60))
         let hz = max(1, request["hz"] as? Double ?? 120)
         let at: NSPoint
         if let xy = request["at"] as? [Double], xy.count == 2 {
@@ -125,6 +126,13 @@ enum BenchHooks {
         let link = screen.displayLink(target: ticker, selector: #selector(Ticker.tick(_:)))
         link.preferredFrameRateRange = CAFrameRateRange(minimum: Swift.Float(hz), maximum: Swift.Float(hz), preferred: Swift.Float(hz))
         link.add(to: .main, forMode: .common)
+        // A display that is asleep never ticks: say so, and never let the link
+        // post a scroll long after the answer.
+        DispatchQueue.main.asyncAfter(deadline: .now() + Double(steps) / 30 + 1) {
+            guard sent < steps else { return }
+            link.invalidate()
+            answer(["error": "the display link ticked \(ticks.count) of \(steps) times — is the display asleep?"])
+        }
     }
 
     // MARK: - keylat KEY
@@ -152,15 +160,17 @@ enum BenchHooks {
             return
         }
         // What a key here can change: the ⌘K bar, the ⌘T card, the field, its text, its highlight.
-        let state = { [browser.summoning, browser.launching, browser.editing, browser.typed.isEmpty, browser.picked == nil] }
+        let state = { "\(browser.summoning) \(browser.launching) \(browser.editing) \(browser.picked ?? -1) \(browser.typed)" }
         let was = state()
         var start = 0.0, handled = 0.0
         var commit: Double?
+        var done = false
         // The link runs from before the press, so its first tick after the
         // commit comes no later than any other would.
         let ticker = Ticker { link in
-            guard let commit else { return }
+            guard let commit, !done else { return }
             let frame = CACurrentMediaTime()
+            done = true
             link.invalidate()
             NSApp.sendEvent(up)
             func ms(_ t: Double) -> Double { (t - start) * 1000 }
@@ -178,6 +188,13 @@ enum BenchHooks {
             commit = CACurrentMediaTime()
         }
         CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            guard !done else { return }
+            done = true
+            link.invalidate()
+            NSApp.sendEvent(up)
+            answer(["error": "no display-link tick within 2 s — is the display asleep?"])
+        }
     }
 
     // MARK: - helpers
