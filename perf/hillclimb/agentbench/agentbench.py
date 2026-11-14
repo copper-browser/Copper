@@ -56,6 +56,8 @@ ARMS = {
     "classic": {"strategy": "classic", "vision": "off"},
     # a small LLM decides instead of Jev (perf/uibench's preset)
     "llm-haiku": {"strategy": "fast,llm=haiku", "vision": "off"},
+    # summary only: another build's shipped runs relabelled when two runs.jsonl are combined (A/B of a change)
+    "shipped-r2": None,
     # the shipped loop seeing by picture: Jev 1.14 boxes the control to act on (Session picks jev-1.14.0)
     "box": {"vision": "box"},
     # the shipped loop on jev-1.13.0 and nothing else changed: what the Jev version alone does
@@ -829,6 +831,12 @@ def main():
                 print(f"  chunk over, {len(pending)} runs to go", flush=True)
                 sys.exit(4)
             ready = next((w for w in pending if not T[w[2]].get("flights") or since_flights() >= gap), None)
+            # Only Flights left and its gap nearly over: wait here, in this hold — on a busy Mac every new hold of
+            # the shared lock is minutes away (AGENTBENCH_FLIGHTS_INLOCK seconds at most, default 0 = never).
+            inlock = float(os.environ.get("AGENTBENCH_FLIGHTS_INLOCK", "0"))
+            if ready is None and 0 < gap - since_flights() <= inlock and time.time() + gap - since_flights() < deadline:
+                time.sleep(gap - since_flights())
+                continue
             if ready is None:
                 print(f"  only Flights left; next in {gap - since_flights():.0f} s", flush=True)
                 sys.exit(5)

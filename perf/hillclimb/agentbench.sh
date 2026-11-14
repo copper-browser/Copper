@@ -18,6 +18,7 @@
 #            AGENTBENCH_JEV_ENDPOINT=<url>      jevEndpoint of the probe world (parity/parity.py's recorder)
 #            AGENTBENCH_FLIGHTS_GAP=45          seconds between Google Flights runs (Google throttles back-to-back searches)
 #            AGENTBENCH_CHUNK=300               seconds of runs per hold of the shared lock
+#            AGENTBENCH_FLIGHTS_INLOCK=0        when only Flights is left, wait up to this long for its gap inside the hold
 #            AGENTBENCH_PRIVATE=1               every run in a private tab (empty cookies/storage; hc/jev builds on)
 #
 # On the devbox (Linux) it syncs the harness to the mini, runs itself there and
@@ -38,7 +39,7 @@ if [ "$(uname)" = Linux ]; then
   export AGENTBENCH_SHA AGENTBENCH_HARNESS_SHA
   envs=""; for v in AGENTBENCH_SHA AGENTBENCH_HARNESS_SHA ARMS ROUNDS_ULTRAFAST ROUNDS_WIKIGAME ROUNDS_UIBENCH ROUNDS_REALWEB ROUNDS_PARAPHRASE ROUNDS_PROBES TASKS ULTRAFAST_DIR AGENTBENCH_ALLOW_CHROME \
       AGENTBENCH_WORLD AGENTBENCH_PORT AGENTBENCH_FIXPORT AGENTBENCH_VIEWPORT AGENTBENCH_TEXT_MODEL AGENTBENCH_JEV_ENDPOINT AGENTBENCH_PRIVATE \
-      AGENTBENCH_SAME_PORT AGENTBENCH_SAME_VIEWPORT AGENTBENCH_FLIGHTS_GAP AGENTBENCH_CHUNK; do
+      AGENTBENCH_SAME_PORT AGENTBENCH_SAME_VIEWPORT AGENTBENCH_FLIGHTS_GAP AGENTBENCH_FLIGHTS_INLOCK AGENTBENCH_CHUNK; do
     [ -n "${!v:-}" ] && envs+="$v=$(printf %q "${!v}") "; done
   ssh "$host" "cd $remote && $envs ./agentbench.sh $(printf %q "$label") $(printf %q "$app") ${3:-}" || echo "remote run exited $?"
   dest="$HOME/plans/copper-hillclimb-2026-11-14/out/$label/agentbench"
