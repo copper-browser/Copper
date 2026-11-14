@@ -93,6 +93,7 @@ final class Launcher: ObservableObject {
         CardSections.shared.show([:])
         shelved = nil
         standing = nil
+        verbs = nil
     }
 
     /// The rows for what is in the field, now — from what is at hand — with
@@ -193,7 +194,7 @@ final class Launcher: ObservableObject {
         let commandNeedle = commanding ? String(needle.dropFirst()) : needle
         var doing: [Suggestion] = []
         if !commandNeedle.isEmpty {
-            for command in CommandBar.commands(browser) where command.name.lowercased().contains(commandNeedle) {
+            for command in commands(browser) where command.name.lowercased().contains(commandNeedle) {
                 var row = Suggestion(key: command.name, title: "", url: URL(string: "copper://command/\(command.id)")!, kind: .command)
                 row.glyph = command.glyph
                 row.hint = "Run"
@@ -327,24 +328,28 @@ final class Launcher: ObservableObject {
     /// a tab's published properties goes through Combine and is slow enough
     /// that two hundred tabs read afresh on every keystroke — and again on
     /// every answer that landed — were most of what a letter cost.
-    private struct Open {
+    struct Open {
         let tab: Tab
         let current: Bool
         let address: String
         let title: String
         let canonical: String
         let touched: Date
+        /// Pinned or Saved: ⌘K lifts these a little over a loose tab.
+        let kept: Bool
     }
 
     private var standing: [Open]?
 
-    private func openTabs(_ browser: Browser) -> [Open] {
+    /// Every open tab but the one in front, read once a card (⌘T's or ⌘K's).
+    func openTabs(_ browser: Browser) -> [Open] {
         if let standing { return standing }
         var list: [Open] = []
         func add(_ tab: Tab, current: Bool) {
             guard tab.id != browser.activeID, !tab.isBlank, let url = tab.address else { return }
             list.append(Open(tab: tab, current: current, address: Launcher.strip(Address.pretty(url)),
-                             title: tab.label.lowercased(), canonical: Launcher.canonical(url), touched: tab.touched))
+                             title: tab.label.lowercased(), canonical: Launcher.canonical(url), touched: tab.touched,
+                             kept: tab.pin != nil || Sections.shared.isSaved(tab)))
         }
         browser.tabs.forEach { add($0, current: true) }
         Spaces.shared.parkedTabs.forEach { add($0, current: false) }
@@ -389,6 +394,21 @@ final class Launcher: ObservableObject {
     }
 
     private let ranker = Ranker()
+
+    /// ⌘K's history: this query's ranked places if they are in, else the
+    /// last query's that still match, with the ranking sent for. When it
+    /// lands, `refresh` lays ⌘K's card out again — so a keystroke on ⌘K, as
+    /// on ⌘T, never ranks history on the main thread.
+    func history(for typed: String, in browser: Browser) -> [Hit] {
+        self.browser = browser
+        let query = typed.trimmingCharacters(in: .whitespaces)
+        asked = query
+        let needle = query.lowercased()
+        guard let probe = Needle(needle) else { return [] }
+        rank(query, in: browser)
+        return visited.query == needle ? visited.rows
+            : visited.rows.filter { probe.score(key: $0.key, title: $0.title.lowercased()) != nil }
+    }
 
     private func rank(_ query: String, in browser: Browser) {
         let needle = query.lowercased()
@@ -609,10 +629,11 @@ final class Launcher: ObservableObject {
         refresh()
     }
 
-    /// Something landed for the question on screen: lay the card out again.
+    /// Something landed for the question on screen: lay the card out again —
+    /// ⌘T's, or ⌘K's when it was ⌘K that asked.
     private func refresh() {
-        guard let browser, browser.launching, !asked.isEmpty else { return }
-        browser.relaunch(assemble(asked, in: browser))
+        guard let browser, browser.summoning, !asked.isEmpty else { return }
+        browser.relaunch(browser.launching ? assemble(asked, in: browser) : CommandBar.offers(for: browser.typed, in: browser))
     }
 
     // MARK: - picking
@@ -753,7 +774,7 @@ final class Launcher: ObservableObject {
     /// lands: bookmarks do not change while the card is up.
     private var shelved: [(title: String, lowered: String, url: URL, address: String)]?
 
-    private func shelf(_ browser: Browser) -> [(title: String, lowered: String, url: URL, address: String)] {
+    func shelf(_ browser: Browser) -> [(title: String, lowered: String, url: URL, address: String)] {
         if let shelved { return shelved }
         let flat = Launcher.bookmarks(browser.bookmarks.roots).map { title, url in
             (title: title, lowered: title.lowercased(), url: url, address: Launcher.strip(Address.pretty(url)))
@@ -768,6 +789,17 @@ final class Launcher: ObservableObject {
             guard let url = node.url.flatMap(URL.init(string:)) else { return [] }
             return [(node.title, url)]
         }
+    }
+
+    /// The browser's commands, built once a card: building them checks
+    /// files and walks the spaces, and none of it changes while the card is up.
+    private var verbs: [CommandBar.Command]?
+
+    func commands(_ browser: Browser) -> [CommandBar.Command] {
+        if let verbs { return verbs }
+        let list = CommandBar.commands(browser)
+        verbs = list
+        return list
     }
 
     // MARK: - bench
@@ -823,7 +855,7 @@ final class Launcher: ObservableObject {
         }
     }
 
-    /// `bench newtab TEXT --type`: ⌘T, then TEXT a letter at a time, `every`
+    /// `bench newtab TEXT --type`: ⌘T (⌘K with `summon`, `bench bar TEXT --type`), then TEXT a letter at a time, `every`
     /// seconds apart, the way a person types it. What it reports is what
     /// "slow" means here: how long the main thread was too busy to draw —
     /// in all, and at worst in one go — and how long after the last letter
@@ -834,7 +866,8 @@ final class Launcher: ObservableObject {
         let settle = request["settle"] as? Double ?? 3
         let meter = Meter()
         meter.start()
-        let opening = Launcher.clock { browser.launch() }
+        let summon = request["summon"] as? Bool == true
+        let opening = Launcher.clock { summon ? browser.summon() : browser.launch() }
         var keys: [Double] = []
         var lastKey: UInt64 = 0
         var landed: UInt64?

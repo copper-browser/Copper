@@ -121,91 +121,82 @@ enum CommandBar {
     ///
     /// An empty field is not empty: it is the pages you have open and a few
     /// things you might do, which is what a command bar is for.
-    @MainActor static func offers(for typed: String, open: [Suggestion], in browser: Browser) -> [Suggestion] {
+    ///
+    /// Called on every keystroke, so it reads only what the card read once
+    /// when it opened (Launcher's open tabs, bookmarks and commands) and
+    /// matches with ⌘T's byte-level `Launcher.Needle`. History is ranked on
+    /// ⌘T's queue and lands a moment later through `Browser.relaunch`.
+    @MainActor static func offers(for typed: String, in browser: Browser) -> [Suggestion] {
+        let launcher = Launcher.shared
+        let open = launcher.openTabs(browser)
         let needle = typed.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !needle.isEmpty else { return sectioned(dressed(open + resting(browser))) }
+        let hits = launcher.history(for: typed, in: browser)
+        guard !needle.isEmpty else {
+            // This space's pages, kept ones first, then the most recent.
+            let recent = open.filter(\.current)
+                .sorted { $0.kept == $1.kept ? $0.touched > $1.touched : $0.kept }
+                .prefix(6)
+                .compactMap(row(for:))
+            return sectioned(dressed(recent + resting(browser)))
+        }
         let commandNeedle = needle.hasPrefix("/") ? String(needle.dropFirst()) : needle
         var ranked: [(row: Suggestion, score: Double)] = []
 
-        func add(_ row: Suggestion, base: Double, against query: String = needle) {
-            guard let match = matchScore(row, typed: query) else { return }
-            ranked.append((row, base + match))
-        }
+        if let probe = Launcher.Needle(needle) {
+            // Open pages are the strongest answer: this space's three best,
+            // then five from other spaces. A word starting a title beats the
+            // same letters inside an address (Launcher.Needle); a space's own
+            // page and a kept one get a small lift over an equal match.
+            let matched = open.compactMap { tab -> (tab: Launcher.Open, score: Double)? in
+                probe.score(key: tab.address, title: tab.title).map { (tab, $0 + (tab.kept ? 2 : 0) + (tab.current ? 20 : 0)) }
+            }.sorted { $0.score == $1.score ? $0.tab.touched > $1.tab.touched : $0.score > $1.score }
+            var (here, away) = (0, 0)
+            for (tab, score) in matched where tab.current ? here < 3 : away < 5 {
+                guard var row = row(for: tab) else { continue }
+                if tab.current { here += 1 } else { away += 1 }
+                decorate(&row, tab: tab.tab, current: tab.current)
+                ranked.append((row, 1_000 + score))
+            }
 
-        // Open pages are the strongest answer. The current space is already
-        // sorted by recent use; kept pages in other spaces get a small lift so
-        // a favourite or Saved row beats an otherwise identical parked page.
-        let currentTabs = Dictionary(uniqueKeysWithValues: open.compactMap { row in
-            row.tab.flatMap { id in browser.tabs.first(where: { $0.id == id }).map { (id, $0) } }
-        })
-        for var row in open.prefix(3) {
-            if let tab = row.tab.flatMap({ currentTabs[$0] }) {
-                decorate(&row, tab: tab, current: true)
-                add(row, base: 1_000 + keptBoost(tab) + 20)
-            } else {
-                add(row, base: 1_000 + 20)
+            var marks = 0
+            for mark in launcher.shelf(browser) where marks < 3 {
+                guard let score = probe.score(key: mark.address, title: mark.lowered) else { continue }
+                let row = Suggestion(key: mark.title.isEmpty ? Address.pretty(mark.url) : mark.title,
+                                     title: Address.pretty(mark.url), url: mark.url, kind: .bookmark)
+                ranked.append((row, 700 + score))
+                marks += 1
+            }
+
+            // History, ranked off the main thread (see above): its best four,
+            // in its order — match, visits and recency already combined.
+            // Before you have been anywhere, the well-known sites stand in.
+            var been = hits.prefix(4).compactMap { hit in
+                URL(string: hit.url).map { Suggestion(key: hit.title.isEmpty ? hit.key : hit.title, title: hit.key, url: $0, kind: .visited) }
+            }
+            for (key, name) in History.known where been.count < 4 && probe.score(key: key, title: name.lowercased()) != nil {
+                if let url = URL(string: "https://" + key) { been.append(Suggestion(key: key, title: name, url: url, kind: .known)) }
+            }
+            for (index, row) in been.enumerated() {
+                ranked.append((row, 500 + Double(been.count - index)))
             }
         }
-
-        let parked = Spaces.shared.parkedTabs
-            .filter { !$0.isBlank && $0.address != nil }
-            .sorted {
-                let left = keptBoost($0)
-                let right = keptBoost($1)
-                return left == right ? $0.touched > $1.touched : left > right
-            }
-        var parkedCount = 0
-        for tab in parked {
-            guard parkedCount < 5, let url = tab.address else { continue }
-            var row = Suggestion(
-                key: tab.title.isEmpty ? Address.pretty(url) : tab.title,
-                title: Address.pretty(url), url: url, kind: .open, tab: tab.id
-            )
-            decorate(&row, tab: tab, current: false)
-            guard matchScore(row, typed: needle) != nil else { continue }
-            add(row, base: 1_000 + keptBoost(tab))
-            parkedCount += 1
-        }
-
-        var marks: [Suggestion] = []
-        for (title, url) in bookmarks(browser.bookmarks.roots) {
-            let row = Suggestion(key: title.isEmpty ? Address.pretty(url) : title,
-                                 title: Address.pretty(url), url: url, kind: .bookmark)
-            guard matchScore(row, typed: needle) != nil else { continue }
-            marks.append(row)
-            if marks.count == 3 { break }
-        }
-        marks.forEach { add($0, base: 700) }
 
         // Canvases, by name (Fork/Canvas), matched their own way: "canvas"
         // alone lists them, "canvas plan" narrows to names with "plan" in
-        // them. Below bookmarks; a canvas already open is the open-page row
-        // above and this one folds into it.
+        // them. A canvas already open is the open-page row and this folds into it.
         for (index, row) in CanvasTabs.offers(for: typed).enumerated() {
             ranked.append((row, 650 - Double(index)))
         }
 
-        // History has already combined match position, visit count and
-        // recency; its four best rows, in that order, under the open pages.
-        // Four, not six, now that the section sits above bookmarks: the
-        // card's eight rows still have room for the shelves below it.
-        let been = browser.history.suggestions(for: typed, limit: 4).map { row in
-            Suggestion(key: row.title.isEmpty ? row.key : row.title,
-                       title: row.key, url: row.url, kind: row.kind)
-        }
-        for (index, row) in been.enumerated() {
-            add(row, base: 500 + Double(been.count - index))
-        }
-
-        var doing: [Suggestion] = []
-        for command in commands(browser) where commandMatch(command.name, typed: commandNeedle) {
+        let verb = Launcher.Needle(commandNeedle)
+        var doing = 0
+        for command in launcher.commands(browser) where doing < 2 && commandMatch(command.name, typed: commandNeedle) {
             var row = Suggestion(key: command.name, title: "",
                                  url: URL(string: "copper://command/\(command.id)")!, kind: .command)
             row.glyph = command.glyph
-            doing.append(row)
-            if doing.count == 2 { break }
+            ranked.append((row, 200 + (verb?.score(key: "", title: command.name.lowercased()) ?? 0)))
+            doing += 1
         }
-        doing.forEach { add($0, base: 200, against: commandNeedle) }
 
         var list: [Suggestion] = []
         var seen = Set<String>()
@@ -224,10 +215,18 @@ enum CommandBar {
         }
         // Search is deliberately last. A Google answer should not displace a
         // page Copper already knows, but it is always available as the exit.
+        // Worded as ⌘T words it, so the two cards say "search" one way.
         if let asked = Google.url(for: typed) {
-            list.append(Suggestion(key: typed, title: Google.name, url: asked, kind: .search))
+            let words = typed.trimmingCharacters(in: .whitespaces)
+            list.append(Suggestion(key: "Search \(Google.name) for “\(words)”", title: Google.name, url: asked, kind: .search))
         }
         return sectioned(dressed(Array(list.prefix(limit))))
+    }
+
+    /// An open tab as a row: called by its title, its address beside it.
+    @MainActor private static func row(for open: Launcher.Open) -> Suggestion? {
+        guard let url = open.tab.address else { return nil }
+        return Suggestion(key: open.tab.label, title: Address.pretty(url), url: url, kind: .open, tab: open.tab.id)
     }
 
     /// The rows cut into the card's sections, their headings handed to the
@@ -238,16 +237,12 @@ enum CommandBar {
         return laid.rows
     }
 
-    @MainActor private static func keptBoost(_ tab: Tab) -> Double {
-        (tab.pin != nil || Sections.shared.isSaved(tab)) ? 2 : 0
-    }
-
     @MainActor private static func decorate(_ row: inout Suggestion, tab: Tab, current: Bool) {
         row.detail = shortDetail(row)
         let space = short(Spaces.shared.name(of: tab))
         if tab.pin != nil {
             // A pin is in every space, so naming one would be wrong.
-            row.badge = "· ✦"
+            row.badge = "· pinned"
         } else if Sections.shared.isSaved(tab) {
             row.badge = current ? "· saved" : "· \(space) · saved"
         } else if !current {
@@ -259,27 +254,6 @@ enum CommandBar {
         var text = Address.pretty(url).lowercased()
         if text.hasSuffix("/") { text.removeLast() }
         return text
-    }
-
-    /// Match addresses by their whole prefix first, then by host labels. A
-    /// host-segment match keeps `linear` useful for linear.app and `exo`
-    /// useful for cloud-ems.dev.exowatt.com without making every path word a
-    /// candidate.
-    private static func matchScore(_ row: Suggestion, typed: String) -> Double? {
-        let needle = strip(typed)
-        guard !needle.isEmpty else { return nil }
-        let address = strip(Address.pretty(row.url))
-        let key = strip(row.key)
-        let title = row.title.lowercased()
-        if address.hasPrefix(needle) { return 100 }
-        if key.hasPrefix(needle) { return 96 }
-        let host = address.split(separator: "/").first.map(String.init) ?? address
-        if host.split(separator: ".").contains(where: { $0.hasPrefix(needle) }) { return 82 }
-        if title.hasPrefix(needle) { return 72 }
-        if host.contains(needle) { return 62 }
-        if key.contains(needle) || title.contains(needle) { return 45 }
-        if address.contains(needle) { return 38 }
-        return nil
     }
 
     private static func commandMatch(_ text: String, typed: String) -> Bool {
@@ -300,7 +274,7 @@ enum CommandBar {
     /// The empty field: what is open, and a few doors.
     @MainActor private static func resting(_ browser: Browser) -> [Suggestion] {
         let wanted = ["new-tab", "split", "new-space", "history"]
-        let all = commands(browser)
+        let all = Launcher.shared.commands(browser)
         var rows = wanted.compactMap { id -> Suggestion? in
             guard let command = all.first(where: { $0.id == id }) else { return nil }
             var row = Suggestion(key: command.name, title: "", url: URL(string: "copper://command/\(command.id)")!, kind: .command)
@@ -350,7 +324,6 @@ enum CommandBar {
         switch row.kind {
         case .open: return "Switch to Tab"
         case .command: return "Run"
-        case .search: return "Search \(Google.name)"
         case .bookmark: return "Open Bookmark"
         default: return "Open"
         }
