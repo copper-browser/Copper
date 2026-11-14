@@ -140,7 +140,7 @@ struct SpaceHeader: View {
         // icon is its own door, to Settings › Spaces; the rest is the menu.
         HStack(spacing: 0) {
             Button { SpaceEditing.shared.open(space.id) } label: {
-                SpaceGlyph(space: space, size: 16, dark: scheme == .dark, ink: tint.mark, bare: true, plate: false)
+                SpaceGlyph(space: space, size: 16, dark: scheme == .dark, ink: tint.mark, bare: true) // Fork (uib): the chip the foot shows, at 16 pt
                     .frame(width: 24, height: 24)
                     .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(overMark ? tint.hover : .clear))
                     .contentShape(Rectangle())
@@ -294,7 +294,7 @@ struct SpaceStrip<Tools: View>: View {
         let held = dragging == space.id
         return SpaceChip(space: space, current: space.id == spaces.current(in: browser), dark: scheme == .dark,
                          over: hovering == space.id, ink: SpaceTint(space: space, dark: scheme == .dark).mark(on: ink),
-                         glow: ink.hover, plate: ink.pill)
+                         glow: ink.hover, plate: ink.pill, dot: spaces.all.count > SpaceChip.dotsPast ? ink.muted : nil)
             .id(space.id)
             .anchorPreference(key: ChipFrames.self, value: .bounds) { [space.id: $0] }
             .offset(x: held ? travel - CGFloat(index - from) * step : 0)
@@ -421,28 +421,38 @@ struct SpaceChip: View {
     /// The column's live pill, under the current space's chip — the column's
     /// one word for "this one". (Fork: space-chips)
     var plate: Color? = nil
+    /// Fork (uib): past `dotsPast` spaces a chip at rest is a dot in this
+    /// ink — the name comes up under the pointer — as Arc's foot does.
+    var dot: Color? = nil
 
     static let size: CGFloat = 28
+    static let dotsPast = 4
     static let gap: CGFloat = 5
     /// The mark inside the chip: a 20 pt tile with an 11 pt initial, or the
     /// space's chosen icon at the same size. At 17 the initial came out
     /// 9 pt on a 15 pt tile, too small to read at a glance.
     static let tile: CGFloat = 20
 
-    /// Every space in its own colour (Fork: space-chips) — greyed to one
-    /// colour they could not be told apart — the others a little thinner
-    /// than the current one, which sits on the live pill.
+    /// Fork (uib): Arc's foot — the current space in its colour on the live
+    /// pill, the others in one quiet grey (same lightness, so their letters
+    /// keep their contrast) until the pointer is on one.
     var body: some View {
-        mark
-            .opacity(current || over ? 1 : 0.72)
-            .frame(width: SpaceChip.size, height: SpaceChip.size)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(current ? (plate ?? Color.white.opacity(dark ? 0.16 : 0.48))
-                          : over ? (glow ?? Color.black.opacity(dark ? 0 : 0.05)) : .clear)
-            )
-            .animation(Motion.quick, value: over)
-            .animation(Motion.quick, value: current)
+        Group {
+            if let dot, !current, !over {
+                Circle().fill(dot).frame(width: 6, height: 6)
+            } else {
+                mark.saturation(current || over ? 1 : 0)
+            }
+        }
+        .opacity(current || over ? 1 : 0.72)
+        .frame(width: SpaceChip.size, height: SpaceChip.size)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(current ? (plate ?? Color.white.opacity(dark ? 0.16 : 0.48))
+                      : over ? (glow ?? Color.black.opacity(dark ? 0 : 0.05)) : .clear)
+        )
+        .animation(Motion.quick, value: over)
+        .animation(Motion.quick, value: current)
     }
 
     @ViewBuilder private var mark: some View {

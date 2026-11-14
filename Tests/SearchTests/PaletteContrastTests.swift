@@ -42,7 +42,8 @@ func paletteWordsReadAA(_ look: NSAppearance.Name) {
 func smallWordsKeepAAOnceDrawn(_ look: NSAppearance.Name) {
     let ns = Palette.NS.self
     for (ink, ground, what) in [(ns.muted, ns.ground, "muted on ground"), (ns.muted, ns.wash, "muted on wash"),
-                                (ns.danger, ns.ground, "danger on ground"), (ns.danger, ns.wash, "danger on wash")] {
+                                (ns.danger, ns.ground, "danger on ground"), (ns.danger, ns.wash, "danger on wash"),
+                                (ns.onAccent, ns.accent, "words on a filled pill")] { // Fork (uib): drew 4.1:1 at #BD522B
         let ratio = contrast(ink, ground, look)
         #expect(ratio >= 5.5, "\(what) in \(look.rawValue): \(ratio)")
     }

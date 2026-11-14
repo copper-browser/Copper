@@ -107,7 +107,7 @@ struct HandCard: View {
                     Text(hand.who.agent + (hand.who.via.isEmpty ? "" : "  ·  for \(hand.who.via)"))
                         .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Palette.ink).lineLimit(1)
                     Text(hand.who.thread.isEmpty ? "No thread named" : hand.who.thread)
-                        .font(.system(size: 11)).foregroundStyle(Palette.muted).lineLimit(2)
+                        .font(.system(size: 11)).foregroundStyle(Palette.muted).lineLimit(4) // Fork (uib): the whole task; the pill fades it
                 }
                 Spacer(minLength: 4)
                 if drive.canStop(hand) {
@@ -217,8 +217,40 @@ struct HandCapsule: View {
     @State private var shown = false
 
     var body: some View {
+        if fits { stacked } else { capsule }
+    }
+
+    /// Fork (uib): the column's pill, two lines — the agent and Stop, then
+    /// what it is working on, fading out where the column ends; the card on
+    /// hover has all of it and since when.
+    private var stacked: some View {
         let swatch = Drive.colour(for: hand.who)
-        HStack(spacing: 6) {
+        let task = hand.who.thread == "this window" ? "" : hand.who.thread
+        return HStack(spacing: 8) {
+            HandSquare(hand: hand, size: 16)
+                .opacity(hand.busy ? 1 : (breathing ? 0.55 : 1))
+            Button { Agent.shared.reveal() } label: {
+                SidePillWords(name: hand.who.agent, task: task.isEmpty ? hand.doing : task)
+            }
+            .buttonStyle(.plain)
+            .help("Show what it is doing")
+            if drive.canStop(hand) {
+                DriveStop(help: hand.driver == .jev ? "Stop the run (⎋)" : "Take the browser back (⎋)", compact: true) { drive.stop(hand.who.key) }
+            }
+        }
+        .modifier(SidePillGround(rim: swatch.fill.opacity(0.75), wash: swatch.fill.opacity(0.16)))
+        .onHover { hovering = $0; settle() }
+        .popover(isPresented: $shown, arrowEdge: .trailing) {
+            HandCards(hands: [hand]).onHover { inCard = $0; settle() }
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { breathing = true }
+        }
+    }
+
+    private var capsule: some View {
+        let swatch = Drive.colour(for: hand.who)
+        return HStack(spacing: 6) {
             HandSquare(hand: hand, size: 14)
                 .opacity(hand.busy ? 1 : (breathing ? 0.55 : 1))
             Button { Agent.shared.reveal() } label: {
@@ -260,5 +292,58 @@ struct HandCapsule: View {
         } else {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { if !hovering && !inCard { shown = false } }
         }
+    }
+}
+
+/// Fork (uib): the column's two-line pill words — the agent's name, then its
+/// task in muted ink, faded (not cut with "…") where the column ends.
+struct SidePillWords: View {
+    let name: String
+    let task: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(name)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Palette.ink)
+                .lineLimit(1)
+            if !task.isEmpty {
+                Text(task)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Palette.muted)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .clipped()
+                    .modifier(RowEndFade(on: true, clear: 0))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+}
+
+/// Fork (uib): the ground every pill at the column's foot stands on — the
+/// agent's and the update's: as wide as the column, a 12 pt corner, the
+/// app's paper over a wash of the pill's own colour, a rim of it.
+struct SidePillGround: ViewModifier {
+    static let radius: CGFloat = 12
+    static let height: CGFloat = 34
+    var rim: Color = Palette.hairline
+    var wash: Color = .clear
+    var paper: Color = Palette.ground.opacity(0.94)
+    var lift = true
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: SidePillGround.radius, style: .continuous)
+        content
+            .padding(.leading, 10)
+            .padding(.trailing, 6)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, minHeight: SidePillGround.height, alignment: .leading)
+            .background(paper, in: shape)
+            .background(wash, in: shape)
+            .overlay(shape.strokeBorder(rim, lineWidth: 1.25))
+            .shadow(color: .black.opacity(lift ? 0.1 : 0), radius: 6, y: 1)
     }
 }

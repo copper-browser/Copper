@@ -46,11 +46,13 @@ enum Palette {
         static let hover = pair(0.965, 0.15)
         /// The resting traffic lights, drawn by hand when the app is behind.
         static let resting = pair(0.80, 0.30)
-        /// #BD522B (4.7:1 under white) · #E07A52 (5.7:1 on the dark ground).
+        /// #A9461F (5.9:1 under white) · #E07A52 (5.7:1 on the dark ground).
+        /// Fork (uib): was #BD522B — 4.7:1 on paper, 4.1:1 as drawn under a
+        /// filled pill's 12 pt words; small words need ~5.5 (see below).
         static let accent = NSColor(name: nil) { appearance in
             appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
                 ? NSColor(srgbRed: 0.878, green: 0.478, blue: 0.322, alpha: 1)
-                : NSColor(srgbRed: 0.741, green: 0.322, blue: 0.169, alpha: 1)
+                : NSColor(srgbRed: 0.663, green: 0.275, blue: 0.122, alpha: 1)
         }
         static let onAccent = pair(1.0, 0.11)
         /// #B3261E (6.6:1 on white) · #FF8A80 (7.4:1 on the dark ground).

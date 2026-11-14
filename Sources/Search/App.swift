@@ -562,17 +562,9 @@ struct ContentView: View {
         let name = offer.target.title
         return HStack(spacing: 10) {
             // Fork (ui-system): whose password, at a glance — the site's
-            // mark with a key on its corner.
+            // mark. Fork (uib): the 7 pt key badge on its corner went; the
+            // sentence beside it already says password.
             Mark(icon: Favicons.shared.cached(login.host), letter: login.host.first.map { String($0).uppercased() } ?? "•", size: 18)
-                .overlay(alignment: .bottomTrailing) {
-                    Image(systemName: "key.fill")
-                        .font(.system(size: 7, weight: .bold))
-                        .foregroundStyle(Palette.onAccent)
-                        .frame(width: 13, height: 13)
-                        .background(Palette.accent, in: Circle())
-                        .overlay(Circle().strokeBorder(Palette.ground, lineWidth: 1.5))
-                        .offset(x: 5, y: 5)
-                }
                 .padding(.trailing, 4)
                 .accessibilityHidden(true)
             Text(vault

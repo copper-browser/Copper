@@ -23,6 +23,9 @@ struct AgentActivityGroup: Identifiable {
     var steps: [Agent.Item] { items.filter { $0.kind == .tool } }
     var failures: Int { steps.filter { !$0.ok }.count }
     var warnings: Int { steps.filter { $0.ok && !$0.warning.isEmpty }.count }
+    /// Fork (uib): the turn ended on a step that failed — a problem it got
+    /// past (a warning, or a failure followed by steps that worked) is not.
+    var failed: Bool { steps.last.map { !$0.ok } ?? false }
     /// When the last step ended.
     var ended: Date {
         items.map { $0.kind == .tool ? $0.at.addingTimeInterval($0.ms / 1000) : $0.at }.max() ?? started
@@ -69,9 +72,9 @@ struct AgentActivity: View {
                 }
                 .fixedSize()
             } else {
-                Image(systemName: group.failures > 0 ? "exclamationmark.triangle.fill" : "checkmark.circle")
+                Image(systemName: group.failed ? "exclamationmark.triangle.fill" : "checkmark.circle")
                     .font(.system(size: 11))
-                    .foregroundStyle(group.failures > 0 ? Palette.danger : Palette.muted)
+                    .foregroundStyle(group.failed ? Palette.danger : Palette.muted)
                 summary
                     .lineLimit(1)
             }
@@ -91,7 +94,8 @@ struct AgentActivity: View {
         // Fork (ui-flows): what went wrong as a sentence, not "1 failed".
         let troubled = group.failures > 0 ? group.failures : group.warnings
         if troubled > 0 {
-            line = line + Text(troubled == 1 ? " · 1 step had a problem" : " · \(troubled) steps had problems").foregroundColor(Palette.danger)
+            // Fork (uib): red only when the turn failed; one it got past is said in the line's own ink.
+            line = line + Text(troubled == 1 ? " · 1 step had a problem" : " · \(troubled) steps had problems").foregroundColor(group.failed ? Palette.danger : Palette.muted)
         }
         return line.font(.system(size: 12))
     }
