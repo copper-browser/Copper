@@ -44,6 +44,12 @@ import WebKit
 //
 // When macOS says memory is short, the half hour shrinks: to five minutes on
 // a warning, to nothing when it is critical.
+//
+// Fork (idle-memory): the budget counts bytes too. The pages that may sleep
+// — every loaded page but the pins — keep at most `footprintBudget` between
+// them (a sixteenth of the Mac's memory, 1.5 GB on 24 GB): past it, tabs left
+// half an hour go, longest-left first, until what is left fits, a space's own
+// tab included. Under it, a space's own tab still waits for memory pressure.
 
 extension Browser {
     /// How long a tab has to go without being looked at. Half an hour, or
@@ -75,6 +81,15 @@ extension Browser {
 
     /// Left this long, a page goes whatever the budget says.
     static let sleepCeiling: TimeInterval = 12 * 3600
+
+    /// Fork (idle-memory): what the pages that may sleep keep between them:
+    /// a sixteenth of this Mac's memory, at least 1 GB — or `sleep.budget`
+    /// in megabytes, for the bench.
+    static var footprintBudget: UInt64 {
+        let set = Store.settings.integer(forKey: "sleep.budget")
+        if set > 0 { return UInt64(set) * 1_048_576 }
+        return max(1_073_741_824, ProcessInfo.processInfo.physicalMemory / 16)
+    }
 
     /// Started once, at launch.
     func watchForSleep() {
@@ -115,12 +130,12 @@ extension Browser {
         let heavy = Set(rested.filter {
             AgentTabs.opened.contains($0.id) || (Heat.shared.weight(of: $0)?.bytes ?? 0) >= Browser.heavy
         }.map(\.id))
-        let idle = rested
-            // Fork (space-keepalive): a space's own tab waits for memory
-            // pressure — unless it is a heavy one.
-            .filter { given != nil || !Spaces.shared.remembered($0.id) || heavy.contains($0.id) }
-            .sorted { $0.touched < $1.touched }
         guard given == nil, Store.settings.double(forKey: "sleep.after") <= 0 else {
+            let idle = rested
+                // Fork (space-keepalive): a space's own tab waits for memory
+                // pressure — unless it is a heavy one.
+                .filter { given != nil || !Spaces.shared.remembered($0.id) || heavy.contains($0.id) }
+                .sorted { $0.touched < $1.touched }
             for tab in idle { self.sleep(tab) }
             return idle
         }
@@ -128,13 +143,24 @@ extension Browser {
         // any left past the ceiling, any still burning a core with nobody
         // looking (Heat's sustained reading) — under the budget that page
         // kept the fans going for twelve hours — and any heavy one.
-        var over = candidates.filter { $0.built != nil && !$0.asleep }.count - Browser.awakeBudget
-        var chosen: [Tab] = []
-        for tab in idle where over > 0 || now.timeIntervalSince(tab.touched) >= Browser.sleepCeiling || Heat.shared.isHot(tab) || heavy.contains(tab.id) {
-            self.sleep(tab)
-            chosen.append(tab)
-            over -= 1
+        // Fork (idle-memory): and as many as it takes to bring the pages that
+        // may sleep inside their footprint budget (`SleepPlan`).
+        let loaded = candidates.filter { $0.built != nil && !$0.asleep }
+        var pids = Set<pid_t>()
+        let bytes = loaded.filter { $0.pin == nil }.reduce(UInt64(0)) { sum, tab in
+            guard let weight = Heat.shared.weight(of: tab), pids.insert(weight.pid).inserted else { return sum }
+            return sum + weight.bytes
         }
+        let plan = SleepPlan(overCount: loaded.count - Browser.awakeBudget,
+                             overBytes: Int64(bytes) - Int64(Browser.footprintBudget), ceiling: Browser.sleepCeiling)
+        let resting = rested.map { tab in
+            SleepPlan.Resting(id: tab.id, left: now.timeIntervalSince(tab.touched),
+                              bytes: heavy.contains(tab.id) || plan.overBytes > 0 ? Heat.shared.weight(of: tab)?.bytes ?? 0 : 0,
+                              remembered: Spaces.shared.remembered(tab.id), heavy: heavy.contains(tab.id), hot: Heat.shared.isHot(tab))
+        }
+        let ids = Set(plan.choose(resting))
+        let chosen = rested.filter { ids.contains($0.id) }.sorted { $0.touched < $1.touched }
+        for tab in chosen { self.sleep(tab) }
         return chosen
     }
 
@@ -187,5 +213,44 @@ extension Browser {
                 done?("asleep")
             }
         }
+    }
+}
+
+/// Fork (idle-memory): which of the tabs left long enough go to sleep. Pure,
+/// so the tests can say it.
+struct SleepPlan {
+    /// A tab past the half hour with nothing keeping it awake.
+    struct Resting {
+        let id: UUID
+        /// Seconds since it was last looked at.
+        let left: TimeInterval
+        /// Its page's footprint (0 when not weighed).
+        let bytes: UInt64
+        /// A space's own tab: the one a switch back lands on.
+        let remembered: Bool
+        let heavy: Bool
+        let hot: Bool
+    }
+
+    /// Loaded pages over the count budget.
+    var overCount: Int
+    /// Bytes the pages that may sleep hold over their footprint budget.
+    var overBytes: Int64
+    var ceiling: TimeInterval
+
+    /// Longest-left first: any heavy, hot or past the ceiling; any other
+    /// while the count is over its budget — never a space's own tab for
+    /// that — and any at all while the bytes are over theirs.
+    func choose(_ resting: [Resting]) -> [UUID] {
+        var count = overCount, bytes = overBytes
+        var chosen: [UUID] = []
+        for tab in resting.sorted(by: { $0.left > $1.left }) {
+            let must = tab.heavy || (!tab.remembered && (tab.hot || tab.left >= ceiling))
+            guard must || (count > 0 && !tab.remembered) || bytes > 0 else { continue }
+            chosen.append(tab.id)
+            count -= 1
+            bytes -= Int64(tab.bytes)
+        }
+        return chosen
     }
 }

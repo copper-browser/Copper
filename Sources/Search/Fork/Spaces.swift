@@ -478,7 +478,7 @@ final class Spaces: ObservableObject {
         browser.active?.touch()
         objectWillChange.send() // `current(in:)` is read by views, and is not @Published
         currentByBrowser[key] = id
-        if browser.primary { current = id }
+        if browser.primary { current = id; SpaceWarm.left(old) } // Fork (idle-memory): the space warmed at the next launch
         browser.taken = nil
         let next = projection(id)
         setProjection(next, in: browser)

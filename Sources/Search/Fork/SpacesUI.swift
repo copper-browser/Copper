@@ -300,7 +300,10 @@ struct SpaceStrip<Tools: View>: View {
             .contentShape(Rectangle())
             .onTapGesture { SpaceEditing.shared.pressed(space.id, in: browser) }
             .gesture(reorder(space, index: index))
-            .onHover { over in hovering = over ? space.id : (hovering == space.id ? nil : hovering) }
+            .onHover { over in
+                hovering = over ? space.id : (hovering == space.id ? nil : hovering)
+                if over { SpaceWarm.hover(space.id, in: browser) } // Fork (idle-memory): its page starts before the click
+            }
             .help(SpaceChip.help(space, index: index, current: space.id == spaces.current(in: browser)))
             .contextMenu { SpaceMenu(browser: browser, space: space) }
     }
