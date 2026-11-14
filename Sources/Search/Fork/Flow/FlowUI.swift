@@ -723,20 +723,32 @@ struct FlowSheet: View {
     }
 
     /// Fork (move-in-polish): a bordered button beside the primary, the same size.
-    /// Fork (uiflows r4): the capsule is the label's own (in the house Press
-    /// style); dressed outside a plain Button it showed stray 1 pt ticks at
-    /// both ends.
     private func secondary(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Palette.ink)
-                .padding(.horizontal, 17).padding(.vertical, 10)
-                .background(Capsule().fill(Palette.ground))
-                .overlay(Capsule().strokeBorder(Palette.hairline, lineWidth: 1))
-                .contentShape(Capsule())
+        Secondary(title: title, act: action)
+    }
+
+    /// Fork (uiflows r4): the sheet is a key window, so its first button has
+    /// the keyboard, and the system's focus halo — drawn for a rectangle,
+    /// cut by the capsule — showed as stray 1 pt ticks at both ends. The
+    /// capsule's own ring instead (Settings' `settingsFocusRing`).
+    private struct Secondary: View {
+        let title: String
+        let act: () -> Void
+        @FocusState private var focused: Bool
+
+        var body: some View {
+            Button(action: act) {
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Palette.ink)
+                    .padding(.horizontal, 17).padding(.vertical, 10)
+                    .background(Capsule().fill(Palette.ground))
+                    .overlay(Capsule().strokeBorder(Palette.hairline, lineWidth: 1))
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(Press(radius: 99))
+            .settingsFocusRing($focused, shape: Capsule())
         }
-        .buttonStyle(Press(radius: 99))
     }
 
     /// The one button Return presses, in every state.

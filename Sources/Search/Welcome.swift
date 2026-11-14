@@ -20,12 +20,16 @@ struct WelcomePanel: View {
     @Environment(\.colorScheme) private var scheme
 
     /// Fork (ui-flows r3): one column on one card, Arc's onboarding size
-    /// (~560 pt wide), its middle ~40% down the window, every page left-aligned
-    /// and every heading in the same place — on the Home space's own ground.
+    /// (~560 pt wide), every page left-aligned and every heading in the same
+    /// place — on the Home space's own ground.
     /// Fork (uiflows r4): the card hugs its page (no blank half), never
-    /// shorter than `least`, so the pages don't make it jump much.
+    /// shorter than `least` (332 pt with its padding). Its top stays put
+    /// (`top`) so the headings don't move; a taller page grows it downward.
     static let column: CGFloat = 560
-    static let least: CGFloat = 300
+    static let least: CGFloat = 260
+
+    /// Where the card's top sits: a `least` card's middle 40% down the window.
+    static func top(in height: CGFloat) -> CGFloat { max(height * 0.4 - (least / 2 + 36), 24) }
 
     var body: some View {
         let tint = SpaceTint(space: Spaces.shared.space(in: browser), dark: scheme == .dark)
@@ -63,8 +67,8 @@ struct WelcomePanel: View {
                         .shadow(color: .black.opacity(0.16), radius: 34, y: 12)
                 }
                 .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 1))
-                .position(x: room.size.width / 2,
-                          y: max(room.size.height * 0.4, (Self.least + 72) / 2 + 24))
+                .padding(.top, Self.top(in: room.size.height))
+                .frame(width: room.size.width, height: room.size.height, alignment: .top)
             }
         }
         .animation(Motion.glide, value: page)
