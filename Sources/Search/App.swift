@@ -379,10 +379,6 @@ struct ContentView: View {
             announcement
             HandoffSlot(browser: browser) // Fork (agent-handoff): an agent handing a step to you (Fork/MCP/Handoff.swift)
             CaptureSlot(browser: browser, desk: browser.capture) // Fork (page-capture): asks, a refusal to undo, macOS's own "no" (Fork/Capture/CaptureBar.swift)
-            if let offer = browser.offering {
-                keepAsking(offer)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
             StoreOffer(browser: browser)
             if browser.veiling {
                 hint("Click anything to hide it   ⌘Z undo   esc done")
@@ -394,8 +390,23 @@ struct ContentView: View {
         .padding(.bottom, 30)
         .animation(Motion.settle, value: browser.veiling)
         .animation(Motion.settle, value: clearTabs.generation)
-        .animation(Motion.settle, value: browser.offering)
         .animation(Motion.settle, value: canvases.newInvite)
+    }
+
+    /// Fork (uichrome): the password offer hangs off the chrome — beside the
+    /// column's address field, or under the strip's far end where the
+    /// passwords door is — not at the foot of the window.
+    private var offerSlot: some View {
+        ZStack(alignment: sidebar ? .topLeading : .topTrailing) {
+            Color.clear.allowsHitTesting(false)
+            if let offer = browser.offering {
+                keepAsking(offer)
+                    .padding(.top, band + 8)
+                    .padding(sidebar ? .leading : .trailing, sidebar ? browser.prefs.sideWidth + 8 : 14)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(Motion.settle, value: browser.offering)
     }
 
     /// The address field: raised over a page by ⌘L or ⌘K, and standing on its
@@ -471,6 +482,7 @@ struct ContentView: View {
             .overlay(alignment: .bottomLeading) { UpdateCorner(browser: browser, prefs: browser.prefs) }
             .overlay(alignment: .bottomLeading) { CloudHoldCorner(browser: browser, prefs: browser.prefs) } // Fork (cloud): the spaces brake's prompt with no column
             .overlay(alignment: .bottom) { bars }
+            .overlay { offerSlot }
             .overlay { field }
             .overlay { panels }
             .overlay { SharePickerSlot(browser: browser) } // Fork (tab-share): what to share (Fork/TabShare/TabSharePicker.swift)
@@ -584,18 +596,28 @@ struct ContentView: View {
             Mark(icon: Favicons.shared.cached(login.host), letter: login.host.first.map { String($0).uppercased() } ?? "•", size: 18)
                 .padding(.trailing, 4)
                 .accessibilityHidden(true)
-            Text(vault
-                 ? (offer.changed
-                    ? "Update the password in \(name) for \(login.user) on \(login.host)?"
-                    : "Save to \(name) for \(login.user) on \(login.host)?")
-                 : (offer.changed
-                    ? "Update the password for \(login.user) on \(login.host)?"
-                    : (login.user.isEmpty
-                       ? "Save this password for \(login.host)?"
-                       : "Save the password for \(login.user) on \(login.host)?")))
-                .font(.system(size: 12.5))
-                .foregroundStyle(Palette.ink)
-                .lineLimit(1)
+            // Fork (uichrome): the question, then the site and the account on
+            // lines of their own (one long sentence was cut on narrow windows).
+            VStack(alignment: .leading, spacing: 1) {
+                Text(vault
+                     ? (offer.changed ? "Update the password in \(name)?" : "Save the password to \(name)?")
+                     : (offer.changed ? "Update the password?" : "Save the password?"))
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(Palette.ink)
+                Text(login.host)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.ink)
+                if !login.user.isEmpty {
+                    Text(login.user)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Palette.muted)
+                }
+            }
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .frame(maxWidth: 220, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityElement(children: .combine)
             // Fork (ui-system): one accent button, one bordered, and the
             // rarely-wanted "never" tucked under ⌄ rather than a third word.
             Pill(vault ? (offer.changed ? "Update in \(name)" : "Save to \(name)") : (offer.changed ? "Update" : "Save"), filled: true) { browser.keepOffer() }
@@ -618,12 +640,13 @@ struct ContentView: View {
                 .accessibilityLabel("More")
             }
         }
-        .padding(.leading, 16)
-        .padding(.trailing, 12)
-        .padding(.vertical, 9)
-        .background(Palette.ground, in: Capsule())
-        .overlay(Capsule().strokeBorder(Palette.hairline, lineWidth: 1))
+        .padding(.leading, 14)
+        .padding(.trailing, 10)
+        .padding(.vertical, 10)
+        .background(Palette.ground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 1))
         .shadow(color: .black.opacity(0.12), radius: 20, y: 6)
+        .fixedSize()
     }
 
 

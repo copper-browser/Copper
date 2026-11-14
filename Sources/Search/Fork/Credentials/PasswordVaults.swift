@@ -160,7 +160,7 @@ struct VaultPendingRows: View {
             HStack(spacing: 10) {
                 Image(systemName: symbol)
                     .font(.system(size: 11, weight: .medium))
-                    .frame(width: 22, height: 22)
+                    .frame(width: 24, height: 24)
                     .foregroundStyle(Palette.muted)
                 Text(title)
                     .font(.system(size: 12.5))

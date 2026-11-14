@@ -629,7 +629,7 @@ private struct ExtensionDetails: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.system(size: 12)).foregroundStyle(Palette.ink).lineLimit(1)
                 if let detail {
-                    Text(detail).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Palette.muted).lineLimit(1).truncationMode(.middle)
+                    Text(detail).font(.system(size: 11, design: .monospaced)).foregroundStyle(Palette.muted).lineLimit(1).truncationMode(.middle)
                 }
             }
             Spacer(minLength: 8)
@@ -848,7 +848,7 @@ private struct PermissionChips: View {
         Wrap(spacing: 4) {
             ForEach(names, id: \.self) { name in
                 Text(name)
-                    .font(.system(size: 10.5, design: .monospaced))
+                    .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(Palette.muted)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)

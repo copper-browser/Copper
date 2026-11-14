@@ -647,7 +647,7 @@ struct DriveTimeline: View {
 
     private func chip(_ operation: String) -> some View {
         Text(operation)
-            .font(.system(size: 10, design: .monospaced)) // Fork (uitype): the 10 pt floor for words
+            .font(.system(size: 11, design: .monospaced)) // Fork (uichrome): nothing read under 11 pt
             .foregroundStyle(Palette.ink)
             .padding(.horizontal, 5).padding(.vertical, 1.5)
             .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Palette.ink.opacity(0.25), lineWidth: 1))

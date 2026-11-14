@@ -234,7 +234,7 @@ struct CommandPalette: View {
                         VStack(alignment: .leading, spacing: 1) {
                             if let heading = sections.headings[index] {
                                 Text(heading)
-                                    .font(.system(size: 11.5, weight: .medium))
+                                    .font(.system(size: 12, weight: .medium))
                                     .foregroundStyle(Palette.muted)
                                     .padding(.horizontal, 12)
                                     .frame(height: CommandPalette.headingHeight, alignment: .bottomLeading)
@@ -400,7 +400,7 @@ struct CommandPalette: View {
                     HStack(spacing: 10) {
                         if !aside.isEmpty {
                             Text(aside)
-                                .font(.system(size: 11))
+                                .font(.system(size: 12))
                                 .foregroundStyle(Palette.muted)
                         }
                         if !offer.hint.isEmpty {

@@ -618,7 +618,8 @@ private struct AgentsJevSection: View {
             if mcp.config.jev, !brain.jevReady {
                 Rule()
                 Line("Jev key", "Jev needs its own key. Add it in Intelligence.") {
-                    Pill("Add key", filled: true) { browser.openSettings(.intelligence, at: "intelligence.jev") }
+                    // Fork (uichrome): bordered — a pointer to another page, not this page's action
+                    Pill("Add key") { browser.openSettings(.intelligence, at: "intelligence.jev") }
                 }
                 .settingsAnchor("agents.jevkey")
             }
@@ -1161,7 +1162,7 @@ struct ServerRow: View {
             Circle().fill(colour).frame(width: 6, height: 6)
             VStack(alignment: .leading, spacing: 2) {
                 Text(server.name).font(.system(size: 12, design: .monospaced)).foregroundStyle(Palette.ink)
-                Text(server.spec.line).font(.system(size: 10.5)).foregroundStyle(Palette.muted).lineLimit(1).truncationMode(.middle)
+                Text(server.spec.line).font(.system(size: 11)).foregroundStyle(Palette.muted).lineLimit(1).truncationMode(.middle)
             }
             Spacer()
             Text(server.ready ? "\(server.tools.count) tool\(server.tools.count == 1 ? "" : "s")" : server.state)

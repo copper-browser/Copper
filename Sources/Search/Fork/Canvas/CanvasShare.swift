@@ -994,7 +994,7 @@ struct CanvasShareSheet: View {
             if let name {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(name).font(.system(size: 11.5)).foregroundStyle(Palette.ink).lineLimit(1).truncationMode(.tail)
-                    Text(email).font(.system(size: 10)).foregroundStyle(Palette.muted).lineLimit(1).truncationMode(.middle)
+                    Text(email).font(.system(size: 11)).foregroundStyle(Palette.muted).lineLimit(1).truncationMode(.middle)
                 }
             } else {
                 Image(systemName: "envelope").font(.system(size: 10.5)).foregroundStyle(Palette.muted)
@@ -1009,9 +1009,9 @@ struct CanvasShareSheet: View {
     @ViewBuilder private func standing(_ email: String) -> some View {
         switch model.state(of: email) {
         case .you:
-            Text("You").font(.system(size: 10)).foregroundStyle(Palette.muted)
+            Text("You").font(.system(size: 11)).foregroundStyle(Palette.muted)
         case .member(let role):
-            Text(role == "owner" ? "Owner" : "Member").font(.system(size: 10)).foregroundStyle(Palette.muted)
+            Text(role == "owner" ? "Owner" : "Member").font(.system(size: 11)).foregroundStyle(Palette.muted)
                 .help("\(role.capitalized) of this canvas")
         case .invited(let invite):
             invited(invite)
@@ -1028,7 +1028,7 @@ struct CanvasShareSheet: View {
         let busy = model.acting.contains(invite.email.lowercased())
         return HStack(spacing: 6) {
             if label {
-                Text("Invited").font(.system(size: 10)).foregroundStyle(Palette.muted)
+                Text("Invited").font(.system(size: 11)).foregroundStyle(Palette.muted)
                     .help(waiting(invite))
             }
             if busy {
@@ -1066,7 +1066,7 @@ struct CanvasShareSheet: View {
                 HStack(spacing: 8) {
                     Text(member.name.isEmpty ? member.email : member.name).font(.system(size: 11.5)).lineLimit(1).truncationMode(.tail)
                     Spacer(minLength: 6)
-                    Text(member.role.capitalized).font(.system(size: 10)).foregroundStyle(Palette.muted)
+                    Text(member.role.capitalized).font(.system(size: 11)).foregroundStyle(Palette.muted)
                     if entry.isOwner && member.role != "owner" {
                         Button("Remove") { model.remove(member) }.buttonStyle(CanvasButtonStyle(kind: .plain))
                     }
@@ -1089,10 +1089,10 @@ struct CanvasShareSheet: View {
                             Text(name).font(.system(size: 11.5)).foregroundStyle(Palette.ink)
                                 .lineLimit(1).truncationMode(.middle)
                             if invite.inviteeKnown, invite.invitee == nil {
-                                Text("No account on \(Canvases.cloudHost) yet").font(.system(size: 10)).foregroundStyle(Palette.muted)
+                                Text("No account on \(Canvases.cloudHost) yet").font(.system(size: 11)).foregroundStyle(Palette.muted)
                                     .lineLimit(1).truncationMode(.middle)
                             } else if name != invite.email {
-                                Text(invite.email).font(.system(size: 10)).foregroundStyle(Palette.muted)
+                                Text(invite.email).font(.system(size: 11)).foregroundStyle(Palette.muted)
                                     .lineLimit(1).truncationMode(.middle)
                             }
                         }

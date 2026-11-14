@@ -271,7 +271,7 @@ private struct CloudConnectCard: View {
                             .font(.system(size: 11.5)).foregroundStyle(Palette.muted)
                             .fixedSize(horizontal: false, vertical: true)
                         Text(cloudPairLines(Cloud.pairs(seen)))
-                            .font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Palette.ink)
+                            .font(.system(size: 11, design: .monospaced)).foregroundStyle(Palette.ink)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                         Text("Compare it with `copper-cloud doctor` on the server. Trusting it pins this instance to that certificate from now on.")
@@ -524,7 +524,7 @@ private struct CloudOfferNotice: View {
 
 private func fingerprintText(_ pairs: String) -> some View {
     Text(cloudPairLines(pairs))
-        .font(.system(size: 10.5, design: .monospaced))
+        .font(.system(size: 11, design: .monospaced))
         .foregroundStyle(Palette.muted)
         .textSelection(.enabled)
         .fixedSize(horizontal: false, vertical: true)
@@ -1114,7 +1114,7 @@ private struct CloudCodeBox: View {
             + Text("\n")
             + Text(link[range]).font(.system(size: 15, weight: .semibold, design: .monospaced)).foregroundColor(Palette.ink)
         if !tail.isEmpty {
-            text = text + Text("\n") + Text(tail).font(.system(size: 10.5, design: .monospaced)).foregroundColor(Palette.muted)
+            text = text + Text("\n") + Text(tail).font(.system(size: 11, design: .monospaced)).foregroundColor(Palette.muted)
         }
         return text
     }
@@ -1166,7 +1166,7 @@ private struct CloudConnection: View {
                     Text(trust).font(.system(size: 11.5)).foregroundStyle(Palette.ink)
                     if let pairs = cloud.link?.fingerprintPairs {
                         Text(cloudPairLines(pairs))
-                            .font(.system(size: 10.5, design: .monospaced))
+                            .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(Palette.muted)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
@@ -1267,7 +1267,7 @@ private struct CloudLogCard: View {
                         ForEach(sync.log.suffix(60).reversed()) { entry in
                             HStack(alignment: .firstTextBaseline, spacing: 8) {
                                 Text(entry.at, format: .dateTime.hour().minute().second())
-                                    .font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Palette.muted)
+                                    .font(.system(size: 11, design: .monospaced)).foregroundStyle(Palette.muted)
                                 Text(entry.text).font(.system(size: 11.5)).foregroundStyle(Palette.ink)
                                     .fixedSize(horizontal: false, vertical: true)
                             }

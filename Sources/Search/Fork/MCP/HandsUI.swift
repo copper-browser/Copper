@@ -131,10 +131,10 @@ struct HandCard: View {
                 }
             }
             Text(timing(now))
-                .font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+                .font(.system(size: 11)).foregroundStyle(Palette.muted)
             if !hand.who.session.isEmpty || !hand.who.project.isEmpty {
                 Text([hand.who.project, hand.who.session.isEmpty ? "" : "session \(hand.who.session)"].filter { !$0.isEmpty }.joined(separator: " · "))
-                    .font(.system(size: 10, design: .monospaced)).foregroundStyle(Palette.muted).lineLimit(1)
+                    .font(.system(size: 11, design: .monospaced)).foregroundStyle(Palette.muted).lineLimit(1)
             }
         }
         .padding(12)
