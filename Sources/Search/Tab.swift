@@ -12,9 +12,14 @@ import WebKit
 // keeps what it takes to come back exactly where it was.
 
 enum Web {
-    /// Modern WebKit pools processes by data store on its own — every tab
-    /// asking for the same one is what gets the second tab a warm process, and
-    /// the old WKProcessPool knob does nothing now.
+    /// Fork (navperf): one process pool for every tab. A configuration left
+    /// alone makes a pool of its own (WebKit 27 still does, whatever the
+    /// deprecation note says), and each new pool cost a new tab ~40 ms of
+    /// main thread before its request left — the pool built, every installed
+    /// font listed again for its first process — against ~6 ms in a shared
+    /// one. Set by key, the property being deprecated, not gone.
+    @MainActor private static let pool = WKWebViewConfiguration().value(forKey: "processPool")
+
     /// What every view says it is after "AppleWebKit … (KHTML, like Gecko)"
     /// — web tabs and extension views alike (see Extensions.init).
     static let userAgentName = "Version/26.5 Safari/605.1.15"
@@ -28,6 +33,7 @@ enum Web {
         // (Fork (perf): `store` is the one the tab was made for — its space's
         // profile — when the configuration is built later than the tab.)
         config.websiteDataStore = shy ? .nonPersistent() : store ?? Store.websites
+        MainActor.assumeIsolated { if let pool = Web.pool { config.setValue(pool, forKey: "processPool") } }
         // Chrome extensions see every page but a private one. The controller
         // has to be there when the view is made; it can't be added after.
         if #available(macOS 15.4, *), !shy { MainActor.assumeIsolated { Extensions.attach(config) } }
@@ -464,8 +470,15 @@ final class Tab: ObservableObject, Identifiable {
     func arm(hiding css: String) {
         veils = css
         guard let built else { return }
-        if CanvasHost.arm(built) { return } // Fork (canvas-hooks): a board gets one small script, not every page's
         let controller = built.configuration.userContentController
+        if CanvasHost.arm(built) { Tab.armed.removeObject(forKey: controller); return } // Fork (canvas-hooks): a board gets one small script, not every page's
+        // Fork (navperf): every main-frame navigation asks, and laying the
+        // same dozen scripts down again is IPC to the page's process for
+        // nothing; only a change in what goes in re-arms. Kept per controller,
+        // which a tab shares with the tabs its page opened.
+        let inputs = [css, "\(Passkeys.active)", "\(FormRelay.passkeysOffered)", PageVoice.script].joined(separator: "\u{1}")
+        guard Tab.armed.object(forKey: controller) as String? != inputs else { return }
+        Tab.armed.setObject(inputs as NSString, forKey: controller)
         controller.removeAllUserScripts()
         TabShare.arm(controller) // Fork (tab-share): getDisplayMedia offers a tab (Fork/TabShare/TabShareScript.swift)
         listenForPasskeys(controller) // Fork (passkeys-hooks): follows Settings › Passwords
@@ -516,6 +529,9 @@ final class Tab: ObservableObject, Identifiable {
             WKUserScript(source: Veiling.style(css), injectionTime: .atDocumentStart, forMainFrameOnly: true)
         )
     }
+
+    /// Fork (navperf): what each controller was last armed with (`arm(hiding:)`).
+    private static let armed = NSMapTable<WKUserContentController, NSString>.weakToStrongObjects()
 
     /// Fork (passkeys-hooks): the handler is the gate for the copy of the
     /// authenticator that rides in extensions' MAIN-world scripts, so it is
@@ -1436,6 +1452,7 @@ final class Tab: ObservableObject, Identifiable {
         controller.removeScriptMessageHandler(forName: ImageRelay.name)
         controller.removeScriptMessageHandler(forName: StoreRelay.name)
         controller.removeAllUserScripts()
+        Tab.armed.removeObject(forKey: controller) // Fork (navperf)
         passkeysListening = false
         web.onPull = nil
         web.onTouch = nil

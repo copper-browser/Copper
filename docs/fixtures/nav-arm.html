@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Nav arm</title>
+<!-- docs/fixtures/nav-arm-e2e.sh: what a page gets armed with, kept across navigations in one tab. -->
+<ins class="adsbygoogle" id="ad">an ad slot the blocker's cosmetic rule hides</ins>
+<div id="veiled">hidden on 127.0.0.1 only (hidden.json)</div>
+<form><input name="user"><input type="password" name="pass"></form>
+<iframe id="inner" src="nav-arm-frame.html" width="300" height="80"></iframe>
+<script>
+  // What the checks read: shield, veil, and the sign-in watcher in the page and in its frame.
+  window.report = () => JSON.stringify({
+    at: location.hostname + location.search,
+    ad: getComputedStyle(document.getElementById("ad")).display,
+    veiled: getComputedStyle(document.getElementById("veiled")).display,
+    forms: !!window.__officeForms,
+    frameForms: !!document.getElementById("inner").contentWindow.__officeForms,
+  });
+</script>
