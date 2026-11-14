@@ -391,7 +391,8 @@ enum CanvasBench {
         }
         context.draw(base, in: place(window.frame))
         for (extra, at) in zip(extras, spots) {
-            guard let view = extra.contentView?.superview ?? extra.contentView,
+            // A borderless child window's frame view draws nothing of its content.
+            guard let view = (extra.parent === window ? extra.contentView : nil) ?? extra.contentView?.superview ?? extra.contentView,
                   let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
             view.cacheDisplay(in: view.bounds, to: rep)
             guard let drawn = rep.cgImage else { continue }
