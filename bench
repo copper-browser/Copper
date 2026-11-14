@@ -22,6 +22,14 @@
     ./bench pins close|others ID       a test world: ⌘W on a tab in its window / Close Other Tabs
     ./bench select ID                  bring a tab to the front — --test runs only
     ./bench resize W H [STEPS]         take the window to W×H in steps, like a drag — --test runs only
+    ./bench wheel DY [--steps N] [--hz H] [--at X,Y] [--window N]
+                                       a trackpad scroll of DY points (+ is down) in N events (60), one per
+                                       display-link tick at H Hz (120; the display may give less): began,
+                                       changed…, ended; at window point X,Y (the page's centre) — --test
+                                       runs only; → events, hz, tick_ms/send_ms p50 p90 max, missed_ticks
+    ./bench keylat KEY [--window N]    one press of ⌘t, ⌘k, ⎋ or a letter in at the app, timed in ms from
+                                       just before it: handled, the next Core Animation commit, the display
+                                       tick after that (key→pixel) — --test runs only
     ./bench key ID TEXT [--app] [--hold] press keys on a tab as real key events — --test runs only;
                                        ⌘ ⇧ ⌥ ⌃ hold for the next key, ⇥ is Tab, ← → ↑ ↓ ⎋ ↩ are
                                        arrows/Escape/Return; --app sends through the app's own key monitor;
@@ -392,13 +400,18 @@
                                        over the sidebar, back/forward switches the previous/next space
                                        (with more than one space), while over a page it navigates
                                        the pane under the pointer
+    ./bench mouse double X Y [--window N]
+                                       a left double-click at window point X Y, the whole way a click goes
+                                       (the title bar's zoom included) — --test runs only; → frameBefore,
+                                       frameAfter, zoomed, miniaturized, hit (the view under it)
     ./bench bar TEXT [--go]          what ⌘K offers for TEXT; --go takes the first row (history lands a beat
                                        later, off the main thread: `summon TEXT` and look again for it)
     ./bench bar TEXT --type [--every S] [--settle S]
                                        ⌘K, then TEXT a letter every S seconds (0.08): the same meter as newtab --type
     ./bench summon [TEXT] [--keys KEYS]
                                        ⌘K left open on TEXT (for `window`), its rows by section; with --keys and
-                                       the bar already up on TEXT, KEYS pressed in its field (⇥ ⇧⇥ ↑ ↓ → ↩)
+                                       the bar already up on TEXT, KEYS pressed in its field (⇥ ⇧⇥ ↑ ↓ → ↩ ⎋),
+                                       each step and the answer saying whether the bar is still up (summoning)
     ./bench newtab [TEXT] [--keys KEYS] [--go [--pick N] [--how open|background|split]] [--keep] [--settle S] [--json]
                                        what ⌘T's card offers for TEXT, by section, after S seconds (0.8) for
                                        Google's completions and history; --keys presses KEYS in the field
@@ -444,7 +457,8 @@
     ./bench settings browse picture spaces|extensions|voice|cloud|updates|intelligence|agents|addons PATH [WIDTH] [light|dark]
                                        the whole page as a PNG, laid out at a page-column WIDTH
                                        (345 is Settings' narrowest), not scrolled
-    ./bench ui KEY VALUE               settings/passwords/welcome/history/downloads/bookmarks/hidden on|off,
+    ./bench ui KEY VALUE               settings/passwords/welcome/history/downloads/bookmarks/hidden on|off
+                                       (welcome stays up in a headless test world too),
                                        look light|dark|system, sidebar on|off, folded on|off, peek on|off,
                                        tabswitch row|recent, page general|tabs (which Settings page), focus none (the keyboard to the window itself), width N (the sidebar),
                                        addressHover on|off (the sidebar's address pill as under the pointer), clearHover on|off (force the Clear divider visible)
@@ -765,6 +779,29 @@ def main(argv):
         if len(args) not in (2, 3): sys.exit("usage: bench resize WIDTH HEIGHT [STEPS]")
         request["width"], request["height"] = float(args[0]), float(args[1])
         if len(args) == 3: request["steps"] = int(args[2])
+    elif verb in ("wheel", "keylat"):
+        if "--window" in args:
+            at = args.index("--window")
+            if at + 1 >= len(args) or not args[at + 1].isdigit(): sys.exit(f"usage: bench {verb} … --window N")
+            request["window"] = int(args[at + 1])
+            args = args[:at] + args[at + 2:]
+        if verb == "keylat":
+            if len(args) != 1: sys.exit("usage: bench keylat ⌘t|⌘k|⎋|LETTER [--window N]")
+            request["key"] = args[0]
+        else:
+            usage = "usage: bench wheel DY [--steps N] [--hz H] [--at X,Y] [--window N]"
+            flags = {"--steps": ("steps", int), "--hz": ("hz", float), "--at": ("at", lambda v: [float(n) for n in v.split(",")])}
+            rest = []
+            while args:
+                a = args.pop(0)
+                if a in flags:
+                    if not args: sys.exit(usage)
+                    key, kind = flags[a]
+                    request[key] = kind(args.pop(0))
+                else:
+                    rest.append(a)
+            if len(rest) != 1: sys.exit(usage)
+            request["dy"] = float(rest[0])
     elif verb in ("pin", "unpin", "reorder"):
         if "--window" in args:
             at = args.index("--window")
