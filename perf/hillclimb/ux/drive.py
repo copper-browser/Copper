@@ -470,6 +470,12 @@ def lived_in(w, shoot):
         time.sleep(1.5)
         shoot.take(w, "agent-pill")
         w.b("drive", "unfake")
+    # A 60-character task must fade in the pill, not widen it (r4: the column shifted ~45 pt left).
+    long_task = "Compare three flights to Lisbon in March and book the cheapest"[:60]
+    if step("drive fake long", lambda: w.b("drive", "fake", "Claude", long_task, "--doing", "Reading the fares")):
+        time.sleep(1.5)
+        shoot.take(w, "agent-pill-long")
+        w.b("drive", "unfake")
     w.b("agent", "close"); time.sleep(0.8)
 
     # Error state (B11): a page whose server refuses the connection.

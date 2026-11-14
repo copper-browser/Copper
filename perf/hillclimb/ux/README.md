@@ -56,7 +56,7 @@ python3 perf/hillclimb/ux/audit.py ~/plans/copper-hillclimb-2026-11-14/out/LABEL
 
 `<surface>-<theme>-<size>.png`; theme `light|dark`; size `1440` (1440×900) or `full` (1728×1117, the M1 Pro's whole screen in points). Pictures are 2× (Retina).
 Sizes `900` (900×700) and `1100` (1100×720) are the narrow windows.
-Surfaces: welcome-{hello,bring,hold,links}, narrow-{sidebar,top}, narrow-cmdk-{sidebar,top}, firstrun-window, movein-preview, movein-done, {history,downloads,bookmarks,passwords}-empty, main-{sidebar,top}, cmdk-{sidebar,top}, cmdk-query-{sidebar,top}, newtab-suggest-{sidebar,top}, split-{sidebar,top}, address-hover, space-work, space-empty, space-page, settings-{general,tabs,spaces,intelligence,agents,cloud,extensions,passwords,privacy,about}, {history,downloads,bookmarks,passwords}-panel, password-offer, update-pill, agent-{empty,chat,driver,pill}, error-refused.
+Surfaces: welcome-{hello,bring,hold,links}, narrow-{sidebar,top}, narrow-cmdk-{sidebar,top}, firstrun-window, movein-preview, movein-done, {history,downloads,bookmarks,passwords}-empty, main-{sidebar,top}, cmdk-{sidebar,top}, cmdk-query-{sidebar,top}, newtab-suggest-{sidebar,top}, split-{sidebar,top}, address-hover, space-work, space-empty, space-page, settings-{general,tabs,spaces,intelligence,agents,cloud,extensions,passwords,privacy,about}, {history,downloads,bookmarks,passwords}-panel, password-offer, update-pill, agent-{empty,chat,driver,pill,pill-long}, error-refused.
 
 ## Before / after
 
