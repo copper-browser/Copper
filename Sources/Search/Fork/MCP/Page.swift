@@ -73,7 +73,12 @@ enum Page {
     /// Promise it returns is awaited. `timeout` caps the wait: a Promise that
     /// never settles, or a document torn down mid-call, answers nothing.
     @MainActor
-    static func call(_ web: WKWebView, _ body: String, _ arguments: [String: Any] = [:], timeout: TimeInterval, late: String) async throws -> Any? {
+    static func call(_ web: WKWebView, _ body: String, _ arguments: [String: Any] = [:], timeout: TimeInterval, late: String, counted: Bool = true) async throws -> Any? {
+        // Counted like `raw`, so an alert inside browser_evaluate is answered at once (AgentDialogs).
+        // `frame` isn't: an alert a click raises during settle stays open for browser_handle_dialog.
+        let key = ObjectIdentifier(web)
+        if counted { waiting[key, default: 0] += 1 }
+        defer { if counted { let left = (waiting[key] ?? 1) - 1; waiting[key] = left > 0 ? left : nil } }
         let once = Once()
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any?, Error>) in
             let timer = Task { @MainActor in
@@ -95,7 +100,7 @@ enum Page {
     /// One animation frame of the page, or 50 ms, whichever comes first.
     @MainActor
     static func frame(_ web: WKWebView) async {
-        _ = try? await call(web, "return await new Promise(r => { requestAnimationFrame(() => r(true)); setTimeout(() => r(true), 50); });", timeout: 0.1, late: "")
+        _ = try? await call(web, "return await new Promise(r => { requestAnimationFrame(() => r(true)); setTimeout(() => r(true), 50); });", timeout: 0.1, late: "", counted: false)
     }
 
     /// Whichever of an answer and a timeout comes first wins.
