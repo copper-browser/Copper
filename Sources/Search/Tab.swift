@@ -554,6 +554,18 @@ final class Tab: ObservableObject, Identifiable {
     /// frame's site while the caret is in one, else the page's.
     var formHost: String? { Self.bare(formFrame.map(\.securityOrigin.host) ?? address?.host()) }
 
+    /// Fork (form-target): where a fill goes, fixed when the account is
+    /// chosen — the frame with the caret then (nil: the page) and its site.
+    /// Any frame can say it has the caret, so a fill never follows the caret
+    /// later: it goes into this frame, and only while the frame is still on
+    /// this site.
+    struct FormTarget {
+        let frame: WKFrameInfo?
+        let host: String
+    }
+
+    var formTarget: FormTarget? { formHost.map { FormTarget(frame: formFrame, host: $0) } }
+
     private static func bare(_ host: String?) -> String? {
         guard let host = host?.lowercased(), !host.isEmpty else { return nil }
         return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
@@ -685,7 +697,20 @@ final class Tab: ObservableObject, Identifiable {
 
     /// The forms script, run where the sign-in is: in `frame`, else the
     /// embedded frame the caret is in, else the page.
-    private func forms(_ js: String, in frame: WKFrameInfo? = nil, done: ((Any?) -> Void)? = nil) {
+    /// With `target` (form-target): in exactly that frame, and only if the
+    /// document there is still on the target's site — else it answers false.
+    private func forms(_ js: String, in frame: WKFrameInfo? = nil, at target: FormTarget? = nil, done: ((Any?) -> Void)? = nil) {
+        if let target {
+            guard let host = jsonLiteral(target.host) else { done?(false); return }
+            // `location` can't be redefined by the page, and `===` can't be hooked.
+            let guarded = "((location.hostname === \(host) || location.hostname === 'www.' + \(host)) ? (\(js)) : false)"
+            guard let frame = target.frame else {
+                web.evaluateJavaScript(guarded) { result, _ in done?(result) }
+                return
+            }
+            web.evaluateJavaScript(guarded, in: frame, in: .page) { done?(try? $0.get()) }
+            return
+        }
         guard let frame = frame ?? formFrame else {
             web.evaluateJavaScript(js) { result, _ in done?(result) }
             return
@@ -698,17 +723,19 @@ final class Tab: ObservableObject, Identifiable {
     /// `done`, when given, hears back `false` for the one case worth saying
     /// something about: the sign-in fields that were there a moment ago,
     /// when this was offered, are gone by the time it actually runs.
-    func fill(user: String, password: String, done: ((Bool) -> Void)? = nil) {
+    func fill(user: String, password: String, at target: FormTarget? = nil, done: ((Bool) -> Void)? = nil) {
         forms(
-            "window.__officeForms && window.__officeForms.fill(`\(escape(user))`, `\(escape(password))`)"
+            "window.__officeForms && window.__officeForms.fill(`\(escape(user))`, `\(escape(password))`)",
+            at: target
         ) { result in
             done?((result as? Bool) ?? false)
         }
     }
 
-    func submitSignIn(done: ((Bool) -> Void)? = nil) {
+    func submitSignIn(at target: FormTarget? = nil, done: ((Bool) -> Void)? = nil) {
         forms(
-            "window.__officeForms && window.__officeForms.submit()"
+            "window.__officeForms && window.__officeForms.submit()",
+            at: target
         ) { result in
             done?((result as? Bool) ?? false)
         }
@@ -721,9 +748,21 @@ final class Tab: ObservableObject, Identifiable {
         forms("window.__officeForms && window.__officeForms.caret()")
     }
 
-    func fillOTP(_ code: String, done: ((Bool) -> Void)? = nil) {
+    /// Fork (otp-submit): sends the form the code box is in — a code page
+    /// has no password box for `submitSignIn` to send from.
+    func submitOTP(at target: FormTarget? = nil, done: ((Bool) -> Void)? = nil) {
         forms(
-            "window.__officeForms && window.__officeForms.fillOTP(`\(escape(code))`)"
+            "!!(window.__officeForms && window.__officeForms.submitOTP && window.__officeForms.submitOTP())",
+            at: target
+        ) { result in
+            done?((result as? Bool) ?? false)
+        }
+    }
+
+    func fillOTP(_ code: String, at target: FormTarget? = nil, done: ((Bool) -> Void)? = nil) {
+        forms(
+            "window.__officeForms && window.__officeForms.fillOTP(`\(escape(code))`)",
+            at: target
         ) { result in
             done?((result as? Bool) ?? false)
         }
@@ -748,13 +787,14 @@ final class Tab: ObservableObject, Identifiable {
 
     /// Fills the page's active input, including a custom field that has no
     /// recognised kind.
-    func fillFocused(_ value: String, done: ((Bool) -> Void)? = nil) {
+    func fillFocused(_ value: String, at target: FormTarget? = nil, done: ((Bool) -> Void)? = nil) {
         guard let json = jsonLiteral(value) else {
             done?(false)
             return
         }
         forms(
-            "window.__officeForms && window.__officeForms.fillFocused(\(json))"
+            "window.__officeForms && window.__officeForms.fillFocused(\(json))",
+            at: target
         ) { result in
             done?((result as? Bool) ?? false)
         }
@@ -762,13 +802,14 @@ final class Tab: ObservableObject, Identifiable {
 
     /// Fills the first visible field whose label names the requested custom
     /// field.
-    func fillField(label: String, value: String, done: ((Bool) -> Void)? = nil) {
+    func fillField(label: String, value: String, at target: FormTarget? = nil, done: ((Bool) -> Void)? = nil) {
         guard let label = jsonLiteral(label), let value = jsonLiteral(value) else {
             done?(false)
             return
         }
         forms(
-            "window.__officeForms && window.__officeForms.fillField(\(label), \(value))"
+            "window.__officeForms && window.__officeForms.fillField(\(label), \(value))",
+            at: target
         ) { result in
             done?((result as? Bool) ?? false)
         }
@@ -824,20 +865,22 @@ final class Tab: ObservableObject, Identifiable {
         }
     }
 
-    func hasOTPField() async -> Bool {
+    func hasOTPField(at target: FormTarget? = nil) async -> Bool {
         await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             forms(
-                "!!(window.__officeForms && window.__officeForms.hasOTP())"
+                "!!(window.__officeForms && window.__officeForms.hasOTP())",
+                at: target
             ) { result in
                 continuation.resume(returning: (result as? Bool) ?? false)
             }
         }
     }
 
-    func hasPasswordField() async -> Bool {
+    func hasPasswordField(at target: FormTarget? = nil) async -> Bool {
         await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             forms(
-                "!!(window.__officeForms && window.__officeForms.hasPassword())"
+                "!!(window.__officeForms && window.__officeForms.hasPassword())",
+                at: target
             ) { result in
                 continuation.resume(returning: (result as? Bool) ?? false)
             }

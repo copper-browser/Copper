@@ -199,6 +199,21 @@ enum Credentials {
                           hasTOTP: item.hasTOTP, used: nil, folder: item.vaultName, agentHint: hint)
     }
 
+    /// Fork (agent-cards): the Agents folder / vault, tag and deny field of
+    /// any vault item — a card or identity as well as a login — by its
+    /// autofill id (`op:<id>` or a bare Bitwarden id). Nil when the item
+    /// isn't in an open vault's index.
+    static func agentHint(autofillID id: String) -> Credential.AgentHint? {
+        if id.hasPrefix("op:") {
+            let raw = String(id.dropFirst(3))
+            guard isOnePasswordUnlocked, let item = OnePassword.shared.cachedItems.first(where: { $0.id == raw }) else { return nil }
+            return credential(for: item).agentHint
+        }
+        guard isBitwardenUnlocked, let item = Bitwarden.shared.cachedItems.first(where: { $0.id == id }) else { return nil }
+        let folders = Dictionary(uniqueKeysWithValues: Bitwarden.shared.cachedFolders.map { ($0.id, $0.name) })
+        return credential(for: item, folders: folders).agentHint
+    }
+
     static func onePasswordItemsMatching(host: String) -> [OnePassword.Item] {
         guard isOnePasswordUnlocked else { return [] }
         return OnePassword.shared.cachedItems.filter { item in

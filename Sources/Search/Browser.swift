@@ -426,20 +426,23 @@ final class Browser: NSObject, ObservableObject {
         guard let tab = tabs.first(where: { $0.id == suggesting?.tab }) ?? active else { return }
         guard fetching == nil else { return }
         pickedInto = tab.id
+        // Fork (form-target): the box the row was picked for, held — the
+        // password goes only there, and only if the account is that site's.
+        // The caret may have moved, or a frame claimed it, while the list
+        // was open; the page and its frames are checked alike.
+        guard let target = tab.formTarget,
+              Credentials.candidates(for: target.host).contains(where: { $0.id == credential.id })
+        else {
+            announce("That account isn't for this sign-in")
+            suggesting = nil
+            return
+        }
         fetching = credential.id
         Task { [weak self, weak tab] in
             do {
                 let secret = try await Credentials.secret(credential.id)
                 guard let self, let tab else { return }
-                // Fork (frame-autofill): an embedded frame's password goes
-                // only into a frame of that site — the caret may have moved
-                // to another frame while the list was open.
-                if tab.formFrame != nil, !Credentials.candidates(for: tab.formHost ?? "").contains(where: { $0.id == credential.id }) {
-                    self.announce("That account isn't for this sign-in")
-                    self.suggesting = nil
-                    return
-                }
-                tab.fill(user: credential.user, password: secret) { worked in
+                tab.fill(user: credential.user, password: secret, at: target) { worked in
                     if !worked { self.announce("Couldn't find the sign-in fields anymore") }
                 }
                 Credentials.touch(credential)
@@ -511,6 +514,15 @@ final class Browser: NSObject, ObservableObject {
         lowering?.cancel()
         guard let tab = tabs.first(where: { $0.id == suggesting?.tab }) ?? active else { return }
         guard fetching == nil else { return }
+        // Fork (form-target): as for a password — only into the box it was
+        // picked for, and only on the account's own site.
+        guard let target = tab.formTarget,
+              Credentials.candidates(for: target.host).contains(where: { $0.id == credential.id })
+        else {
+            announce("That account isn't for this sign-in")
+            suggesting = nil
+            return
+        }
         pickedInto = tab.id
         codePickedInto = tab.id
         fetching = credential.id
@@ -518,7 +530,7 @@ final class Browser: NSObject, ObservableObject {
             do {
                 let code = try await Credentials.totp(credential.id)
                 guard let self, let tab else { return }
-                tab.fillOTP(code) { worked in
+                tab.fillOTP(code, at: target) { worked in
                     if !worked { self.announce("Couldn't find the code box anymore") }
                 }
                 Credentials.touch(credential)
@@ -614,14 +626,14 @@ final class Browser: NSObject, ObservableObject {
     /// report one, and would be handed the code.
     private func codeBoxAppeared(in tab: Tab) {
         guard prefs.fillsPasswords, prefs.fillsCodes, fetching == nil, codePickedInto != tab.id,
-              let host = tab.formHost,
-              case let (credential, stamp)? = autoCodeCredential(for: tab, host: host),
+              let target = tab.formTarget, // Fork (form-target)
+              case let (credential, stamp)? = autoCodeCredential(for: tab, host: target.host),
               autoCoded[tab.id] != stamp
         else { return }
         autoCoded[tab.id] = stamp
         Task { [weak self, weak tab] in
             guard let code = try? await Credentials.totp(credential.id), let self, let tab else { return }
-            tab.fillOTP(code) { worked in
+            tab.fillOTP(code, at: target) { worked in
                 guard worked else { return }
                 self.codePickedInto = tab.id
                 if self.suggesting?.tab == tab.id { self.suggesting = nil }

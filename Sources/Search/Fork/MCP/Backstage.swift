@@ -11,9 +11,12 @@ import WebKit
 // key, stable across a thread's CLI calls and MCP requests) can hold a tab of
 // its own: the one it opened with browser_tabs new / jev_run newTab, or chose
 // with browser_tabs select. Its calls land there wherever you are; an agent
-// with no tab of its own still works on the one you are looking at, as
-// before. Any call can name a tab outright with `tab` (an id from
-// browser_tabs list, or an index).
+// that never had a tab of its own still works on the one you are looking
+// at, as before. One whose tab is gone does not: a call that would change a
+// page is refused until it opens or picks another (reading still reads the
+// tab on screen), so a closed tab never moves an agent onto yours. Any call
+// can name a tab outright with `tab` (an id from browser_tabs list, or an
+// index).
 //
 // Backstage is how a tab nobody is looking at can still be seen. A page in a
 // tab off screen has no window: WebKit stops painting it, rAF stops,
@@ -41,6 +44,9 @@ enum AgentTabs {
     /// is announced over, or opens a pane beside, the page on screen.
     @TaskLocal static var behind = false
 
+    /// The call being served only reads its page (Tools.reads).
+    @TaskLocal static var reading = false
+
     /// browser_tabs new and jev_run newTab, unless asked to show the tab.
     nonisolated static func opensBehind(_ name: String, _ args: [String: Any]) -> Bool {
         if (args["focus"] as? Bool) == true { return false }
@@ -53,6 +59,12 @@ enum AgentTabs {
 
     /// Each agent session's own tab, by `Drive.Who.key`.
     private(set) static var bound: [String: UUID] = [:]
+
+    /// Callers whose own tab went away (closed by the user, by the agent,
+    /// or with its window). Lost is not the same as never bound: those
+    /// callers' page-changing calls are refused instead of landing on the
+    /// tab on screen.
+    private(set) static var lost = Set<String>()
 
     /// Fork (tab-memory): the tabs an agent opened for itself (browser_tabs
     /// new, jev_run newTab). Once the agent is done and nobody has looked for
@@ -124,11 +136,22 @@ enum AgentTabs {
     }
 
     /// The tab a call works on: the one it named, else the caller's own,
-    /// else the one on screen. Nil only when there is none of those.
+    /// else the one on screen — unless the caller's own tab is gone and the
+    /// call would change the page (`missing` says why). Nil also when there
+    /// is no tab at all.
     static func target(in browser: Browser, caller: String? = callerKey) -> Tab? {
         if let tab = find(pinned) { return tab }
         if let tab = own(caller) { return tab }
+        if let caller, lost.contains(caller), !reading { return nil }
         return browser.active
+    }
+
+    /// Why `target` came back empty, in words the agent can act on.
+    static func missing(_ caller: String? = callerKey) -> String {
+        if let caller, lost.contains(caller) {
+            return "your tab was closed — open one with browser_tabs new (or name one with tab); the user's tab was not touched"
+        }
+        return "no active tab"
     }
 
     /// The caller's own tab, while it still exists.
@@ -136,6 +159,7 @@ enum AgentTabs {
         guard let caller, let id = bound[caller] else { return nil }
         if let tab = find(id) { return tab }
         bound[caller] = nil
+        lost.insert(caller)
         return nil
     }
 
@@ -150,12 +174,14 @@ enum AgentTabs {
     static func bind(_ tab: Tab, for caller: String? = callerKey) {
         guard binds(caller), let caller else { return }
         bound[caller] = tab.id
+        lost.remove(caller)
     }
 
     /// Back to working on whatever is on screen.
     static func unbind(_ caller: String? = callerKey) {
         guard let caller else { return }
         bound[caller] = nil
+        lost.remove(caller)
     }
 
     /// Showing in some window right now: a window's stage or the side pane.

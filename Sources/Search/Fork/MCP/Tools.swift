@@ -209,7 +209,7 @@ enum Tools {
             tool("browser_console_messages", "Console messages captured on the current page since it loaded"),
             tool("browser_find", "Find on the page: the refs of elements whose text matches", ["text": string("Text to look for")], required: ["text"]),
             tool("browser_resize", "Resize the browser window", ["width": number("Width"), "height": number("Height")], required: ["width", "height"]),
-            tool("browser_close", "Close your tab (the one your calls land on)"),
+            tool("browser_close", "Close your own tab (the one your calls land on); refused when you have none — name one with tab"),
             tool("browser_groups", "Copper's tab groups: list them, or move the current tab into one", [
                 "action": string("list, assign, remove", ["enum": ["list", "assign", "remove"]]),
                 "group": string("Group name for assign (created if new)"),
@@ -234,13 +234,22 @@ enum Tools {
         }
     }
 
+    /// Calls that only read their page. With its own tab gone, an agent may
+    /// still read the tab on screen; anything else is refused (AgentTabs.lost).
+    static let reads: Set<String> = [
+        "browser_snapshot", "browser_take_screenshot", "browser_get_text", "browser_find",
+        "browser_console_messages", "browser_wait_for", "browser_perf_probe", "jev_observe", "jev_extract",
+    ]
+
     @MainActor
     private static func pinnedCall(_ name: String, _ args: [String: Any], in browser: Browser) async throws -> [Content] {
-        // browser_tabs reads `tab` as the tab to close or select, not to work in.
-        guard name != "browser_tabs", let named = try AgentTabs.resolve(args["tab"], in: browser) else {
-            return try await dispatch(name, args, in: browser)
+        try await AgentTabs.$reading.withValue(reads.contains(name)) {
+            // browser_tabs reads `tab` as the tab to close or select, not to work in.
+            guard name != "browser_tabs", let named = try AgentTabs.resolve(args["tab"], in: browser) else {
+                return try await dispatch(name, args, in: browser)
+            }
+            return try await AgentTabs.$pinned.withValue(named.id) { try await dispatch(name, args, in: browser) }
         }
-        return try await AgentTabs.$pinned.withValue(named.id) { try await dispatch(name, args, in: browser) }
     }
 
     @MainActor
@@ -252,8 +261,7 @@ enum Tools {
         switch name {
         case "browser_tabs": return try await tabs(args, in: browser)
         case "browser_close":
-            let tab = try current(browser)
-            let said = close(tab)
+            let said = close(try closable(browser))
             return [.text("\(said) \(tabList(browser))")]
         case "browser_resize":
             guard let w = args["width"] as? NSNumber, let h = args["height"] as? NSNumber else { throw Failure(text: "width and height") }
@@ -496,9 +504,20 @@ enum Tools {
     /// and painting backstage when nobody is looking at it.
     @MainActor
     static func current(_ browser: Browser) throws -> Tab {
-        guard let tab = AgentTabs.target(in: browser) else { throw Failure(text: "no active tab") }
+        guard let tab = AgentTabs.target(in: browser) else { throw Failure(text: AgentTabs.missing()) }
         AgentTabs.prepare(tab)
         return tab
+    }
+
+    /// What a close with no tab named closes: the caller's own tab (the
+    /// pane's is the one on screen — it works there). Never the user's tab
+    /// by default: an agent that has none is told to name one.
+    @MainActor
+    static func closable(_ browser: Browser) throws -> Tab {
+        if let tab = AgentTabs.find(AgentTabs.pinned) ?? AgentTabs.own() { return tab }
+        if AgentTabs.callerKey == "pane", let tab = browser.active { return tab }
+        if let caller = AgentTabs.callerKey, AgentTabs.lost.contains(caller) { throw Failure(text: AgentTabs.missing()) }
+        throw Failure(text: "you have no tab of your own to close — name one with tab (from browser_tabs list); the user's tab was not touched")
     }
 
     /// Close a tab wherever it is, and let go of it. A Saved tab is put
@@ -549,7 +568,7 @@ enum Tools {
             if let named = try AgentTabs.resolve(args["tab"] ?? index, in: browser) { return named }
             // select with nothing named: the tab the user is looking at.
             if orScreen, let active = browser.active { return active }
-            guard let tab = AgentTabs.target(in: browser) else { throw Failure(text: "no active tab") }
+            guard let tab = AgentTabs.target(in: browser) else { throw Failure(text: AgentTabs.missing()) }
             return tab
         }
         // The pane beside the page works on what the user is looking at: a
@@ -572,7 +591,7 @@ enum Tools {
             let note = focus || pane ? "Opened and shown to the user." : "Opened in the background — the user's tab did not change; your calls now land on it."
             return [.text("\(note) {tab \(AgentTabs.short(tab))}\n\(pageLine(tab))\n\n\(tabList(browser))")]
         case "close":
-            let said = close(try pick())
+            let said = close(try AgentTabs.resolve(args["tab"] ?? index, in: browser) ?? closable(browser))
             return [.text("\(said) \(tabList(browser))")]
         case "select":
             let tab = try pick(orScreen: true)
@@ -591,11 +610,13 @@ enum Tools {
         let groups = Groups.shared
         switch action {
         case "assign":
-            guard let tab = AgentTabs.target(in: browser), let name = args["group"] as? String, !name.isEmpty else { return [.text("group name required")] }
+            guard let tab = AgentTabs.target(in: browser) else { return [.text(AgentTabs.missing())] }
+            guard let name = args["group"] as? String, !name.isEmpty else { return [.text("group name required")] }
             groups.assign(tab, to: groups.create(named: name), in: browser)
             return [.text("Grouped into \(name)")]
         case "remove":
-            if let tab = AgentTabs.target(in: browser) { groups.remove(tab) }
+            guard let tab = AgentTabs.target(in: browser) else { return [.text(AgentTabs.missing())] }
+            groups.remove(tab)
             return [.text("Removed from its group")]
         case "list":
             let lines = groups.all.map { g in "- \(g.name): " + groups.members(of: g.id, in: browser).map { "[\($0.title)]" }.joined(separator: ", ") }
