@@ -280,7 +280,7 @@ struct ExtensionsSettings: View {
             HStack(spacing: 8) {
                 ZStack(alignment: .leading) {
                     if link.isEmpty {
-                        Text("Paste a Chrome Web Store link or an id").foregroundStyle(Palette.muted.opacity(0.8))
+                        Text("Paste a Chrome Web Store link or an id").foregroundStyle(Palette.muted) // Fork (ui-system)
                     }
                     TextField("", text: $link)
                         .textFieldStyle(.plain)

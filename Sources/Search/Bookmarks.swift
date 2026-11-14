@@ -52,6 +52,16 @@ final class Bookmarks: ObservableObject {
         }
     }
 
+    /// Fork (ui-system): every site whose title or address has `query` in
+    /// it, folders opened, in order — the panel's search.
+    static func matching(_ query: String, in nodes: [Bookmark]) -> [Bookmark] {
+        let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
+        return nodes.flatMap { node -> [Bookmark] in
+            if node.isFolder { return matching(needle, in: node.children ?? []) }
+            return needle.isEmpty || node.title.lowercased().contains(needle) || (node.url ?? "").lowercased().contains(needle) ? [node] : []
+        }
+    }
+
     /// Every folder in the tree, each with how deep it sits — for "move to
     /// folder" lists, where a folder three deep should look like it.
     static func folders(_ nodes: [Bookmark], depth: Int = 0) -> [(node: Bookmark, depth: Int)] {
@@ -240,6 +250,8 @@ final class Bookmarks: ObservableObject {
 /// in the full manager — the interaction is the same size either way.
 struct BookmarkOutline: View {
     @ObservedObject var bookmarks: Bookmarks
+    /// Fork (ui-system): non-empty, the matching sites flat, folders opened.
+    var query = ""
     let open: (URL) -> Void
 
     @State private var expanded: Set<Bookmark.ID> = []
@@ -248,7 +260,7 @@ struct BookmarkOutline: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
-            rows(bookmarks.roots, depth: 0)
+            rows(query.isEmpty ? bookmarks.roots : Bookmarks.matching(query, in: bookmarks.roots), depth: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(overRoot ? Palette.wash : .clear)
@@ -283,7 +295,7 @@ struct BookmarkOutline: View {
                 } else {
                     Text("Empty")
                         .font(.system(size: 12))
-                        .foregroundStyle(Palette.faint)
+                        .foregroundStyle(Palette.muted)
                         .padding(.leading, indent(depth + 1) + 26)
                         .padding(.vertical, 5)
                 }
@@ -360,15 +372,24 @@ struct BookmarkOutline: View {
                     Spacer().frame(width: 10)
                     Mark(icon: Favicons.shared.cached(node.host ?? ""), letter: String((node.host ?? "•").prefix(1)).uppercased(), size: 15)
                 }
-                Text(node.title)
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(Palette.ink)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(node.title)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Palette.ink)
+                        .lineLimit(1)
+                    // Fork (ui-system): where it goes, under what it's called.
+                    if let host = node.host, host != node.title.lowercased() {
+                        Text(host)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Palette.muted)
+                            .lineLimit(1)
+                    }
+                }
                 Spacer(minLength: 8)
                 if node.isFolder, let kids = node.children, !kids.isEmpty {
                     Text("\(Bookmarks.count(kids))")
                         .font(.system(size: 11))
-                        .foregroundStyle(Palette.faint)
+                        .foregroundStyle(Palette.muted)
                 }
             }
             .padding(.leading, CGFloat(depth) * 18 + 10)
@@ -475,37 +496,58 @@ struct BookmarksDropdown: View {
 struct BookmarksPanel: View {
     @ObservedObject var browser: Browser
     @ObservedObject var bookmarks: Bookmarks
+    @State private var query = "" // Fork (ui-system)
+    @FocusState private var hunting: Bool
 
     var body: some View {
-        Plate("Bookmarks", width: 600, close: { browser.bookmarking = false }) {
+        // Fork (ui-system): a search field like the other panels, a list as
+        // tall as it is, and empty said as a state with the one way to fill it.
+        Plate("Bookmarks", width: 600, footed: !bookmarks.isEmpty, close: { browser.bookmarking = false }) {
             if bookmarks.isEmpty {
-                Card { Nothing("Nothing kept yet. Add this page with ⇧⌘B, or bring yours in below.") }
+                EmptyState("bookmark", "No bookmarks yet", "Press ⇧⌘B on any page to keep it here.") { bringIn }
             } else {
-                ScrollView(showsIndicators: false) {
-                    Card {
-                        BookmarkOutline(bookmarks: bookmarks) { url in
-                            browser.bookmarking = false
-                            browser.visit(url)
+                VStack(alignment: .leading, spacing: 14) {
+                    Hunt(text: $query, prompt: "Search bookmarks", focus: $hunting)
+                    if !query.isEmpty, Bookmarks.matching(query, in: bookmarks.roots).isEmpty {
+                        EmptyState("magnifyingglass", "No matches", "No bookmark matches “\(query)”.")
+                    } else {
+                        Fitted {
+                            Card {
+                                BookmarkOutline(bookmarks: bookmarks, query: query) { url in
+                                    browser.bookmarking = false
+                                    browser.visit(url)
+                                }
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 6)
+                            }
+                            .padding(.bottom, 2)
                         }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 6)
                     }
-                    .padding(.bottom, 2)
                 }
-                .frame(maxHeight: 440)
             }
         } foot: {
             HStack(spacing: 8) {
-                Text("Bring in from")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Palette.muted)
-                ForEach(Chromium.installed()) { source in
-                    Pill(source.name) { browser.takeBookmarks(from: source) }
-                }
+                bringIn
                 Spacer()
                 Text(bookmarks.count == 1 ? "1 bookmark" : "\(bookmarks.count) bookmarks")
                     .font(.system(size: 12))
                     .foregroundStyle(Palette.muted)
+            }
+        }
+        .onAppear { hunting = !bookmarks.isEmpty }
+    }
+
+    /// Only the browsers actually on this Mac.
+    @ViewBuilder private var bringIn: some View {
+        let sources = Chromium.installed()
+        if !sources.isEmpty {
+            HStack(spacing: 8) {
+                Text("Bring in from")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.muted)
+                ForEach(sources) { source in
+                    Pill(source.name) { browser.takeBookmarks(from: source) }
+                }
             }
         }
     }

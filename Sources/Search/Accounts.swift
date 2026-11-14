@@ -31,12 +31,12 @@ struct AccountList: View {
             VaultPendingRows(browser: browser, emptyLogin: emptyLogin)
             HStack(spacing: 6) {
                 Image(systemName: "key")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.system(size: 10, weight: .medium))
                 Text(footer)
-                    .font(.system(size: 10.5))
+                    .font(.system(size: 11))
                 Spacer(minLength: 0)
             }
-            .foregroundStyle(Palette.faint)
+            .foregroundStyle(Palette.muted) // Fork (ui-system): it says where the logins come from — words, so muted, not faint
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
             .background(Palette.wash.opacity(0.5))

@@ -111,10 +111,10 @@ struct CaptureBarView: View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 12))
-                .foregroundStyle(Palette.ground)
+                .foregroundStyle(Palette.onAccent)
                 .padding(.horizontal, 11)
                 .padding(.vertical, 5)
-                .background(Palette.ink, in: Capsule())
+                .background(Palette.accent, in: Capsule()) // Fork (ui-system)
         }
         .buttonStyle(.plain)
     }

@@ -356,10 +356,10 @@ struct CanvasButtonStyle: ButtonStyle {
             .font(.system(size: 11.5, weight: kind == .plain ? .regular : .semibold))
             .lineLimit(1)
             .fixedSize()
-            .foregroundStyle(kind == .plain ? Palette.ink : kind == .primary ? Palette.ground : Color.white)
+            .foregroundStyle(kind == .plain ? Palette.ink : kind == .primary ? Palette.onAccent : Color.white) // Fork (ui-system)
             .padding(.horizontal, 11)
             .padding(.vertical, 4.5)
-            .background(Capsule().fill(kind == .plain ? Palette.ground : kind == .primary ? Palette.ink : Color(nsColor: .systemRed)))
+            .background(Capsule().fill(kind == .plain ? Palette.ground : kind == .primary ? Palette.accent : Color(nsColor: .systemRed)))
             .overlay(Capsule().strokeBorder(kind == .plain ? Palette.faint : .clear, lineWidth: 1))
             .opacity(enabled ? (configuration.isPressed ? 0.7 : 1) : 0.45)
             .contentShape(Capsule())
@@ -802,7 +802,7 @@ private struct CanvasMembers: View {
                                     }
                                 }
                                 Spacer(minLength: 4)
-                                Text(member.role.capitalized).font(.system(size: 11)).foregroundStyle(Palette.faint)
+                                Text(member.role.capitalized).font(.system(size: 11)).foregroundStyle(Palette.muted)
                             }
                             .padding(.horizontal, 14).padding(.vertical, 5)
                         }

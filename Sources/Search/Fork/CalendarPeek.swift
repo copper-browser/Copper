@@ -173,7 +173,7 @@ struct CalendarPeekCard: View {
                     .lineLimit(1)
                 Text(when(meeting))
                     .font(.system(size: 11.5))
-                    .foregroundStyle(meeting.start <= now ? Color.accentColor : Palette.muted)
+                    .foregroundStyle(meeting.start <= now ? Palette.accent : Palette.muted)
                     .lineLimit(1)
             }
             Spacer(minLength: 6)
