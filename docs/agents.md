@@ -76,17 +76,17 @@ forward; the pane opens itself only for work on the page on screen.
 | tool | does |
 |---|---|
 | `browser_tabs` | `list` / `new {url}` / `close {index\|tab}` / `select {index\|tab}` (+ `focus`) — the real row, groups and pins shown, each tab with its id; `new` opens a background tab of the caller's own and `select` makes one the caller's, neither switching the user's tab unless `focus: true` |
-| `browser_navigate`, `browser_navigate_back`, `browser_navigate_forward` | your tab; waits for the load to settle |
+| `browser_navigate`, `browser_navigate_back`, `browser_navigate_forward` | your tab; answers at the new page's DOMContentLoaded; back/forward with nowhere to go is an error |
 | `browser_snapshot` | accessibility tree with `[ref=e12]` on interactive nodes; `interactive: true` for a smaller one, `selector` for a subtree |
-| `browser_click` | `ref` or `selector`; `doubleClick`, `button`, `modifiers` — a real `NSEvent` at the element's centre |
+| `browser_click` | `ref` or `selector`; `doubleClick`, `button`, `modifiers` — a real `NSEvent` at the element's centre, only once that point is the element's own: under a cookie wall it is an error saying `covered by div#wall …`, a hidden one `not visible (display: none)`. After the click: two frames, or the new page's DOMContentLoaded when it navigated |
 | `browser_type` | `text`, `submit`, `slowly` (real key events) — sets the value through the native setter so React/Vue notice |
-| `browser_fill_form` | `[{ref, type, value}]` for textbox / checkbox / radio / combobox / slider |
+| `browser_fill_form` | `[{ref, type, value}]` for textbox / checkbox / radio / combobox / slider; a field it couldn't fill makes the call an error that lists each field |
 | `browser_press_key` | `Enter`, `Escape`, `ArrowDown`, `Meta+a`, `a` … as real key events (⌘ shortcuts go to the window first) |
-| `browser_hover`, `browser_drag`, `browser_select_option`, `browser_scroll` | as named |
-| `browser_take_screenshot` | PNG/JPEG at 1×, so image pixels are CSS pixels; `ref` for one element, `fullPage`, `filename` |
-| `browser_evaluate` | `function: "() => …"` or `(element) => …` with `ref` |
-| `browser_wait_for` | `text`, `textGone`, `time` |
-| `browser_get_text`, `browser_find`, `browser_console_messages` | reading without a snapshot; refs for text you name; console since load |
+| `browser_hover`, `browser_drag`, `browser_select_option`, `browser_scroll` | as named; `browser_scroll` with a `ref` and a delta scrolls the nearest scrolling box around it (a list, a virtual table) |
+| `browser_take_screenshot` | PNG/JPEG at 1×, so image pixels are CSS pixels; `ref` for one element, `fullPage` (walks the page a screen at a time first, so scroll-lazy content is drawn), `filename` |
+| `browser_evaluate` | `function: "() => …"` or `(element) => …` with `ref`, or a bare expression; a Promise is awaited (30 s cap); a string comes back as it is, anything else as JSON; a throw is an error with its message |
+| `browser_wait_for` | `text`, `textGone`, `time`; 15 s for the text, then an error |
+| `browser_get_text`, `browser_find`, `browser_console_messages` | reading without a snapshot; refs for text you name; console since load (from document start in a tab the agent opened, else from the first tool call) |
 | `browser_resize`, `browser_close` | the window; the tab |
 | `browser_groups` | Copper's tab groups: `list`, `assign {group}`, `remove` |
 | `browser_perf_probe` | Samples the current tab for rAF loops, DOM churn, animations, filters, canvases, timers, long tasks, and slow resources (`seconds`, `top`, `format`) |

@@ -498,6 +498,7 @@ final class Tab: ObservableObject, Identifiable {
             WKUserScript(source: PageVoice.script, injectionTime: .atDocumentStart, forMainFrameOnly: true)
         )
         CaptureHook.arm(controller) // Fork (page-capture): every frame
+        Tools.Page.arm(controller, tab: id) // Fork (agent-console): load-time console for agent-opened tabs (Fork/MCP/Page.swift)
         if Passkeys.active {
             controller.addUserScript(
                 WKUserScript(source: Passkeys.script, injectionTime: .atDocumentStart, forMainFrameOnly: false)

@@ -19,8 +19,9 @@ import WebKit
 // front of the user (Backstage.swift).
 
 enum Tools {
-    struct Failure: Error {
+    struct Failure: LocalizedError {
         let text: String
+        var errorDescription: String? { text }
     }
 
     /// Where a tool leaves its one-line summary for `_meta.summary`
@@ -262,7 +263,7 @@ enum Tools {
             frame.size = CGSize(width: w.doubleValue, height: h.doubleValue)
             window.setFrame(frame, display: true, animate: false)
             return [.text("Window is \(Int(w.doubleValue))×\(Int(h.doubleValue))")]
-        case "browser_groups": return groups(args, in: browser)
+        case "browser_groups": return try groups(args, in: browser)
         case "jev_run", "jev_step", "jev_observe", "jev_extract": return try await Ultrafast.call(name, args, in: browser)
         case _ where CanvasTools.names.contains(name): return try await CanvasTools.call(name, args, in: browser)
         case "browser_crashes": return [.text(try Crashes.answer(args))]
@@ -301,15 +302,15 @@ enum Tools {
             guard let raw = args["url"] as? String else { throw Failure(text: "url required") }
             guard let url = Address.url(from: raw) else { throw Failure(text: "not an address: \(raw)") }
             tab.go(to: url)
-            try await settle(tab)
+            try await settle(tab, navigating: true)
             return [.text(pageLine(tab))]
         case "browser_navigate_back":
-            web.goBack()
-            try await settle(tab)
+            guard web.goBack() != nil else { throw Failure(text: "No page to go back to. \(pageLine(tab))") }
+            try await settle(tab, navigating: true)
             return [.text(pageLine(tab))]
         case "browser_navigate_forward":
-            web.goForward()
-            try await settle(tab)
+            guard web.goForward() != nil else { throw Failure(text: "No page to go forward to. \(pageLine(tab))") }
+            try await settle(tab, navigating: true)
             return [.text(pageLine(tab))]
         case "browser_snapshot":
             let interactive = (args["interactive"] as? Bool) ?? false
@@ -326,7 +327,7 @@ enum Tools {
             // cosmetic only: the target outlined and named, the pointer
             // brought to it, the press marked — what the user sees of the call.
             trail(web, rect, label: args["element"] as? String, operation: "CLICK")
-            await Trail.glide(web, x: rect.midX / web.pageZoom, y: rect.midY / web.pageZoom)
+            if AgentTabs.onScreen(tab) { await Trail.glide(web, x: rect.midX / web.pageZoom, y: rect.midY / web.pageZoom) }
             Trail.click(web, x: rect.midX / web.pageZoom, y: rect.midY / web.pageZoom)
             if Input.canPost(to: web) {
                 Input.click(web, at: rect.center, button: button, count: double ? 2 : 1, modifiers: mods)
@@ -339,7 +340,7 @@ enum Tools {
             let target = try locator(args)
             let rect = try await Page.prepare(web, target)
             trail(web, rect, label: args["element"] as? String, operation: "HOVER")
-            await Trail.glide(web, x: rect.midX / web.pageZoom, y: rect.midY / web.pageZoom)
+            if AgentTabs.onScreen(tab) { await Trail.glide(web, x: rect.midX / web.pageZoom, y: rect.midY / web.pageZoom) }
             if Input.canPost(to: web) { Input.move(web, to: rect.center) }
             else { _ = try await Page.js(web, "window.__copper.hover(\(Page.quote(target.script)))") }
             return [.text("Hovering \(args["element"] as? String ?? target.script)")]
@@ -350,7 +351,7 @@ enum Tools {
             let slowly = (args["slowly"] as? Bool) ?? false
             let rect = try await Page.prepare(web, target)
             trail(web, rect, label: args["element"] as? String, operation: "TYPE_TEXT")
-            await Trail.glide(web, x: rect.midX / web.pageZoom, y: rect.midY / web.pageZoom)
+            if AgentTabs.onScreen(tab) { await Trail.glide(web, x: rect.midX / web.pageZoom, y: rect.midY / web.pageZoom) }
             Trail.click(web, x: rect.midX / web.pageZoom, y: rect.midY / web.pageZoom)
             if Input.canPost(to: web) {
                 Input.click(web, at: rect.center, button: "left", count: 1, modifiers: [])
@@ -359,10 +360,10 @@ enum Tools {
                 if slowly {
                     Input.type(web, text)
                 } else {
-                    _ = try await Page.js(web, "window.__copper.setValue(\(Page.quote(target.script)), \(Page.quote(text)))")
+                    try await Page.act(web, "window.__copper.setValue(\(Page.quote(target.script)), \(Page.quote(text)))")
                 }
             } else {
-                _ = try await Page.js(web, "window.__copper.setValue(\(Page.quote(target.script)), \(Page.quote(text)))")
+                try await Page.act(web, "window.__copper.setValue(\(Page.quote(target.script)), \(Page.quote(text)))")
             }
             // cosmetic only: what was written, beside the field — masked when
             // the field sounds like a secret, the same fence the link progress uses.
@@ -377,12 +378,23 @@ enum Tools {
         case "browser_fill_form":
             guard let fields = args["fields"] as? [[String: Any]] else { throw Failure(text: "fields required") }
             var lines: [String] = []
+            var failed = 0
             for field in fields {
-                guard let ref = field["ref"] as? String else { continue }
+                let name = field["name"] as? String
+                guard let ref = field["ref"] as? String, !ref.isEmpty else {
+                    failed += 1
+                    lines.append("\(name ?? "a field"): not filled — no ref (take one from browser_snapshot)")
+                    continue
+                }
                 let value = (field["value"] as? String) ?? ""
                 let kind = (field["type"] as? String) ?? "textbox"
-                let result = try await Page.js(web, "window.__copper.fill(\(Page.quote("ref:" + ref)), \(Page.quote(kind)), \(Page.quote(value)))")
-                lines.append("\(field["name"] as? String ?? ref): \(Page.render(result))")
+                let said = Page.render(try await Page.js(web, "window.__copper.fill(\(Page.quote("ref:" + ref)), \(Page.quote(kind)), \(Page.quote(value)))"))
+                if said.hasPrefix("no ") || said.hasPrefix("not ") { failed += 1 }
+                lines.append("\(name ?? ref): \(said)")
+            }
+            // Every field is tried; any that wasn't filled makes the call an error.
+            if failed > 0 {
+                throw Failure(text: "\(failed) of \(fields.count) fields not filled. Take a fresh browser_snapshot and retry those.\n" + lines.joined(separator: "\n"))
             }
             return [.text(lines.joined(separator: "\n"))]
         case "browser_press_key":
@@ -398,15 +410,14 @@ enum Tools {
         case "browser_select_option":
             let target = try locator(args)
             let values = (args["values"] as? [String]) ?? []
-            let result = try await Page.js(web, "window.__copper.select(\(Page.quote(target.script)), \(Page.quote(values)))")
-            return [.text(Page.render(result))]
+            return [.text(try await Page.act(web, "window.__copper.select(\(Page.quote(target.script)), \(Page.quote(values)))"))]
         case "browser_drag":
             guard let a = args["startRef"] as? String, let b = args["endRef"] as? String else { throw Failure(text: "startRef and endRef") }
             let from = try await Page.prepare(web, Locator(ref: a))
             let to = try await Page.prepare(web, Locator(ref: b))
             trail(web, from, label: args["startElement"] as? String, operation: "DRAG")
             Trail.click(web, x: from.midX / web.pageZoom, y: from.midY / web.pageZoom)
-            await Trail.glide(web, x: to.midX / web.pageZoom, y: to.midY / web.pageZoom)
+            if AgentTabs.onScreen(tab) { await Trail.glide(web, x: to.midX / web.pageZoom, y: to.midY / web.pageZoom) }
             Trail.click(web, x: to.midX / web.pageZoom, y: to.midY / web.pageZoom)
             if Input.canPost(to: web) {
                 Input.drag(web, from: from.center, to: to.center)
@@ -418,7 +429,7 @@ enum Tools {
             let jpeg = (args["type"] as? String) == "jpeg"
             let full = (args["fullPage"] as? Bool) ?? false
             var rect: CGRect?
-            if let ref = args["ref"] as? String { rect = try await Page.prepare(web, Locator(ref: ref)) }
+            if let ref = args["ref"] as? String { rect = try await Page.prepare(web, Locator(ref: ref), hit: false) }
             let data = try await Page.screenshot(web, rect: rect, fullPage: full, jpeg: jpeg)
             var note = ""
             if let path = args["filename"] as? String {
@@ -435,28 +446,40 @@ enum Tools {
             return [.image(data, mime: jpeg ? "image/jpeg" : "image/png"), .text(note + pageLine(tab))]
         case "browser_evaluate":
             guard let function = args["function"] as? String else { throw Failure(text: "function required") }
-            let script: String
-            if let ref = args["ref"] as? String {
-                script = "(\(function))(window.__copper.find(\(Page.quote("ref:" + ref))))"
-            } else {
-                script = "(\(function))()"
-            }
-            let result = try await Page.js(web, script)
+            let ref = (args["ref"] as? String).map { "ref:" + $0 } ?? ""
+            if !ref.isEmpty { _ = try await Page.js(web, "true") } // the helper, for find()
+            // A function is called (with the element when there is a ref); a bare
+            // expression is its own value. Either way a Promise is awaited, and the
+            // answer is text: a string as it is, anything else as JSON.
+            let body = """
+            const el = ref ? window.__copper.find(ref) : undefined;
+            if (ref && !el) throw new Error(ref.slice(4) + ' is not on the page any more; take a fresh browser_snapshot');
+            const f = (
+            \(function)
+            );
+            const v = await (typeof f === 'function' ? f(el) : f);
+            if (v === undefined) return 'undefined';
+            if (typeof v === 'string') return v;
+            try { const s = JSON.stringify(v); if (s !== undefined) return s; } catch (e) {}
+            return String(v);
+            """
+            let result = try await Page.call(web, body, ["ref": ref], timeout: 30,
+                                             late: "No answer after 30 s: the function's Promise never settled, or the page is busy. Return sooner, or poll with browser_wait_for.")
             return [.text(Page.render(result))]
         case "browser_wait_for":
             if let seconds = (args["time"] as? NSNumber)?.doubleValue {
                 try await Task.sleep(nanoseconds: UInt64(min(seconds, 30) * 1_000_000_000))
             }
             let deadline = Date().addingTimeInterval(15)
-            if let text = args["text"] as? String {
-                while Date() < deadline {
-                    if let hit = try await Page.js(web, "document.body && document.body.innerText.includes(\(Page.quote(text)))") as? Bool, hit { break }
-                    try await Task.sleep(nanoseconds: 150_000_000)
-                }
-            }
-            if let text = args["textGone"] as? String {
-                while Date() < deadline {
-                    if let hit = try await Page.js(web, "document.body && document.body.innerText.includes(\(Page.quote(text)))") as? Bool, !hit { break }
+            for (needle, wanted) in [(args["text"] as? String, true), (args["textGone"] as? String, false)] {
+                guard let needle else { continue }
+                // Read failures count as "not yet": the page may be between documents.
+                while (try? await Page.raw(web, "!!document.body && document.body.innerText.includes(\(Page.quote(needle)))")) as? Bool != wanted {
+                    guard Date() < deadline else {
+                        throw Failure(text: wanted
+                            ? "Timed out after 15 s: \"\(needle)\" never appeared. Take a browser_snapshot to see what the page shows instead, or call browser_wait_for again if it is still working. \(pageLine(tab))"
+                            : "Timed out after 15 s: \"\(needle)\" is still on the page. Take a browser_snapshot to see why, or call browser_wait_for again. \(pageLine(tab))")
+                    }
                     try await Task.sleep(nanoseconds: 150_000_000)
                 }
             }
@@ -465,14 +488,14 @@ enum Tools {
             let dy = (args["deltaY"] as? NSNumber)?.doubleValue
             let dx = (args["deltaX"] as? NSNumber)?.doubleValue ?? 0
             if let ref = args["ref"] as? String, dy == nil {
-                _ = try await Page.prepare(web, Locator(ref: ref))
+                _ = try await Page.prepare(web, Locator(ref: ref), hit: false)
                 return [.text("Scrolled \(ref) into view")]
             }
             let y = dy ?? (web.bounds.height * 0.85)
             let within = (args["ref"] as? String).map { "ref:" + $0 } ?? ""
             Trail.scroll(web, delta: y)
-            _ = try await Page.js(web, "window.__copper.scroll(\(Page.quote(within)), \(dx), \(y))")
-            try await Task.sleep(nanoseconds: 120_000_000)
+            try await Page.act(web, "window.__copper.scroll(\(Page.quote(within)), \(dx), \(y))")
+            try await settle(tab, budget: 2)
             return [.text("Scrolled by \(Int(dx)),\(Int(y)). \(pageLine(tab))")]
         case "browser_get_text":
             let target = (try? locator(args))
@@ -568,7 +591,7 @@ enum Tools {
             AgentTabs.opened.insert(tab.id) // Fork (tab-memory)
             AgentTabs.bind(tab)
             AgentTabs.prepare(tab)
-            if raw != nil { try await settle(tab) }
+            if raw != nil { try await settle(tab, navigating: true) }
             let note = focus || pane ? "Opened and shown to the user." : "Opened in the background — the user's tab did not change; your calls now land on it."
             return [.text("\(note) {tab \(AgentTabs.short(tab))}\n\(pageLine(tab))\n\n\(tabList(browser))")]
         case "close":
@@ -586,22 +609,25 @@ enum Tools {
     }
 
     @MainActor
-    private static func groups(_ args: [String: Any], in browser: Browser) -> [Content] {
+    private static func groups(_ args: [String: Any], in browser: Browser) throws -> [Content] {
         let action = (args["action"] as? String) ?? "list"
         let groups = Groups.shared
         switch action {
         case "assign":
-            guard let tab = AgentTabs.target(in: browser), let name = args["group"] as? String, !name.isEmpty else { return [.text("group name required")] }
+            guard let name = args["group"] as? String, !name.isEmpty else { throw Failure(text: "group (a name) is required for assign; browser_groups list shows the ones there are") }
+            guard let tab = AgentTabs.target(in: browser) else { throw Failure(text: "no tab to group: open one with browser_tabs new") }
             groups.assign(tab, to: groups.create(named: name), in: browser)
             return [.text("Grouped into \(name)")]
         case "remove":
-            if let tab = AgentTabs.target(in: browser) { groups.remove(tab) }
+            guard let tab = AgentTabs.target(in: browser) else { throw Failure(text: "no tab: open one with browser_tabs new") }
+            guard groups.group(of: tab) != nil else { throw Failure(text: "This tab is in no group. browser_groups list shows the groups") }
+            groups.remove(tab)
             return [.text("Removed from its group")]
         case "list":
             let lines = groups.all.map { g in "- \(g.name): " + groups.members(of: g.id, in: browser).map { "[\($0.title)]" }.joined(separator: ", ") }
             return [.text(lines.isEmpty ? "No groups" : lines.joined(separator: "\n"))]
         default:
-            return [.text("action must be list, assign or remove")]
+            throw Failure(text: "action must be list, assign or remove")
         }
     }
 
@@ -636,17 +662,31 @@ enum Tools {
         return "### Page\n- URL: \(tab.address?.absoluteString ?? "about:blank")\n- Title: \(tab.title)\n- Tab: \(AgentTabs.short(tab))\(place)"
     }
 
-    /// Until the page stops loading, plus a beat, or the budget is spent.
+    /// After an action: when it set off a navigation, until the new
+    /// document's DOMContentLoaded (or the budget); when it didn't, two
+    /// frames, so the page has drawn what the input changed. A navigation
+    /// has begun within a frame and 50 ms of the input, or a second of
+    /// browser_navigate (`navigating`), or it isn't coming.
     @MainActor
-    static func settle(_ tab: Tab, budget: TimeInterval = 15) async throws {
+    static func settle(_ tab: Tab, budget: TimeInterval = 15, navigating: Bool = false) async throws {
+        let web = tab.web
         let deadline = Date().addingTimeInterval(budget)
-        // Give a navigation a moment to begin before asking whether it's done.
-        try await Task.sleep(nanoseconds: 120_000_000)
-        while Date() < deadline {
-            if !tab.loading { break }
-            try await Task.sleep(nanoseconds: 100_000_000)
+        if !navigating { await Page.frame(web) }
+        let begun = Date().addingTimeInterval(navigating ? 1 : 0.05)
+        while !web.isLoading, Date() < begun { try await Task.sleep(nanoseconds: 10_000_000) }
+        guard web.isLoading else {
+            if !navigating { await Page.frame(web) }
+            return
         }
-        try await Task.sleep(nanoseconds: 200_000_000)
+        // The document being left is marked; the new one is ready when it
+        // answers unmarked and past "loading". If the mark landed in the new
+        // one (it committed first), this waits for the full load instead.
+        let mark = Page.quote(UUID().uuidString)
+        _ = try? await Page.raw(web, "window.__copperSettle = \(mark); true")
+        while web.isLoading, Date() < deadline {
+            if let state = (try? await Page.raw(web, "window.__copperSettle !== \(mark) && document.readyState")) as? String, state != "loading" { break }
+            try await Task.sleep(nanoseconds: 30_000_000)
+        }
     }
 }
 
