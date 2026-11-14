@@ -46,7 +46,7 @@ extension Drive.Run {
         let word = driver == .jev ? "action" : "call"
         let count = "\(acted) \(word)\(acted == 1 ? "" : "s")"
         if status == .running {
-            if driver != .jev { return busy ? "Driving · \(count)" : "Thinking · \(count)" }
+            if driver != .jev { return busy ? "Driving" : "Thinking" } // Fork (uib): a count of calls told no one anything
             return "Running · \(count)"
         }
         // The note is already a sentence; the head only says which kind of
@@ -361,7 +361,7 @@ struct DriveStop: View {
                 if !compact { Text("Stop").font(.system(size: 11.5, weight: .medium)) }
                 // Fork (ui-flows): the key as a keycap, not a glyph few can read.
                 Text("esc")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: 10.5, weight: .medium)) // Fork (uib): the keycaps' 10.5 floor
                     .foregroundStyle(Palette.muted)
                     .padding(.horizontal, 4)
                     .frame(height: 15)
@@ -719,6 +719,9 @@ struct DrivePill: View {
     var fits = false
     @ObservedObject private var drive = Drive.shared
     @State private var breathing = false
+    @State private var hovering = false // Fork (uib): the card under the pointer
+    @State private var inCard = false
+    @State private var carded = false
 
     private var tab: Tab? { AgentTabs.find(drive.run?.tabID) }
 
@@ -728,6 +731,60 @@ struct DrivePill: View {
         let thread = drive.run.map { $0.who.thread == "this window" ? "" : $0.who.thread } ?? ""
         let goal = drive.run.map { $0.goal.isEmpty ? thread : $0.goal } ?? ""
         let task = elsewhere || goal.isEmpty ? "on \(title)" : goal
+        if fits {
+            // Fork (uib): the column's pill, two lines (SidePillWords), the
+            // whole task and its time in the card under the pointer.
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(DriveStyle.accent)
+                    .frame(width: 7, height: 7)
+                    .opacity(drive.busy ? 1 : (breathing ? 0.35 : 1))
+                    .frame(width: 16)
+                Button { jump() } label: { SidePillWords(name: name, task: task) }
+                    .buttonStyle(.plain)
+                    .help(elsewhere ? "Go to the tab it is driving" : "Show what it is doing")
+                DriveStop(help: drive.run?.driver == .jev ? "Stop the run (⎋)" : "Take the browser back (⎋)", compact: true) { drive.stop() }
+            }
+            .modifier(SidePillGround())
+            .onHover { over in hovering = over; settle() }
+            .popover(isPresented: $carded, arrowEdge: .trailing) {
+                card(name: name, task: elsewhere ? (goal.isEmpty ? task : "\(goal)\n\(task)") : task)
+                    .onHover { inCard = $0; settle() }
+            }
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { breathing = true }
+            }
+        } else {
+            line(name: name, task: task)
+        }
+    }
+
+    /// Fork (uib): the whole task, and how long it has been at it.
+    private func card(name: String, task: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(name).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Palette.ink)
+            Text(task).font(.system(size: 11.5)).foregroundStyle(Palette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            if let run = drive.run {
+                TimelineView(.periodic(from: run.started, by: 1)) { beat in
+                    Text("Working for \(DriveStyle.span(beat.date.timeIntervalSince(run.started))) · since \(run.started.formatted(date: .omitted, time: .shortened))")
+                        .font(.system(size: 11)).monospacedDigit().foregroundStyle(Palette.muted)
+                }
+            }
+        }
+        .padding(12)
+        .frame(width: 280, alignment: .leading)
+    }
+
+    private func settle() {
+        if hovering || inCard {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { if hovering || inCard { carded = true } }
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { if !hovering && !inCard { carded = false } }
+        }
+    }
+
+    private func line(name: String, task: String) -> some View {
         HStack(spacing: 6) {
             Circle()
                 .fill(DriveStyle.accent)

@@ -100,7 +100,7 @@ struct AgentPane: View {
     private var header: some View {
         HStack(spacing: 8) {
             Text("Agent").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
-            model
+            if agent.ready { model } // Fork (uib): no tier to pick until a model can answer
             Spacer(minLength: 4)
             if servers.readyTools > 0 {
                 HStack(spacing: 3) {
@@ -593,7 +593,7 @@ struct AgentPane: View {
     }
 
     private var placeholder: String {
-        guard agent.ready else { return "Sign in with Claude or add a key to start" }
+        // Fork (uib): sign-in is asked once, in the middle; the disabled field says what it is for.
         guard let tab = browser.active, !tab.isBlank else { return "Ask anything, or say what to do…" }
         return tab.address.flatMap(CanvasLinks.id(from:)) != nil ? "Ask about this canvas…" : "Ask about this page…"
     }

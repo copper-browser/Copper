@@ -696,12 +696,12 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
                 if tab.bench {
                     // A script's tab, not yours.
                     Image(systemName: "flask")
-                        .font(.system(size: 9))
+                        .font(.system(size: 10)) // Fork (uib): the 10 pt floor
                         .foregroundStyle(colour.opacity(0.7))
                 }
                 if tab.shy {
                     Image(systemName: "eye.slash")
-                        .font(.system(size: 9))
+                        .font(.system(size: 10))
                         .foregroundStyle(colour.opacity(0.7))
                 }
                 FadingTitle(text: Text(tab.label) // Fork (motion): a long title fades out, no "…"
@@ -765,7 +765,7 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
         ZStack {
             if hovering, !editing {
                 Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(tint.ink.opacity(0.7)) // muted is ~4.4:1 on the column; this is ≥4.5
                     .frame(width: 15, height: 15)
                     .background(tint.ink.opacity(0.07), in: Circle())
@@ -774,12 +774,12 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
                 Ring().transition(.opacity)
             } else if tab.noisy {
                 Image(systemName: "speaker.wave.2.fill")
-                    .font(.system(size: 8))
+                    .font(.system(size: 10))
                     .foregroundStyle(tint.ink.opacity(0.7)) // muted is ~4.4:1 on the column; this is ≥4.5
                     .transition(.opacity)
             } else if hot, let reading = Heat.shared.reading(for: tab) {
                 Image(systemName: "flame.fill")
-                    .font(.system(size: 8))
+                    .font(.system(size: 10))
                     .foregroundStyle(Color.orange.opacity(0.9))
                     .help("Using \(Int(reading.cpu))% CPU")
                     .transition(.opacity)
@@ -968,7 +968,7 @@ struct SideAddress: View {
             Button { browser.edit() } label: {
                 Group {
                     if let tab = browser.active {
-                        Host(tab: tab, tint: tint)
+                        Host(tab: tab, tint: tint, open: hovering || bench.forced)
                     } else {
                         Placeholder(tint: tint)
                     }
@@ -1011,14 +1011,29 @@ struct SideAddress: View {
     private struct Host: View {
         @ObservedObject var tab: Tab
         let tint: SpaceTint
+        /// The pointer on the address: what it says about the connection comes out.
+        var open = false
 
         var body: some View {
             if let url = tab.address, !tab.isBlank {
-                Text(SideAddress.host(url))
-                    .font(.system(size: 14.5))
-                    .foregroundStyle(tint.ink.opacity(0.82))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                HStack(spacing: 6) {
+                    // Fork (uib): a page over plain http says so, as Safari and Chrome do.
+                    if open, url.scheme?.lowercased() == "http" {
+                        HStack(spacing: 3) {
+                            Image(systemName: "lock.open").font(.system(size: 11, weight: .medium))
+                            Text("Not secure").font(.system(size: 12, weight: .medium))
+                        }
+                        .foregroundStyle(tint.ink.opacity(0.82))
+                        .fixedSize()
+                        .help("This page's connection isn't encrypted")
+                        .transition(.opacity)
+                    }
+                    Text(SideAddress.host(url))
+                        .font(.system(size: 14.5))
+                        .foregroundStyle(tint.ink.opacity(0.82))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
             } else {
                 Placeholder(tint: tint)
             }

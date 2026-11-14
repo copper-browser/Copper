@@ -34,6 +34,9 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
                     fresh: body["fresh"] as? Bool ?? false, // Fork (new-password)
                     frame: frame // Fork (frame-autofill)
                 )
+                // Fork (uib): what was sent is no longer being picked — the
+                // accounts list hanging from the box goes with it.
+                tab?.fieldFocused(nil, frame: frame)
             case "settled":
                 tab?.settleSignIn(navigated: false)
             case "otp":
@@ -1071,6 +1074,9 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
       else { window.addEventListener('load', lookForCode); }
       new MutationObserver(function () {
         lookForCode();
+        // Fork (uib): the box the list hangs from taken out of the page (a
+        // sign-in done in place) fires no focusout; say the caret left it.
+        if (anchored && !anchored.isConnected) { anchored = null; caret(); }
         if (sentFresh && !freshSettling && !freshForm()) {
           freshSettling = setTimeout(function () {
             freshSettling = null;
@@ -1145,6 +1151,7 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
         return -1;
       }
 
+      var anchored = null; // Fork (uib): the box the last spot was taken from
       function caret() {
         var el = document.activeElement;
         var tag = el && (el.tagName || '').toLowerCase();
@@ -1184,6 +1191,7 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
           field.maxLength = rules.maxLength;
         }
         var login = both && el && (el === both.user || el === both.pass);
+        anchored = rect ? el : null;
         say({
           kind: 'focus',
           at: topFrame ? -1 : branch(),
