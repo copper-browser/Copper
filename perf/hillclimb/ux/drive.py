@@ -321,10 +321,13 @@ def first_run(w, shoot, tmp):
             if st.get("showing") and st.get("phase") == "preview":
                 break
             time.sleep(0.25)
+        # The switches as a person leaves them before the picture, so the done
+        # step's lines match the preview's (sign-ins and site data off: on a
+        # live Mac they would ask macOS's keychain for Arc's key).
+        w.b("flow", "choose", "--only", "tabs")
     if step("movein", movein):
         shoot.take(w, "movein-preview", settle=1.2)
         def done():
-            w.b("flow", "choose", "--only", "tabs,bookmarks,history")
             w.b("flow", "key", "return")
             for _ in range(80):
                 if w.j("flow", "state").get("phase") == "done":
