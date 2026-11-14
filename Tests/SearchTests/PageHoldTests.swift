@@ -46,7 +46,8 @@ struct PageHoldTests {
         stage.show(page())
         let new = page()
         stage.show(new)
-        #expect(new.alphaValue == 0)
+        // Not asserted unseen here: a web view with no web process yet has WebKit
+        // answer `_doAfterNextPresentationUpdate:` at once, so the hold may already be over.
         window.contentView = nil
         stage.layout()
         window.contentView = stage
