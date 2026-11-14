@@ -1,0 +1,12 @@
+<!doctype html><meta charset="utf-8"><title>HC page and JS</title><script src="/hc.js"></script>
+<script>console.log('hc-early-log at parse time');</script>
+<h1 id="h">Page and JS</h1>
+<button id="alert" onclick="alert('Please select an item type'); rec('afteralert', true)">Submit (alerts)</button>
+<button id="confirm" onclick="rec('confirm', confirm('Delete this item?'))">Delete (confirms)</button>
+<button id="prompt" onclick="rec('prompt', prompt('Name for the copy?', ''))">Copy (prompts)</button>
+<button id="log" onclick="console.warn('hc-warn clicked'); console.error('hc-error clicked')">Log</button>
+<button id="later" onclick="setTimeout(function(){ var p=document.createElement('p'); p.id='late'; p.textContent='Report ready: 17 rows'; document.body.appendChild(p); }, 1500)">Build report</button>
+<button id="xhr" onclick="fetch('/api/json?from=page').then(r=>r.json()).then(j=>rec('fetched', j.answer))">Fetch data</button>
+<p id="para">The quick brown fox reads the coverage matrix.</p>
+<a href="/c4/next.html" id="next">Next page</a>
+<script>console.log('hc-load-log after parse'); window.addEventListener('load', function () { console.info('hc-onload'); });</script>

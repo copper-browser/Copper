@@ -1,0 +1,12 @@
+<!doctype html><meta charset="utf-8"><title>HC long page</title><script src="/hc.js"></script>
+<style>body{margin:0} .band{height:500px;display:flex;align-items:center;justify-content:center;font:40px sans-serif;color:#fff}
+#lazy{height:500px;background:rgb(200,0,0)} #lazy.seen{background:rgb(0,170,0)} #top{background:rgb(0,0,200)}</style>
+<div class="band" id="top">TOP</div>
+<script>for (var i = 1; i <= 8; i++) document.write('<div class="band" style="background:hsl(' + i * 40 + ',40%,40%)">Section ' + i + '</div>');</script>
+<div id="lazy">LAZY (green once scrolled into view)</div>
+<div class="band" id="end" style="background:rgb(20,20,20)">END</div>
+<script>
+// Scroll-revealed content, the way lazy pages draw: it turns green only when it enters the viewport.
+new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('seen'); rec('lazyseen', true); } }); }).observe(document.getElementById('lazy'));
+rec('height', document.documentElement.scrollHeight);
+</script>

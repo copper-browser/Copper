@@ -1,0 +1,12 @@
+<!doctype html><meta charset="utf-8"><title>HC files</title><script src="/hc.js"></script>
+<h1>Files</h1>
+<p><a id="dl" href="/files/report.csv" download="hc-report.csv">Download report (CSV)</a></p>
+<p><a id="att" href="/files/attachment">Export (server attachment)</a></p>
+<p><button id="blob">Download generated file (blob)</button></p>
+<script>
+document.getElementById('blob').onclick = function () {
+  var url = URL.createObjectURL(new Blob(['id,name\n1,blob\n'], {type: 'text/csv'}));
+  var a = document.createElement('a'); a.href = url; a.download = 'hc-blob.csv'; document.body.appendChild(a); a.click();
+  rec('blob', 'clicked');
+};
+</script>

@@ -1,0 +1,12 @@
+<!doctype html><meta charset="utf-8"><title>HC virtual list</title><script src="/hc.js"></script>
+<style>#vp{height:300px;overflow-y:auto;border:1px solid #888;position:relative;width:300px} .row{position:absolute;left:0;right:0;height:30px;line-height:30px;padding-left:6px}</style>
+<h1>10,000 orders</h1>
+<div id="vp" role="list" aria-label="Orders"><div id="spacer" style="height:300000px"></div></div>
+<script>
+var vp = document.getElementById('vp'), spacer = document.getElementById('spacer');
+function draw() { Array.prototype.slice.call(vp.querySelectorAll('.row')).forEach(r => r.remove());
+  var first = Math.floor(vp.scrollTop / 30); for (var i = first; i < Math.min(first + 12, 10000); i++) {
+    var d = document.createElement('div'); d.className = 'row'; d.role = 'listitem'; d.style.top = (i * 30) + 'px'; d.textContent = 'Order #' + i;
+    d.onclick = (function (i) { return function () { rec('picked', i); }; })(i); vp.appendChild(d); } }
+vp.addEventListener('scroll', draw); draw();
+</script>

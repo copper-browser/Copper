@@ -1,0 +1,8 @@
+<!doctype html><meta charset="utf-8"><title>HC browser state</title><script src="/hc.js"></script>
+<h1>State</h1>
+<button id="where" onclick="navigator.geolocation.getCurrentPosition(p => rec('geo', 'granted'), e => rec('geo', 'denied:' + e.code), {timeout: 4000})">Use my location</button>
+<button id="notify" onclick="Notification.requestPermission().then(p => rec('notify', p))">Enable notifications</button>
+<script>
+fetch('/api/set-cookie').then(function () { rec('cookies', 'set'); });
+localStorage.setItem('hc-local', 'kept-value'); sessionStorage.setItem('hc-session', 'tab-value');
+</script>

@@ -1,0 +1,24 @@
+<!doctype html><meta charset="utf-8"><title>HC passkeys</title><script src="/hc.js"></script>
+<h1>Passkeys (synthetic RP, localhost)</h1>
+<button id="create">Create a passkey</button>
+<button id="use">Sign in with a passkey</button>
+<script>
+var made = null;
+document.getElementById('create').onclick = async function () {
+  rec('create', 'running');
+  try {
+    var c = await navigator.credentials.create({publicKey: {challenge: new Uint8Array([1,2,3]),
+      rp: {id: 'localhost', name: 'HC synthetic'}, user: {id: new Uint8Array([7]), name: 'hc-synthetic', displayName: 'HC'},
+      pubKeyCredParams: [{type: 'public-key', alg: -7}]}});
+    made = c; rec('create', 'ok'); rec('credid', c.id);
+  } catch (e) { rec('create', 'error:' + e.name); }
+};
+document.getElementById('use').onclick = async function () {
+  rec('get', 'running');
+  try {
+    var g = await navigator.credentials.get({publicKey: {challenge: new Uint8Array([9]), rpId: 'localhost',
+      allowCredentials: made ? [{type: 'public-key', id: made.rawId}] : []}});
+    rec('get', g ? 'ok' : 'none');
+  } catch (e) { rec('get', 'error:' + e.name); }
+};
+</script>

@@ -1,0 +1,21 @@
+<!doctype html><meta charset="utf-8"><title>HC device code</title><script src="/hc.js"></script>
+<h1>Enter the 6-digit code</h1>
+<div id="boxes"></div>
+<script>
+var box = document.getElementById('boxes');
+for (var i = 0; i < 6; i++) {
+  var inp = document.createElement('input');
+  inp.maxLength = 1; inp.size = 1; inp.setAttribute('aria-label', 'Digit ' + (i + 1)); inp.className = 'd';
+  box.appendChild(inp);
+}
+var ds = Array.prototype.slice.call(document.querySelectorAll('.d'));
+ds.forEach(function (d, i) {
+  d.addEventListener('input', function () {
+    if (d.value.length > 1) { // a paste: spread it like GitHub does
+      var v = d.value; v.split('').slice(0, 6 - i).forEach(function (c, k) { ds[i + k].value = c; });
+    }
+    if (d.value && ds[i + 1]) ds[i + 1].focus();
+    rec('code', ds.map(function (x) { return x.value; }).join(''));
+  });
+});
+</script>

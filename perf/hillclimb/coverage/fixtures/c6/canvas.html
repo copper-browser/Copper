@@ -1,0 +1,10 @@
+<!doctype html><meta charset="utf-8"><title>HC canvas app</title><script src="/hc.js"></script>
+<style>body{margin:0}</style>
+<canvas id="c" width="600" height="400" style="border:1px solid #888" aria-label="Drawing board"></canvas>
+<p>Click the red circle (at 470,300 on the board).</p>
+<script>
+var c = document.getElementById('c'), g = c.getContext('2d');
+g.fillStyle = '#eee'; g.fillRect(0, 0, 600, 400); g.fillStyle = 'red'; g.beginPath(); g.arc(470, 300, 25, 0, 7); g.fill();
+c.addEventListener('click', function (e) { var r = c.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  rec('canvasclick', {x: Math.round(x), y: Math.round(y), hit: Math.hypot(x - 470, y - 300) < 25}); });
+</script>

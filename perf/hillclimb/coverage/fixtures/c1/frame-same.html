@@ -1,0 +1,4 @@
+<!doctype html><meta charset="utf-8"><title>HC framed sign in (same origin)</title><script src="/hc.js"></script>
+<h1>Account portal</h1>
+<iframe id="fr" src="/c1/login.html" style="width:600px;height:300px;border:1px solid #888"></iframe>
+<script>addEventListener('message', e => { if (e.data && e.data.signedin) rec('framesignedin', e.data.signedin); });</script>

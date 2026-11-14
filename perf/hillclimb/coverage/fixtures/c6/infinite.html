@@ -1,0 +1,9 @@
+<!doctype html><meta charset="utf-8"><title>HC infinite feed</title><script src="/hc.js"></script>
+<style>.post{height:120px;border-bottom:1px solid #ccc;padding:8px}</style>
+<h1>Feed</h1><div id="feed"></div><div id="sentinel">Loading…</div>
+<script>
+var feed = document.getElementById('feed'), n = 0;
+function more() { for (var i = 0; i < 10; i++) { var p = document.createElement('div'); p.className = 'post'; p.textContent = 'Post ' + (++n); feed.appendChild(p); } rec('posts', n); }
+more();
+new IntersectionObserver(function (es) { if (es[0].isIntersecting) setTimeout(more, 150); }).observe(document.getElementById('sentinel'));
+</script>

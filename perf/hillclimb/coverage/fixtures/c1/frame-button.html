@@ -1,0 +1,8 @@
+<!doctype html><meta charset="utf-8"><title>HC framed button</title><script src="/hc.js"></script>
+<h1>Checkout</h1>
+<iframe id="fr" style="width:400px;height:120px;border:1px solid #888"></iframe>
+<script>
+var o = new URLSearchParams(location.search).get('o') || '';
+document.getElementById('fr').src = o + '/c1/paybutton.html';
+addEventListener('message', e => { if (e.data && e.data.paid) rec('paid', true); });
+</script>

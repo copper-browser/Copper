@@ -1,0 +1,21 @@
+<!doctype html><meta charset="utf-8"><title>HC drag</title><script src="/hc.js"></script>
+<style>.z{width:160px;height:80px;border:2px dashed #888;display:inline-block;margin:10px;vertical-align:top} #card{width:100px;height:40px;background:#fc6;cursor:grab}
+#list li{padding:8px;margin:2px;background:#def;width:200px;cursor:grab;user-select:none;list-style:none}</style>
+<h1>Drag</h1>
+<div class="z" id="from"><div id="card" draggable="true">Card A</div></div>
+<div class="z" id="to" aria-label="Done column">Done</div>
+<h2>Sortable (pointer events)</h2>
+<ul id="list"><li>One</li><li>Two</li><li>Three</li></ul>
+<script>
+var card = document.getElementById('card'), to = document.getElementById('to');
+card.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', 'card'); rec('dragstart', true); });
+to.addEventListener('dragover', e => e.preventDefault());
+to.addEventListener('drop', e => { e.preventDefault(); to.appendChild(card); rec('dropped', 'to'); });
+// A sortable list driven by mouse events (no HTML5 DnD), like most React DnD kits.
+var list = document.getElementById('list'), dragging = null;
+list.addEventListener('mousedown', e => { if (e.target.tagName === 'LI') { dragging = e.target; rec('pdown', dragging.textContent); } });
+document.addEventListener('mousemove', e => { if (!dragging) return; var over = document.elementFromPoint(e.clientX, e.clientY);
+  if (over && over.tagName === 'LI' && over !== dragging && over.parentNode === list) { var r = over.getBoundingClientRect();
+    list.insertBefore(dragging, e.clientY > r.top + r.height / 2 ? over.nextSibling : over); } });
+document.addEventListener('mouseup', () => { if (dragging) rec('order', Array.prototype.map.call(list.children, li => li.textContent).join(',')); dragging = null; });
+</script>

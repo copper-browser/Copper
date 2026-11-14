@@ -1,0 +1,16 @@
+<!doctype html><meta charset="utf-8"><title>HC checkout</title><script src="/hc.js"></script>
+<h1>Payment</h1>
+<form id="f" action="#">
+  <label>Name on card <input id="name" autocomplete="cc-name"></label>
+  <label>Card number <input id="num" autocomplete="cc-number" inputmode="numeric"></label>
+  <label>Expiry <input id="exp" autocomplete="cc-exp" placeholder="MM/YY"></label>
+  <label>Security code <input id="csc" autocomplete="cc-csc"></label>
+  <button type="submit">Pay</button>
+</form>
+<script>
+function luhn(s) { s = s.replace(/\D/g, ''); var t = 0; for (var i = 0; i < s.length; i++) { var d = +s[s.length - 1 - i]; if (i % 2) { d *= 2; if (d > 9) d -= 9; } t += d; } return s.length >= 12 && t % 10 === 0; }
+setInterval(function () {
+  rec('card', {num: luhn(document.getElementById('num').value), name: !!document.getElementById('name').value,
+    exp: !!document.getElementById('exp').value, csc: document.getElementById('csc').value.length >= 3});
+}, 200);
+</script>

@@ -1,0 +1,19 @@
+<!doctype html><meta charset="utf-8"><title>HC two-step</title><script src="/hc.js"></script>
+<h1>Two-step verification</h1>
+<form id="f" action="#">
+  <input type="hidden" name="username" value="otp@example.invalid" autocomplete="username">
+  <label>Authentication code <input id="code" name="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></label>
+  <button type="submit">Verify</button>
+</form>
+<p id="out"></p>
+<script>
+document.getElementById('f').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var c = document.getElementById('code').value;
+  rec('otp', 'checking');
+  fetch('/api/totp-check?code=' + encodeURIComponent(c)).then(r => r.json()).then(j => {
+    rec('otp', j.ok ? 'ok' : 'bad');
+    document.getElementById('out').textContent = j.ok ? 'Verified' : 'Wrong code';
+  });
+});
+</script>

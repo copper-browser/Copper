@@ -1,0 +1,6 @@
+<!doctype html><meta charset="utf-8"><title>HC cookie wall</title><script src="/hc.js"></script>
+<style>#wall{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center}
+#wall div{background:#fff;padding:20px;width:100%}</style>
+<h1>Store</h1>
+<button id="buy" onclick="rec('buy', true)" style="margin-top:200px">Add to cart</button>
+<div id="wall" onclick="rec('wallclicked', true)"><div>We use cookies. <button id="accept" onclick="event.stopPropagation(); document.getElementById('wall').remove(); rec('accepted', true)">Accept</button></div></div>

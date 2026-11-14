@@ -1,0 +1,77 @@
+<!doctype html><meta charset="utf-8"><title>HC forms</title><script src="/hc.js"></script>
+<style>label{display:block;margin:6px 0} #rte{border:1px solid #888;min-height:40px;padding:4px} #ce{border:1px dashed #888;min-height:30px}
+.cal{display:none;border:1px solid #444;padding:4px;width:220px} .cal.open{display:grid;grid-template-columns:repeat(7,1fr)} .cal button{padding:2px}
+#lb{border:1px solid #888;margin:0;padding:0;list-style:none} #lb li{padding:2px 4px} #lb li[aria-selected=true]{background:#cde}</style>
+<h1>Forms</h1>
+<form id="f" action="#">
+<label>Controlled name <input id="controlled" name="controlled"></label>
+<label>Keys <input id="keys" name="keys"></label>
+<label>Country <select id="country" name="country">
+  <option value="">Choose…</option><option value="us">United States</option><option value="nl">Netherlands</option><option value="jp">Japan</option></select></label>
+<label>Toppings <select id="toppings" name="toppings" multiple size="4">
+  <option value="ham">Ham</option><option value="olive">Olive</option><option value="basil">Basil</option><option value="egg">Egg</option></select></label>
+<label><input type="checkbox" id="agree" name="agree"> I agree to the terms</label>
+<fieldset><legend>Plan</legend>
+  <label><input type="radio" name="plan" id="plan-free" value="free" checked> Free</label>
+  <label><input type="radio" name="plan" id="plan-pro" value="pro"> Pro</label></fieldset>
+<label>Arrival date <input type="date" id="date" name="date"></label>
+<label>Volume <input type="range" id="vol" name="vol" min="0" max="100" value="10"></label>
+<label>Check-in (picker) <input id="dp" readonly placeholder="Pick a day"></label>
+<div class="cal" id="cal" role="grid" aria-label="December 2026"></div>
+<label>City <input id="city" role="combobox" aria-autocomplete="list" aria-controls="lb" aria-expanded="false" autocomplete="off"></label>
+<ul id="lb" role="listbox" hidden></ul>
+<label>Notes (contenteditable)</label><div id="ce" contenteditable="true" aria-label="Notes"></div>
+<label>Message (rich text)</label><div id="rte" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Message body"></div>
+<div id="shadowhost"></div>
+<label>Attachment <input type="file" id="file" name="file"></label>
+<label>Search <input id="q" name="q"></label>
+<button type="submit" id="submit">Send</button>
+</form>
+<script>
+// A React-style controlled input: the value only counts when an 'input' event delivers it.
+var model = '';
+var ctl = document.getElementById('controlled');
+ctl.addEventListener('input', function () { model = ctl.value; rec('controlled', model); });
+var k = document.getElementById('keys'), downs = 0;
+k.addEventListener('keydown', function () { downs++; rec('keydowns', downs); });
+k.addEventListener('input', function () { rec('keysvalue', k.value); });
+['country','toppings','agree','plan-free','plan-pro','date','vol'].forEach(function (id) {
+  var el = document.getElementById(id);
+  el.addEventListener('change', function () {
+    if (id === 'toppings') rec('toppings', Array.prototype.filter.call(el.options, o => o.selected).map(o => o.value).join(','));
+    else if (el.type === 'checkbox') rec('agree', el.checked);
+    else if (el.type === 'radio') rec('plan', document.querySelector('input[name=plan]:checked').value);
+    else rec(id, el.value);
+  });
+});
+// Custom date picker: a calendar of buttons.
+var cal = document.getElementById('cal'), dp = document.getElementById('dp');
+for (var d = 1; d <= 31; d++) { var b = document.createElement('button'); b.type = 'button'; b.textContent = d; b.setAttribute('aria-label', 'December ' + d + ', 2026');
+  b.onclick = (function (d) { return function () { dp.value = '2026-12-' + ('0' + d).slice(-2); cal.classList.remove('open'); rec('picker', dp.value); }; })(d); cal.appendChild(b); }
+dp.addEventListener('click', function () { cal.classList.add('open'); });
+// Combobox with a listbox of suggestions.
+var cities = ['Amsterdam', 'Austin', 'Athens', 'Berlin', 'Boston'], city = document.getElementById('city'), lb = document.getElementById('lb'), active = -1;
+function draw() { lb.innerHTML = ''; var hits = cities.filter(c => city.value && c.toLowerCase().indexOf(city.value.toLowerCase()) === 0);
+  hits.forEach(function (c, i) { var li = document.createElement('li'); li.role = 'option'; li.id = 'opt-' + i; li.textContent = c; li.setAttribute('aria-selected', i === active);
+    li.onmousedown = function (e) { e.preventDefault(); pick(c); }; lb.appendChild(li); });
+  lb.hidden = !hits.length; city.setAttribute('aria-expanded', !!hits.length); return hits; }
+function pick(c) { city.value = c; lb.hidden = true; active = -1; rec('city', c); }
+city.addEventListener('input', function () { active = -1; draw(); });
+city.addEventListener('keydown', function (e) { var hits = draw();
+  if (e.key === 'ArrowDown') { active = Math.min(active + 1, hits.length - 1); draw(); e.preventDefault(); }
+  if (e.key === 'Enter' && active >= 0) { pick(hits[active]); e.preventDefault(); } });
+var ce = document.getElementById('ce'); ce.addEventListener('input', function () { rec('ce', ce.innerText.trim()); });
+// Rich text: ⌘B / Ctrl+B bolds the selection, the way editors do it.
+var rte = document.getElementById('rte');
+rte.addEventListener('keydown', function (e) { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') { e.preventDefault(); document.execCommand('bold'); } });
+rte.addEventListener('input', function () { rec('rte', rte.innerHTML); });
+// Shadow DOM: an open root with a button and a field.
+var root = document.getElementById('shadowhost').attachShadow({mode: 'open'});
+root.innerHTML = '<label>Promo code <input id="promo" aria-label="Promo code"></label> <button id="apply">Apply promo</button>';
+root.getElementById('apply').onclick = function () { rec('shadowclick', root.getElementById('promo').value || 'clicked'); };
+root.getElementById('promo').addEventListener('input', function () { rec('shadowtyped', root.getElementById('promo').value); });
+var file = document.getElementById('file');
+file.addEventListener('change', function () { var f = file.files[0]; if (!f) return; var r = new FileReader();
+  r.onload = function () { rec('file', {name: f.name, size: f.size, text: String(r.result).slice(0, 40)}); }; r.readAsText(f); });
+document.getElementById('f').addEventListener('submit', function (e) { e.preventDefault(); rec('submitted', document.getElementById('q').value || 'yes'); });
+</script>

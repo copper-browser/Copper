@@ -1,0 +1,14 @@
+<!doctype html><meta charset="utf-8"><title>HC OAuth app</title><script src="/hc.js"></script>
+<h1>Connect your HC account</h1>
+<button id="go">Continue with HC Identity</button>
+<p id="out"></p>
+<script>
+var o = new URLSearchParams(location.search).get('o') || '';
+document.getElementById('go').onclick = function () {
+  rec('popup', 'opened');
+  window.open(o + '/c1/consent.html', 'hcauth', 'width=480,height=560');
+};
+addEventListener('message', function (e) {
+  if (e.data && e.data.token) { rec('authorized', e.data.token); document.getElementById('out').textContent = 'Authorized'; }
+});
+</script>

@@ -1,0 +1,7 @@
+<!doctype html><meta charset="utf-8"><title>HC hover menu</title><script src="/hc.js"></script>
+<style>nav{position:relative;display:inline-block} #menu{display:none;position:absolute;top:100%;left:0;background:#eee;border:1px solid #888;padding:4px}
+nav:hover #menu, nav.open #menu{display:block} #menu a{display:block;padding:4px}</style>
+<h1>Account</h1>
+<nav id="nav"><span id="trigger" tabindex="0">Account ▾</span>
+  <div id="menu"><a href="#" id="settings" onclick="rec('menu','settings');return false">Settings</a><a href="#" id="signout" onclick="rec('menu','signout');return false">Sign out</a></div></nav>
+<script>var n=document.getElementById('nav'); n.addEventListener('mouseenter',()=>{n.classList.add('open'); rec('hovered', true)}); n.addEventListener('mouseleave',()=>setTimeout(()=>n.classList.remove('open'),300));</script>

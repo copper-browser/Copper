@@ -1,0 +1,5 @@
+<!doctype html><meta charset="utf-8"><title>HC far button</title><script src="/hc.js"></script>
+<h1>Terms</h1><div style="height:4000px;background:linear-gradient(#fff,#ccc)">Long terms…</div>
+<button id="accept" onclick="rec('farclick', true)">I accept the terms</button>
+<input id="tab1" placeholder="first"><input id="tab2" placeholder="second">
+<script>document.addEventListener('focusin', e => rec('focus', e.target.id || e.target.tagName));</script>

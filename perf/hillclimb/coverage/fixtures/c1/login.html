@@ -1,0 +1,18 @@
+<!doctype html><meta charset="utf-8"><title>HC sign in</title><script src="/hc.js"></script>
+<h1>Sign in to HC</h1>
+<form id="f" action="#">
+  <label>Email <input id="user" name="username" type="email" autocomplete="username"></label>
+  <label>Password <input id="pass" name="password" type="password" autocomplete="current-password"></label>
+  <button type="submit">Sign in</button>
+</form>
+<p id="out"></p>
+<script>
+document.getElementById('f').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var u = document.getElementById('user').value, p = document.getElementById('pass').value;
+  window.__submitted = {user: u, pw: p};
+  rec('signedin', u);
+  document.getElementById('out').textContent = 'Signed in as ' + u;
+  if (window.parent !== window) window.parent.postMessage({signedin: u}, '*');
+});
+</script>

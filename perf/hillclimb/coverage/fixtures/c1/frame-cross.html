@@ -1,0 +1,8 @@
+<!doctype html><meta charset="utf-8"><title>HC framed sign in (cross origin)</title><script src="/hc.js"></script>
+<h1>Account portal</h1>
+<iframe id="fr" style="width:600px;height:300px;border:1px solid #888"></iframe>
+<script>
+var o = new URLSearchParams(location.search).get('o');
+document.getElementById('fr').src = o + '/c1/login.html';
+addEventListener('message', e => { if (e.data && e.data.signedin) rec('framesignedin', e.data.signedin); });
+</script>
