@@ -6,7 +6,7 @@
 
 APP may end in `+K=V,K2=V2`: launch environment for that arm (one build, switches A/B'd).
 
-One session per arm per round per Reduce Motion setting, each under `~/hc/mini.lock`: the world is
+One session per arm per round per Reduce Motion setting, each round under one `~/hc/mini.lock` hold: the world is
 re-seeded from SEED (with --open every folder in it open, so the big space shows all its rows),
 the build launched in front, left SETTLE s (the background warming happens there), then every
 space and back twice (first visit after launch, then again), then the first 12 tabs of the home
@@ -165,10 +165,10 @@ def run(out, rounds, arms_, rms, open_folders, settle, rec):
                               os.path.expanduser("~/hc/tools/perf/site")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         for r in range(rounds):
-            for rm in rms:
-                for label, app in (arms_ if r % 2 == 0 else arms_[::-1]):
-                    with open(LOCK, "a") as lk:
-                        fcntl.flock(lk, fcntl.LOCK_EX)
+            with open(LOCK, "a") as lk:  # one ABBA round under one hold: the arms back to back, same conditions
+                fcntl.flock(lk, fcntl.LOCK_EX)
+                for rm in rms:
+                    for label, app in (arms_ if r % 2 == 0 else arms_[::-1]):
                         was = reduce_motion()
                         try:
                             got = reduce_motion(rm == "on")
@@ -180,11 +180,10 @@ def run(out, rounds, arms_, rms, open_folders, settle, rec):
                         finally:
                             perf.quit_world(WORLD)
                             reduce_motion(was)
-                            fcntl.flock(lk, fcntl.LOCK_UN)
-                    with open(os.path.join(out, "a2.jsonl"), "a") as f:
-                        f.write(json.dumps(row) + "\n")
-                    sp = [s for s in row["spaces"] if "busy" in s]
-                    print(label, "r", r, "rm", rm, "spaces busy", [s["busy"] for s in sp], "landing", [s["landing"][0] for s in sp], flush=True)
+                        with open(os.path.join(out, "a2.jsonl"), "a") as f:
+                            f.write(json.dumps(row) + "\n")
+                        sp = [s for s in row["spaces"] if "busy" in s]
+                        print(label, "r", r, "rm", rm, "spaces busy", [s["busy"] for s in sp], "landing", [s["landing"][0] for s in sp], flush=True)
     finally:
         serve.terminate()
 

@@ -685,7 +685,7 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
     private var hovering: Bool { pointing || benchHover.forced == tab.id }
     @State private var shake: CGFloat = 0
     @ObservedObject private var paired = SplitPairs.shared // Fork (motion): changes only when a split is made or undone
-    private var inPair: Bool { !HCB.pair && paired.ids.contains(tab.id) }
+    private var inPair: Bool { paired.ids.contains(tab.id) }
 
     var body: some View {
         HStack(spacing: 10) {
