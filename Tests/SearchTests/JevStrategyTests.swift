@@ -19,7 +19,8 @@ struct JevStrategyTests {
         #expect(U.Strategy.parse(nil) == U.Strategy())
         #expect(U.Strategy.parse("classic") == U.Strategy())
         let turbo = U.Strategy.parse("turbo")!
-        #expect(!turbo.glide && turbo.literals && turbo.burst && turbo.lean && turbo.paste && turbo.watch && !turbo.llm)
+        #expect(!turbo.glide && turbo.literals && turbo.burst && turbo.lean && turbo.paste && turbo.watch && turbo.near && turbo.reach && !turbo.llm)
+        #expect(!U.Strategy().near && !U.Strategy().reach)
         let llm = U.Strategy.parse("fast,llm=Haiku")!
         #expect(llm.llm && llm.llmModel == "Haiku" && !llm.glide)
         #expect(U.Strategy.parse("warp") == nil)
@@ -54,6 +55,44 @@ struct JevStrategyTests {
         #expect(U.fieldKey(["role": "combobox", "label": "Where to? "]) == U.fieldKey(["role": "combobox", "label": "where to?"]))
         #expect(U.fieldKey(["role": "combobox", "label": "Where to?"]) != U.fieldKey(["role": "combobox", "label": "Where from?"]))
         #expect(U.fieldKey(["role": "textbox", "label": "Name"]) != U.fieldKey(["role": "searchbox", "label": "Name"]))
+        // "Search" in another document or form is another field.
+        #expect(U.fieldKey(["role": "searchbox", "label": "Search", "scope": "1.5|q"]) != U.fieldKey(["role": "searchbox", "label": "Search", "scope": "9.1|q"]))
+        #expect(U.fieldKey(["role": "searchbox", "label": "Search", "scope": "1.5|q"]) == U.fieldKey(["role": "searchbox", "label": "search ", "scope": "1.5|q"]))
+    }
+
+    @Test func paraphrasedValues() {
+        // The same flight said other ways: lowercase, airport codes, German, French.
+        #expect(U.literals(in: "find one-way flights from zurich to london on january 20, 2027 for one adult in economy.")
+                == ["zurich", "london", "january 20, 2027"])
+        #expect(U.literals(in: "One-way flights ZRH → LHR on 2027-01-20, 1 adult, economy.") == ["ZRH", "LHR", "2027-01-20"])
+        #expect(U.literals(in: "Finde einfache Flüge von Zürich nach London am 20. Januar 2027 für einen Erwachsenen in der Economy Class.")
+                == ["Zürich", "London", "20. Januar 2027"])
+        #expect(U.literals(in: "Trouve un vol de Zurich à Londres le 20 janvier 2027.") == ["Zurich", "Londres", "20 janvier 2027"])
+        #expect(U.literals(in: "Move it from New York to San Francisco, then save.") == ["New York", "San Francisco"])
+        #expect(U.literals(in: "Change the date to 20/01/2027 and the name to 'Ada'") == ["Ada", "20/01/2027"])
+        // A phrase is not a place: articles start no value.
+        #expect(U.literals(in: "Starting from the article that is open, go to the next one.").isEmpty)
+    }
+
+    @Test func goalTermsForOffscreenLinks() {
+        let terms = U.goalTerms("Open the MDN reference page for the JavaScript Array.prototype.flatMap() method.")
+        let words = terms["words"] as? [String] ?? []
+        #expect(words.contains("array") && words.contains("flatmap") && !words.contains("the") && !words.contains("open") && !words.contains("page"))
+        #expect((terms["phrases"] as? [String] ?? []).contains("array prototype flatmap"))
+        let game = U.goalTerms(#"Reach the Wikipedia article titled "Buenos Aires" by clicking links."#)
+        #expect((game["phrases"] as? [String]) == ["buenos aires"])
+        #expect((game["words"] as? [String] ?? []).contains("aires"))
+        #expect((U.goalTerms("Find Gödel’s theorems")["words"] as? [String] ?? []).contains("godel"))
+    }
+
+    @Test func humanChecksAreNamed() {
+        #expect(U.humanCheck("I am human") != nil)
+        #expect(U.humanCheck("I'm not a robot") != nil)
+        #expect(U.humanCheck("Press & Hold to confirm you are a human") != nil)
+        #expect(U.humanCheck("Type the characters you see in this image") != nil)
+        #expect(U.humanCheck("Continue shopping") == nil)
+        #expect(U.humanCheck("reCAPTCHA documentation") == nil)
+        #expect(U.humanCheck("Human resources") == nil)
     }
 
     @Test func textModelsFastFirstHaikuLast() {
@@ -70,7 +109,7 @@ struct JevStrategyTests {
 
     @Test func shippedSubmitsAndVerifyIsOptIn() {
         #expect(!U.Strategy.shipped.verify && !U.Strategy.parse("turbo")!.verify && U.Strategy.parse("verify")!.verify)
-        #expect(U.Strategy.shipped.submit && U.Strategy.shipped.name.hasSuffix("watch,submit"))
+        #expect(U.Strategy.shipped.submit && U.Strategy.shipped.name.hasSuffix("watch,near,reach,submit"))
     }
 
     @Test func visionParses() {

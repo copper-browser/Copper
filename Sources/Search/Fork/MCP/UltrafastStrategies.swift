@@ -25,7 +25,21 @@ import WebKit
 //            instead of a key event per character.
 //   watch    WAIT ends when the page changes, and a click the page has not
 //            answered yet gets up to a second to show something.
-//   turbo    fast + burst + lean + paste + watch.
+//   near     the settle after an input ends on the first frame with no
+//            change and no animation on screen; off-screen churn, ripples
+//            drawn in ::before/::after and repeating animations are not
+//            waited for (Google Flights sat at the 400 ms cap half the time).
+//            Fewer decisions thrown away as stale: the first read and the
+//            read after a stale decision wait for the page to stand still;
+//            typing checks its field like a click does (form state and the
+//            target's own guard), a scroll only that the page hasn't moved,
+//            and a WAIT the page already answered is done, not stale.
+//   reach    the links the goal names that are above or below the viewport
+//            are offered too (a click scrolls them in), and after four
+//            scrolls in a row that showed nothing new the goal names,
+//            scrolling is not offered until something else is done (the
+//            Wikipedia game lost runs to 20 scrolls in a row).
+//   turbo    fast + burst + lean + paste + watch + near + reach.
 //   verify   (not in Fast mode: at the 0.5 floor it refused 2 right DONEs in
 //            96 hill-climb runs and caught no wrong one; the run then ends
 //            BLOCKED.) Beside each decision Jev also says how likely something is
@@ -64,6 +78,10 @@ extension Tools.Ultrafast {
         /// WAIT returns when the page changes (a MutationObserver, capped at
         /// 1.5 s) instead of after a fixed 100 ms.
         var watch = false
+        /// The settle ends on the first quiet frame on screen.
+        var near = false
+        /// Off-screen links the goal names are offered; barren scrolling stops.
+        var reach = false
 
         /// `fast,burst`, `turbo`, `llm=haiku` … nil for a word it doesn't know.
         static func parse(_ raw: String?) -> Strategy? {
@@ -80,9 +98,12 @@ extension Tools.Ultrafast {
                 case "lean": s.lean = true
                 case "paste": s.paste = true
                 case "watch": s.watch = true
+                case "near": s.near = true
+                case "reach": s.reach = true
                 case "verify": s.verify = true
                 case "submit": s.submit = true
                 case "turbo": s.glide = false; s.literals = true; s.burst = true; s.lean = true; s.paste = true; s.watch = true
+                    s.near = true; s.reach = true
                 case "llm": s.llm = true
                 default:
                     guard word.hasPrefix("llm="), word.count > 4 else { return nil }
@@ -109,6 +130,8 @@ extension Tools.Ultrafast {
             if lean { parts.append("lean") }
             if paste { parts.append("paste") }
             if watch { parts.append("watch") }
+            if near { parts.append("near") }
+            if reach { parts.append("reach") }
             if verify { parts.append("verify") }
             if submit { parts.append("submit") }
             if llm { parts.append(llmModel.map { "llm=\($0)" } ?? "llm") }
@@ -125,36 +148,119 @@ extension Tools.Ultrafast {
 
     // MARK: - the goal's own values
 
-    /// The values a goal names, in its own words: "…" and “…” spans, email
-    /// addresses, and — unquoted — a name right after from/to/in/near/at/
-    /// named/called/titled ("from Zurich to London", "in Lisbon") and a
-    /// written-out or ISO date. These are the only strings `literal` mode
-    /// will type without a text model, and only into the field Jev matches
-    /// each one to; a value it matches to no field costs one question.
+    /// The values a goal names, in its own words: quoted spans ("…", “…”,
+    /// „…“, «…», '…'), email addresses, and — unquoted — the two places of
+    /// "from X to Y" in any case and in seven languages ("from zurich to
+    /// london", "von Zürich nach London", "de Zurich à Londres"), a name
+    /// right after a preposition ("in Lisbon", "at Chez Panisse"), airport
+    /// codes either side of an arrow ("ZRH → LHR"), and dates, written out
+    /// in those languages or numeric ("January 20, 2027", "20. Januar
+    /// 2027", "2027-01-20", "20/01/2027"). These are the only strings
+    /// `literal` mode will type without a text model, and only into the
+    /// field Jev matches each one to; a value it matches to no field costs
+    /// one question, a value it misses is the text model's to write.
     static func literals(in goal: String) -> [String] {
         var out: [String] = []
         func add(_ s: String) {
             let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
             if !t.isEmpty, t.count <= 200, !out.contains(t) { out.append(t) }
         }
-        let month = "(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+        let month = "(?:" + monthNames.sorted { $0.count > $1.count }.joined(separator: "|") + ")"
         let name = #"\p{Lu}[\p{L}\p{N}'’-]*"#
-        let patterns: [(String, Int)] = [
-            (#""([^"]{1,200})""#, 1),
-            (#"“([^”]{1,200})”"#, 1),
-            (#"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+"#, 0),
-            ("\\b(?:from|to|in|near|at|named|called|titled) ((?!\(month)\\b)\(name)(?: \(name))*)", 1),
-            ("\\b\(month)\\.? \\d{1,2}(?:st|nd|rd|th)?(?:,? \\d{4})?\\b", 0),
-            (#"\b\d{4}-\d{2}-\d{2}\b"#, 0),
+        // One to three words, not starting with an article: a place, not a phrase.
+        let place = #"(?!(?:the|a|an|my|your|this|that|der|die|das|le|la|les|el|los|il|het|de)\b)[\p{L}\p{N}][\p{L}\p{N}'’.-]*(?: [\p{L}\p{N}][\p{L}\p{N}'’.-]*){0,2}?"#
+        let end = #"(?=\s+(?:on|for|in|at|by|with|and|via|departing|leaving|returning|am|um|für|mit|und|le|pour|avec|et|el|para|con|y|il|per|e|op|voor|met|en|em|com)\b|\s*[,.;:!?()]|\s*$)"#
+        let patterns: [(String, [Int])] = [
+            (#""([^"]{1,200})""#, [1]),
+            (#"“([^”]{1,200})”"#, [1]),
+            (#"„([^“”]{1,200})[“”]"#, [1]),
+            (#"«\s?([^»]{1,200}?)\s?»"#, [1]),
+            (#"(?<![\p{L}\p{N}])'([^']{1,200})'(?![\p{L}\p{N}])"#, [1]),
+            (#"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+"#, [0]),
+            ("(?i)\\b(?:from|von|van|desde|de|da) (\(place)) (?:to|nach|naar|à|a|vers|hasta|para|per) (\(place))\(end)", [1, 2]),
+            ("\\b(?i:from|to|in|near|at|named|called|titled|von|nach|bei|ab|aus|vers|depuis|desde|hacia|naar) ((?!(?i:\(month))\\b)\(name)(?: \(name))*)", [1]),
+            (#"\b([A-Z]{3})\s*(?:→|->|–|—|-|>|/)\s*([A-Z]{3})\b"#, [1, 2]),
+            ("(?i)\\b\(month)\\.? \\d{1,2}(?:st|nd|rd|th)?(?:,? \\d{4})?\\b", [0]),
+            ("(?i)\\b\\d{1,2}(?:\\.|st|nd|rd|th|er|º)? (?:de )?\(month)\\.?(?:,? (?:de )?\\d{4})?\\b", [0]),
+            (#"\b\d{4}-\d{2}-\d{2}\b"#, [0]),
+            (#"\b\d{1,2}[./]\d{1,2}[./]\d{4}\b"#, [0]),
         ]
         let whole = NSRange(goal.startIndex..., in: goal)
-        for (pattern, group) in patterns {
+        for (pattern, groups) in patterns {
             guard let re = try? NSRegularExpression(pattern: pattern) else { continue }
             for match in re.matches(in: goal, range: whole) {
-                if let range = Range(match.range(at: group), in: goal) { add(String(goal[range])) }
+                for group in groups { if let range = Range(match.range(at: group), in: goal) { add(String(goal[range])) } }
             }
         }
         return Array(out.prefix(8))
+    }
+
+    /// Month names and their short forms in English, German, French,
+    /// Spanish, Italian, Dutch and Portuguese.
+    static let monthNames: [String] = """
+    january february march april may june july august september october november december \
+    jan feb mar apr jun jul aug sep sept oct nov dec \
+    januar februar märz maerz mai juni juli oktober dezember jänner \
+    janvier février fevrier mars avril juin juillet août aout septembre octobre novembre décembre decembre \
+    enero febrero marzo abril mayo junio julio agosto septiembre setiembre octubre noviembre diciembre \
+    gennaio febbraio aprile maggio giugno luglio settembre ottobre dicembre \
+    januari februari maart mei augustus \
+    janeiro fevereiro março marco maio junho julho setembro outubro dezembro
+    """.split(whereSeparator: \.isWhitespace).map(String.init).filter { $0 != "\\" }
+
+    /// What a run looks for in links it can't see (`reach`): the goal's own
+    /// words, folded the way the page script folds them (lowercase, no
+    /// accents, anything else a space), less the words every goal has; and
+    /// its named values and dotted names (Array.prototype.flatMap) whole.
+    static func goalTerms(_ goal: String) -> [String: Any] {
+        func fold(_ s: String) -> [String] {
+            s.lowercased().folding(options: .diacriticInsensitive, locale: nil)
+                .components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+        }
+        var words: [String] = []
+        for word in fold(goal) where word.count >= 3 && !goalStopWords.contains(word) && !words.contains(word) { words.append(word) }
+        var phrases: [String] = []
+        var named = literals(in: goal)
+        if let re = try? NSRegularExpression(pattern: #"[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+"#) {
+            for m in re.matches(in: goal, range: NSRange(goal.startIndex..., in: goal)) {
+                if let r = Range(m.range, in: goal), !goal[r].contains("@") { named.append(String(goal[r])) }
+            }
+        }
+        for value in named {
+            let phrase = fold(value).joined(separator: " ")
+            if phrase.count >= 3, !phrases.contains(phrase) { phrases.append(phrase) }
+        }
+        return ["words": Array(words.prefix(24)), "phrases": Array(phrases.prefix(8))]
+    }
+
+    static let goalStopWords: Set<String> = Set("""
+    the and for with from into onto this that these those then than when where what which who whom whose how why \
+    are was were been being have has had does did will would shall should can could may might must not nor only \
+    own same such too very just also any all each every both few more most other some one two its his her their \
+    our your you they them she him about above after again against below between during before through under \
+    until while off over out per via upon there here get got make use using want need like \
+    open find show click clicking select choose type typing enter search searching scroll scrolling page pages \
+    article articles link links text title titled goal done stop reach start starting visible inside exactly \
+    never anything something useful fold time look see
+    """.split(whereSeparator: \.isWhitespace).map(String.init).filter { $0 != "\\" })
+
+    /// A human check the agent must not answer: "I am human", "I'm not a
+    /// robot", a CAPTCHA, "press and hold". The matched words, or nil.
+    static func humanCheck(_ text: String) -> String? {
+        let pattern = #"(?i)\b(?:i am|i'm|i’m) (?:a )?human\b|\bnot a robot\b|\bare you (?:a )?(?:human|robot)\b|\bcaptcha\b|\bverify (?:that )?you(?:'re| are) (?:a )?human\b|\bhuman verification\b|\bpress (?:and|&) hold\b|\bprove you(?:'re| are) (?:a )?human\b|\btype the characters\b|\benter the characters you see\b"#
+        guard let re = try? NSRegularExpression(pattern: pattern),
+              let m = re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let r = Range(m.range, in: text) else { return nil }
+        return String(text[r])
+    }
+
+    /// A page that is a human check: its title, its text or a control says so.
+    static func humanCheck(on obs: Observation) -> String? {
+        if let hit = humanCheck(obs.title + "\n" + String(obs.text.prefix(3000))) { return hit }
+        for action in obs.actions where (action["role"] as? String) != "link" {
+            if let hit = humanCheck(action["label"] as? String ?? "") { return hit }
+        }
+        return nil
     }
 
     static let valueRule = """

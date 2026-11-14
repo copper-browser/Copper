@@ -351,11 +351,13 @@ classic loop (`perf/uibench.py`):
 | word | what changes |
 |---|---|
 | `fast` | no cosmetic pointer glide before a click (it cost 120–320 ms a click); the trail still draws |
-| `literal` | each value the goal names — what it quotes (`"maya@northwind.test"`), and the places, names and dates it says outright (*from Zurich to London on January 20, 2027*) — becomes one Jev question in the same request — *which field holds this?* — and a TYPE_TEXT types the value Jev matched to that field. No text-model call; a field no quoted value fits still asks the text model |
+| `literal` | each value the goal names — what it quotes (`"maya@northwind.test"`, “…”, „…“, «…», '…'), and the places, names, airport codes and dates it says outright, in any case and in seven languages (*from zurich to london on january 20, 2027*, *ZRH → LHR on 2027-01-20*, *von Zürich nach London am 20. Januar 2027*) — becomes one Jev question in the same request — *which field holds this?* — and a TYPE_TEXT types the value Jev matched to that field. No text-model call; a field no quoted value fits still asks the text model |
 | `burst` | `literal`, and every other value Jev matched surely (≥ 60%) is typed in the same breath, before the next read: a sign-in form is one decision, not three. Never into or after a combobox or search box: its list of suggestions is the next read |
 | `lean` | the state Jev reads is trimmed (page text to 1,200 characters, five recent actions) |
 | `paste` | a field's value goes in as one trusted edit (select all, insert text — the page hears it as typing, so an autocomplete opens) and is read back, instead of a key event per character |
 | `watch` | WAIT ends when the page changes (a MutationObserver, capped at 1.5 s) instead of after 100 ms; a click the page has not answered yet gets up to a second to show something before Jev is asked again (asked at once it clicks again, which starts the page's request over) |
+| `near` | the settle after an input ends on the first frame with nothing changing and no animation running on screen (off-screen churn, ripples drawn in `::before`/`::after` and repeating animations are not waited for), 400 ms at most. Fewer decisions are thrown away as stale: the run's first read and the read after a stale decision wait for the page to stand still, typing checks its field the way a click does (form state and the target's own guard), a scroll only that the page hasn't moved, and a WAIT the page already answered counts as done |
+| `reach` | the links the goal names that sit above or below the viewport are offered like any other link (ranked by the goal's rarer words, at most 12; `jev_observe`'s table marks them *below the viewport*) and a click scrolls them in first; after four scrolls in a row that showed nothing new the goal names, scrolling is not offered until something else is done (click what is offered, or BLOCKED) |
 | `turbo` | all of the above |
 | `verify` | not part of Fast mode (at this floor it refused two right DONEs in 96 benchmark runs and caught no wrong one): beside each decision Jev also says how likely something is visibly left undone; a DONE the page contradicts (≥ 50%) is refused, twice at most, and the next decision is asked without DONE on offer (`done_check`, `done_refused` in the JSON trace) |
 | `submit` | Return after typing into a search box that is its form's only field and shows no suggestions: the search is made, not just written |
@@ -372,8 +374,16 @@ accounts). In `box` mode the box picks the observed element it overlaps most
 (intersection over union), then the one under its centre.
 
 Every step in the `json: true` trace says where its time went — `observe_ms`,
-`decide_ms` (Jev's `jev_ms` inside it), `text_ms`, `act_ms`, `settle_ms` — and
-`burst: true` marks a field typed without a decision of its own.
+`decide_ms` (Jev's `jev_ms` inside it), `text_ms`, `act_ms`, `settle_ms`,
+`settle_capped` (and `settle_why`: what was still moving at the cap) — and
+`burst: true` marks a field typed without a decision of its own. `totals`
+count every decision asked, including a DONE, a BLOCKED, a refused DONE and
+one the page went stale under (`stale`, `stale_ops`), with `text_calls`,
+`text_reused`, `text_model`, `settles` and `settles_capped`.
+
+A control that asks for a human check — *I am human*, *I'm not a robot*, a
+CAPTCHA, *press and hold* — is never clicked or typed into: the run ends
+BLOCKED and says to hand the page to the user.
 
 ## Who is driving — the pill, the ring, the timeline
 

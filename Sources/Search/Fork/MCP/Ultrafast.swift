@@ -167,7 +167,7 @@ enum Ultrafast {
         if vision == .marks {
             let (elements, _, _) = actionSpace(obs.actions)
             var rects: [Int: [String: Any]] = [:]
-            for action in obs.actions {
+            for action in obs.actions where action["offscreen"] == nil {
                 if let node = (action["node"] as? NSNumber)?.intValue, rects[node] == nil, let rect = action["rect"] as? [String: Any] { rects[node] = rect }
             }
             var byIndex: [(String, [String: Any])] = []
@@ -305,6 +305,10 @@ enum Ultrafast {
         var marker: String { raw["marker"] as? String ?? "" }
         var pageKey: String { raw["page_key"] as? String ?? "" }
         var omitted: Int { (raw["omitted_actions"] as? NSNumber)?.intValue ?? 0 }
+        /// Nodes (on screen or off) whose words the goal names (`reach`).
+        var relevant: Set<Int> { Set((raw["relevant"] as? [NSNumber] ?? []).map(\.intValue)) }
+        /// How the settle before this read went: ms, capped, why.
+        var settle: [String: Any]? { raw["settle"] as? [String: Any] }
         func guardValue(_ node: Int) -> String? { (raw["guards"] as? [String: Any])?[String(node)] as? String }
         func action(_ id: String) -> [String: Any]? { actions.first { ($0["id"] as? String) == id } }
     }
@@ -366,6 +370,10 @@ enum Ultrafast {
         /// decision of its own.
         var burst = false
         var box: [Double]? = nil
+        /// Whether the settle after this step ran into its cap, and what
+        /// was still moving then.
+        var settleCapped: Bool? = nil
+        var settleWhy: String? = nil
 
         var json: [String: Any] {
             var out: [String: Any] = ["n": number, "operation": operation, "kind": kind, "label": label,
@@ -377,6 +385,8 @@ enum Ultrafast {
             out["page_changed"] = pageChanged.map { $0 as Any } ?? NSNull()
             out["box_hit"] = boxHit.map { $0 as Any } ?? NSNull()
             out["box"] = box.map { $0 as Any } ?? NSNull()
+            out["settle_capped"] = settleCapped.map { $0 as Any } ?? NSNull()
+            if let settleWhy, !settleWhy.isEmpty { out["settle_why"] = settleWhy }
             return out
         }
 
@@ -410,8 +420,8 @@ enum Ultrafast {
         const id=cache.ids.get(e); cache.nodes.set(id,e); return id;
       };
       const safe = e => !['password','file','hidden'].includes(e.type);
-      const visible = e => !e.closest('[aria-hidden="true"],[inert]') &&
-        e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true});
+      const drawn = e => e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true});
+      const visible = e => !e.closest('[aria-hidden="true"],[inert]') && drawn(e);
       // A checkbox or radio drawn by its label (the input itself transparent,
       // clipped away or display:none — a styled toggle, a menu built on the
       // checkbox trick): the label is what a finger can hit, so it stands in
@@ -420,10 +430,15 @@ enum Ultrafast {
         if (!e || e.tagName!=='INPUT' || !['checkbox','radio'].includes(e.type)) return e;
         const r=e.getBoundingClientRect();
         if (visible(e) && r.width>=4 && r.height>=4) return e;
+        // Only the label's drawing counts: it may be aria-hidden while the
+        // input carries the name (Wikipedia's "164 languages" button).
         return [...(e.labels||[])].find(l=>{
-          const b=l.getBoundingClientRect(); return visible(l) && b.width>0 && b.height>0;
+          const b=l.getBoundingClientRect(); return drawn(l) && !l.closest('[inert]') && b.width>0 && b.height>0;
         }) || e;
       };
+      // Is the control there for a person: itself in the accessibility tree,
+      // and its face (itself, or the label standing in for it) drawn.
+      const shown = (e,f) => f===e ? visible(e) : !e.closest('[aria-hidden="true"],[inert]') && drawn(f);
       const name = (e,seen=new Set()) => {
         if (!e || seen.has(e)) return '';
         seen.add(e);
@@ -460,22 +475,60 @@ enum Ultrafast {
         .map(e=>[identity(e),e.value,e.checked,e.selectedIndex,e.disabled,e.readOnly]);
       cache.pageKey=()=>JSON.stringify([performance.timeOrigin,location.href,scrollX,scrollY,innerWidth,innerHeight,formState()]);
       cache.guard=e=>{
-        if (!e?.isConnected || !visible(face(e))) return null;
+        if (!e?.isConnected || !shown(e,face(e))) return null;
         const scope=e.closest('form,dialog,[role="dialog"],article,li,tr,[role="row"]') || e.parentElement;
         return JSON.stringify([identity(e),role(e),name(e),e.value??null,e.checked??null,e.selectedIndex??null,
           e.readOnly??null,e.matches(':disabled'),e.getAttribute('aria-disabled'),
           e.getAttribute('aria-expanded'),e.getAttribute('aria-checked'),e.getAttribute('aria-selected'),
           e.getAttribute('href'),scope?.innerText?.slice(0,6000)||'']);
       };
-      cache.observe=()=>{
+      // Lowercase, accents off, words split on anything else: "Gödel's" → "godel s".
+      const fold=s=>' '+String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+        .replace(/[^\p{L}\p{N}]+/gu,' ').trim()+' ';
+      const decoded=s=>{ try { return decodeURIComponent(s); } catch (_) { return s; } };
+      // Which of the goal's words a control's words start with, and how
+      // much each is worth on this page: a word most links share ("wiki",
+      // "javascript" in every href) is worth nothing. Named values (quoted,
+      // or a dotted name like Array.prototype.flatMap) count whole.
+      const relevance=(items,goal)=>{
+        const words=(goal.words||[]).map(w=>' '+w), phrases=(goal.phrases||[]).map(p=>' '+p+' ');
+        const df=new Map(words.map(w=>[w,0]));
+        for (const it of items) for (const w of words) if (it.text.includes(w) || it.href.includes(w)) df.set(w,df.get(w)+1);
+        const n=Math.max(items.length,1);
+        for (const it of items) {
+          let s=0;
+          for (const w of words) {
+            const d=df.get(w); if (!d || d>Math.max(3,n*0.2)) continue;
+            if (it.text.includes(w)) s+=Math.log(n/d)+1; else if (it.href.includes(w)) s+=(Math.log(n/d)+1)/2;
+          }
+          // a named value whole, the more the more of the link it is ("Austria" 12, "Duchy of Austria" 4)
+          const size=it.text.trim().split(' ').length;
+          for (const p of phrases) {
+            if (it.text.includes(p)) s+=12*Math.min(1,p.trim().split(' ').length/size);
+            else if (it.href.includes(p)) s+=3;
+          }
+          it.score=s;
+        }
+      };
+      // goal: {words, phrases} from the run (Tools.Ultrafast.goalTerms), or
+      // nothing for a plain read. With it, the links the goal names that
+      // are above or below the viewport are offered too (a click scrolls
+      // them in first): a page's useful link is often a screen or ten away,
+      // and a scroll per screen was most of a run (the Wikipedia game).
+      cache.observe=goal=>{
         if (!document.body) return null;
         for (const [id,e] of cache.nodes) if (!e.isConnected) cache.nodes.delete(id);
-        const actions=[];
+        const actions=[], away=[];
         for (const e of document.querySelectorAll(selector)) {
           const f=face(e);
-          if (!safe(e) || !visible(f) || e.matches(':disabled') || e.closest('[aria-disabled="true"],[inert]')) continue;
+          if (!safe(e) || !shown(e,f) || e.matches(':disabled') || e.closest('[aria-disabled="true"],[inert]')) continue;
           const r=f.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2, rname=role(e);
-          if (!rname || r.width<=0 || r.height<=0 || x<0 || y<0 || x>=innerWidth || y>=innerHeight) continue;
+          if (!rname || r.width<=0 || r.height<=0) continue;
+          if (x<0 || y<0 || x>=innerWidth || y>=innerHeight) {
+            const href=e.getAttribute('href')||'';
+            if (goal && goal.words && rname==='link' && e.tagName==='A' && x>=0 && x<innerWidth && href && !href.startsWith('#') && !/^javascript:/i.test(href)) away.push({e,r});
+            continue;
+          }
           if (rname==='gridcell' && e.querySelector('button,[role="button"]')) continue;
           const base={node:identity(e),role:rname,label:name(e)||rname,
             rect:{x:r.x,y:r.y,w:r.width,h:r.height}};
@@ -494,7 +547,13 @@ enum Ultrafast {
                 (rname==='combobox' && ['INPUT','TEXTAREA'].includes(e.tagName)));
             const value='value' in e ? String(e.value) :
               e.isContentEditable || rname==='combobox' ? e.innerText.trim() : '';
-            actions.push({...base,kind:editable?'fill':'click',value});
+            // Which document and which form a field is in: the run's memory
+            // of what it typed is kept per field, and "Search" on one form
+            // is not "Search" on the next.
+            const holder=e.form || e.closest('dialog,[role="dialog"],[role="search"]');
+            const scope=editable ? performance.timeOrigin+'|'+(holder ? holder.id || holder.getAttribute('name') ||
+              holder.getAttribute('action') || holder.getAttribute('aria-label') || holder.tagName+[...document.forms].indexOf(holder) : '') : undefined;
+            actions.push({...base,kind:editable?'fill':'click',value,scope});
             if (editable) actions.push({...base,kind:'click',value,label:'Open '+base.label});
           }
         }
@@ -517,14 +576,39 @@ enum Ultrafast {
           document.title,text,semantics,formState()]);
         const omitted_actions=Math.max(0,actions.length-250);
         actions.splice(250);
+        // Off the marker on purpose: what is on screen decides freshness.
+        let relevant=[];
+        if (goal && ((goal.words||[]).length || (goal.phrases||[]).length)) {
+          const items=[...actions.filter(a=>a.kind==='click').map(a=>({a,text:fold(a.label),href:''})),
+            ...away.map(o=>({o,text:fold(o.e.textContent.slice(0,300)),href:fold(decoded((o.e.pathname||'')+' '+(o.e.hash||'')))}))];
+          relevance(items,goal);
+          relevant=[...new Set(items.filter(it=>it.score>0).map(it=>it.a ? it.a.node : identity(it.o.e)))].slice(0,500);
+          const byHref=new Map();
+          for (const it of items) if (it.o && it.score>0) {
+            const key=it.o.e.href.split('#')[0], have=byHref.get(key);
+            const dist=it.o.r.y<0 ? -it.o.r.y : it.o.r.y-innerHeight;
+            if (!have || it.score>have.score || (it.score===have.score && dist<have.dist)) byHref.set(key,{...it,dist});
+          }
+          for (const it of [...byHref.values()].sort((a,b)=>b.score-a.score || a.dist-b.dist).slice(0,12)) {
+            const e=it.o.e, r=it.o.r;
+            actions.push({node:identity(e),role:'link',label:name(e)||e.textContent.trim().slice(0,90)||'link',
+              rect:{x:r.x,y:r.y,w:r.width,h:r.height},kind:'click',value:'',offscreen:r.y<0?'above':'below'});
+            guards[identity(e)]=cache.guard(e);
+          }
+        }
         actions.forEach((a,i)=>a.id='e'+(i+1));
-        if (scrollY+innerHeight<height-2) actions.push({id:'scroll_down',kind:'scroll',label:'Scroll down',delta:560});
-        if (scrollY>0) actions.push({id:'scroll_up',kind:'scroll',label:'Scroll up',delta:-560});
+        // A screen at a time, less a line of overlap to keep one's place.
+        const step=Math.max(200,Math.round(innerHeight*0.9));
+        if (scrollY+innerHeight<height-2) actions.push({id:'scroll_down',kind:'scroll',label:'Scroll down',delta:step});
+        if (scrollY>0) actions.push({id:'scroll_up',kind:'scroll',label:'Scroll up',delta:-step});
         actions.push({id:'wait',kind:'wait',label:'Wait for the page to update'});
         return {url:location.href,title:document.title,w:innerWidth,h:innerHeight,text,
-          scroll:{y:scrollY,height},actions,marker,page_key,guards,omitted_actions};
+          scroll:{y:scrollY,height},actions,marker,page_key,guards,omitted_actions,relevant};
       };
       cache.marker=()=>{ const s=cache.observe(); return s ? s.marker : null; };
+      // An offered link above or below the viewport, brought in before the click.
+      cache.reveal=node=>{ const e=cache.nodes.get(node); if (!e?.isConnected) return false;
+        e.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'}); return true; };
       cache.check=node=>[cache.pageKey(),cache.guard(cache.nodes.get(node))];
       // Where to put the input, now — or null when the target moved, hid,
       // got covered or (for a dropdown) lost the option. A select is done
@@ -536,7 +620,9 @@ enum Ultrafast {
         if (action.kind==='fill' && (e.readOnly || e.getAttribute('aria-readonly')==='true')) return null;
         const r=f.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2;
         if (!r.width || !r.height || x<0 || y<0 || x>=innerWidth || y>=innerHeight) return null;
-        if (!f.contains(document.elementFromPoint(x,y))) return null;
+        // The face, or the control drawn over it (a transparent checkbox laid on its label).
+        const hit=document.elementFromPoint(x,y);
+        if (!f.contains(hit) && !e.contains(hit)) return null;
         if (action.kind==='select') {
           if (e.tagName!=='SELECT' || ![...e.options].some(o=>o.value===action.value &&
               !o.disabled && !o.closest('optgroup[disabled]'))) return null;
@@ -618,38 +704,104 @@ enum Ultrafast {
         });
       };
       cache.submit=node=>{ const e=cache.nodes.get(node); if (!e?.form) return false; e.form.requestSubmit(); return true; };
-      // After an input: two frames with nothing changing and no transition
-      // still running — 33 ms on a page that stands still, the length of the
-      // animation on one that slides a dialog shut (Google Flights, 10 runs
-      // each way: 16 decisions a run with this, 20 with upstream's flat two
-      // frames or 50 ms, the extra ones made on a page still moving and
-      // thrown away as stale). An autocomplete field also needs an option
-      // showing. 400 ms at most. Read-only, so a navigation mid-way costs nothing.
+      // Before a click or a Return: will it leave this document? A link the
+      // page lets go to another address, or a form it lets submit, means a
+      // navigation is coming — the next read must wait for the new page, not
+      // read this one in the moment before it goes. null until the input has
+      // been seen and every handler has had its say (a page that keeps the
+      // click, a router, a search drawn in place: false). A target that is
+      // no link and submits no form is false at once.
+      cache.arm=node=>{
+        const t=cache.nodes.get(node), link=t?.closest?.('a[href]');
+        const submits=!!t && !!(t.form || t.closest?.('form')) &&
+          (t.matches('button:not([type]),button[type="submit"],input[type="submit"],input[type="image"]') || ['INPUT','TEXTAREA'].includes(t.tagName));
+        if (!link && !submits) { cache.leaving=false; return true; }
+        cache.leaving=null; let sent=null;
+        const away=a=>{ if (a.hasAttribute('download') || (a.target && a.target!=='_self')) return false;
+          try { const u=new URL(a.href,location.href);
+            return /^https?:$/.test(u.protocol) && !(u.origin===location.origin && u.pathname===location.pathname && u.search===location.search);
+          } catch (_) { return false; } };
+        const decide=e=>setTimeout(()=>{ if (cache.leaving!==null) return;
+          const a=e.type==='click' && e.target?.closest?.('a[href]');
+          cache.leaving=a ? !e.defaultPrevented && away(a) : sent ? !sent.defaultPrevented : false; },0);
+        addEventListener('submit',e=>{ sent=e; },{capture:true,once:true});
+        addEventListener('click',decide,{capture:true,once:true});
+        addEventListener('keydown',decide,{capture:true,once:true});
+        return true; };
+      // After an input: the page stands still — 33 ms on a page that does
+      // not move, the length of the animation on one that slides a dialog
+      // shut (Google Flights, 10 runs each way: 16 decisions a run with this,
+      // 20 with upstream's flat two frames or 50 ms, the extra ones made on a
+      // page still moving and thrown away as stale). An autocomplete field
+      // also needs an option showing. 400 ms at most. Read-only, so a
+      // navigation mid-way costs nothing.
+      //   whole page (classic): from the second frame on, a frame with no
+      //     change anywhere since the last and no animation with an end
+      //     running anywhere.
+      //   near (Fast mode): from the second frame on, no transition left
+      //     running on screen — a ripple drawn in a ::before, an animation
+      //     that repeats, a colour or a shadow easing in don't count — and
+      //     either nothing changed on
+      //     screen since the last frame, or two frames in a row read the same
+      //     (the marker: what Jev reads, controls and visible text): a page
+      //     that keeps flipping classes and hrefs (Google Flights, which sat
+      //     at the cap on most clicks) is not waited for when a read can't
+      //     tell.
+      // Answers how long it took, whether the cap ended it, and what was
+      // still moving then.
       cache.settle=action=>new Promise(resolve=>{
         const field=cache.nodes.get(action?.node);
         const autocomplete=action?.kind==='fill' && field?.getAttribute('role')==='combobox';
-        let frames=0, quiet=0, stopped=false;
+        const near=!!action?.near, started=performance.now();
+        let frames=0, dirty=false, stopped=false, last=[], seen=null, reads=0;
         const ours=n=>{ const e=n && (n.nodeType===1 ? n : n.parentElement); return !!(e && e.closest && e.closest('#__jev-trail')); };
-        const watcher=new MutationObserver(list=>{ if (list.some(m=>!ours(m.target))) quiet=0; });
+        const desc=e=>!e || !e.tagName ? '?' : e.tagName.toLowerCase()+(e.id ? '#'+e.id : '')+(e.classList && e.classList[0] ? '.'+e.classList[0] : '');
+        const onScreen=n=>{ const e=n && (n.nodeType===1 ? n : n.parentElement); if (!e || !e.isConnected) return false;
+          const r=e.getBoundingClientRect(); return r.width>0 && r.height>0 && r.bottom>0 && r.right>0 && r.top<innerHeight && r.left<innerWidth; };
+        const counts=m=>!ours(m.target) && (onScreen(m.target) || [...m.addedNodes].some(n=>n.nodeType===1 && onScreen(n)));
+        const watcher=new MutationObserver(list=>{
+          const seen=near ? list.slice(0,40).filter(counts) : list.filter(m=>!ours(m.target));
+          if (seen.length) { dirty=true; last=seen.slice(0,2).map(m=>'mut '+desc(m.target.nodeType===1 ? m.target : m.target.parentElement)+' '+(m.attributeName||m.type)); }
+        });
         watcher.observe(document.documentElement,{subtree:true,childList:true,attributes:true,characterData:true});
-        const finish=()=>{ if (stopped) return; stopped=true; watcher.disconnect(); resolve(true); };
+        // Only colours and shadows easing: nothing a read or a click sees.
+        const looks=a=>{ const p=a.transitionProperty; if (p) return /color|shadow/i.test(p);
+          try { const keys=a.effect.getKeyframes().flatMap(k=>Object.keys(k)).filter(k=>!['offset','easing','composite','computedOffset'].includes(k));
+            return keys.length>0 && keys.every(k=>/color|shadow/i.test(k)); } catch (_) { return false; } };
         // A spinner turns forever; only an animation with an end is waited for.
-        const moving=()=>{ try { return document.getAnimations().some(a=>a.playState==='running' && !ours(a.effect?.target) &&
-          Number.isFinite(a.effect?.getComputedTiming().endTime)); } catch (_) { return false; } };
-        setTimeout(finish,400);
+        const moving=()=>{ try { return document.getAnimations().filter(a=>{
+          if (a.playState!=='running' || ours(a.effect?.target)) return false;
+          const t=a.effect?.getComputedTiming();
+          if (!t || !Number.isFinite(t.endTime)) return false;
+          return !near || (!a.effect.pseudoElement && t.iterations<=1 && !looks(a) && onScreen(a.effect.target));
+        }); } catch (_) { return []; } };
+        const finish=capped=>{ if (stopped) return; stopped=true; watcher.disconnect();
+          let why='';
+          if (capped) { const m=moving(); why=[...last,...m.slice(0,2).map(a=>'anim '+desc(a.effect?.target)+(a.effect?.pseudoElement||'')+' '+(a.animationName||a.transitionProperty||'')+' x'+a.effect?.getComputedTiming().iterations),
+            ...(reads ? [reads+' reads'] : [])].join('; ').slice(0,300); }
+          resolve({ms:Math.round(performance.now()-started),capped,why}); };
+        setTimeout(()=>finish(true),400);
         const ready=()=>{
           if (stopped) return;
-          frames++; quiet++;
+          frames++;
+          const clean=!dirty; dirty=false;
           const ids=(field?.getAttribute('aria-controls')||field?.getAttribute('aria-owns')||'')
             .split(/\s+/).filter(Boolean);
           const roots=ids.length ? ids.map(id=>document.getElementById(id)).filter(Boolean) : [document];
           const options=roots.flatMap(root=>[...root.querySelectorAll('[role="option"]')]);
-          if (frames>=2 && quiet>=2 && !moving() && (!autocomplete || options.some(e=>{
+          let still;
+          // Never the first frame: a click's handlers start their work (a
+          // dialog closing, a field filled in) a frame or so after it lands.
+          if (!near) still=clean && frames>=2 && !moving().length;
+          else if (frames<2 || moving().length) still=false;
+          else if (clean) still=true;
+          else { const m=cache.marker(); reads++; still=m!==null && m===seen; seen=m; }
+          if (still && (!autocomplete || options.some(e=>{
             const r=e.getBoundingClientRect();
             return r.width && r.height && r.bottom>0 && r.top<innerHeight &&
               e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true});
-          }))) finish();
-          else requestAnimationFrame(ready);
+          }))) finish(false);
+          else { if (autocomplete && !last.length) last=['options']; requestAnimationFrame(ready); }
         };
         requestAnimationFrame(ready);
       });
@@ -679,12 +831,22 @@ enum Ultrafast {
 
     /// The page as Jev will see it. Waits for a load in flight, then reads;
     /// a document that changes under the read is tried again, briefly.
+    /// `terms` (goalTerms) adds the links the goal names that are off
+    /// screen; `near` is the settle Fast mode waits for after `action`. The
+    /// read after an action carries how the settle went (`settle`).
     @MainActor
-    static func observe(_ tab: Tab, after action: [String: Any]? = nil) async throws -> Observation {
+    static func observe(_ tab: Tab, after action: [String: Any]? = nil, terms: [String: Any]? = nil, near: Bool = false) async throws -> Observation {
         let web = tab.web
-        if let action, (action["kind"] as? String) != "wait" {
+        let read = "window.__jevFast.observe(" + (terms.map { encode($0) } ?? "") + ")"
+        var settled: [String: Any]? = nil
+        // A navigation already under way: the leaving document's settle may never answer.
+        if let action, (action["kind"] as? String) != "wait", !tab.loading || (action["kind"] as? String) == "read" {
             var plain = action
             plain["rect"] = nil
+            plain["near"] = near
+            // A document's first read: put the helpers in, so its settle can run.
+            if (action["kind"] as? String) == "read" { _ = try? await js(web, "true") }
+            let started = Date()
             // The settle and the read in one round trip. Capped: when the
             // action navigates (a form submit), the old document's timers
             // and frames stop and WebKit may never call back — the run would
@@ -700,33 +862,57 @@ enum Ultrafast {
                         c.resume()
                     }
                 }
-                web.callAsyncJavaScript("const c = window.__jevFast; if (!c || !c.ready) return null; await c.settle(action); return c.observe();",
-                                        arguments: ["action": plain], in: nil, in: .page) { result in
+                web.callAsyncJavaScript("const c = window.__jevFast; if (!c || !c.ready) return null; const s = await c.settle(action); const o = c.observe(terms || undefined); if (o) o.settle = s; return o;",
+                                        arguments: ["action": plain, "terms": terms ?? [:]], in: nil, in: .page) { result in
                     if !once.done, case .success(let value) = result { once.raw = value as? [String: Any] }
                     finish()
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { finish() }
+                // At most a second — and not a moment past a navigation starting.
+                let wasLoading = tab.loading
+                Task { @MainActor in
+                    let deadline = Date().addingTimeInterval(1.0)
+                    while !once.done, Date() < deadline, wasLoading || !tab.loading {
+                        try? await Task.sleep(nanoseconds: 20_000_000)
+                    }
+                    finish()
+                }
             }
             // Nothing navigating: that read is the page. (A click that starts
             // a navigation has told WebKit by now; the old page's read is
-            // dropped for the new one below.)
-            if !tab.loading, let raw = once.raw { return Observation(raw: raw) }
+            // dropped for the new one below.) A `read` is of the page as it is.
+            if let raw = once.raw, !tab.loading || (action["kind"] as? String) == "read" { return Observation(raw: raw) }
+            let ms = Date().timeIntervalSince(started) * 1000
+            settled = ["ms": ms, "capped": once.raw == nil && ms >= 990, "why": tab.loading ? "navigating" : once.raw == nil ? "no answer" : ""]
         }
         // A navigation in flight: wait for the new document to arrive and be
         // parsed — not for its last image and ad (the load event), which on a
         // results page is seconds. The old document still has our helpers,
         // the new one does not yet. A page that is slow past that is Jev's
         // WAIT to spend.
+        let navigated = tab.loading
         let loadDeadline = Date().addingTimeInterval(10)
         while tab.loading, Date() < loadDeadline {
             if let state = try? await Page.raw(web, "window.__jevFast ? '' : document.readyState") as? String,
                state == "interactive" || state == "complete" { break }
             try await Task.sleep(nanoseconds: 20_000_000)
         }
+        // A document just parsed is still wiring itself up (a search box
+        // enhanced, menus filled in): with `near`, it stands still before the
+        // read, or the first decision on it is thrown away as stale.
+        if near, navigated, (action?["kind"] as? String) != "read" {
+            let again = try await observe(tab, after: ["kind": "read"], terms: terms, near: true)
+            guard let settled else { return again }
+            var raw = again.raw
+            raw["settle"] = settled
+            return Observation(raw: raw)
+        }
         var lastTrouble = "document is navigating"
         for attempt in 0..<12 {
             do {
-                if let raw = try await js(web, "window.__jevFast.observe()") as? [String: Any] { return Observation(raw: raw) }
+                if var raw = try await js(web, read) as? [String: Any] {
+                    if let settled { raw["settle"] = settled }
+                    return Observation(raw: raw)
+                }
             } catch {
                 lastTrouble = (error as? Page.Failure)?.text ?? error.localizedDescription
             }
@@ -740,6 +926,16 @@ enum Ultrafast {
     static func fresh(_ web: WKWebView, _ obs: Observation) async -> Bool {
         guard let marker = try? await js(web, "window.__jevFast.marker()") as? String else { return false }
         return marker == obs.marker
+    }
+
+    /// Why a target check failed, for the trace: the page (address, scroll,
+    /// field values) moved, the target is gone, or the target changed.
+    @MainActor
+    static func staleness(_ web: WKWebView, _ obs: Observation, _ node: Int) async -> String {
+        let pair = try? await js(web, "window.__jevFast.check(\(node))") as? [Any]
+        let why = (pair?.first as? String) != obs.pageKey ? "the page moved or a field changed"
+            : (pair?.last as? String) == nil ? "the target is gone" : "the target or its row changed"
+        return "Page changed since this decision (\(why)). Observe again."
     }
 
     /// Click/select freshness: the form state and this target's own guard.
@@ -794,7 +990,7 @@ enum Ultrafast {
                 let index = String(elements.count + 1)
                 indices[node] = index
                 var element: [String: Any] = [:]
-                for k in ["role", "value", "checked", "selected", "expanded"] { if let v = action[k] { element[k] = v } }
+                for k in ["role", "value", "checked", "selected", "expanded", "offscreen"] { if let v = action[k] { element[k] = v } }
                 element["index"] = index
                 element["label"] = (action["label"] as? String ?? "").components(separatedBy: " → ").first ?? ""
                 element["operations"] = [String]()
@@ -853,6 +1049,7 @@ enum Ultrafast {
             if let value = element["value"] as? String, !value.isEmpty { line += " · \(value.prefix(60))" }
             if let checked = element["checked"] as? String { line += " · checked=\(checked)" }
             if let expanded = element["expanded"] as? String { line += " · expanded=\(expanded)" }
+            if let away = element["offscreen"] as? String { line += " · \(away) the viewport" }
             if let options = element["options"] as? [[String: Any]], !options.isEmpty {
                 line += " · options: " + options.prefix(12).compactMap { ($0["label"] as? String)?.components(separatedBy: " → ").last }.joined(separator: " | ")
             }
@@ -886,7 +1083,7 @@ enum Ultrafast {
     /// the box is mapped back onto an observed element.
     static func choose(_ obs: Observation, goal: String, history: [Step], keys: Intelligence.Keys, signInAvailable: Bool = false, autofill: Set<String> = [],
                        vision: Vision = .off, shot: Shot? = nil, model: String? = nil, strategy: Strategy = Strategy(),
-                       doneRefused: Bool = false) async throws -> Decision {
+                       doneRefused: Bool = false, noScroll: Bool = false) async throws -> Decision {
         let (elements, targets, controls) = actionSpace(obs.actions, signInAvailable: signInAvailable, autofill: autofill)
         let quoted = strategy.literals ? literals(in: goal) : []
         let fills = targets["TYPE_TEXT"] ?? [:]
@@ -897,7 +1094,9 @@ enum Ultrafast {
         ]
         var operations: [String: String] = [:]
         for key in targets.keys { operations[key] = labels[key] ?? key }
-        for (key, value) in controls { operations[key] = value["label"] as? String ?? key }
+        // Scrolling that keeps finding nothing the goal names is taken off
+        // the table (`reach`): click what is offered, on screen or off, or say BLOCKED.
+        for (key, value) in controls where !(noScroll && key.hasPrefix("SCROLL")) { operations[key] = value["label"] as? String ?? key }
         // A DONE just refused is not offered again until something has been done.
         if !doneRefused { operations["DONE"] = "Every requirement is visibly satisfied." }
         operations["BLOCKED"] = "No supported operation can progress."
@@ -959,9 +1158,11 @@ enum Ultrafast {
         var page: [String: Any] = ["url": obs.url, "title": obs.title, "text": strategy.lean ? String(obs.text.prefix(1200)) : obs.text]
         var assets: [Jev.Asset] = []
         if pictured, let shot { page["screenshot"] = shot.reference; assets = [shot.asset] }
+        // An off-screen link is offered like any other (the click scrolls it
+        // in): told it is "below", Jev 1.14 scrolled to it first, a decision a screen.
         let state: [String: Any] = [
             "page": page,
-            "elements": elements,
+            "elements": elements.map { var e = $0; e["offscreen"] = nil; return e },
             "recent_actions": history.suffix(strategy.lean ? 5 : 10).map(\.recent) + (doneRefused ? [Ultrafast.refusedNote] : []),
         ]
 
@@ -1058,7 +1259,7 @@ enum Ultrafast {
         let bl = box.left * Double(shot.width) / shot.scale, br = box.right * Double(shot.width) / shot.scale
         let bt = box.top * Double(shot.height) / shot.scale, bb = box.bottom * Double(shot.height) / shot.scale
         var overlap: (index: String, iou: Double)?
-        for (index, action) in candidates {
+        for (index, action) in candidates where action["offscreen"] == nil {
             guard let rect = action["rect"] as? [String: Any],
                   let x = (rect["x"] as? NSNumber)?.doubleValue, let y = (rect["y"] as? NSNumber)?.doubleValue,
                   let w = (rect["w"] as? NSNumber)?.doubleValue, let h = (rect["h"] as? NSNumber)?.doubleValue, w > 0, h > 0 else { continue }
@@ -1071,7 +1272,7 @@ enum Ultrafast {
         if let overlap, overlap.iou >= 0.1 { return overlap.index }
         var inside: (index: String, area: Double)?
         var nearest: (index: String, distance: Double)?
-        for (index, action) in candidates {
+        for (index, action) in candidates where action["offscreen"] == nil {
             guard let rect = action["rect"] as? [String: Any],
                   let x = (rect["x"] as? NSNumber)?.doubleValue, let y = (rect["y"] as? NSNumber)?.doubleValue,
                   let w = (rect["w"] as? NSNumber)?.doubleValue, let h = (rect["h"] as? NSNumber)?.doubleValue, w > 0, h > 0 else { continue }
@@ -1134,11 +1335,13 @@ enum Ultrafast {
 
     /// A field's name for the run's memory of what was typed where: its
     /// role and its label, lowercased, with spacing and punctuation evened
-    /// out ("Where to? " and "Where to?" are one field).
+    /// out ("Where to? " and "Where to?" are one field), in its document
+    /// and form (`scope`, from the read: "Search" on the next page is
+    /// another field).
     static func fieldKey(_ action: [String: Any]) -> String {
         let label = (action["label"] as? String ?? "").lowercased()
             .components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }.joined(separator: " ")
-        return (action["role"] as? String ?? "") + "|" + label
+        return (action["role"] as? String ?? "") + "|" + label + "|" + (action["scope"] as? String ?? "")
     }
 
     /// A field whose typing opens a list to pick from (a combobox, a search
@@ -1181,7 +1384,7 @@ enum Ultrafast {
 
     /// The router writes the value. Exactly one key, `text`, a non-empty
     /// string; anything else and nothing is typed.
-    static func fieldText(_ context: String, keys: Intelligence.Keys) async throws -> (text: String, latencyMs: Double) {
+    static func fieldText(_ context: String, keys: Intelligence.Keys) async throws -> (text: String, latencyMs: Double, model: String) {
         let ready = await MainActor.run { Intelligence.shared.modelReady }
         guard ready else {
             throw Failure(text: "TYPE_TEXT needs a model (Settings › Intelligence › Model access) to write the value; nothing typed.")
@@ -1201,7 +1404,7 @@ enum Ultrafast {
                                                  maxTokens: 600, model: model, json: model != last)
                 spent += reply.latencyMs
                 if let value = reply.json["text"] as? String, !value.trimmingCharacters(in: .whitespaces).isEmpty, value.count <= 2000 {
-                    return (value, spent)
+                    return (value, spent, reply.model)
                 }
                 trouble = "The text helper had no value for this field (\(reply.text.prefix(120))); nothing typed."
                 // An answer of "no value" is an answer: a bigger model is not asked to invent one.
@@ -1225,7 +1428,8 @@ enum Ultrafast {
     /// True when the typing was followed by Return (`submit`, a lone search box).
     @MainActor @discardableResult
     static func act(_ tab: Tab, _ action: [String: Any], _ obs: Observation, text: String?, browser: Browser,
-                    glide: Bool = true, checked: Bool = true, paste: Bool = false, watch: Bool = false, submit: Bool = false) async throws -> Bool {
+                    glide: Bool = true, checked: Bool = true, paste: Bool = false, watch: Bool = false, submit: Bool = false,
+                    narrow: Bool = false) async throws -> Bool {
         let web = tab.web
         let kind = action["kind"] as? String ?? ""
         if kind == "SIGN_IN" {
@@ -1244,8 +1448,17 @@ enum Ultrafast {
             // A burst's later fields: the form changed under them on purpose
             // (the field before was just filled). The target is still
             // resolved, visible and hit-tested below.
-        } else if kind == "click" || kind == "select", let node {
-            guard await fresh(web, obs, target: node) else { throw Stale(text: "Page changed since this decision. Observe again.") }
+        } else if narrow, kind == "wait" {
+            // The page changed since WAIT was chosen: that is what it waited for.
+            if !(await fresh(web, obs)) { return false }
+        } else if kind == "click" || kind == "select" || (narrow && kind == "fill"), let node {
+            // The form state and the target's own guard (`near` adds typing):
+            // unrelated content loading in elsewhere doesn't make a click or a
+            // typed value wrong.
+            guard await fresh(web, obs, target: node) else { throw Stale(text: await staleness(web, obs, node)) }
+        } else if narrow, kind == "scroll" {
+            // Where the page is and what its fields hold; a scroll stays right when content changes.
+            guard (try? await js(web, "window.__jevFast.pageKey()")) as? String == obs.pageKey else { throw Stale(text: "Page moved since this decision. Observe again.") }
         } else {
             guard await fresh(web, obs) else { throw Stale(text: "Page changed since this decision. Observe again.") }
         }
@@ -1261,6 +1474,9 @@ enum Ultrafast {
             _ = try await js(web, "(window.scrollBy({top: \(delta), left: 0, behavior: 'instant'}), true)")
         default:
             guard let node else { throw Failure(text: "Invalid observed node") }
+            // A link offered from above or below the viewport is brought in first.
+            let away = action["offscreen"] != nil
+            if away { _ = try await js(web, "window.__jevFast.reveal(\(node))") }
             let result = try await js(web, "window.__jevFast.resolve(\(encode(action)))")
             guard let point = result as? [String: Any],
                   let x = (point["x"] as? NSNumber)?.doubleValue, let y = (point["y"] as? NSNumber)?.doubleValue
@@ -1270,7 +1486,7 @@ enum Ultrafast {
             }
             // cosmetic only: the target outlined and the move named over it —
             // CSS px, before the zoom multiply below.
-            Trail.target(web, rect: action["rect"] as? [String: Any], label: action["label"] as? String,
+            Trail.target(web, rect: away ? nil : action["rect"] as? [String: Any], label: action["label"] as? String,
                          operation: kind == "fill" ? "TYPE_TEXT" : kind == "select" ? "SELECT" : "CLICK")
             if kind == "select" {
                 // done in the page: value set, input and change fired. No
@@ -1294,6 +1510,7 @@ enum Ultrafast {
             let zoom = web.pageZoom
             let at = CGPoint(x: px * zoom, y: py * zoom)
             let real = Input.canPost(to: web)
+            if narrow, kind == "click" { _ = try? await js(web, "window.__jevFast.arm(\(node))") }
             if real { Input.click(web, at: at, button: "left", count: 1, modifiers: []) }
             else { _ = try await js(web, "window.__jevFast.domClick(\(node))") }
             if kind == "fill" {
@@ -1313,12 +1530,30 @@ enum Ultrafast {
                 // cosmetic only: a small label with the value beside the field.
                 Trail.typed(web, x: px, y: py, text: text)
                 if submit, (try? await js(web, "window.__jevFast.loneSearch(\(node))")) as? Bool == true {
+                    if narrow { _ = try? await js(web, "window.__jevFast.arm(\(node))") }
                     if real { Input.key(web, "Enter", modifiers: []) } else { _ = try await js(web, "window.__jevFast.submit(\(node))") }
                     return true
                 }
             }
         }
         return false
+    }
+
+    /// After a click or a Return the page let leave (cache.arm): wait (≤ 1 s)
+    /// for the navigation to start, so the next read is of the page it goes
+    /// to — not the one it leaves, read in the moment before it goes, with a
+    /// decision made on it and thrown away (or worse, a DONE). An input that
+    /// stays on the page costs a round trip.
+    @MainActor
+    static func awaitLeaving(_ tab: Tab) async {
+        let started = Date()
+        while !tab.loading, Date().timeIntervalSince(started) < 1 {
+            let leaving = try? await js(tab.web, "window.__jevFast.leaving === null ? 'armed' : String(window.__jevFast.leaving)") as? String
+            // the input not seen yet: a short while, then give up; not leaving (or no helpers): go on
+            guard leaving == "true" || leaving == "armed" else { return }
+            if leaving == "armed", Date().timeIntervalSince(started) > 0.1 { return }
+            try? await Task.sleep(nanoseconds: 15_000_000)
+        }
     }
 
     // MARK: - a run
@@ -1344,6 +1579,9 @@ enum Ultrafast {
         private(set) var shot: Shot?
         private(set) var answeredBy = ""
         private(set) var stale = 0
+        /// The operation of each decision the page went stale under, in order.
+        private(set) var staleOps: [String] = []
+        private var settleBeforeRead = true
         /// Decisions that went with a picture (in `auto`, the ambiguous ones).
         private(set) var pictured = 0
         private(set) var signInAvailable = false
@@ -1359,6 +1597,24 @@ enum Ultrafast {
         private(set) var doneCheck: Double?
         private var staleStreak = 0
         private var traced = false
+        /// `reach`: the goal's words for the read, the nodes they named so
+        /// far, and how many scrolls in a row found no new one.
+        private let terms: [String: Any]?
+        private var relevantSeen = Set<Int>()
+        private(set) var barrenScrolls = 0
+        /// Scrolls in a row with nothing new the goal names, after which
+        /// scrolling is not offered until something else is done.
+        static let barrenLimit = 4
+        /// What every decision cost, kept as it is spent: a DONE, a BLOCKED,
+        /// a refused DONE and a decision the page went stale under never
+        /// become steps, but Jev and the text helper were asked all the same.
+        struct Spent {
+            var jevMs = 0.0, tokens = 0, requests = 0
+            var observeMs = 0.0, decideMs = 0.0, actMs = 0.0, settleMs = 0.0, shotMs = 0.0
+            var textMs = 0.0, textCalls = 0, textReused = 0, textModel = ""
+            var settles = 0, settlesCapped = 0
+        }
+        private(set) var spent = Spent()
 
         init(goal: String, tab: Tab, browser: Browser, vision: Vision? = nil, model: String? = nil, strategy: Strategy? = nil) {
             self.goal = goal
@@ -1371,7 +1627,9 @@ enum Ultrafast {
             self.model = chosen.isEmpty ? (seeing.needsBox ? "jev-1.14.0" : nil) : chosen
             // Unsaid: this Mac's choice — fast (Strategy.shipped) unless
             // Settings › Agents › Jev mode › Fast mode is off.
-            self.strategy = strategy ?? (Intelligence.shared.keys.jevFast ? .shipped : Strategy())
+            let chosenStrategy = strategy ?? (Intelligence.shared.keys.jevFast ? .shipped : Strategy())
+            self.strategy = chosenStrategy
+            self.terms = chosenStrategy.reach ? Ultrafast.goalTerms(goal) : nil
         }
 
         var elapsedMs: Int { Int(Date().timeIntervalSince(started) * 1000) }
@@ -1420,7 +1678,10 @@ enum Ultrafast {
                 reused = true
                 trace.close(phase: reading, detail: "still fresh")
             } else {
-                obs = try await Ultrafast.observe(tab)
+                // The run's first read (the page just loaded) and the read after a
+                // stale decision (the page is moving) wait for it to stand still.
+                obs = try await Ultrafast.observe(tab, after: settleBeforeRead && strategy.near ? ["kind": "read"] : nil, terms: terms, near: strategy.near)
+                settleBeforeRead = false
                 observation = obs
                 shot = nil
                 trace.close(phase: reading, detail: Ultrafast.read(obs))
@@ -1440,12 +1701,14 @@ enum Ultrafast {
             if seeing.usesPicture { pictured += 1 }
             if !reused {
                 // cosmetic only: a pulse over everything the read can see.
-                Trail.seen(web, rects: obs.actions.compactMap { $0["rect"] as? [String: Any] })
+                Trail.seen(web, rects: obs.actions.compactMap { $0["offscreen"] == nil ? $0["rect"] as? [String: Any] : nil })
             }
             // The pointer glides to its target when someone can see it.
             let glide = strategy.glide || (strategy.glideWatched && AgentTabs.onScreen(tab))
             trace.page(url: obs.url, title: obs.title)
             let observeMs = Date().timeIntervalSince(observeStarted) * 1000 - shotMs
+            spent.observeMs += observeMs
+            spent.shotMs += shotMs
 
             if decisions >= Ultrafast.maxSteps * 2 { status = "budget"; note = "Reached the \(Ultrafast.maxSteps * 2)-decision budget"; return nil }
             if history.count >= Ultrafast.maxSteps { status = "budget"; note = "Reached the \(Ultrafast.maxSteps)-action budget"; return nil }
@@ -1464,16 +1727,23 @@ enum Ultrafast {
                 decision = try await Ultrafast.choose(obs, goal: goal, history: history, keys: keys,
                                                       signInAvailable: signInAvailable, autofill: autofillAvailable,
                                                       vision: seeing, shot: seeing.usesPicture ? shot : nil, model: model, strategy: strategy,
-                                                      doneRefused: doneRefused)
+                                                      doneRefused: doneRefused, noScroll: barrenScrolls >= Session.barrenLimit)
             }
             let decideMs = Date().timeIntervalSince(decideStarted) * 1000
+            spent.decideMs += decideMs
+            spent.jevMs += decision.latencyMs
+            spent.tokens += decision.inputTokens
+            spent.requests += decision.requests
             if !decision.model.isEmpty { answeredBy = decision.model }
             // The ms column says how long Jev took; the box's fate is news.
             trace.close(phase: asking, detail: decision.boxHit.map { $0 ? "box hit" : "box missed" })
             if stopped() { return nil }
 
             if decision.choice == "DONE" || decision.choice == "BLOCKED" {
-                guard await Ultrafast.fresh(web, obs) else { observation = nil; shot = nil; return nil }
+                guard await Ultrafast.fresh(web, obs) else {
+                    self.stale += 1; staleOps.append(decision.choice); settleBeforeRead = true
+                    observation = nil; shot = nil; return nil
+                }
                 if decision.choice == "DONE" { doneCheck = decision.unmet }
                 if decision.choice == "DONE", let unmet = decision.unmet, unmet >= Ultrafast.unmetFloor, doneRefusals < 2 {
                     // Not taken at its word: the next decision is asked what
@@ -1488,6 +1758,11 @@ enum Ultrafast {
                 }
                 status = decision.choice.lowercased()
                 note = String(format: "Jev said %@, %.0f%% sure", decision.choice, decision.probability * 100)
+                if decision.choice == "BLOCKED", let check = Ultrafast.humanCheck(on: obs) {
+                    note += " — the page asks for a human check (\(check)): hand it to the user"
+                } else if decision.choice == "BLOCKED", barrenScrolls >= Session.barrenLimit {
+                    note += " after \(barrenScrolls) scrolls that found nothing more the goal names"
+                }
                 if decision.choice == "DONE", let unmet = decision.unmet, unmet >= Ultrafast.unmetFloor {
                     note += String(format: " — but the page still looks unfinished (%.0f%%); check it", unmet * 100)
                 }
@@ -1518,17 +1793,31 @@ enum Ultrafast {
             }
             let kind = action["kind"] as? String ?? ""
             let label = action["label"] as? String ?? decision.choice
+            // A human check ("I am human", a CAPTCHA) is the user's to answer,
+            // never an agent's: the run ends here and hands the page back.
+            if kind == "click" || kind == "fill", (action["role"] as? String) != "link", let check = Ultrafast.humanCheck(label) {
+                status = "blocked"
+                note = "The page asks for a human check (\(check)): hand it to the user — agents don't answer these"
+                trace.outcome(Drive.Outcome(operation: decision.operation, label: label, text: nil,
+                                               probability: decision.probability, confidence: decision.confidence,
+                                               pageChanged: nil, stale: false, candidates: decision.candidates))
+                return nil
+            }
 
             var text: String? = kind == "fill" ? decision.text : nil
             var textLatency = 0.0
             var writing: UUID?
             var acting: UUID?
             var actMs = 0.0
+            var actStarted: Date?
             var submitted = false
             var burstSteps: [Step] = []
             do {
                 if kind == "fill", text == nil {
-                    guard await Ultrafast.fresh(web, obs) else { throw Stale(text: "Page changed before text generation.") }
+                    let still: Bool
+                    if strategy.near, let node = (action["node"] as? NSNumber)?.intValue { still = await Ultrafast.fresh(web, obs, target: node) }
+                    else { still = await Ultrafast.fresh(web, obs) }
+                    guard still else { throw Stale(text: "Page changed before text generation.") }
                     let wrote = trace.phase(.write, "Writing text for '\(label.prefix(40))'")
                     writing = wrote
                     let key = Ultrafast.fieldKey(action)
@@ -1536,12 +1825,16 @@ enum Ultrafast {
                     // again then means the goal wants something else now.
                     if let known = written[key], known != (action["value"] as? String ?? "") {
                         text = known
+                        spent.textReused += 1
                         trace.close(phase: wrote, detail: "reused")
                     } else {
                         let context = Ultrafast.fieldContext(goal: goal, action: action, obs: obs, history: history)
                         let got = try await Ultrafast.fieldText(context, keys: keys)
                         text = got.text
                         textLatency = got.latencyMs
+                        spent.textMs += got.latencyMs
+                        spent.textCalls += 1
+                        spent.textModel = got.model
                         written[key] = got.text
                         trace.close(phase: wrote)
                     }
@@ -1550,14 +1843,17 @@ enum Ultrafast {
                 }
                 let acted = trace.phase(.act, Ultrafast.actTitle(action, label: label))
                 acting = acted
-                let actStarted = Date()
+                actStarted = Date()
                 if action["pixel"] as? Bool == true, let x = action["x"] as? Double, let y = action["y"] as? Double {
                     try await Ultrafast.actAtPoint(tab, obs, x: x, y: y, text: text, glide: glide, paste: strategy.paste)
                 } else {
                     submitted = try await Ultrafast.act(tab, action, obs, text: text, browser: browser, glide: glide,
-                                                        paste: strategy.paste, watch: strategy.watch, submit: strategy.submit)
+                                                        paste: strategy.paste, watch: strategy.watch, submit: strategy.submit,
+                                                        narrow: strategy.near)
                 }
-                actMs = Date().timeIntervalSince(actStarted) * 1000
+                actMs = Date().timeIntervalSince(actStarted ?? Date()) * 1000
+                spent.actMs += actMs
+                actStarted = nil
                 trace.close(phase: acted)
                 acting = nil
                 if strategy.burst, kind == "fill", let target = decision.target, !Ultrafast.suggests(action) {
@@ -1577,14 +1873,20 @@ enum Ultrafast {
                         extra.requests = 0
                         extra.burst = true
                         extra.actMs = Date().timeIntervalSince(started) * 1000
+                        spent.actMs += extra.actMs
                         burstSteps.append(extra)
                     }
                 }
                 staleStreak = 0
                 doneRefused = false
             } catch let stale as Stale {
+                if let actStarted { spent.actMs += Date().timeIntervalSince(actStarted) * 1000 }
                 staleStreak += 1
                 self.stale += 1
+                // "CLICK Next (the target is gone)": what went stale, and why.
+                let why = stale.text.range(of: #"\(([^)]*)\)"#, options: .regularExpression).map { String(stale.text[$0]) } ?? ""
+                staleOps.append("\(decision.operation) \(label.prefix(30))" + (why.isEmpty ? "" : " " + why))
+                settleBeforeRead = true
                 observation = nil
                 shot = nil
                 if let writing { trace.close(phase: writing) }
@@ -1616,7 +1918,9 @@ enum Ultrafast {
             history.append(contentsOf: burstSteps)
             let settling = trace.phase(.settle, "Watching the page settle")
             let settleStarted = Date()
-            var next = try await Ultrafast.observe(tab, after: burstSteps.isEmpty ? action : ["kind": "wait"])
+            if strategy.near, submitted || (kind == "click" && burstSteps.isEmpty) { await Ultrafast.awaitLeaving(tab) }
+            var next = try await Ultrafast.observe(tab, after: burstSteps.isEmpty ? action : ["kind": "wait"], terms: terms, near: strategy.near)
+            let settle = next.settle
             // A click the page has not answered yet (its request is still out)
             // gets a second to show something before it is called "no change".
             // Asked at once, Jev clicks the same thing again, which starts the
@@ -1626,16 +1930,34 @@ enum Ultrafast {
                 let patience = Date().addingTimeInterval(Ultrafast.clickPatience)
                 while next.marker == obs.marker, Date() < patience {
                     try await Task.sleep(nanoseconds: 100_000_000)
-                    next = try await Ultrafast.observe(tab)
+                    next = try await Ultrafast.observe(tab, terms: terms, near: strategy.near)
                 }
             }
             observation = next
             shot = nil
             // cosmetic only: what the page offers now that the action landed.
-            Trail.seen(web, rects: next.actions.compactMap { $0["rect"] as? [String: Any] })
+            Trail.seen(web, rects: next.actions.compactMap { $0["offscreen"] == nil ? $0["rect"] as? [String: Any] : nil })
             step.pageChanged = next.marker != obs.marker
             step.url = next.url
             step.settleMs = Date().timeIntervalSince(settleStarted) * 1000
+            if let settle {
+                step.settleCapped = (settle["capped"] as? Bool) ?? false
+                step.settleWhy = settle["why"] as? String
+                spent.settles += 1
+                if step.settleCapped == true { spent.settlesCapped += 1 }
+            }
+            spent.settleMs += step.settleMs
+            if terms != nil {
+                // Did this scroll bring anything the goal names that the run hadn't seen?
+                if kind == "scroll" {
+                    relevantSeen.formUnion(obs.relevant)
+                    barrenScrolls = next.relevant.isSubset(of: relevantSeen) ? barrenScrolls + 1 : 0
+                    relevantSeen.formUnion(next.relevant)
+                } else {
+                    barrenScrolls = 0
+                    relevantSeen = next.relevant
+                }
+            }
             history[history.count - 1 - burstSteps.count] = step
             trace.close(phase: settling, detail: step.pageChanged == true ? "changed" : "no change")
             trace.page(url: next.url, title: next.title)
@@ -1660,24 +1982,21 @@ enum Ultrafast {
             finishTrace()
         }
 
-        /// What the run cost, summed over its steps: Jev's time and tokens,
-        /// the text helper's time, the pictures' time, the boxes' fate.
+        /// What the run cost: Jev's time and tokens and the text helper's
+        /// over every decision (not just the ones that became steps), the
+        /// pictures' time, the boxes' fate, how often the settle hit its cap.
         var totals: [String: Any] {
-            let jevMs = history.reduce(0.0) { $0 + $1.latencyMs }
-            let textMs = history.reduce(0.0) { $0 + $1.textLatencyMs }
-            let shotMs = history.reduce(0.0) { $0 + $1.shotMs }
-            let tokens = history.reduce(0) { $0 + $1.inputTokens }
-            let requests = history.reduce(0) { $0 + $1.requests }
             let boxes = history.compactMap(\.boxHit)
-            var out: [String: Any] = ["jev_ms": jevMs, "text_ms": textMs, "shot_ms": shotMs, "input_tokens": tokens,
-                                      "requests": requests, "stale": stale, "vision": vision.rawValue, "model": answeredBy,
+            var out: [String: Any] = ["jev_ms": spent.jevMs, "text_ms": spent.textMs, "shot_ms": spent.shotMs, "input_tokens": spent.tokens,
+                                      "requests": spent.requests, "stale": stale, "vision": vision.rawValue, "model": answeredBy,
                                       "strategy": strategy.name,
-                                      "observe_ms": history.reduce(0.0) { $0 + $1.observeMs },
-                                      "decide_ms": history.reduce(0.0) { $0 + $1.decideMs },
-                                      "act_ms": history.reduce(0.0) { $0 + $1.actMs },
-                                      "settle_ms": history.reduce(0.0) { $0 + $1.settleMs },
+                                      "observe_ms": spent.observeMs, "decide_ms": spent.decideMs,
+                                      "act_ms": spent.actMs, "settle_ms": spent.settleMs,
+                                      "text_calls": spent.textCalls, "text_reused": spent.textReused,
+                                      "settles": spent.settles, "settles_capped": spent.settlesCapped,
                                       "burst_actions": history.filter(\.burst).count,
                                       "pictured": pictured]
+            if !spent.textModel.isEmpty { out["text_model"] = spent.textModel }
             if !boxes.isEmpty { out["box_hits"] = boxes.filter { $0 }.count; out["box_asked"] = boxes.count }
             return out
         }
@@ -1692,6 +2011,7 @@ enum Ultrafast {
             if let model { out["asked_model"] = model }
             if let doneCheck { out["done_check"] = doneCheck }
             if doneRefusals > 0 { out["done_refused"] = doneRefusals }
+            if !staleOps.isEmpty { out["stale_ops"] = staleOps }
             return out
         }
 
