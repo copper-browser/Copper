@@ -52,7 +52,12 @@ final class Favicons {
         // had — a failed disk read per row per redraw. An icon that arrives
         // later goes into `memory`, which is read first.
         guard !absent.contains(key) else { return nil }
-        guard let image = NSImage(contentsOf: Favicons.file(key)) else { absent.insert(key); return nil }
+        // Fork (navperf): read when first drawn, not here — a session coming
+        // back asks for every tab's icon in the launch's first pass (~25 ms
+        // of disk and decoding for 250 tabs), and only one space is on screen.
+        let file = Favicons.file(key)
+        guard FileManager.default.fileExists(atPath: file.path) else { absent.insert(key); return nil }
+        let image = NSImage(byReferencing: file)
         memory[key] = image
         return image
     }

@@ -57,6 +57,7 @@ extension CanvasHost {
         // cosmetic rules are a stylesheet matched on every style pass. (A
         // live web frame is a site's own page, shown unblocked: CanvasFrames.)
         controller.removeAllContentRuleLists()
+        Shield.shared.forget(controller) // Fork (navperf)
     }
 
     /// Tab.arm(hiding:): true when this is a board, armed here instead.
@@ -65,6 +66,7 @@ extension CanvasHost {
         let controller = web.configuration.userContentController
         controller.removeAllUserScripts()
         controller.removeAllContentRuleLists()
+        Shield.shared.forget(controller) // Fork (navperf): its next tune puts the list back as before
         controller.addUserScript(WKUserScript(source: typing, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         // Live web frames say where they are (CanvasFrames), from their own world.
         controller.addUserScript(frameScript)
