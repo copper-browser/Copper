@@ -171,6 +171,7 @@ enum AgentTabs {
     @discardableResult
     static func prepare(_ tab: Tab) -> Bool {
         if tab.asleep { _ = tab.wake() } else if tab.hollow { tab.revive() }
+        defer { NetLog.watch(tab) } // the page's requests from here on (NetLog.swift)
         return Backstage.shared.stage(tab)
     }
 
