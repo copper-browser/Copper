@@ -688,8 +688,8 @@ enum Ultrafast {
           if (group.length<2 || new Set(group.map(a=>a.href||'#'+a.node)).size<2) continue;
           for (const a of group) {
             const e=cache.nodes.get(a.node), row=e?.closest('tr,li,[role="row"],[role="listitem"],article,[role="article"]');
-            if (!row || told>=40) continue;
-            const said=String(row.innerText||'').replace(/\s+/g,' ').replace(String(a.label).trim(),'').trim().slice(0,60);
+            if (!row || told>=24) continue;
+            const said=String(row.innerText||'').replace(/\s+/g,' ').replace(String(a.label).trim(),'').trim().slice(0,40);
             if (said) { a.label=a.label+' · '+said; told++; }
           }
         }
