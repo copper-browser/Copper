@@ -392,7 +392,10 @@
                                        over the sidebar, back/forward switches the previous/next space
                                        (with more than one space), while over a page it navigates
                                        the pane under the pointer
-    ./bench bar TEXT [--go]          what ⌘K offers for TEXT; --go takes the first row
+    ./bench bar TEXT [--go]          what ⌘K offers for TEXT; --go takes the first row (history lands a beat
+                                       later, off the main thread: `summon TEXT` and look again for it)
+    ./bench bar TEXT --type [--every S] [--settle S]
+                                       ⌘K, then TEXT a letter every S seconds (0.08): the same meter as newtab --type
     ./bench summon [TEXT] [--keys KEYS]
                                        ⌘K left open on TEXT (for `window`), its rows by section; with --keys and
                                        the bar already up on TEXT, KEYS pressed in its field (⇥ ⇧⇥ ↑ ↓ → ↩)
@@ -546,6 +549,12 @@ def main(argv):
     elif verb == "bar":
         request["text"] = args[0] if args else ""
         request["go"] = "--go" in args
+        if "--type" in args:
+            # ⌘K typed a letter at a time: Launcher's typing meter, opened with summon.
+            request.update({"do": "newtab", "summon": True, "type": True})
+            for flag in ("--every", "--settle"):
+                if flag in args and args.index(flag) + 1 < len(args):
+                    request[flag[2:]] = float(args[args.index(flag) + 1])
     elif verb == "summon":
         if "--keys" in args:
             at = args.index("--keys")
@@ -856,7 +865,7 @@ def main(argv):
             print(f"{r['rank']:>2}  {r['score']:>6}  {r['page']:<12} {r['marked']}")
     elif verb == "cloud":
         print(json.dumps(answer, ensure_ascii=False, sort_keys=True, indent=2))
-    elif verb == "newtab" and request.get("type"):
+    elif request.get("do") == "newtab" and request.get("type"):
         if request.get("json"):
             print(json.dumps(answer, ensure_ascii=False, indent=2))
             return 0
