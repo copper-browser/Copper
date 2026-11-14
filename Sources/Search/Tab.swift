@@ -1586,6 +1586,8 @@ final class PageView: WKWebView {
     /// so a fresh view starts unseen, over the window's own ground, and comes
     /// in once WebKit says there is something on it worth seeing.
     private(set) var unpainted = false
+    /// Fork (page-hold): what waits for that first frame (`whenPainted`).
+    private var painted: [() -> Void] = []
     /// Fork (restore-attachment-lease): a waking tab's load, run once the
     /// stage has put this view in a window — AppKit says so, nobody polls.
     var onStage: (() -> Void)?
@@ -1622,6 +1624,15 @@ final class PageView: WKWebView {
             context.duration = 0.12
             animator().alphaValue = 1
         }
+        let waiting = painted
+        painted = []
+        waiting.forEach { $0() }
+    }
+
+    /// Fork (page-hold): `done` once this page has a first frame worth
+    /// seeing and has started fading it in — at once if it has one already.
+    func whenPainted(_ done: @escaping () -> Void) {
+        if unpainted { painted.append(done) } else { done() }
     }
 
     /// _WKRenderingProgressEventFirstVisuallyNonEmptyLayout — the moment

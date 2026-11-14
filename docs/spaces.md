@@ -18,15 +18,22 @@ card a split view's two panes are, and the agent's pane beside it. A space's
 picture keeps the column's width and fades into its colour past it. The top
 tab layout keeps its page edge to edge.
 
-**The strip at the foot.** Every space is a 28pt chip — its emoji, its
-symbol, or its first letter on a small tile of its own colour, so no two
-spaces look the same. The current one sits on the column's paper-white pill,
+**The strip at the foot.** Every space is a 28pt chip — its emoji or its
+symbol at 20pt, or its initial (11pt semibold) on a 20pt tile of its own
+colour, so no two spaces look the same. The current one sits on the column's paper-white pill,
 the same thing the live row wears. Hovering a chip names it at once, above
 the strip, and its tooltip gives its key (`Work · ⌃2`). When the chips outgrow the
 column the row scrolls sideways under a soft edge, with the current chip kept
 in view; nothing shrinks to a dot and no name is ever cut to a letter. Drag a
 chip to reorder the spaces. The `+` at the end makes a space *and opens its
 editor*, so it gets a name, an icon and a colour straight away.
+
+**Switching.** The rows slide sideways by the column's width, Arc's pager:
+the old space's out, the new one's in, while the ground under them changes
+colour in place. With Reduce Motion on nothing travels — the old rows fade
+out, then the new ones fade in, never the two lists over each other. The
+page you were on stays on the card until the new space's page has drawn,
+so the card never flashes white.
 
 ## The space menu
 

@@ -142,13 +142,23 @@ final class Bench {
     // MARK: - one connection
 
     /// Reads until a newline, hands the line up, writes the answer, closes.
-    private final class Client {
+    // Unchecked: everything here runs on main but the answer's write, which
+    // touches only the descriptor and the bytes, and hands back to main.
+    private final class Client: @unchecked Sendable {
         let fd: Int32
         private var bytes = Data()
         private let source: DispatchSourceRead
         private let handle: ([String: Any], @escaping ([String: Any]) -> Void) -> Void
         private let gone: (Int32) -> Void
         private var answered = false
+        private var dropped = false
+        /// Fork (bench-io): where answers are written. A long one (the tab
+        /// list, a page's text) fills the socket before a busy script reads
+        /// it, and the main thread used to wait out the script in 2 ms naps —
+        /// stretched to ~100 ms each once macOS put a covered window's app to
+        /// background priority — all of it counted as the app's own work by
+        /// `bench pace`, inside the very switch being timed.
+        private static let writer = DispatchQueue(label: "copper.bench.write")
 
         init(
             fd: Int32,
@@ -193,21 +203,28 @@ final class Bench {
             answered = true
             var out = (try? JSONSerialization.data(withJSONObject: answer)) ?? Data("{\"error\":\"unwritable answer\"}".utf8)
             out.append(0x0A)
-            out.withUnsafeBytes { raw in
-                var sent = 0
-                while sent < raw.count {
-                    let n = write(fd, raw.baseAddress! + sent, raw.count - sent)
-                    if n <= 0 {
-                        if errno == EAGAIN { usleep(2000); continue }
-                        break
+            let fd = self.fd
+            Client.writer.async {
+                out.withUnsafeBytes { raw in
+                    var sent = 0
+                    while sent < raw.count {
+                        let n = write(fd, raw.baseAddress! + sent, raw.count - sent)
+                        if n <= 0 {
+                            if errno == EAGAIN { usleep(2000); continue }
+                            break
+                        }
+                        sent += n
                     }
-                    sent += n
                 }
+                DispatchQueue.main.async { self.drop() }
             }
-            drop()
         }
 
+        /// Closes the connection, once: `stop` may get here while an answer
+        /// is still being written, and the write's own drop follows.
         func drop() {
+            guard !dropped else { return }
+            dropped = true
             if !source.isCancelled { source.cancel() }
             close(fd)
             gone(fd)

@@ -14,7 +14,6 @@ struct Omnibox: View {
 
     @State private var shake: CGFloat = 0
     @State private var refused = false
-    @State private var breathing = false
 
     init(browser: Browser, over: Bool) {
         self.browser = browser
@@ -69,11 +68,7 @@ struct Omnibox: View {
                     // the only thing on an empty tab, and a thing that never
                     // moves at all reads as a picture of an app rather than
                     // an app.
-                    RoundedRectangle(cornerRadius: 26, style: .continuous)
-                        .fill(Palette.ink.opacity(0.05))
-                        .blur(radius: 26)
-                        .scaleEffect(breathing ? 1.03 : 0.97)
-                        .opacity(breathing ? 1 : 0.65)
+                    Breath().padding(-Breath.reach)
 
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .fill(Palette.ground)
@@ -89,11 +84,6 @@ struct Omnibox: View {
             )
             .shadow(color: .black.opacity(0.06), radius: 24, y: 8)
             .modifier(Shake(travel: shake))
-            .onAppear {
-                withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) {
-                    breathing = true
-                }
-            }
             .onChange(of: browser.refusals) { _, _ in
                 shake = 0
                 refused = true
@@ -389,6 +379,86 @@ struct AddressField: NSViewRepresentable {
                 return false
             default:
                 return false
+            }
+        }
+    }
+}
+
+/// Fork (space-switch perf): the breath under an empty tab's field, run by
+/// Core Animation. As a SwiftUI `repeatForever` it was a SwiftUI update on
+/// the main thread every frame for as long as a blank tab was on screen —
+/// most of what landing on an empty space cost. Here the render server runs
+/// it and the app does nothing. Under Reduce Motion it holds still.
+struct Breath: NSViewRepresentable {
+    /// How far the glow reaches past the field: the view is this much larger
+    /// all round, so nothing between it and the window clips the blur.
+    static let reach: CGFloat = 48
+
+    func makeNSView(context: Context) -> BreathView { BreathView() }
+    func updateNSView(_ view: BreathView, context: Context) {}
+
+    final class BreathView: NSView {
+        private let glow = CALayer()
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            // A blurred fill of the ink at 5%: a shadow of the shape with no
+            // shape drawn.
+            glow.shadowOffset = .zero
+            glow.shadowRadius = 26
+            glow.shadowOpacity = 1
+            layer?.addSublayer(glow)
+            tint()
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func layout() {
+            super.layout()
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            glow.frame = bounds
+            let shape = bounds.insetBy(dx: Breath.reach, dy: Breath.reach)
+            glow.shadowPath = shape.width > 0 && shape.height > 0
+                ? CGPath(roundedRect: shape, cornerWidth: 26, cornerHeight: 26, transform: nil) : nil
+            CATransaction.commit()
+        }
+
+        override func viewDidChangeEffectiveAppearance() {
+            super.viewDidChangeEffectiveAppearance()
+            tint()
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard window != nil else { return }
+            if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                glow.removeAnimation(forKey: "breath")
+                glow.opacity = 0.82
+            } else if glow.animation(forKey: "breath") == nil {
+                let scale = CABasicAnimation(keyPath: "transform.scale")
+                scale.fromValue = 0.97
+                scale.toValue = 1.03
+                let fade = CABasicAnimation(keyPath: "opacity")
+                fade.fromValue = 0.65
+                fade.toValue = 1
+                let breath = CAAnimationGroup()
+                breath.animations = [scale, fade]
+                breath.duration = 2.6
+                breath.autoreverses = true
+                breath.repeatCount = .infinity
+                breath.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                glow.add(breath, forKey: "breath")
+            }
+        }
+
+        private func tint() {
+            effectiveAppearance.performAsCurrentDrawingAppearance {
+                glow.shadowColor = Palette.NS.ink.withAlphaComponent(0.05).cgColor
             }
         }
     }

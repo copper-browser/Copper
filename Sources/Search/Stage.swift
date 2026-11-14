@@ -178,6 +178,12 @@ final class StageView: NSView {
     /// Now there is one fact and one rule: show `wanted`, and put that right on
     /// every layout. Nothing to fall out of step with.
     private weak var wanted: NSView?
+    /// Fork (page-hold): the page that was on this stage, kept under the one
+    /// coming in until that one has drawn. A web view back in a window after
+    /// a while out of one is white for a few frames before WebKit gives it
+    /// its picture again — a blank card in the middle of a space switch.
+    private weak var leaving: NSView?
+    private var holding = 0
 
     override func layout() {
         super.layout()
@@ -190,13 +196,22 @@ final class StageView: NSView {
     }
 
     private func settle() {
+        // Fork (page-hold): a page coming in keeps the one on screen under it.
+        if let wanted, window != nil, wanted.superview !== self, leaving?.superview !== self {
+            leaving = subviews.last { $0 !== wanted && $0.alphaValue > 0 && ($0 as? PageView)?.unpainted == false }
+        }
+        if wanted == nil || window == nil || leaving === wanted {
+            leaving = nil
+            holding += 1
+        }
         // Anything here that isn't wanted, out. Only ever what is actually
         // ours: a page may be somewhere else on purpose.
-        for view in subviews where view !== wanted {
+        for view in subviews where view !== wanted && view !== leaving {
             view.removeFromSuperview()
         }
 
         guard let wanted, window != nil else { return }
+        leaving?.frame = bounds
         if wanted.superview !== self {
             // A web view can have only one superview, so taking it back is how
             // it is taken back.
@@ -210,8 +225,41 @@ final class StageView: NSView {
             wanted.needsLayout = true
             wanted.needsDisplay = true
             wanted.layer?.setNeedsDisplay()
+            if leaving != nil { hold(wanted) } // Fork (page-hold)
         }
         wanted.frame = bounds
+    }
+
+    /// Fork (page-hold): the page coming in stays unseen over the one going
+    /// out until WebKit has put a frame of it on screen — or, for a page that
+    /// has never drawn (one just woken), until its first frame has faded in
+    /// over the one going out — and then the one going out goes. At most
+    /// 0.3 s, or 1 s for a page still loading, if WebKit never says.
+    private func hold(_ page: NSView) {
+        holding += 1
+        let mine = holding
+        let fresh = (page as? PageView)?.unpainted == true
+        page.alphaValue = 0
+        let done = { [weak self, weak page] in
+            guard let self else { return }
+            // Seen again even if a newer change took over the hold: nothing
+            // else would put it back once it stays on this stage.
+            if let page, page === self.wanted, page.superview === self {
+                page.alphaValue = (page as? PageView)?.unpainted == true ? 0 : 1
+            }
+            guard mine == self.holding else { return }
+            self.holding += 1
+            if let leaving = self.leaving, leaving.superview === self { leaving.removeFromSuperview() }
+            self.leaving = nil
+        }
+        if let web = page as? PageView, fresh {
+            web.whenPainted { DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: done) }
+        } else if let web = page as? PageView {
+            web.afterNextPresentation(done)
+        } else {
+            done()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + (fresh ? 1 : 0.3), execute: done)
     }
 }
 

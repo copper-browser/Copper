@@ -61,6 +61,19 @@ extension StageView {
     }
 }
 
+extension PageView {
+    /// Fork (page-hold): `done` once WebKit has put the page's next frame on
+    /// screen — what the stage waits for before it takes the page that was
+    /// there away (StageView.hold). Named outside the public framework, so it
+    /// is asked first; a WebKit without it answers at once.
+    func afterNextPresentation(_ done: @escaping () -> Void) {
+        let after = NSSelectorFromString("_doAfterNextPresentationUpdate:")
+        guard responds(to: after) else { return done() }
+        typealias Call = @convention(c) (AnyObject, Selector, @escaping @convention(block) () -> Void) -> Void
+        unsafeBitCast(method(for: after), to: Call.self)(self, after, done)
+    }
+}
+
 /// The window's ground in the sidebar layout: the space's, the one surface
 /// the column and the margin round the page both sit on.
 struct WindowGround: View {
