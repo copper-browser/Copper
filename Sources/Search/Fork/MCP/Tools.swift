@@ -183,7 +183,11 @@ enum Tools {
             tool("browser_select_option", "Select an option in a dropdown", elementProperties.merging([
                 "values": ["type": "array", "items": ["type": "string"], "description": "Values or labels to select"] as [String: Any],
             ]) { a, _ in a }, required: ["values"]),
-            tool("browser_drag", "Perform drag and drop between two elements", [
+            tool("browser_handle_dialog", "Handle a dialog: answer the alert, confirm or prompt open on your tab (a tool answer lists it under ### Dialogs). With none open, it arms the answer for the next one, given the moment it comes. An open dialog left alone is dismissed by your next other call on that tab.", [
+                "accept": bool("Whether to accept the dialog (OK) or dismiss it (Cancel)"),
+                "promptText": string("The text to answer a prompt with, when accepting"),
+            ], required: ["accept"]),
+            tool("browser_drag", "Perform drag and drop between two elements. A draggable=\"true\" source gets an HTML5 drag in the page; anything else a real press, move and release. Fails when the page did not change.", [
                 "startElement": string("Source element description"), "startRef": string("Source ref"),
                 "endElement": string("Target element description"), "endRef": string("Target ref"),
             ], required: ["startRef", "endRef"]),
@@ -224,10 +228,15 @@ enum Tools {
         // Every caller's calls pass here (MCP, the agent pane, linked apps):
         // one breadcrumb each — the name, the tab, the time, ok or not.
         let started = Date()
+        // Fork (agent-dialogs): a question left open on this tab is closed before anything else touches it.
+        if name != "browser_handle_dialog" { AgentDialogs.moveOn(AgentTabs.peek(args, in: browser, caller: AgentTabs.callerKey)) }
         do {
             let content = try await pinnedCall(name, args, in: browser)
-            Breadcrumbs.tool(name, tab: AgentTabs.peek(args, in: browser, caller: AgentTabs.callerKey)?.id, started: started, error: nil)
-            return content
+            let tab = AgentTabs.peek(args, in: browser, caller: AgentTabs.callerKey)
+            Breadcrumbs.tool(name, tab: tab?.id, started: started, error: nil)
+            // Fork (agent-dialogs): what the page asked while the call ran, and what it was told —
+            // in the next answer after browser_evaluate's, whose text is the function's value alone.
+            return name == "browser_evaluate" ? content : content + AgentDialogs.report(tab)
         } catch {
             Breadcrumbs.tool(name, tab: AgentTabs.peek(args, in: browser, caller: AgentTabs.callerKey)?.id, started: started, error: error)
             throw error
@@ -346,11 +355,23 @@ enum Tools {
         case "browser_hover":
             let target = try locator(args)
             let rect = try await Page.prepare(web, target)
+            let named = args["element"] as? String ?? target.script
             trail(web, rect, label: args["element"] as? String, operation: "HOVER")
             await Trail.glide(web, x: rect.midX / web.pageZoom, y: rect.midY / web.pageZoom)
-            if Input.canPost(to: web) { Input.move(web, to: rect.center) }
-            else { _ = try await Page.js(web, "window.__copper.hover(\(Page.quote(target.script)))") }
-            return [.text("Hovering \(args["element"] as? String ?? target.script)")]
+            guard Input.canPost(to: web) else {
+                _ = try await Page.js(web, "window.__copper.hover(\(Page.quote(target.script)))")
+                return [.text("Hovering \(named) with script events only — this tab has no window, so CSS :hover menus stay shut.")]
+            }
+            await Input.hover(web, at: rect.center)
+            // The page's word for it: a :hover menu opens only if this is true.
+            let state = try await Page.js(web, "window.__copper.hovered(\(Page.quote(target.script)))") as? [String: Any]
+            guard state?["hover"] as? Bool == true else {
+                let covered = state?["covered"] as? Bool == true ? " Something else is on top of it at its centre (\(state?["top"] as? String ?? "?")) — hover that, or scroll it clear." : ""
+                // WebKit tracks the pointer in a window that isn't key for its scrollbars only.
+                let asleep = web.window?.isKeyWindow == true ? "" : " This tab is in the user's window, which is not in front, and WebKit hovers nothing there: work in a tab of your own (browser_tabs new), where hover works."
+                throw Failure(text: "Hover did not reach \(named): the page does not show it as :hover.\(covered)\(asleep) Take a fresh browser_snapshot — refs change when the page does.")
+            }
+            return [.text("Hovering \(named) — the page shows it as :hover.")]
         case "browser_type":
             let target = try locator(args)
             guard let text = args["text"] as? String else { throw Failure(text: "text required") }
@@ -399,10 +420,15 @@ enum Tools {
             if Input.canPost(to: web) {
                 Input.key(web, key, modifiers: mods)
             } else {
-                _ = try await Page.js(web, "window.__copper.key(\(Page.quote(key)))")
+                let (name, flags) = Input.split(key, modifiers: mods)
+                let held = "{meta:\(flags.contains(.command)),ctrl:\(flags.contains(.control)),alt:\(flags.contains(.option)),shift:\(flags.contains(.shift))}"
+                _ = try await Page.js(web, "window.__copper.key(\(Page.quote(name)), \(held))")
             }
             try await settle(tab, budget: 2)
             return [.text("Pressed \(key). \(pageLine(tab))")]
+        case "browser_handle_dialog":
+            guard let accept = args["accept"] as? Bool else { throw Failure(text: "accept (true or false) required") }
+            return [.text(AgentDialogs.handle(tab, accept: accept, text: args["promptText"] as? String))]
         case "browser_select_option":
             let target = try locator(args)
             let values = (args["values"] as? [String]) ?? []
@@ -416,12 +442,36 @@ enum Tools {
             Trail.click(web, x: from.midX / web.pageZoom, y: from.midY / web.pageZoom)
             await Trail.glide(web, x: to.midX / web.pageZoom, y: to.midY / web.pageZoom)
             Trail.click(web, x: to.midX / web.pageZoom, y: to.midY / web.pageZoom)
-            if Input.canPost(to: web) {
-                Input.drag(web, from: from.center, to: to.center)
+            // A draggable="true" source starts a system drag session under a
+            // real press, which a page off screen can't have: its drag runs in
+            // the page. Everything else (sortable lists, sliders, canvases)
+            // reads the pointer, so it gets a real one.
+            let html5 = try await Page.js(web, "window.__copper.draggable(\(Page.quote("ref:" + a)))") as? Bool ?? false
+            _ = try await Page.js(web, "window.__copper.watch()")
+            let how: String
+            if html5 || !Input.canPost(to: web) {
+                let result = try await Page.js(web, "window.__copper.drag(\(Page.quote("ref:" + a)), \(Page.quote("ref:" + b)))") as? [String: Any]
+                if let error = result?["error"] as? String { throw Failure(text: "\(error). Take a fresh browser_snapshot — refs change when the page does.") }
+                if let refused = result?["refused"] as? String { throw Failure(text: "Drag of \(a) refused: \(refused).") }
+                guard result?["accepted"] as? Bool == true else {
+                    throw Failure(text: "\(b) did not take the drop: it cancelled no dragover, so it is not a drop target. Drop on the element the page treats as the zone.")
+                }
+                how = "an HTML5 drag; the target took the drop"
             } else {
-                _ = try await Page.js(web, "window.__copper.drag(\(Page.quote("ref:" + a)), \(Page.quote("ref:" + b)))")
+                await Input.drag(web, from: from.center, to: to.center)
+                how = "a press, move and release"
             }
-            return [.text("Dragged \(a) to \(b)")]
+            try await Task.sleep(nanoseconds: 100_000_000)
+            // -1: a new document (the drop navigated), which is a change too.
+            let changed = (try? await Page.js(web, "window.__copper.changes()") as? NSNumber)?.intValue ?? -1
+            if changed == 0 {
+                // A taken drop may still be working (an upload); a pointer drag that changed nothing did not happen.
+                guard html5 else {
+                    throw Failure(text: "Dragged \(a) to \(b) with \(how), but nothing on the page changed — the drag did not take. Check both refs in a fresh browser_snapshot; a list may want the item's handle as the start.")
+                }
+                return [.text("Dragged \(a) to \(b) with \(how), but nothing on the page changed yet. \(pageLine(tab))")]
+            }
+            return [.text("Dragged \(a) to \(b) with \(how); the page changed. \(pageLine(tab))")]
         case "browser_take_screenshot":
             let jpeg = (args["type"] as? String) == "jpeg"
             let full = (args["fullPage"] as? Bool) ?? false

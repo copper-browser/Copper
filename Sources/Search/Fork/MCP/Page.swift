@@ -40,9 +40,16 @@ enum Page {
         return try await raw(web, script)
     }
 
+    /// Scripts of Copper's in flight, per web view: a page stopped in an
+    /// alert can't finish them, so AgentDialogs never holds one open then.
+    @MainActor static var waiting: [ObjectIdentifier: Int] = [:]
+
     @MainActor
     static func raw(_ web: WKWebView, _ script: String) async throws -> Any? {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any?, Error>) in
+        let key = ObjectIdentifier(web)
+        waiting[key, default: 0] += 1
+        defer { let left = (waiting[key] ?? 1) - 1; waiting[key] = left > 0 ? left : nil }
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any?, Error>) in
             web.evaluateJavaScript(script) { value, error in
                 if let error {
                     let ns = error as NSError
@@ -368,18 +375,88 @@ enum Page {
       function hover(spec) { var el = find(spec); if (!el) return 'no element for ' + spec; var r = el.getBoundingClientRect(); var init = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; fire(el, 'pointerover', init); fire(el, 'mouseover', init); fire(el, 'mouseenter', init); fire(el, 'mousemove', init); return 'ok'; }
       function focus(spec) { var el = find(spec); if (el && el.focus) el.focus(); return el ? 'ok' : 'no element'; }
       function submit(spec) { var el = find(spec); if (!el) return 'no element'; var f = el.tagName === 'FORM' ? el : el.form || el.closest('form'); if (!f) { fire(el, 'keydown', { key: 'Enter', code: 'Enter', keyCode: 13 }); fire(el, 'keyup', { key: 'Enter', code: 'Enter', keyCode: 13 }); return 'enter'; } if (f.requestSubmit) f.requestSubmit(); else f.submit(); return 'ok'; }
-      function key(k) { var el = document.activeElement || document.body; var init = { key: k, code: k.length === 1 ? 'Key' + k.toUpperCase() : k, keyCode: k === 'Enter' ? 13 : k === 'Escape' ? 27 : k === 'Tab' ? 9 : k.length === 1 ? k.charCodeAt(0) : 0 }; fire(el, 'keydown', init); if (k.length === 1 && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) { setValue('css:' + cssPath(el), el.value + k); } fire(el, 'keyup', init); if (k === 'Enter') submit('css:' + cssPath(el)); return 'ok'; }
+      // Without a window to press keys in: a keydown of the same shape, the
+      // modifiers on it, and when the page leaves a ⌘/⌃ shortcut alone, the
+      // editing command it stands for — as the Edit and Format menus would.
+      function key(k, mods) {
+        mods = mods || {};
+        var el = document.activeElement || document.body;
+        var init = { key: k, code: k.length === 1 ? 'Key' + k.toUpperCase() : k, keyCode: k === 'Enter' ? 13 : k === 'Escape' ? 27 : k === 'Tab' ? 9 : k.length === 1 ? k.toUpperCase().charCodeAt(0) : 0,
+                     metaKey: !!mods.meta, ctrlKey: !!mods.ctrl, altKey: !!mods.alt, shiftKey: !!mods.shift };
+        var down = new KeyboardEvent('keydown', Object.assign({ bubbles: true, cancelable: true, composed: true }, init));
+        var used = !el.dispatchEvent(down);
+        var shortcut = mods.meta || mods.ctrl;
+        if (!used && shortcut) {
+          var c = { a: 'selectAll', b: 'bold', i: 'italic', u: 'underline', c: 'copy', x: 'cut', z: mods.shift ? 'redo' : 'undo' }[k.toLowerCase()];
+          if (c) document.execCommand(c);
+        } else if (!used && k.length === 1 && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+          setValue('css:' + cssPath(el), el.value + k);
+        }
+        fire(el, 'keyup', init);
+        if (!used && !shortcut && k === 'Enter') submit('css:' + cssPath(el));
+        return 'ok';
+      }
+      // An HTML5 drag (a draggable="true" source) the way WebKit runs one,
+      // in the page: one DataTransfer from dragstart to drop. A real press on
+      // such a source would start a system drag session, which a page off
+      // screen can't have. Says whether the target took the drop.
       function drag(a, b) {
         var from = find(a), to = find(b);
-        if (!from || !to) return 'no element';
+        if (!from) return { error: 'no element for ' + a };
+        if (!to) return { error: 'no element for ' + b };
+        var src = from.closest('[draggable="true"]') || from;
         var dt = new DataTransfer();
-        var fr = from.getBoundingClientRect(), tr = to.getBoundingClientRect();
-        from.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt, clientX: fr.left + fr.width / 2, clientY: fr.top + fr.height / 2 }));
-        to.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt, clientX: tr.left + tr.width / 2, clientY: tr.top + tr.height / 2 }));
-        to.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt, clientX: tr.left + tr.width / 2, clientY: tr.top + tr.height / 2 }));
-        to.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt, clientX: tr.left + tr.width / 2, clientY: tr.top + tr.height / 2 }));
-        from.dispatchEvent(new DragEvent('dragend', { bubbles: true, cancelable: true, dataTransfer: dt }));
-        return 'ok';
+        function send(el, type) {
+          var r = el.getBoundingClientRect();
+          var ev = new DragEvent(type, { bubbles: true, cancelable: type !== 'dragleave' && type !== 'dragend' && type !== 'drag', composed: true, dataTransfer: dt,
+                                         clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 });
+          el.dispatchEvent(ev);
+          return ev;
+        }
+        if (send(src, 'dragstart').defaultPrevented) return { refused: 'the page cancelled the dragstart' };
+        send(src, 'drag');
+        var tr = to.getBoundingClientRect();
+        var hit = document.elementFromPoint(tr.left + tr.width / 2, tr.top + tr.height / 2);
+        var over = hit && to.contains(hit) ? hit : to;
+        send(over, 'dragenter');
+        // Per the spec the drop only fires on a target whose dragover was cancelled.
+        var accepted = send(over, 'dragover').defaultPrevented;
+        if (accepted) { send(over, 'drop'); } else { send(over, 'dragleave'); }
+        send(src, 'dragend');
+        return { accepted: accepted };
+      }
+      function draggable(spec) { var el = find(spec); return !!(el && el.closest('[draggable="true"]')); }
+      // What a pointer at the centre of spec would be over, and whether the
+      // page now says it is hovered.
+      function hovered(spec) {
+        var el = find(spec);
+        if (!el) return { error: 'no element for ' + spec };
+        var r = el.getBoundingClientRect();
+        var top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        var tops = top ? top.tagName.toLowerCase() + (top.id ? '#' + top.id : '') + (top.className && typeof top.className === 'string' ? '.' + top.className.trim().split(/\s+/).join('.') : '') : 'nothing';
+        return { hover: el.matches(':hover'), covered: !!top && top !== el && !el.contains(top), top: tops };
+      }
+      // Changes to the page while an action runs, Copper's own trail left out.
+      var watching = null, changed = 0;
+      function watch() {
+        if (watching) watching.disconnect();
+        changed = 0;
+        watching = new MutationObserver(function (list) { count(list); });
+        watching.observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
+        return true;
+      }
+      function count(list) {
+        for (var i = 0; i < list.length; i++) {
+          var n = list[i].target; var el = n.nodeType === 1 ? n : n.parentElement;
+          if (el && el.closest && el.closest('#__jev-trail')) continue;
+          if (list[i].addedNodes && list[i].addedNodes.length === 1 && list[i].addedNodes[0].id === '__jev-trail') continue;
+          changed++;
+        }
+      }
+      function changes() {
+        if (!watching) return -1;
+        count(watching.takeRecords()); watching.disconnect(); watching = null;
+        return changed;
       }
       function scroll(spec, dx, dy) {
         var el = spec ? find(spec) : null;
@@ -407,7 +484,7 @@ enum Page {
         }
         return out.length ? out.join('\n') : 'no visible text matches ' + JSON.stringify(needle);
       }
-      window.__copper = { snapshot: snapshot, find: find, rect: rect, setValue: setValue, select: select, fill: fill, click: click, hover: hover, focus: focus, submit: submit, key: key, drag: drag, scroll: scroll, text: text, findText: findText, console: function () { return logs; } };
+      window.__copper = { snapshot: snapshot, find: find, rect: rect, setValue: setValue, select: select, fill: fill, click: click, hover: hover, focus: focus, submit: submit, key: key, drag: drag, draggable: draggable, hovered: hovered, watch: watch, changes: changes, scroll: scroll, text: text, findText: findText, console: function () { return logs; } };
       return true;
     })();
     """#

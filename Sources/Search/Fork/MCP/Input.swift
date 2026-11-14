@@ -58,14 +58,47 @@ enum Input {
 
     // MARK: - mouse
 
+    /// WKWebView takes mouse moves from its own tracking area; it has no
+    /// `mouseMoved(with:)` of its own, so a move sent there went up the
+    /// responder chain to nobody and `:hover` never changed. WebKit's entry
+    /// for a move made in code is `_simulateMouseMove:` — asked for by name
+    /// first, as with the other private calls here.
+    private static let simulateMove = NSSelectorFromString("_simulateMouseMove:")
+    private static let afterMouse = NSSelectorFromString("_doAfterProcessingAllPendingMouseEvents:")
+
     @MainActor
     static func move(_ web: WKWebView, to point: CGPoint) {
         guard let window = web.window else { return }
         let at = windowPoint(web, point)
-        if let e = NSEvent.mouseEvent(with: .mouseMoved, location: at, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                                      windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0) {
-            web.mouseMoved(with: e)
+        guard let e = NSEvent.mouseEvent(with: .mouseMoved, location: at, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                         windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0) else { return }
+        if web.responds(to: simulateMove) { web.perform(simulateMove, with: e) } else { web.mouseMoved(with: e) }
+    }
+
+    /// Until the web process has taken every mouse event sent so far, or a
+    /// beat when WebKit can't say.
+    @MainActor
+    static func settled(_ web: WKWebView) async {
+        guard web.responds(to: afterMouse) else { try? await Task.sleep(nanoseconds: 50_000_000); return }
+        typealias After = @convention(c) (AnyObject, Selector, @escaping @convention(block) () -> Void) -> Void
+        let call = unsafeBitCast(web.method(for: afterMouse), to: After.self)
+        let done = Tools.Trail.Latch()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            call(web, afterMouse) { if done.take() { continuation.resume() } }
+            // Never longer than half a second: a page busy in a loop.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { if done.take() { continuation.resume() } }
         }
+    }
+
+    /// The pointer onto `point` the way a hand brings it: in, then a pixel
+    /// further, a frame apart, so `mouseenter` and the `mousemove` a menu
+    /// waits for both fire.
+    @MainActor
+    static func hover(_ web: WKWebView, at point: CGPoint) async {
+        move(web, to: point)
+        try? await Task.sleep(nanoseconds: 16_000_000)
+        move(web, to: CGPoint(x: point.x + 1, y: point.y + 1))
+        await settled(web)
     }
 
     @MainActor
@@ -99,29 +132,43 @@ enum Input {
         }
     }
 
+    /// A press, a walk and a release, a frame (16 ms) between each step
+    /// and a dwell over the target before letting go: sortable lists and
+    /// sliders read the pointer on their own frame clock, and all of it in
+    /// one turn of the run loop looked to them like a click.
     @MainActor
-    static func drag(_ web: WKWebView, from: CGPoint, to: CGPoint) {
+    static func drag(_ web: WKWebView, from: CGPoint, to: CGPoint) async {
         guard let window = web.window else { return }
-        if window.firstResponder !== web { window.makeFirstResponder(web) }
+        focus(web, in: window)
         let start = windowPoint(web, from)
         let end = windowPoint(web, to)
-        let stamp = ProcessInfo.processInfo.systemUptime
-        guard let down = NSEvent.mouseEvent(with: .leftMouseDown, location: start, modifierFlags: [], timestamp: stamp, windowNumber: window.windowNumber,
-                                            context: nil, eventNumber: 0, clickCount: 1, pressure: 1) else { return }
-        web.mouseDown(with: down)
-        // A few steps along the way, so drag thresholds and hover targets fire.
-        for step in 1...8 {
-            let t = CGFloat(step) / 8
-            let p = CGPoint(x: start.x + (end.x - start.x) * t, y: start.y + (end.y - start.y) * t)
-            if let e = NSEvent.mouseEvent(with: .leftMouseDragged, location: p, modifierFlags: [], timestamp: stamp + Double(step) * 0.01,
-                                          windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) {
-                web.mouseDragged(with: e)
+        func post(_ type: NSEvent.EventType, _ p: CGPoint) {
+            guard let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                             windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1,
+                                             pressure: type == .leftMouseUp ? 0 : 1) else { return }
+            switch type {
+            case .leftMouseDown: web.mouseDown(with: e)
+            case .leftMouseUp: web.mouseUp(with: e)
+            default: web.mouseDragged(with: e)
             }
         }
-        if let up = NSEvent.mouseEvent(with: .leftMouseUp, location: end, modifierFlags: [], timestamp: stamp + 0.1, windowNumber: window.windowNumber,
-                                       context: nil, eventNumber: 0, clickCount: 1, pressure: 0) {
-            web.mouseUp(with: up)
+        func frame(_ ms: UInt64 = 16) async { try? await Task.sleep(nanoseconds: ms * 1_000_000) }
+        move(web, to: from)
+        await frame()
+        post(.leftMouseDown, start)
+        await frame(60)
+        let steps = 12
+        for step in 1...steps {
+            let t = CGFloat(step) / CGFloat(steps)
+            post(.leftMouseDragged, CGPoint(x: start.x + (end.x - start.x) * t, y: start.y + (end.y - start.y) * t))
+            await frame()
         }
+        // The dwell: once more on the spot, then wait, so a list that moves
+        // its items under the pointer has settled on where they go.
+        post(.leftMouseDragged, end)
+        await frame(120)
+        post(.leftMouseUp, end)
+        await settled(web)
     }
 
     // MARK: - keys
@@ -138,18 +185,21 @@ enum Input {
         "f11": (103, "\u{F70E}"), "f12": (111, "\u{F70F}"),
     ]
 
+    /// "Control+Shift+K" → `K` with ⌃⇧ added to `modifiers`: the last part
+    /// is the key.
+    static func split(_ named: String, modifiers: NSEvent.ModifierFlags) -> (key: String, flags: NSEvent.ModifierFlags) {
+        guard named.contains("+"), named.count > 1 else { return (named, modifiers) }
+        var parts = named.split(separator: "+").map(String.init)
+        guard let last = parts.popLast() else { return (named, modifiers) }
+        return (last, modifiers.union(Input.modifiers(from: parts)))
+    }
+
     /// One key, named the way Playwright names them — `Enter`, `ArrowDown`,
     /// `a`, `Shift+Tab`, `Meta+a`.
     @MainActor
     static func key(_ web: WKWebView, _ named: String, modifiers: NSEvent.ModifierFlags) {
-        var flags = modifiers
-        var name = named
-        // "Control+Shift+K" style: the last part is the key.
-        if name.contains("+"), name.count > 1 {
-            var parts = name.split(separator: "+").map(String.init)
-            name = parts.removeLast()
-            flags.formUnion(Input.modifiers(from: parts))
-        }
+        let (name, held) = split(named, modifiers: modifiers)
+        var flags = held
         let lower = name.lowercased()
         if let s = special[lower] {
             press(web, code: s.code, text: s.text, flags: flags)
@@ -183,9 +233,6 @@ enum Input {
     private static func press(_ web: WKWebView, code: UInt16, text: String, flags: NSEvent.ModifierFlags) {
         guard let window = web.window else { return }
         focus(web, in: window)
-        // Command shortcuts are the window's (⌘L, ⌘W…) before they are the
-        // page's; those go through performKeyEquivalent as they would from
-        // the keyboard, everything else straight to the view.
         let plain = flags.contains(.command) ? unmodified(text) : text
         let stamp = ProcessInfo.processInfo.systemUptime
         guard let down = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: stamp, windowNumber: window.windowNumber,
@@ -193,10 +240,73 @@ enum Input {
               let up = NSEvent.keyEvent(with: .keyUp, location: .zero, modifierFlags: flags, timestamp: stamp + 0.02, windowNumber: window.windowNumber,
                                         context: nil, characters: text, charactersIgnoringModifiers: plain, isARepeat: false, keyCode: code)
         else { return }
-        if flags.contains(.command), window.performKeyEquivalent(with: down) { return }
+        lend(down, to: web)
+        // A ⌘ key goes to the page's view, never to its window: the window's
+        // shortcuts (⌘W, ⌘T, ⌘L…) are the user's, and an agent's page may be
+        // on the user's stage. WebKit gives the page its keydown first.
+        if flags.contains(.command) {
+            if !web.performKeyEquivalent(with: down) { web.keyDown(with: down) }
+            return
+        }
         web.keyDown(with: down)
         web.keyUp(with: up)
     }
 
     private static func unmodified(_ text: String) -> String { text.lowercased() }
+
+    // MARK: - keys the page didn't use
+
+    /// A key an agent pressed and the page it went to.
+    private struct Lent {
+        let event: NSEvent
+        weak var web: WKWebView?
+    }
+
+    /// Every key an agent pressed, until it comes back or falls off the end.
+    /// A key the page didn't use WebKit sends back up through
+    /// `NSApp.sendEvent`, where the app's key monitor would take ⌘W, ⌘T, ⌃Tab
+    /// or Escape as the user's — for the window in front, whichever page the
+    /// agent was in — and the menus after it. The monitor asks `returned`
+    /// first (App.swift `watchKeys`), and an agent's key ends here.
+    @MainActor private static var lent: [Lent] = []
+
+    @MainActor
+    private static func lend(_ event: NSEvent, to web: WKWebView) {
+        lent.append(Lent(event: event, web: web))
+        if lent.count > 32 { lent.removeFirst() }
+    }
+
+    /// True when `event` is an agent's key coming back unused: nobody else
+    /// gets it. A ⌘ shortcut the page left alone is the Edit or Format
+    /// menu's in any browser; here it is run on the agent's page itself.
+    @MainActor
+    static func returned(_ event: NSEvent) -> Bool {
+        guard event.type == .keyDown, let at = lent.firstIndex(where: { PageView.same($0.event, event) }) else { return false }
+        let web = lent.remove(at: at).web
+        if let web, event.modifierFlags.contains(.command) { edit(web, event) }
+        return true
+    }
+
+    /// The editing command each ⌘ key stands for, by its key (⇧ after it).
+    static let editCommands: [String: String] = [
+        "a": "SelectAll", "b": "ToggleBold", "i": "ToggleItalic", "u": "ToggleUnderline",
+        "c": "Copy", "x": "Cut", "v": "Paste", "z": "Undo", "z⇧": "Redo",
+    ]
+
+    private static let executeEdit = NSSelectorFromString("_executeEditCommand:argument:completion:")
+
+    /// Run the editing command for a ⌘ key on this page's selection —
+    /// WebKit's own editor, the one its menu items reach.
+    @MainActor
+    static func edit(_ web: WKWebView, _ event: NSEvent) {
+        let key = (event.charactersIgnoringModifiers ?? "").lowercased() + (event.modifierFlags.contains(.shift) ? "⇧" : "")
+        guard let command = editCommands[key] else { return }
+        guard web.responds(to: executeEdit) else {
+            // The public actions for the ones that have them (selectAll:, copy:, cut:, paste:).
+            _ = web.tryToPerform(NSSelectorFromString(command.prefix(1).lowercased() + command.dropFirst() + ":"), with: nil)
+            return
+        }
+        typealias Run = @convention(c) (AnyObject, Selector, NSString, NSString?, @escaping @convention(block) (Bool) -> Void) -> Void
+        unsafeBitCast(web.method(for: executeEdit), to: Run.self)(web, executeEdit, command as NSString, nil) { _ in }
+    }
 }

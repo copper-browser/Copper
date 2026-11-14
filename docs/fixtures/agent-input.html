@@ -1,0 +1,92 @@
+<!doctype html>
+<!-- The hard UI an agent meets: a :hover menu, an HTML5 drop zone, a pointer
+     sortable list, a rich-text editor with ⌘ shortcuts, and alert / confirm /
+     prompt. docs/fixtures/agent-input-e2e.sh drives it over MCP. -->
+<meta charset="utf-8">
+<title>agent input</title>
+<style>
+  body { font: 14px -apple-system, sans-serif; margin: 20px; }
+  section { margin: 0 0 18px; }
+  .menu { display: inline-block; position: relative; padding: 6px 10px; background: #eee; }
+  .menu .items { display: none; position: absolute; top: 100%; left: 0; background: #fff; border: 1px solid #ccc; }
+  .menu:hover .items { display: block; }
+  .covered { position: relative; display: inline-block; padding: 6px 10px; background: #eee; margin-left: 20px; }
+  .lid { position: absolute; inset: 0; background: rgba(0,0,0,.05); }
+  #card { display: inline-block; padding: 8px; background: #fd8; cursor: grab; }
+  #zone, #nozone { display: inline-block; width: 140px; height: 40px; border: 2px dashed #888; margin-left: 30px; vertical-align: middle; }
+  #list { list-style: none; padding: 0; width: 200px; user-select: none; }
+  #list li { padding: 8px; margin: 2px 0; background: #def; touch-action: none; }
+  #list li.lifted { opacity: .6; }
+  #ed { border: 1px solid #aaa; padding: 6px; width: 300px; }
+  input { width: 140px; }
+</style>
+
+<section>
+  <div class="menu" id="file" tabindex="0">File<div class="items"><a href="#saved" id="save">Save</a></div></div>
+  <span class="covered"><span id="lidded">Under a lid</span><span class="lid"></span></span>
+</section>
+
+<section>
+  <div id="card" draggable="true">Card</div>
+  <div id="zone">drop here</div>
+  <div id="nozone">not a zone</div>
+</section>
+
+<section>
+  <ul id="list"><li id="i1">alpha</li><li id="i2">bravo</li><li id="i3">charlie</li><li id="i4">delta</li></ul>
+</section>
+
+<section>
+  <div id="ed" contenteditable="true">hello world</div>
+  <input id="a" value="copy me"> <input id="b" value="">
+</section>
+
+<section>
+  <button id="alert" onclick="alert('Saved!'); said.push('alert done')">Alert</button>
+  <button id="confirm" onclick="said.push('confirm ' + confirm('Delete it?'))">Confirm</button>
+  <button id="prompt" onclick="said.push('prompt ' + prompt('Your name?', 'nobody'))">Prompt</button>
+</section>
+
+<script>
+  var said = [];
+  var keys = [];
+  document.addEventListener('keydown', function (e) { keys.push((e.metaKey ? 'Meta+' : '') + (e.ctrlKey ? 'Control+' : '') + e.key + (e.isTrusted ? '' : '?')); }, true);
+  // ⌘K is this page's own, as it is in many web apps: it keeps the key.
+  document.getElementById('ed').addEventListener('keydown', function (e) {
+    if (e.metaKey && e.key === 'k') { e.preventDefault(); document.getElementById('ed').dataset.link = 'yes'; }
+  });
+
+  var card = document.getElementById('card'), zone = document.getElementById('zone');
+  card.addEventListener('dragstart', function (e) { e.dataTransfer.setData('text/plain', 'card-42'); });
+  zone.addEventListener('dragover', function (e) { e.preventDefault(); });
+  zone.addEventListener('drop', function (e) { e.preventDefault(); zone.textContent = 'dropped ' + e.dataTransfer.getData('text/plain'); });
+
+  // A sortable list the way the libraries build one: pointer events, a few
+  // pixels before it lifts, the move applied on the next frame, the order
+  // kept only on release.
+  var list = document.getElementById('list'), lifted = null, startY = 0, lastY = 0, pending = false;
+  list.addEventListener('pointerdown', function (e) {
+    var li = e.target.closest('li'); if (!li) return;
+    lifted = li; startY = lastY = e.clientY; list.setPointerCapture(e.pointerId);
+  });
+  list.addEventListener('pointermove', function (e) {
+    if (!lifted) return;
+    lastY = e.clientY;
+    if (Math.abs(lastY - startY) < 5) return;
+    lifted.classList.add('lifted');
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(function () {
+      pending = false;
+      if (!lifted) return;
+      var items = Array.prototype.slice.call(list.children).filter(function (li) { return li !== lifted; });
+      var before = items.find(function (li) { var r = li.getBoundingClientRect(); return lastY < r.top + r.height / 2; });
+      list.insertBefore(lifted, before || null);
+    });
+  });
+  list.addEventListener('pointerup', function () {
+    if (!lifted) return;
+    lifted.classList.remove('lifted'); lifted = null;
+    list.dataset.order = Array.prototype.map.call(list.children, function (li) { return li.textContent; }).join(',');
+  });
+</script>
