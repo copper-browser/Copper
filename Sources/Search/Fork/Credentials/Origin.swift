@@ -29,27 +29,26 @@ extension Credentials {
     }
 
     /// Whether a login's saved address (`site`: a URL, or a bare host as the
-    /// keychain keeps it) is this origin. A leading `www.` is the same site
-    /// either way, as everywhere else here; nothing else is: not another
-    /// subdomain, not another port, not http for https.
+    /// keychain keeps it) is exactly this origin: not another subdomain —
+    /// `www.example.com` is not `example.com` unless the item lists both —
+    /// not another port, not http for https.
     ///
     /// Fork (origin-save): a bare host says no scheme or port, so it is
-    /// https on its usual port (or the port written after it). Only a
-    /// loopback host — a server on this Mac — takes the page's scheme and
-    /// port. A login saved from an http page or another port keeps them
+    /// https on its usual port (or the port written after it). A bare
+    /// loopback host (`localhost`, `127.0.0.1`) owns nothing: any server on
+    /// this Mac answers there, on any port, so it needs the origin it was
+    /// saved from. A login saved from an http page or another port keeps them
     /// (`Vault.save(…, origin:)`) and reads as a URL here.
     nonisolated static func saved(_ site: String, isFor origin: String) -> Bool {
-        func plain(_ origin: String) -> String { origin.replacingOccurrences(of: "://www.", with: "://") }
         let raw = site.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !raw.isEmpty, let there = URL(string: origin) else { return false }
+        guard !raw.isEmpty, let there = URL(string: origin).flatMap(self.origin(of:)) else { return false }
         if raw.contains("://") {
             guard let url = URL(string: raw), let mine = self.origin(of: url) else { return false }
-            return plain(mine) == plain(origin)
+            return mine == there
         }
-        guard let url = URL(string: "https://\(raw)"), let host = url.host else { return false }
-        let local = loopback(host)
-        guard let mine = self.origin(scheme: local ? there.scheme : "https", host: host, port: url.port ?? (local ? there.port : nil)) else { return false }
-        return plain(mine) == plain(origin)
+        guard let url = URL(string: "https://\(raw)"), let host = url.host, !loopback(host),
+              let mine = self.origin(scheme: "https", host: host, port: url.port) else { return false }
+        return mine == there
     }
 
     /// localhost, *.localhost, 127.0.0.0/8 and ::1: this Mac.

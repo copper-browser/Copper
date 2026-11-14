@@ -20,19 +20,29 @@ import Testing
     @Test("A saved address owns its own origin and no other")
     func savedAddresses() {
         #expect(Credentials.saved("https://example.com/login", isFor: "https://example.com"))
-        #expect(Credentials.saved("https://www.example.com", isFor: "https://example.com"))
-        #expect(Credentials.saved("https://example.com", isFor: "https://www.example.com"))
-        // Not another port, scheme, subdomain or site.
+        #expect(Credentials.saved("https://www.example.com/", isFor: "https://www.example.com"))
+        #expect(Credentials.saved("https://Example.com:443", isFor: "https://example.com"))
+        // Not another port, scheme, subdomain (www. included) or site.
+        #expect(!Credentials.saved("https://www.example.com", isFor: "https://example.com"))
+        #expect(!Credentials.saved("https://example.com", isFor: "https://www.example.com"))
+        #expect(!Credentials.saved("www.example.com", isFor: "https://example.com"))
         #expect(!Credentials.saved("http://127.0.0.1:8795", isFor: "http://127.0.0.1:8796"))
         #expect(!Credentials.saved("https://example.com", isFor: "http://example.com"))
         #expect(!Credentials.saved("https://example.com", isFor: "https://evil.example.com"))
         #expect(!Credentials.saved("https://accounts.example.com", isFor: "https://example.com"))
         #expect(!Credentials.saved("https://example.com.evil.test", isFor: "https://example.com"))
         // A bare host (a keychain login saved before scheme and port were kept)
-        // is https on its usual port; only a loopback host takes the page's.
-        #expect(Credentials.saved("localhost", isFor: "http://localhost:4170"))
-        #expect(Credentials.saved("127.0.0.1", isFor: "http://127.0.0.1:8795"))
-        #expect(Credentials.saved("example.com", isFor: "https://www.example.com"))
+        // is https on its usual port. A bare loopback host owns no origin at
+        // all: it needs the scheme and port it was saved from.
+        #expect(!Credentials.saved("localhost", isFor: "http://localhost:4170"))
+        #expect(!Credentials.saved("127.0.0.1", isFor: "http://127.0.0.1:8795"))
+        #expect(!Credentials.saved("127.0.0.1", isFor: "https://127.0.0.1"))
+        #expect(!Credentials.saved("localhost:4170", isFor: "http://localhost:4170"))
+        #expect(!Credentials.saved("[::1]", isFor: "http://[::1]:8080"))
+        #expect(Credentials.saved("http://localhost:4170/login", isFor: "http://localhost:4170"))
+        #expect(Credentials.saved("example.com", isFor: "https://example.com"))
+        #expect(Credentials.saved("www.example.com", isFor: "https://www.example.com"))
+        #expect(!Credentials.saved("example.com", isFor: "https://www.example.com"))
         #expect(!Credentials.saved("example.com", isFor: "http://example.com"))
         #expect(!Credentials.saved("example.com", isFor: "https://example.com:8443"))
         #expect(!Credentials.saved("example.com", isFor: "https://login.example.com"))
@@ -45,6 +55,18 @@ import Testing
         #expect(!Credentials.saved("http://example.com", isFor: "https://example.com"))
         #expect(!Credentials.saved("http://127.0.0.1:8796", isFor: "http://127.0.0.1:8795"))
         #expect(Credentials.loopback("[::1]") && Credentials.loopback("app.localhost") && !Credentials.loopback("127.example.com"))
+    }
+
+    @Test("An item fills www. and the bare site only when it lists both")
+    @MainActor func itemListsBoth() {
+        func login(_ sites: [String]) -> Credential {
+            Credential(id: .keychain(host: "example.com", user: "a"), source: .keychain, host: "example.com", user: "a",
+                       sites: sites, name: "a", hasTOTP: false, used: nil, folder: nil, agentHint: .none)
+        }
+        #expect(!Credentials.owns(login(["https://example.com"]), origin: "https://www.example.com"))
+        #expect(Credentials.owns(login(["https://example.com", "https://www.example.com"]), origin: "https://www.example.com"))
+        #expect(!Credentials.owns(login(["localhost"]), origin: "http://localhost:8765"))
+        #expect(Credentials.owns(login(["http://localhost:8765"]), origin: "http://localhost:8765"))
     }
 
     @Test("A keychain login keeps the scheme and port it was saved from")
