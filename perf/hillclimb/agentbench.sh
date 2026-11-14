@@ -20,6 +20,8 @@
 #            AGENTBENCH_CHUNK=300               seconds of runs per hold of the shared lock
 #            AGENTBENCH_FLIGHTS_INLOCK=0        when only Flights is left, wait up to this long for its gap inside the hold
 #            AGENTBENCH_PRIVATE=1               every run in a private tab (empty cookies/storage; hc/jev builds on)
+#            AGENTBENCH_BASE_APP=<Copper.app>   a second build in the second probe world: arm "base" (its shipped loop)
+#                                               runs beside the others, task by task, so both builds meet Google alike
 #
 # On the devbox (Linux) it syncs the harness to the mini, runs itself there and
 # copies ~/hc/out/<label>/agentbench back to ~/plans/copper-hillclimb-2026-11-14/out/.
@@ -39,7 +41,7 @@ if [ "$(uname)" = Linux ]; then
   export AGENTBENCH_SHA AGENTBENCH_HARNESS_SHA
   envs=""; for v in AGENTBENCH_SHA AGENTBENCH_HARNESS_SHA ARMS ROUNDS_ULTRAFAST ROUNDS_WIKIGAME ROUNDS_UIBENCH ROUNDS_REALWEB ROUNDS_PARAPHRASE ROUNDS_PROBES TASKS ULTRAFAST_DIR AGENTBENCH_ALLOW_CHROME \
       AGENTBENCH_WORLD AGENTBENCH_PORT AGENTBENCH_FIXPORT AGENTBENCH_VIEWPORT AGENTBENCH_TEXT_MODEL AGENTBENCH_JEV_ENDPOINT AGENTBENCH_PRIVATE \
-      AGENTBENCH_SAME_PORT AGENTBENCH_SAME_VIEWPORT AGENTBENCH_FLIGHTS_GAP AGENTBENCH_FLIGHTS_INLOCK AGENTBENCH_CHUNK; do
+      AGENTBENCH_SAME_PORT AGENTBENCH_SAME_VIEWPORT AGENTBENCH_FLIGHTS_GAP AGENTBENCH_FLIGHTS_INLOCK AGENTBENCH_CHUNK AGENTBENCH_BASE_APP; do
     [ -n "${!v:-}" ] && envs+="$v=$(printf %q "${!v}") "; done
   ssh "$host" "cd $remote && $envs ./agentbench.sh $(printf %q "$label") $(printf %q "$app") ${3:-}" || echo "remote run exited $?"
   dest="$HOME/plans/copper-hillclimb-2026-11-14/out/$label/agentbench"
@@ -120,6 +122,7 @@ PLIST
 up_all() {
   up "$1" "$world" "$port" "${AGENTBENCH_VIEWPORT:-}" "${AGENTBENCH_TEXT_MODEL:-default}"
   case ",${ARMS:-}," in *,same,*) up "$1" "$same_world" "$same_port" "$same_viewport" default ;; esac
+  case ",${ARMS:-}," in *,base,*) up "$base_app" "$same_world" "$same_port" "${AGENTBENCH_VIEWPORT:-}" "${AGENTBENCH_TEXT_MODEL:-default}" ;; esac
 }
 
 down() {
@@ -138,13 +141,15 @@ out="$HOME/hc/out/$label/agentbench"; mkdir -p "$out"
 # run from our own copy: other tracks `pkill -f <app path>` their probes of the same build
 app="$HOME/hc/agentbench-app/$label/Copper.app"
 mkdir -p "$(dirname "$app")" && rsync -a --delete "${2:?Copper.app}/" "$app/"
+base_app="$HOME/hc/agentbench-app/$label-base/Copper.app"
+case ",${ARMS:-}," in *,base,*) mkdir -p "$(dirname "$base_app")" && rsync -a --delete "${AGENTBENCH_BASE_APP:?ARMS has base: set AGENTBENCH_BASE_APP}/" "$base_app/" ;; esac
 touch "$lock"
 trap down EXIT
 up_all "$app" | tee -a "$out/run.log"
 py=(python3 "$here/agentbench/agentbench.py" --port "$port" --world "$world" --fixtures "http://127.0.0.1:$fixport"
     --out "$out" --arms "${ARMS:-shipped,classic,llm-haiku,box}" --app "$app" --same-world "$same_world" --same-port "$same_port")
 [ -n "${AGENTBENCH_VIEWPORT:-}" ] && py+=(--viewport "$AGENTBENCH_VIEWPORT")
-case ",${ARMS:-}," in *,same,*) py+=(--same-viewport "$same_viewport") ;; esac
+case ",${ARMS:-}," in *,same,*) py+=(--same-viewport "$same_viewport") ;; *,base,*) py+=(--base-app "$base_app") ;; esac
 [ -n "${TASKS:-}" ] && py+=(--tasks "$TASKS")
 "${py[@]}" --meta | tee -a "$out/run.log"
 # The whole suite is one plan; each locked batch runs AGENTBENCH_CHUNK seconds of it (default 300): the lock is
