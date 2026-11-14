@@ -478,7 +478,7 @@ private struct TabPill: View {
                     .layoutPriority(1)
                 // Fork (uib): the live tab says whose page it is, after its
                 // title. Fork (uichrome): the host yields first — it shows
-                // only while the title keeps its words (all of them, or 90 pt
+                // only while the title keeps its words (all of them, or 140 pt
                 // fading out 8 pt before the host); the address has it anyway.
                 if let host = liveHost, roomForHost(host) {
                     Text(host)
@@ -526,7 +526,7 @@ private struct TabPill: View {
         let words = span - 11 - 7 - 15 - 6 - 2 - (slotShown ? 25 : 0)
         let hostWidth = 8 + TabPill.measure(host, size: 12, weight: .regular)
         let title = TabPill.measure(tab.label, size: 12.5, weight: .semibold)
-        return words - hostWidth >= min(title, 90)
+        return words - hostWidth >= min(title, 140)
     }
 
     /// Fork (uib): the host shown in the live tab, unless the title already
