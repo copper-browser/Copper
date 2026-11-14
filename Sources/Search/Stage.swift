@@ -243,7 +243,7 @@ final class StageView: NSView {
     /// switch back and forth inside a second swaps in one frame.
     static func holds(_ page: NSView) -> Bool {
         guard let web = page as? PageView, !web.unpainted else { return false }
-        return SpaceSlide.shared.moving || CACurrentMediaTime() - web.outSince >= 1
+        return SpaceSlide.shared.moving || ProcessInfo.processInfo.systemUptime - web.outSince >= 1
     }
 
     /// Fork (page-hold): the page coming in stays unseen over the one going

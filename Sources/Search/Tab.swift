@@ -1638,12 +1638,12 @@ final class PageView: WKWebView {
     /// stage has put this view in a window — AppKit says so, nobody polls.
     var onStage: (() -> Void)?
     /// Fork (page-hold): when this view last left a window (StageView.holds).
-    private(set) var outSince: CFTimeInterval = 0
+    private(set) var outSince: TimeInterval = 0
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         Room.moved(self) // Fork (launch, space-warm): out of the room, WebKit judges visibility again
-        guard window != nil else { outSince = CACurrentMediaTime(); return }
+        guard window != nil else { outSince = ProcessInfo.processInfo.systemUptime; return }
         // The representable finishes sizing the view in this turn.
         DispatchQueue.main.async { [weak self] in
             guard let self, self.window != nil else { return }

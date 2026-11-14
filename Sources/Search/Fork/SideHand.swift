@@ -83,7 +83,7 @@ enum SideHand {
     static func drag(_ tab: Tab, dy: CGFloat, dx: CGFloat = 0, steps: Int, hold: Bool, in browser: Browser) -> [String: Any] {
         if held != nil { _ = release(in: browser) }
         guard let window = window(of: browser) else { return ["error": "no window"] }
-        guard let frame = frame(of: tab, in: browser) else { return ["error": "row \(Bench.short(tab)) is not laid out"] }
+        guard let frame = Self.frame(of: tab, in: browser) else { return ["error": "row \(Bench.short(tab)) is not laid out"] }
         acceptFirstMouse()
         let start = base(CGPoint(x: frame.midX, y: frame.midY), in: window)
         let hit = (window.contentView?.superview ?? window.contentView)?.hitTest(start).map { "\(type(of: $0))" } ?? ""
@@ -128,7 +128,7 @@ enum SideHand {
     /// answers only while the row is under the pointer (`hover` first).
     static func click(_ tab: Tab, cross: Bool = false, in browser: Browser) -> [String: Any] {
         guard let window = window(of: browser) else { return ["error": "no window"] }
-        guard let frame = frame(of: tab, in: browser) else { return ["error": "row \(Bench.short(tab)) is not laid out"] }
+        guard let frame = Self.frame(of: tab, in: browser) else { return ["error": "row \(Bench.short(tab)) is not laid out"] }
         acceptFirstMouse()
         // The cross: 15 points square, 8 in from the row's trailing edge.
         let at = base(CGPoint(x: cross ? frame.maxX - 15.5 : frame.midX, y: frame.midY), in: window)
@@ -148,7 +148,7 @@ enum SideHand {
         guard let window = window(of: browser), let view = window.contentView else { return ["error": "no window"] }
         var point = CGPoint(x: 2, y: 2)
         if let tab {
-            guard let frame = frame(of: tab, in: browser) else { return ["error": "row \(Bench.short(tab)) is not laid out"] }
+            guard let frame = Self.frame(of: tab, in: browser) else { return ["error": "row \(Bench.short(tab)) is not laid out"] }
             point = CGPoint(x: frame.midX, y: frame.midY)
         }
         let at = base(point, in: window)
