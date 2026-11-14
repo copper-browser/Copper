@@ -19,34 +19,43 @@ struct WelcomePanel: View {
     private let pages = 4
     @Environment(\.colorScheme) private var scheme
 
-    var body: some View {
-        ZStack {
-            // Fork (ui-flows): on the space's own wash, not bare white.
-            Palette.ground.ignoresSafeArea()
-            SpaceTint(space: Spaces.shared.space(in: browser), dark: scheme == .dark).ground.opacity(0.45).ignoresSafeArea()
+    /// Fork (ui-flows r3): one column on one card, Arc's onboarding size
+    /// (~560 pt wide), its middle ~38% down the window, every page left-aligned
+    /// and every heading in the same place — on the Home space's own ground.
+    static let column: CGFloat = 560
+    static let tall: CGFloat = 420
 
-            VStack(spacing: 0) {
-                // Fork (ui-flows): every page's heading at the same height, so
-                // Continue doesn't make the title jump up and down.
-                ZStack {
-                    switch page {
-                    case 0: welcome
-                    case 1: bring
-                    case 2: hold
-                    default: links
+    var body: some View {
+        let tint = SpaceTint(space: Spaces.shared.space(in: browser), dark: scheme == .dark)
+        GeometryReader { room in
+            ZStack {
+                ThemeBackdrop(theme: tint.theme, dark: tint.night)
+                VStack(alignment: .leading, spacing: 0) {
+                    ZStack(alignment: .topLeading) {
+                        switch page {
+                        case 0: welcome
+                        case 1: bring
+                        case 2: hold
+                        default: links
+                        }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .id(page)
+                    .transition(.asymmetric(
+                        insertion: .offset(x: forward ? 40 : -40).combined(with: .opacity),
+                        removal: .offset(x: forward ? -40 : 40).combined(with: .opacity)
+                    ))
+                    foot
                 }
-                .frame(maxWidth: 520)
-                .frame(maxHeight: .infinity, alignment: .top)
-                .padding(.top, 110)
-                .id(page)
-                .transition(.asymmetric(
-                    insertion: .offset(x: forward ? 40 : -40).combined(with: .opacity),
-                    removal: .offset(x: forward ? -40 : 40).combined(with: .opacity)
-                ))
-                foot
+                .frame(width: Self.column, height: Self.tall)
+                .clipped()
+                .padding(36)
+                .background(Palette.ground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 1))
+                .shadow(color: .black.opacity(0.16), radius: 34, y: 12)
+                .position(x: room.size.width / 2,
+                          y: max(room.size.height * 0.38, (Self.tall + 72) / 2 + 24))
             }
-            .padding(40)
         }
         .animation(Motion.glide, value: page)
         .transition(.opacity)
@@ -55,19 +64,9 @@ struct WelcomePanel: View {
     // MARK: - the pages
 
     private var welcome: some View {
-        VStack(spacing: 22) {
-            CopperIcon(size: 72)
-            VStack(spacing: 10) {
-                Text(Fork.name)
-                    .font(.system(size: 34, weight: .medium))
-                    .foregroundStyle(Palette.ink)
-                Text("A browser that works for you. Spaces, an agent at your side, and the engine already in your Mac.")
-                    .font(.system(size: 14.5))
-                    .foregroundStyle(Palette.muted)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(3)
-                    .frame(maxWidth: 400)
-            }
+        VStack(alignment: .leading, spacing: 22) {
+            CopperIcon(size: 64)
+            heading(Fork.name, "A browser that works for you. Spaces, an agent at your side, and the engine already in your Mac.")
         }
     }
 
@@ -175,7 +174,6 @@ struct WelcomePanel: View {
             }
             .keyboardShortcut(.defaultAction)
         }
-        .frame(maxWidth: 520)
     }
 
     // MARK: - doing
@@ -188,10 +186,10 @@ struct WelcomePanel: View {
     private func heading(_ title: String, _ line: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.system(size: 26, weight: .medium))
+                .font(.system(size: 34, weight: .semibold)) // Fork (ui-flows r3): Arc's onboarding sizes
                 .foregroundStyle(Palette.ink)
             Text(line)
-                .font(.system(size: 14))
+                .font(.system(size: 15))
                 .foregroundStyle(Palette.muted)
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)

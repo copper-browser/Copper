@@ -236,6 +236,11 @@ struct Hunt: View {
 struct Fitted<Content: View>: View {
     @ViewBuilder let content: () -> Content
     @State private var tall: CGFloat?
+    @State private var shown: CGFloat = 0
+
+    /// Fork (ui-flows r3): more below than the panel shows — the list fades
+    /// out at its foot rather than a card being cut mid-row.
+    private var cut: Bool { (tall ?? 0) > shown + 1 && shown > 0 }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -243,6 +248,14 @@ struct Fitted<Content: View>: View {
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { tall = $0 }
         }
         .frame(maxHeight: tall)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { shown = $0 }
+        .mask {
+            VStack(spacing: 0) {
+                Color.black
+                LinearGradient(colors: [.black, .black.opacity(cut ? 0 : 1)], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 28)
+            }
+        }
     }
 }
 

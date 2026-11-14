@@ -97,10 +97,13 @@ struct PageCard: View {
     @ObservedObject var tab: Tab
 
     var body: some View {
+        // Fork (ui-flows r3): a tab with nowhere to be yet is no white card;
+        // its field stands on the space's own ground, as Arc's empty space does.
+        let bare = tab.isBlank
         Page(tab: tab)
             .environment(\.pageCorners, PageCorners(radius: SplitMetrics.corner))
-            .background(PageCard.plate(lifted: true))
-            .overlay { PageCard.edge }
+            .background { if !bare { PageCard.plate(lifted: true) } }
+            .overlay { if !bare { PageCard.edge } }
     }
 
     /// The card's ground and the only thing carrying the shadow — on the

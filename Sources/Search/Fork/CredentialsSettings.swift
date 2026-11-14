@@ -109,7 +109,7 @@ struct BitwardenCard: View {
             Line("Master password") {
                 HStack(spacing: 8) {
                     SecureField("Password", text: $password)
-                        .textFieldStyle(.roundedBorder)
+                        .houseField() // Fork (ui-flows r3): the Intelligence field style, not the bezel
                         .frame(width: 220)
                         .onSubmit { unlock() }
                     actionPill("Unlock") { unlock() }
@@ -177,20 +177,20 @@ struct BitwardenCard: View {
         case .credentials:
             Line("Bitwarden server", "Use bitwarden.com, EU, or a self-hosted Vaultwarden server") {
                 TextField("https://vault.bitwarden.com", text: $server)
-                    .textFieldStyle(.roundedBorder)
+                    .houseField() // Fork (ui-flows r3): the Intelligence field style, not the bezel
                     .frame(width: 260)
             }
             .settingsAnchor("bitwarden.server") // Fork (settings-revamp): search anchors
             Rule()
             Line("Email") {
                 TextField("Email", text: $email)
-                    .textFieldStyle(.roundedBorder)
+                    .houseField() // Fork (ui-flows r3): the Intelligence field style, not the bezel
                     .frame(width: 260)
             }
             Rule()
             Line("Master password", "A two-step or new-device code is asked for next, if the account wants one") {
                 SecureField("Password", text: $password)
-                    .textFieldStyle(.roundedBorder)
+                    .houseField() // Fork (ui-flows r3): the Intelligence field style, not the bezel
                     .frame(width: 260)
                     .onSubmit { signIn() }
             }
@@ -215,7 +215,7 @@ struct BitwardenCard: View {
             Line(codeTitle(prompt), codeDetail(prompt)) {
                 HStack(spacing: 8) {
                     TextField("Code", text: $otp)
-                        .textFieldStyle(.roundedBorder)
+                        .houseField() // Fork (ui-flows r3): the Intelligence field style, not the bezel
                         .frame(width: 120)
                         .focused($codeFocused)
                         .onSubmit { submitCode() }

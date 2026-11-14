@@ -50,7 +50,7 @@ enum CommandBar {
             .init(id: "float", name: "Float the Video", glyph: "pip") { $0.toggleFloat() },
             .init(id: "hide", name: "Hide Something on This Page", glyph: "eye.slash") { $0.toggleHiding() },
             .init(id: "history", name: "History", glyph: "clock.arrow.circlepath") { $0.recalling = true },
-            .init(id: "downloads", name: "Downloads", glyph: "arrow.down.circle") { $0.hoarding = true },
+            .init(id: "downloads", name: "Downloads", glyph: "arrow.down.circle") { $0.showDownloads() }, // Fork (ui-flows r3): the popover from the column
             .init(id: "downloads-folder", name: "Open Downloads Folder", glyph: "folder") { $0.openDownloadsFolder() },
             .init(id: "passwords", name: "Passwords", glyph: "key") { $0.managing = true },
             .init(id: "vault", name: "Search Accounts (Bitwarden, 1Password, Keychain)", glyph: "key.horizontal") { $0.vaultOpen = true }, // Fork (vault-popup)

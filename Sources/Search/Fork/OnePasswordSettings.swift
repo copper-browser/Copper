@@ -139,26 +139,26 @@ struct OnePasswordCard: View {
         if onePassword.accounts.isEmpty || addingAccount {
             Line("Sign-in address") {
                 TextField(OnePassword.defaultAddress, text: $address)
-                    .textFieldStyle(.roundedBorder)
+                    .houseField() // Fork (ui-flows r3): the Intelligence field style, not the bezel
                     .frame(width: 240)
             }
             .settingsAnchor("onepassword.account")
             Rule()
             Line("Email") {
                 TextField("you@example.com", text: $email)
-                    .textFieldStyle(.roundedBorder)
+                    .houseField() // Fork (ui-flows r3): the Intelligence field style, not the bezel
                     .frame(width: 240)
             }
             Rule()
             Line("Secret Key", "From your Emergency Kit — A3-…") {
                 SecureField("A3-XXXXXX-…", text: $secretKey)
-                    .textFieldStyle(.roundedBorder)
+                    .houseField() // Fork (ui-flows r3): the Intelligence field style, not the bezel
                     .frame(width: 240)
             }
             Rule()
             Line("Account password") {
                 SecureField("Password", text: $password)
-                    .textFieldStyle(.roundedBorder)
+                    .houseField() // Fork (ui-flows r3): the Intelligence field style, not the bezel
                     .frame(width: 240)
                     .onSubmit { addAccount() }
             }
@@ -180,7 +180,7 @@ struct OnePasswordCard: View {
             Line("Account password") {
                 HStack(spacing: 8) {
                     SecureField("Password", text: $password)
-                        .textFieldStyle(.roundedBorder)
+                        .houseField() // Fork (ui-flows r3): the Intelligence field style, not the bezel
                         .frame(width: 180)
                         .onSubmit { signIn() }
                     actionPill("Sign in") { signIn() }
@@ -195,7 +195,7 @@ struct OnePasswordCard: View {
         Line("Service account token", "For a Mac nobody sits at. Reads the vaults the account was given; saves only where it may write") {
             HStack(spacing: 8) {
                 SecureField("ops_…", text: $token)
-                    .textFieldStyle(.roundedBorder)
+                    .houseField() // Fork (ui-flows r3): the Intelligence field style, not the bezel
                     .frame(width: 150)
                     .onSubmit { connectToken() }
                 actionPill("Connect") { connectToken() }
@@ -247,7 +247,7 @@ struct OnePasswordCard: View {
             Line("Account password", "The session ended or Copper was locked") {
                 HStack(spacing: 8) {
                     SecureField("Password", text: $password)
-                        .textFieldStyle(.roundedBorder)
+                        .houseField() // Fork (ui-flows r3): the Intelligence field style, not the bezel
                         .frame(width: 180)
                         .onSubmit { unlock() }
                     actionPill("Unlock") { unlock() }

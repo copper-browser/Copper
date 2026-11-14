@@ -6,7 +6,7 @@
 #   - two windows => exactly one sheet, hung from the window that asked;
 #   - presents == the opens that brought it up, dismisses == closes, never
 #     two at once, at most one scan per open;
-#   - the sheet is always 560 wide, and the same step is always the same size
+#   - the sheet is always 600 wide (the panels' width), and the same step is always the same size
 #     (its height follows the step: the preview of one source, every time);
 #   - Escape closes it, Return presses the primary button;
 #   - taking the page away from under it does not dismiss it;
@@ -25,7 +25,7 @@ APP=${1:-"$ROOT/build/Copper.app"}
 command -v jq >/dev/null || { echo "FAIL: jq is required" >&2; exit 1; }
 TEMP=$(mktemp -d "${TMPDIR:-/tmp}/flow-sheet.XXXXXX")
 WORLD="flowsheet$(date +%s)$$"
-PORT=$((43000 + $$ % 9000))
+PORT=${PORT:-$((43000 + $$ % 9000))}
 DOMAIN="com.collinrijock.copper.test.$WORLD"
 HOME_WORLD="$HOME/Library/Application Support/Copper ($WORLD)"
 PID=""
@@ -118,7 +118,7 @@ for pass in 1 2 3; do
     OPENS=$((OPENS + 1))
     STATE=$(until_state '.showing and .sheetVisible and .attached')
     check "$door: one sheet across both windows" '.attachedSheets == 1 and .flowSheets == 1' "$STATE"
-    [ "$(printf '%s\n' "$STATE" | jq '.sheet[0]')" = 560 ] || fail "$door: sheet is not 560 wide"
+    [ "$(printf '%s\n' "$STATE" | jq '.sheet[0]')" = 600 ] || fail "$door: sheet is not 600 wide"
     # The other window asks too, while it is up: still one sheet.
     B flow open --via bench --window "$other" >/dev/null
     sleep 0.3

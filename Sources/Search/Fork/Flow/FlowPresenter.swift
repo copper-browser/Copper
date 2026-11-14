@@ -15,14 +15,21 @@ import SwiftUI
 /// when it turns off, and nothing else can present or dismiss it. It keeps
 /// one size while it is up (only a resize of its window changes it), so a
 /// change of phase never moves or re-centres it.
+///
+/// Fork (ui-flows r3): no longer macOS's sheet (its own grey dim, no edge in
+/// dark, a different card from every other panel): a borderless child window
+/// in the panels' chrome (600 pt, radius 16, hairline), centred over the page
+/// card, with the window drawing the shared backdrop (`ModalBackdrop`) under
+/// it while it is up. One owner, one size and the keyboard rules stay as they
+/// were.
 @MainActor
-final class FlowPresenter: NSObject {
+final class FlowPresenter: NSObject, ObservableObject {
     static let shared = FlowPresenter()
 
     /// The sheet's width; its height is its step's (`want`), within the
     /// window it hangs from. Fork (move-in-polish): it was always 640, so a
     /// three-line summary sat in a tall empty sheet.
-    static let width: CGFloat = 560
+    static let width: CGFloat = 600
     static let idealHeight: CGFloat = 640
     static let maxHeight: CGFloat = 720
     static let minHeight: CGFloat = 240
@@ -31,6 +38,9 @@ final class FlowPresenter: NSObject {
 
     private var sheet: FlowSheetWindow?
     private weak var host: NSWindow?
+    private weak var hostBrowser: Browser?
+    /// The window it is up over, for that window's backdrop (`FlowBackdrop`).
+    @Published private(set) var hostNumber: Int?
     private var bag = Set<AnyCancellable>()
     private var watching: [NSObjectProtocol] = []
     private var started = false
@@ -118,22 +128,27 @@ final class FlowPresenter: NSObject {
         content.sizingOptions = []
         let panel = FlowSheetWindow(
             contentRect: NSRect(origin: .zero, size: size),
-            styleMask: [.titled, .fullSizeContentView],
+            styleMask: [.borderless],
             backing: .buffered, defer: false
         )
-        panel.titleVisibility = .hidden
-        panel.titlebarAppearsTransparent = true
+        // The card draws itself (FlowSheet); the window is only its shape.
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
         panel.isReleasedWhenClosed = false
-        panel.animationBehavior = .documentWindow
-        panel.backgroundColor = Palette.NS.ground
+        panel.animationBehavior = .none
         panel.contentViewController = content
         panel.setContentSize(size)
         panel.onCancel = { [weak flow] in flow?.close() }
         panel.setAccessibilityLabel("Move in")
         sheet = panel
         host = window
+        hostBrowser = browser
+        hostNumber = window.windowNumber
         watch(window, flow: flow)
-        window.beginSheet(panel) { _ in }
+        place(panel, height: size.height)
+        window.addChildWindow(panel, ordered: .above)
+        panel.makeKeyAndOrderFront(nil)
         flow.log("present", "window \(window.windowNumber) \(Int(size.width))×\(Int(size.height))")
     }
 
@@ -149,16 +164,24 @@ final class FlowPresenter: NSObject {
         }
     }
 
+    /// A click on the window behind (its backdrop): the keyboard comes back
+    /// to Move in, which is still the thing in front.
+    func refocus() {
+        guard let sheet, NSApp.keyWindow !== sheet else { return }
+        sheet.makeKey()
+    }
+
     private func dismiss(_ flow: Flow) {
         guard let panel = sheet else { return }
         sheet = nil
         unwatch()
-        if let host, host.attachedSheet === panel {
-            host.endSheet(panel)
-        } else {
-            panel.orderOut(nil)
-        }
+        let wasKey = NSApp.keyWindow === panel
+        host?.removeChildWindow(panel)
+        panel.orderOut(nil)
+        if wasKey { host?.makeKey() }
         host = nil
+        hostBrowser = nil
+        hostNumber = nil
         flow.log("dismiss")
     }
 
@@ -209,11 +232,20 @@ final class FlowPresenter: NSObject {
     private func fit() {
         guard let sheet, let host else { return }
         let height = Self.height(for: host, wanting: wanted)
-        guard abs(sheet.contentLayoutRect.height - height) > 0.5 else { return }
-        let old = sheet.frame
-        let outer = sheet.frameRect(forContentRect: NSRect(x: 0, y: 0, width: Self.width, height: height)).size
-        sheet.setFrame(NSRect(x: old.midX - outer.width / 2, y: old.midY - outer.height / 2, width: outer.width, height: outer.height), display: true)
-        Flow.shared.log("resize", "\(Int(Self.width))×\(Int(height))")
+        let resized = abs(sheet.frame.height - height) > 0.5
+        place(sheet, height: height) // a child window keeps its place on screen, so a resized window re-centres it
+        if resized { Flow.shared.log("resize", "\(Int(Self.width))×\(Int(height))") }
+    }
+
+    /// Centred over the page card — beside the column, not over it — and a
+    /// little above the middle, as the panels are.
+    private func place(_ panel: NSWindow, height: CGFloat) {
+        guard let host else { return }
+        let frame = host.frame
+        let column = hostBrowser.map { $0.prefs.sidebar && !$0.folded ? $0.prefs.sideWidth : 0 } ?? 0
+        let x = frame.minX + column + (frame.width - column - Self.width) / 2
+        let y = frame.minY + (frame.height - height) / 2
+        panel.setFrame(NSRect(x: x.rounded(), y: y.rounded(), width: Self.width, height: height), display: true)
     }
 
     // MARK: - bench
@@ -225,7 +257,7 @@ final class FlowPresenter: NSObject {
         if let sheet {
             out["sheet"] = [Int(sheet.frame.width), Int(sheet.frame.height)]
             out["sheetVisible"] = sheet.isVisible
-            out["attached"] = host?.attachedSheet === sheet
+            out["attached"] = host?.childWindows?.contains(sheet) == true
         }
         if let host {
             out["host"] = host.windowNumber
@@ -234,6 +266,7 @@ final class FlowPresenter: NSObject {
         // Every sheet hanging off any window of the app: the one rule is
         // that this is never more than one Move-in sheet.
         let attached = NSApp.windows.compactMap { $0.attachedSheet }
+            + NSApp.windows.flatMap { $0.childWindows ?? [] }.filter { $0 is FlowSheetWindow }
         out["attachedSheets"] = attached.count
         out["flowSheets"] = NSApp.windows.filter { $0 is FlowSheetWindow && $0.isVisible }.count
         return out

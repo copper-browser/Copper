@@ -207,7 +207,7 @@ struct AppCommands: Commands {
             Divider()
             Button("Show History…") { browser.recalling = true }
                 .keyboardShortcut("y")
-            Button("Downloads…") { browser.hoarding = true }
+            Button("Downloads…") { browser.showDownloads() } // Fork (ui-flows r3)
                 .keyboardShortcut("j", modifiers: [.command, .shift])
             Button("Open Downloads Folder") { browser.openDownloadsFolder() }
             Divider()
@@ -430,6 +430,7 @@ struct ContentView: View {
         if browser.managing {
             sheet { PasswordsPanel(browser: browser) } close: { browser.managing = false }
         }
+        FlowBackdrop(browser: browser, column: sidebar ? browser.prefs.sideWidth : 0) // Fork (ui-flows r3): Move in's, the same backdrop
         if browser.reviewing {
             // No dimming for this one: the whole point is to keep looking at
             // the page while the list offers to put things back on it.
@@ -641,17 +642,17 @@ struct ContentView: View {
         // the window; its list (`Fitted`) scrolls past that. Settings keeps
         // its own size.
         let content = panel()
+        let column = sidebar ? browser.prefs.sideWidth : 0
         return GeometryReader { room in
             ZStack {
-                // Fork (ui-flows): the window steps back — blurred and about a
-                // quarter dimmer — so the panel is the one thing in front (0.10
-                // left the page reading as part of the panel).
-                Rectangle().fill(.ultraThinMaterial)
-                    .overlay(Color.black.opacity(0.18))
-                    .ignoresSafeArea()
-                    .onTapGesture(perform: close)
+                // Fork (ui-flows r3): the one backdrop (Fork/ModalBackdrop.swift):
+                // the page card blurred and dimmed, the column left crisp.
+                ModalBackdrop(column: column, tap: close)
                 content
                     .frame(maxHeight: fitted ? max(280, room.size.height * 0.7) : nil)
+                    // Over the page card, beside the column; Settings, wider,
+                    // keeps the window's middle.
+                    .padding(.leading, fitted ? column : 0)
                     .transition(.scale(scale: 0.97).combined(with: .opacity))
             }
             .frame(width: room.size.width, height: room.size.height)
@@ -893,7 +894,7 @@ struct ContentView: View {
         case "y" where !shifted:
             browser.recalling.toggle()
         case "j" where shifted:
-            browser.hoarding.toggle()
+            browser.showDownloads(toggling: true) // Fork (ui-flows r3): the popover from the column
         case "v" where shifted:
             browser.pasteAndGo()
         case "p" where !shifted:

@@ -61,7 +61,7 @@ struct IntelligencePage: View {
                 }
             }
 
-            SettingsSection("Jev", note: footnote) {
+            SettingsSection("Jev, Copper's fast clicker", note: footnote) { // Fork (ui-flows r3): Jev explained once, in plain words
                 Line("Jev key", brain.cloudLine("jevKey", brain.cloud?.jev?.key) ?? jevDetail) {
                     SettingsFlow(spacing: 8) { // Fork (settings-merge): the pill goes above the field in a narrow column
                         if !brain.jevReady { JevKeyPagePill() }
@@ -75,7 +75,7 @@ struct IntelligencePage: View {
     }
 
     private var jevDetail: String {
-        let speed = "Quick decisions for agents, in about a fifth of a second."
+        let speed = "It clicks and types on pages for agents, a few times a second."
         return brain.jevReady ? speed : speed + " Get a key to turn it on."
     }
 
@@ -372,6 +372,23 @@ struct UpdatesPage: View {
         return "Up to date"
     }
 
+    /// "Released Nov 14, 2026", with a failed re-check said beside it.
+    private var releasedLine: String {
+        let date = updates.latest.map { "Released " + Self.publishedDate($0.publishedAt) } ?? ""
+        return updates.error == nil ? date : date + " · couldn’t check again just now"
+    }
+
+    /// Fork (ui-flows r3): Check now, as a word. The same width while it
+    /// reads the feed, so the row doesn't jump.
+    private var checkWord: some View {
+        Button(updates.checking ? "Checking…" : "Check now") { updates.check(force: true) }
+            .buttonStyle(.plain)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(updates.checking ? Palette.muted : Palette.ink)
+            .disabled(updates.checking)
+            .fixedSize()
+    }
+
     private var installLine: String {
         "Updates come from \(updates.feedHost)" + (updates.managedByBrew ? " · installed via Homebrew" : "")
     }
@@ -389,37 +406,35 @@ struct UpdatesPage: View {
         let _ = SettingsPerf.tick("updatesPage") // Fork (settings-perf)
         VStack(alignment: .leading, spacing: 10) {
             SettingsSection("Updates") {
-                Line(latestLine, currentLine) {
-                    // One pill in both states: the row neither jumps nor
-                    // loses its button while the feed is read.
-                    Pill(updates.checking ? "Checking…" : "Check now") { updates.check(force: true) }
-                        .disabled(updates.checking)
-                }
-                .settingsAnchor("updates.check")
+                // Fork (ui-flows r3): one row — the version once (About's
+                // header is this Copper's), what to do next, and Check now as
+                // a quiet word beside it rather than a third pill.
                 if updates.available, let version = updates.latest?.version {
-                    Rule()
-                    // The three states of a newer release: on its way, ready
-                    // (the only one with an Update button), or not obtained —
-                    // with the reason, and a way to try again.
                     Group {
                     if updates.downloading {
-                        Line("Getting Copper \(version) ready", "Downloading from \(updates.feedHost) and verifying the bundle") {
+                        Line("Getting \(version) ready", "Downloading from \(updates.feedHost) and verifying it") {
                             Ring(size: 12)
                         }
                     } else if updates.ready {
-                        Line("Copper \(version) is ready", "Downloaded and verified. Update backs up your tabs, swaps in the new Copper and relaunches — a few seconds.") {
-                            Pill(updates.state == .upgrading ? "Updating…" : "Update", filled: true) {
-                                updates.upgrade()
+                        Line("Update ready: \(version)", "Update backs up your tabs, swaps in the new Copper and relaunches — a few seconds") {
+                            HStack(spacing: 12) {
+                                checkWord
+                                Pill(updates.state == .upgrading ? "Updating…" : "Update", filled: true) {
+                                    updates.upgrade()
+                                }
+                                .disabled(updates.state == .upgrading)
                             }
-                            .disabled(updates.state == .upgrading)
                         }
                     } else {
-                        Line("Copper \(version) isn’t downloaded yet", updates.stageError ?? "It downloads on its own after a check; Download gets it now.") {
-                            Pill(updates.stageError == nil ? "Download" : "Retry") { updates.stage(force: true) }
+                        Line("Update ready: \(version)", updates.stageError ?? releasedLine) {
+                            HStack(spacing: 12) {
+                                checkWord
+                                Pill(updates.stageError == nil ? "Download" : "Retry") { updates.stage(force: true) }
+                            }
                         }
                     }
                     }
-                    .settingsAnchor("updates.install")
+                    .settingsAnchor("updates.check") // install falls back here (SettingsIndex)
                     // What the release says it brings, before anyone presses
                     // Update — the same paragraph as the pill's What's New.
                     if let notes = updates.latest?.notes {
@@ -428,6 +443,9 @@ struct UpdatesPage: View {
                         WhatsNew(version: version, notes: notes)
                             .settingsAnchor("updates.notes")
                     }
+                } else {
+                    Line(latestLine, currentLine) { checkWord }
+                        .settingsAnchor("updates.check")
                 }
                 if let outcome = outcomeLine, updates.outcome?.ok == false {
                     Rule()
@@ -591,7 +609,7 @@ private struct AgentsJevSection: View {
     }
 
     var body: some View {
-        SettingsSection("Fast clicks (Jev)") {
+        SettingsSection("Jev") { // Fork (ui-flows r3): explained once, in Intelligence
             Line("Let the agent hand Copper a goal", "An agent can hand over a whole task; Jev clicks and types in this window, a few times a second, until it's done.") {
                 Switch(on: $mcp.config.jev)
             }
@@ -1168,7 +1186,7 @@ struct FlowSettingsLine: View {
 
     var body: some View {
         Line("Move in from another browser", "Tabs, spaces, bookmarks, history and passwords from \(MoveFrom.names)") { // Fork (ui-flows): the one list
-            Pill("Move in…", filled: true) { Flow.presentFromSettings(browser) }
+            Pill("Move in…") { Flow.presentFromSettings(browser) } // Fork (ui-flows r3): bordered; filled is for one primary per page
         }
     }
 }
@@ -1261,7 +1279,7 @@ private struct WhatsNew: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("What’s new in \(version)")
+            Text("What’s new")
                 .font(.system(size: 13)).foregroundStyle(Palette.ink)
             ForEach(UpdatesPage.bullets(notes), id: \.self) { line in
                 HStack(alignment: .firstTextBaseline, spacing: 7) {
@@ -1279,6 +1297,6 @@ private struct WhatsNew: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 14).padding(.vertical, 10)
+        .padding(.horizontal, SettingsMetrics.lineInset(true)).padding(.vertical, 10) // Fork (ui-flows r3): on the rows' own edge
     }
 }

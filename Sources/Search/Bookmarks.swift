@@ -537,16 +537,22 @@ struct BookmarksPanel: View {
         .onAppear { hunting = !bookmarks.isEmpty }
     }
 
-    /// Only the browsers actually on this Mac.
+    /// Only the browsers actually on this Mac. Fork (ui-flows r3): the one
+    /// list (`MoveFrom`) with its icons, as the Passwords window has it; a
+    /// Chromium browser's bookmarks come straight in, any other opens Move in.
     @ViewBuilder private var bringIn: some View {
-        let sources = Chromium.installed()
-        if !sources.isEmpty {
+        if !MoveFrom.found.isEmpty {
             HStack(spacing: 8) {
                 Text("Bring in from")
                     .font(.system(size: 12))
                     .foregroundStyle(Palette.muted)
-                ForEach(sources) { source in
-                    Pill(source.name) { browser.takeBookmarks(from: source) }
+                ForEach(MoveFrom.found, id: \.name) { found in
+                    BrowserPill(name: found.name, icon: found.icon, help: "Bring your bookmarks over from \(found.name)") {
+                        guard let source = Chromium.installed().first(where: { $0.name == found.name }) else {
+                            return Flow.shared.present(from: browser, via: .bookmarks, prefer: found.name)
+                        }
+                        _ = browser.takeBookmarks(from: source)
+                    }
                 }
             }
         }

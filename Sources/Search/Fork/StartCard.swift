@@ -13,14 +13,38 @@ import SwiftUI
 struct StartCard: View {
     @ObservedObject var browser: Browser
     @AppStorage("start.offer", store: Store.settings) private var offer = false
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        if offer, browser.tabs.allSatisfy(\.isBlank) {
-            card.onDisappear {
-                // A page opened: the card has done its job.
-                if !browser.tabs.allSatisfy(\.isBlank) { offer = false }
+        if browser.tabs.allSatisfy(\.isBlank) {
+            if offer {
+                card.onDisappear {
+                    // A page opened: the card has done its job.
+                    if !browser.tabs.allSatisfy(\.isBlank) { offer = false }
+                }
+            } else {
+                emptySpace
             }
         }
+    }
+
+    /// Fork (ui-flows r3): a space with nothing open yet says whose it is and
+    /// the three keys that fill it, on its own ground (Arc's empty space).
+    private var emptySpace: some View {
+        let space = Spaces.shared.space(in: browser)
+        let tint = SpaceTint(space: space, dark: scheme == .dark)
+        return VStack(spacing: 12) {
+            Text(space.title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(tint.ink)
+            HStack(spacing: 18) {
+                hint("⌘T", "New tab", ink: tint.ink, cap: tint.square)
+                hint("⌘K", "Find a tab", ink: tint.ink, cap: tint.square)
+                hint("⌃1–9", "Switch space", ink: tint.ink, cap: tint.square)
+            }
+        }
+        .padding(.top, 18)
+        .transition(.opacity)
     }
 
     private var card: some View {
@@ -57,16 +81,16 @@ struct StartCard: View {
         .transition(.opacity)
     }
 
-    private func hint(_ keys: String, _ does: String) -> some View {
+    private func hint(_ keys: String, _ does: String, ink: Color = Palette.ink, cap: Color = Palette.wash) -> some View {
         HStack(spacing: 6) {
             Text(keys)
-                .font(.system(size: 11.5, weight: .medium).monospacedDigit())
-                .foregroundStyle(Palette.ink)
+                .font(.system(size: 12, weight: .medium).monospacedDigit())
+                .foregroundStyle(ink)
                 .padding(.horizontal, 5).padding(.vertical, 2)
-                .background(Palette.wash, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                .background(cap, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
             Text(does)
-                .font(.system(size: 12))
-                .foregroundStyle(Palette.muted)
+                .font(.system(size: 13)) // Fork (ui-flows r3): 13 pt, the page's own size
+                .foregroundStyle(ink == Palette.ink ? Palette.muted : ink.opacity(0.85))
         }
         .accessibilityElement(children: .combine)
     }
@@ -175,5 +199,53 @@ extension Preferences {
     static func freshProfile(_ store: UserDefaults) -> Bool {
         store.object(forKey: "sidebar") == nil && store.object(forKey: "manner") == nil
             && !store.bool(forKey: "welcomed") && store.object(forKey: "glyph") == nil
+    }
+}
+
+/// Fork (ui-flows r3): a new profile's favourites row before it has any —
+/// three dashed places in the grid, and a site dropped on them is kept there.
+/// Gone with the start card, or once there is a favourite.
+struct GhostFavourites: View {
+    @ObservedObject var browser: Browser
+    let tint: SpaceTint
+    let width: CGFloat
+    let height: CGFloat
+    let gap: CGFloat
+    @AppStorage("start.offer", store: Store.settings) private var offer = false
+    @State private var landing = false
+
+    var body: some View {
+        if offer, browser.pinnedCount == 0 {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: gap) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(tint.ink.opacity(landing ? 0.5 : 0.22), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                            .background(landing ? tint.hover : .clear, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .frame(width: width, height: height)
+                    }
+                }
+                Text("Drop a site here to keep it")
+                    .font(.system(size: 11))
+                    .foregroundStyle(tint.ink.opacity(0.8))
+                    .padding(.leading, 2)
+            }
+            .contentShape(Rectangle())
+            .onDrop(of: [.url, .text], isTargeted: $landing) { providers in
+                guard let provider = providers.first else { return false }
+                let keep: (URL) -> Void = { url in
+                    DispatchQueue.main.async { browser.pin(browser.open(url, foreground: true)) }
+                }
+                if provider.canLoadObject(ofClass: URL.self) {
+                    _ = provider.loadObject(ofClass: URL.self) { url, _ in if let url { keep(url) } }
+                } else {
+                    _ = provider.loadObject(ofClass: String.self) { text, _ in if let text, let url = Address.url(from: text) { keep(url) } }
+                }
+                return true
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("No favourites yet. Drop a site here to keep it.")
+            .animation(Motion.quick, value: landing)
+        }
     }
 }

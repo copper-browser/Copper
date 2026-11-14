@@ -89,6 +89,10 @@ struct SideBar: View {
                 pinned
                     .padding(.horizontal, SideBar.inset)
                     .padding(.bottom, 8)
+            } else {
+                GhostFavourites(browser: browser, tint: tint, width: pinWidth, height: pinHeight, gap: SideBar.pinGap) // Fork (ui-flows r3, Fork/StartCard.swift)
+                    .padding(.horizontal, SideBar.inset)
+                    .padding(.bottom, 8)
             }
 
             // Fork (space-slide): the space's name and its rows are the part
@@ -944,7 +948,7 @@ struct SideAddress: View {
             }
             .buttonStyle(.plain)
             .help("Change the address   ⌘L")
-            if downloads.doorShowing {
+            if downloads.doorShowing || downloads.showsDoor(in: browser) { // Fork (ui-flows r3): ⌘⇧J opens the list here even before a first download
                 DownloadsDoor(browser: browser, size: 24, arrowEdge: .bottom)
                     .transition(.scale(scale: 0.8).combined(with: .opacity))
             }
