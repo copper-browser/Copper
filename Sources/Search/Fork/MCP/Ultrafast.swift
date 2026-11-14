@@ -2133,7 +2133,7 @@ enum Ultrafast {
         return [
             [
                 "name": "jev_run",
-                "description": "FAST PATH. One plain-English goal; Copper drives your tab (else the user's) with the jev-ultrafast loop (~200 ms a step) until DONE or BLOCKED. Returns the trace, page and element table. Verify DONE yourself.",
+                "description": "FAST PATH. One plain-English goal; Copper drives your tab (else the user's), ~200 ms a step, until DONE or BLOCKED. Returns the trace, page and element table. Verify DONE yourself.",
                 "inputSchema": ["type": "object", "properties": [
                     "goal": string("Everything to achieve, with concrete values and when to stop"),
                     "url": string("Open this first"),
@@ -2143,10 +2143,10 @@ enum Ultrafast {
                     "tab": string("Tab id from browser_tabs"),
                     "maxSteps": number("Cap on actions; default \(maxSteps)"),
                     "elements": bool("Append the element table; default true"),
-                    "vision": string("auto (default), off, screenshot, marks (indexes drawn), box (target by position), pixels (picture only)"),
-                    "model": string("jev-latest, jev-preview or jev-1.14.0 (box needs the last two)"),
+                    "vision": string("auto (default), off, screenshot, marks, box, pixels"),
+                    "model": string("jev-latest, jev-preview, jev-1.14.0"),
                     "json": bool("One JSON object instead of the text report"),
-                    "strategy": string("Comma-separated; default this Mac's Fast mode. classic, fast (no glide), literal (goal values, no text model), burst, lean, paste, watch, turbo (all), verify (check DONE), submit (Return in a lone search box), llm[=model]"),
+                    "strategy": string("Comma-separated: classic, fast, literal, burst, lean, paste, watch, turbo, verify, submit, llm[=model]; default this Mac's Fast mode"),
                 ], "required": ["goal"]] as [String: Any],
             ],
             [

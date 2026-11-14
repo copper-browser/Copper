@@ -127,6 +127,11 @@ final class NetLog: NSObject {
     /// Where the log is now: requests after this are the next action's.
     static func mark(_ web: WKWebView) -> UInt64 { log(for: web)?.sequence ?? 0 }
 
+    /// A data call asked for after `mark` and still out (Tools.settle).
+    static func out(_ web: WKWebView, after mark: UInt64) -> Bool {
+        log(for: web)?.entries.contains { $0.seq > mark && calls.contains($0.kind) && !$0.done } ?? false
+    }
+
     /// A data call of this page still out.
     static func busy(_ web: WKWebView) -> Bool {
         guard let log = log(for: web) else { return false }

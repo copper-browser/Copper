@@ -274,7 +274,8 @@ enum CommandBar {
 
     /// The empty field: what is open, and a few doors.
     @MainActor private static func resting(_ browser: Browser) -> [Suggestion] {
-        let wanted = ["new-tab", "split", "new-space", "history"]
+        // Fork (ux, r4): two doors before anything is typed, so the card stays short; the rest answer a word.
+        let wanted = ["split", "history"]
         let all = Launcher.shared.commands(browser)
         var rows = wanted.compactMap { id -> Suggestion? in
             guard let command = all.first(where: { $0.id == id }) else { return nil }
