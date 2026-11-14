@@ -516,7 +516,11 @@ final class Tab: ObservableObject, Identifiable {
         controller.addUserScript(
             // Every frame: a sign-in can be served inside one (Fork: frame-autofill).
             // In Copper's own world, out of the page's reach (Fork: agent-world).
-            WKUserScript(source: FormRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: false, in: .copper)
+            WKUserScript(source: FormRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .copper)
+        )
+        controller.addUserScript(
+            // Fork (frame-stub): embedded frames get the whole script once they hold a field (Forms.swift).
+            WKUserScript(source: FormRelay.frameStub, injectionTime: .atDocumentEnd, forMainFrameOnly: false, in: .copper)
         )
         controller.addUserScript(
             WKUserScript(source: FormRelay.early, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
@@ -525,12 +529,11 @@ final class Tab: ObservableObject, Identifiable {
             WKUserScript(source: Swipe.calm, injectionTime: .atDocumentStart, forMainFrameOnly: true)
         )
         // Every frame: a swipe over an embedded map is the map's, and only the
-        // map's own document can say so.
+        // map's own document can say so; an image in an ad is still an image.
+        // Fork (loadmem): one script, after the document has been read — two
+        // listeners need nothing earlier, and every frame's start is the page's.
         controller.addUserScript(
-            WKUserScript(source: Swipe.watch, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .copper) // Fork (agent-world)
-        )
-        controller.addUserScript(
-            WKUserScript(source: ImageRelay.watch, injectionTime: .atDocumentStart, forMainFrameOnly: false, in: .copper) // Fork (agent-world)
+            WKUserScript(source: Swipe.watch + ImageRelay.watch, injectionTime: .atDocumentEnd, forMainFrameOnly: false, in: .copper) // Fork (agent-world)
         )
         controller.addUserScript(
             WKUserScript(source: StoreRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .copper) // Fork (agent-world)

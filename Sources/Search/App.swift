@@ -284,6 +284,7 @@ struct ContentView: View {
     @ObservedObject private var recent = Recent.shared
     @ObservedObject private var canvases = Canvases.shared
     @ObservedObject private var clearTabs = ClearTabs.shared
+    @ObservedObject private var launch = Launch.shared // Fork (launch): the column waits for the page (Fork/Launch.swift)
 
     @State private var keys: Any?
     @State private var window: NSWindow?
@@ -314,8 +315,13 @@ struct ContentView: View {
                 // full height, so the traffic lights sit in its own corner
                 // rather than over the page.
                 if sidebar {
-                    SideBar(browser: browser, prefs: browser.prefs, grounded: false) // Fork (page-frame): the window draws its ground
-                        .transition(.move(edge: .leading))
+                    if launch.dressed {
+                        SideBar(browser: browser, prefs: browser.prefs, grounded: false) // Fork (page-frame): the window draws its ground
+                            .transition(.move(edge: .leading))
+                    } else {
+                        // Fork (launch): the column's place, empty, until the restored page has painted.
+                        Color.clear.frame(width: browser.prefs.sideWidth)
+                    }
                 }
 
                 VStack(spacing: 0) {
@@ -506,6 +512,7 @@ struct ContentView: View {
             .animation(Motion.settle, value: browser.reviewing)
         .onAppear {
             Pace.mark("window") // Fork (pace)
+            Launch.shared.windowShown() // Fork (launch)
             watchKeys()
             browser.askFocus()
             // Addresses from other apps have somewhere to go from here on —

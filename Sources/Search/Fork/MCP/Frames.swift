@@ -79,7 +79,7 @@ enum Frames {
         let book = book(web)
         var out: [Entry] = []
         for (doc, entry) in all(web) where wanted(entry) {
-            let said = try? await Page.raw(web, "window.__officeForms ? window.__officeForms.doc : ''", counted: false, in: entry.info) as? String
+            let said = try? await Page.raw(web, "(window.__officeForms || window.__officeFormsStub || { doc: '' }).doc", counted: false, in: entry.info) as? String
             if said == doc { out.append(entry) } else { book.known[doc] = nil }
         }
         return out.sorted { $0.number < $1.number }
