@@ -164,8 +164,8 @@ final class Split: ObservableObject {
     func close() { unpair(side); side = nil; swapped = false; holder = nil; landing = false; still = nil; picturing = false; covering = false; incoming = false }
 
     /// Fork (motion): the pane has slid in. Its cross can show, and the
-    /// cover fades off (80 ms) once the page under it has drawn at its new
-    /// width — it took that width when the slide began, so by now it has.
+    /// cover comes off once the page under it has drawn at its new width —
+    /// it took that width when the slide began, so by now it has.
     /// WebKit says when through a name outside the public framework; one
     /// that doesn't answer gets a fixed beat.
     func landed(in browser: Browser) {
@@ -203,9 +203,13 @@ final class Split: ObservableObject {
         web.perform(next, with: block)
     }
 
+    /// At once once the card has landed — one swap of the left page's wrap
+    /// reads better than two wraps of one text crossing (and keeps the whole
+    /// move under 300 ms). Reduce Motion, where nothing slid, fades it.
     private func uncover() {
         guard covering else { return }
-        withAnimation(.easeOut(duration: 0.07)) { covering = false; still = nil }
+        let fade = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        withAnimation(fade ? .easeOut(duration: 0.12) : nil) { covering = false; still = nil }
     }
 
     /// The cross on a pane's own toolbar. The tab goes, the split goes with
@@ -495,7 +499,7 @@ struct SplitStage: View {
     }
 
     /// Fork (uiflows r4): the split takes its final layout at once, under
-    /// the cover, and the new pane's card slides in over the old page (170
+    /// the cover, and the new pane's card slides in over the old page (160
     /// ms, an ease-out). Only the cover moves — a picture and a card drawn
     /// by SwiftUI — so no web view is resized mid-move: a page resized
     /// frame by frame was cropped for 330 ms, then re-wrapped in one jump.
@@ -514,7 +518,7 @@ struct SplitStage: View {
         // right and the pages have their final frames.
         DispatchQueue.main.async {
             split.watchRewrap(in: browser)
-            withAnimation(still ? nil : .easeOut(duration: 0.17), completionCriteria: .logicallyComplete) {
+            withAnimation(still ? nil : .easeOut(duration: 0.16), completionCriteria: .logicallyComplete) {
                 split.incoming = false
             } completion: {
                 split.landed(in: browser)
