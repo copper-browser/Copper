@@ -33,6 +33,12 @@ struct CommandPalette: View {
     /// in the key's own pass, and its rows are laid out in the next one and
     /// fade in — one step, not a field that then grows into a card.
     @State private var filled = false
+    /// Fork (perf, r4): the rows laid out so far, by id. A keystroke that
+    /// brings a list of new rows lays out the first `slice` of them in its own
+    /// pass and the rest in the next, each pass under a frame; a row already
+    /// on the card stays drawn. The card's height counts them all from the start.
+    @State private var laid: Set<String> = []
+    static let slice = 4
     /// Fork (perf): where the last card stood. A card measures its window a
     /// moment after it is drawn; starting from the last answer, it opens in
     /// its place instead of at a guess for one frame and moving in a second.
@@ -108,9 +114,17 @@ struct CommandPalette: View {
         // these rows have no page behind them to ask. See Fork/Marks.
         .onAppear {
             Marks.want(browser.offers.map(\.url))
-            Launcher.afterCommit { withAnimation(.easeOut(duration: 0.08)) { filled = true } }
+            Launcher.afterCommit {
+                withAnimation(.easeOut(duration: 0.08)) {
+                    filled = true
+                    laid = Set(CommandPalette.keyed(browser.offers).map(\.id))
+                }
+            }
         }
-        .onChange(of: browser.offers) { _, offers in Marks.want(offers.map(\.url)) }
+        .onChange(of: browser.offers) { _, offers in
+            Marks.want(offers.map(\.url))
+            Launcher.afterCommit { laid = Set(CommandPalette.keyed(browser.offers).map(\.id)) }
+        }
     }
 
     /// Fork (ui-flows): the card arrives the way Arc's does — solid at once,
@@ -341,11 +355,16 @@ struct CommandPalette: View {
                         .padding(.bottom, 2)
                         .accessibilityAddTraits(.isHeader)
                 }
-                Row(offer: offer, picked: browser.picked == index, tint: tint.mark, fill: tint.dot, stamp: marks.landed,
-                    aside: bar.launching && browser.picked == index ? Launcher.aside(for: offer, in: browser) : "")
-                    .equatable()
-                    .contentShape(Rectangle())
-                    .onTapGesture { browser.take(offer) }
+                if index < CommandPalette.slice || laid.contains(item.id) {
+                    Row(offer: offer, picked: browser.picked == index, tint: tint.mark, fill: tint.dot, stamp: marks.landed,
+                        aside: bar.launching && browser.picked == index ? Launcher.aside(for: offer, in: browser) : "")
+                        .equatable()
+                        .contentShape(Rectangle())
+                        .onTapGesture { browser.take(offer) }
+                } else {
+                    // Its place, until the next pass lays it out.
+                    Color.clear.frame(height: CommandPalette.twoLine(offer) ? CommandPalette.pageRowHeight : CommandPalette.rowHeight)
+                }
             }
         }
     }
