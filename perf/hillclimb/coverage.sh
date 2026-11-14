@@ -56,6 +56,6 @@ for _ in $(seq 1 40); do curl -fsS -o /dev/null "http://127.0.0.1:$fport/index.h
 
 # One measurement batch under the mini's shared lock (no build runs beside it).
 mkdir -p "$HOME/hc"
-lockf "$HOME/hc/mini.lock" /usr/bin/python3 "$here/coverage/run.py" --app "$app" --out "$out" --label "$label" \
+lockf -k "$HOME/hc/mini.lock" /usr/bin/python3 "$here/coverage/run.py" --app "$app" --out "$out" --label "$label" \
   --port "${COV_PORT:-4150}" --world "${COV_WORLD:-hc-cov}" --fixtures "$fport" --mode "$mode" --repeat "${COV_REPEAT:-1}" ${COV_ONLY:+--only "$COV_ONLY"} \
   2>&1 | tee "$out/run-$mode.log"
