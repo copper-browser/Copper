@@ -53,11 +53,35 @@ struct IconInkTests {
     @Test("A white glyph is drawn dark in the light and left white in the dark")
     func redrawn() {
         let white = icon(.white)
+        IconInk.learn(white, tone: IconInk.code(IconInk.tone(of: white)))
         #expect(inkLevel(IconInk.legible(white, dark: false)) < 0.2)
         #expect(IconInk.legible(white, dark: true) === white)
         let black = icon(.black)
+        IconInk.learn(black, tone: IconInk.code(IconInk.tone(of: black)))
         #expect(inkLevel(IconInk.legible(black, dark: true)) > 0.8)
         #expect(IconInk.legible(black, dark: false) === black)
+    }
+
+    @Test("An icon whose tone isn't known is worn as it came: drawing a row never decodes it")
+    func unread() {
+        let white = icon(.white)
+        #expect(IconInk.legible(white, dark: false) === white)
+    }
+
+    @Test("The tone is read off the main thread once and kept beside the icon's file")
+    func keptBesideFile() async throws {
+        let white = icon(.white)
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("icon-ink-\(UUID().uuidString).png")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let rep = try #require(white.tiffRepresentation.flatMap { NSBitmapImageRep(data: $0) })
+        try #require(rep.representation(using: .png, properties: [:])).write(to: file)
+        #expect(IconInk.kept(at: file) == nil)
+        #expect(await IconInk.measure(file) == 1)
+        #expect(IconInk.kept(at: file) == 1)
+        // The next launch: known from the file, inked without a read.
+        let again = NSImage(byReferencing: file)
+        IconInk.read(again, at: file) { _ in Issue.record("already kept: nothing left to read") }
+        #expect(inkLevel(IconInk.legible(again, dark: false)) < 0.2)
     }
 }
 

@@ -178,6 +178,8 @@ final class StageView: NSView {
     /// Now there is one fact and one rule: show `wanted`, and put that right on
     /// every layout. Nothing to fall out of step with.
     private weak var wanted: NSView?
+    /// Fork (page-frame): the corners `round` last cut (Fork/PageFrame.swift).
+    var cut: PageCorners?
 
     override func layout() {
         super.layout()

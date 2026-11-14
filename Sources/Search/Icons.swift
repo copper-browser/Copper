@@ -59,6 +59,9 @@ final class Favicons {
         guard FileManager.default.fileExists(atPath: file.path) else { absent.insert(key); return nil }
         let image = NSImage(byReferencing: file)
         memory[key] = image
+        // Fork (icon-ink): whether it is a glyph to ink, from beside the file
+        // or read off the main thread (Fork/IconInk.swift).
+        IconInk.read(image, at: file) { [weak self] in self?.arrived?(key.replacingOccurrences(of: "@dark", with: ""), $0) }
         return IconInk.legible(image, dark: Favicons.dark) // Fork (icon-ink)
     }
 
@@ -83,9 +86,10 @@ final class Favicons {
     /// An icon from somewhere else — another browser's cache, at import —
     /// kept as if the site had handed it over, unless one is already here.
     func adopt(_ data: Data, for host: String) async {
-        guard cached(host) == nil, let image = await Favicons.square(data) else { return }
+        guard cached(host) == nil, case let (image, tone)? = await Favicons.square(data) else { return }
         memory[host] = image
-        Favicons.keep(image, for: host)
+        IconInk.learn(image, tone: tone) // Fork (icon-ink)
+        Favicons.keep(image, for: host, tone: tone)
         arrived?(host, IconInk.legible(image, dark: Favicons.dark)) // Fork (icon-ink)
     }
 
@@ -154,9 +158,10 @@ final class Favicons {
                   (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true,
                   data.count > 60, data.count < 2_000_000
             else { continue }
-            guard let image = await Favicons.square(data) else { continue }
+            guard case let (image, tone)? = await Favicons.square(data) else { continue }
             memory[key] = image
-            if !shy { Favicons.keep(image, for: key) }
+            IconInk.learn(image, tone: tone) // Fork (icon-ink)
+            if !shy { Favicons.keep(image, for: key, tone: tone) }
             arrived?(host, IconInk.legible(image, dark: Favicons.dark)) // Fork (icon-ink)
             return
         }
@@ -166,9 +171,10 @@ final class Favicons {
     }
 
     /// Decoded and drawn into a square off the main thread — an .ico can hold
-    /// a dozen sizes and take a moment to unpack.
-    private static func square(_ data: Data) async -> NSImage? {
-        await Task.detached(priority: .utility) { () -> NSImage? in
+    /// a dozen sizes and take a moment to unpack. Fork (icon-ink): with its
+    /// tone, read there too (Fork/IconInk.swift).
+    private static func square(_ data: Data) async -> (NSImage, Int)? {
+        await Task.detached(priority: .utility) { () -> (NSImage, Int)? in
             guard let image = NSImage(data: data), image.isValid,
                   image.size.width > 0, image.size.height > 0
             else { return nil }
@@ -186,11 +192,11 @@ final class Favicons {
                 fraction: 1
             )
             out.unlockFocus()
-            return out
+            return (out, IconInk.code(IconInk.tone(of: out)))
         }.value
     }
 
-    private static func keep(_ image: NSImage, for key: String) {
+    private static func keep(_ image: NSImage, for key: String, tone: Int) {
         guard let tiff = image.tiffRepresentation,
               let rep = NSBitmapImageRep(data: tiff),
               let png = rep.representation(using: .png, properties: [:])
@@ -199,6 +205,7 @@ final class Favicons {
         DispatchQueue.global(qos: .utility).async {
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             try? png.write(to: file, options: .atomic)
+            IconInk.keep(tone, at: file) // Fork (icon-ink)
         }
     }
 
