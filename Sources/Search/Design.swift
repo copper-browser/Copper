@@ -143,7 +143,9 @@ enum Metrics {
     /// inside its own edges.
     static let tabWidth: CGFloat = 220 // Fork (uitype): spare strip width goes to the tabs (was 186)
     static let tabTitled: CGFloat = 80
-    static let tabMinWidth: CGFloat = 36
+    /// Fork (uichrome): was 36 (a strip of identical favicons under load);
+    /// tabs now keep a recognisable title and the run scrolls sooner.
+    static let tabMinWidth: CGFloat = 100
     static let tabGap: CGFloat = 2
     /// A pinned tab is a square the height of the row, holding one letter.
     static let pinWidth: CGFloat = 30

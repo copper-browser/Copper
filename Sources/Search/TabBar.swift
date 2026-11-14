@@ -252,6 +252,9 @@ struct TabBar: View {
         let equal = room / loose
         var live = min(Metrics.tabWidth, max(equal * 1.5, Metrics.tabTitled + 40))
         if equal >= Metrics.tabTitled { live = min(live, room - (loose - 1) * Metrics.tabTitled) }
+        // Fork (uichrome): no wider than its title and host need — the rest
+        // of the spare width goes back to the other tabs' titles.
+        if let tab = browser.active { live = min(live, TabPill.wants(tab)) }
         return clamp(max(equal, live))
     }
 
@@ -379,7 +382,7 @@ private struct TabPill: View {
                             .font(.system(size: 12, weight: .medium))
                             // A pin holding no page is still there and still
                             // yours; it just isn't costing anything.
-                            .foregroundStyle(colour.opacity(tab.asleep ? 0.45 : 1))
+                            .foregroundStyle(colour.opacity(tab.asleep ? 0.6 : 1))
                     }
                 }
                 .frame(width: 16, height: 16)
@@ -472,14 +475,18 @@ private struct TabPill: View {
                 FadingTitle(text: Text(tab.label) // Fork (motion): a long title fades out, no "…"
                     .font(.system(size: 12.5, weight: live ? .semibold : .regular))
                     .foregroundStyle(colour))
+                    .layoutPriority(1)
                 // Fork (uib): the live tab says whose page it is, after its
-                // title, which gives way to it.
-                if let host = liveHost, span >= 150 {
+                // title. Fork (uichrome): the host yields first — it shows
+                // only while the title keeps its words (all of them, or 90 pt
+                // fading out 8 pt before the host); the address has it anyway.
+                if let host = liveHost, roomForHost(host) {
                     Text(host)
-                        .font(.system(size: 11))
+                        .font(.system(size: 12))
                         .foregroundStyle(Palette.muted)
                         .lineLimit(1)
                         .fixedSize()
+                        .padding(.leading, 2)
                 }
             }
 
@@ -501,10 +508,33 @@ private struct TabPill: View {
 
     private var slotShown: Bool { hovering || tab.loading || tab.noisy }
 
+    /// Fork (uichrome): the width the live tab's words take: its title, 8 pt,
+    /// its host — and the mark, the padding and the cross's slot around them.
+    /// The strip gives the live tab no more than this.
+    static func wants(_ tab: Tab) -> CGFloat {
+        let title = TabPill.measure(tab.label, size: 12.5, weight: .semibold)
+        let host = TabPill.host(of: tab).map { 8 + TabPill.measure($0, size: 12, weight: .regular) } ?? 0
+        return ceil(11 + 15 + 6 + title + host + 2 + 7 + 15 + 3)
+    }
+
+    private static func measure(_ text: String, size: CGFloat, weight: NSFont.Weight) -> CGFloat {
+        (text as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: size, weight: weight)]).width
+    }
+
+    /// Whether the host fits beside a title that still reads.
+    private func roomForHost(_ host: String) -> Bool {
+        let words = span - 11 - 7 - 15 - 6 - 2 - (slotShown ? 25 : 0)
+        let hostWidth = 8 + TabPill.measure(host, size: 12, weight: .regular)
+        let title = TabPill.measure(tab.label, size: 12.5, weight: .semibold)
+        return words - hostWidth >= min(title, 90)
+    }
+
     /// Fork (uib): the host shown in the live tab, unless the title already
     /// is it or it is too long to leave the title room (the address has it).
-    private var liveHost: String? {
-        guard live, !tab.isBlank, let url = tab.address else { return nil }
+    private var liveHost: String? { live ? TabPill.host(of: tab) : nil }
+
+    fileprivate static func host(of tab: Tab) -> String? {
+        guard !tab.isBlank, let url = tab.address else { return nil }
         let host = SideAddress.host(url)
         return host == tab.label || host.count > 22 ? nil : host
     }

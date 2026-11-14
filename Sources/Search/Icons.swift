@@ -297,7 +297,9 @@ struct Mark: View {
                     )
             }
         }
-        .opacity(dim ? 0.45 : 1)
+        // Fork (uichrome): asleep is a little greyer and 0.6 (was 0.45, too faint to tell sites apart)
+        .saturation(dim ? 0.7 : 1)
+        .opacity(dim ? 0.6 : 1)
         .transition(.opacity)
         .animation(Motion.quick, value: icon == nil)
     }
