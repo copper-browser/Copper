@@ -354,7 +354,10 @@ struct SplitStage: View {
             .coordinateSpace(name: Split.space)
             .onAppear {
                 guard split.growing else { return }
-                withAnimation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : Motion.glide) { split.growing = false }
+                // An ease-out, not glide's spring: a spring's last few points of
+                // overshoot each re-lay the pages out, and the split kept
+                // shuffling for 300 ms after it looked done.
+                withAnimation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .easeOut(duration: 0.28)) { split.growing = false }
             }
             .onChange(of: browser.activeID) { was, _ in split.reconcile(browser, was: was) }
             .onChange(of: browser.tabs.map(\.id)) { _, _ in split.reconcile(browser) }
