@@ -468,13 +468,20 @@ private struct TabPill: View {
                         .font(.system(size: 10))
                         .foregroundStyle(colour.opacity(0.7))
                 }
-                // Fork (uib): the live tab says whose page it is, after its
-                // title — the host is what the tail gives up first.
-                (Text(tab.label).font(.system(size: 12.5, weight: live ? .semibold : .regular))
-                 + Text(liveHost.map { "  \($0)" } ?? "").font(.system(size: 11)).foregroundColor(Palette.muted))
+                Text(tab.label)
+                    .font(.system(size: 12.5, weight: live ? .semibold : .regular))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .foregroundStyle(colour)
+                // Fork (uib): the live tab says whose page it is, after its
+                // title, which gives way to it.
+                if let host = liveHost, span >= 150 {
+                    Text(host)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Palette.muted)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
             }
 
             Spacer(minLength: 2)
@@ -495,11 +502,12 @@ private struct TabPill: View {
 
     private var slotShown: Bool { hovering || tab.loading || tab.noisy }
 
-    /// Fork (uib): the host shown in the live tab, unless the title already is it.
+    /// Fork (uib): the host shown in the live tab, unless the title already
+    /// is it or it is too long to leave the title room (the address has it).
     private var liveHost: String? {
         guard live, !tab.isBlank, let url = tab.address else { return nil }
         let host = SideAddress.host(url)
-        return host == tab.label ? nil : host
+        return host == tab.label || host.count > 22 ? nil : host
     }
 
     /// Pinned to the right-hand end of the pill, not trailing the title.
