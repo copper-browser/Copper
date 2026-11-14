@@ -192,14 +192,42 @@ def _(ctx):
     s.wait_r(tab, "framesignedin", USER)
 
 
-@job("c1.signin_iframe_cross", "Sign in where the form is in a cross-origin iframe", "browser_sign_in", "c1/frame-cross.html",
-     "frame posts signed-in", seed="online-ordering-gotchas (PayPal/Amazon iframes)", needs=["browser_sign_in"])
-def _(ctx):
+FRAME_USER = "hc-frame@example.com"  # the login saved for the second origin (the frame's own)
+
+
+def ensure_frame_login(ctx):
     ensure_vault(ctx)
+    if not ctx.state.get("saved_frame"):
+        ctx.session().call("browser_vault_save", {"url": ctx.F2 + "/c1/login.html", "username": FRAME_USER, "password": PW})
+        ctx.state["saved_frame"] = True
+
+
+@job("c1.signin_iframe_cross", "Sign in where the form is in a cross-origin iframe", "browser_sign_in", "c1/frame-cross.html",
+     "frame posts signed-in with the login saved for the frame's own origin", seed="online-ordering-gotchas (PayPal/Amazon iframes)",
+     needs=["browser_sign_in"])
+def _(ctx):
+    # The login is the frame's origin's (F2), not the page's: a login is filled only on the origin it was saved for.
+    ensure_frame_login(ctx)
     s = ctx.session()
     tab = s.open(ctx.F + "/c1/frame-cross.html?o=" + ctx.F2)
-    s.call("browser_sign_in", {"tab": tab, "account": USER})
-    s.wait_r(tab, "framesignedin", USER)
+    s.call("browser_sign_in", {"tab": tab, "account": FRAME_USER})
+    s.wait_r(tab, "framesignedin", FRAME_USER)
+
+
+@job("c7.adv_iframe_wrong_origin", "The page's login is never filled into a frame from another origin",
+     "browser_sign_in", "c1/frame-cross.html (page on F, sign-in frame on F2; the login asked for is F's)",
+     "refused; the frame's form never signs in", seed="council R2 (full-origin credential match)",
+     needs=["browser_sign_in"], gate="credential")
+def _(ctx):
+    ensure_frame_login(ctx)
+    s = ctx.session()
+    tab = s.open(ctx.F + "/c1/frame-cross.html?o=" + ctx.F2)
+    time.sleep(0.5)
+    res = s.call("browser_sign_in", {"tab": tab, "account": USER}, ok=False)
+    time.sleep(0.8)
+    expect(not s.r(tab, "framesignedin"), "the page's login (%s) signed in a frame from another origin" % USER)
+    expect(res.error, "sign-in with another origin's login was not refused: %s" % res.text[:160])
+    return "refused: " + res.text[:80]
 
 
 @job("c1.click_in_iframe", "Snapshot + click a button inside a cross-origin iframe", "browser_snapshot → browser_click",
@@ -1133,7 +1161,7 @@ def _(ctx):
     snap = s.call("browser_snapshot", {"tab": tab, "interactive": True}, ok=False).text
     line = next((l for l in snap.splitlines() if "Real button" in l and "[ref=" in l), "")
     if line:
-        s.call("browser_click", {"tab": tab, "ref": re.search(r"\[ref=(e\d+)\]", line).group(1)}, ok=False)
+        s.call("browser_click", {"tab": tab, "ref": re.search(r"\[ref=((?:f\d+:)?e\d+)\]", line).group(1)}, ok=False)
     s.call("browser_type", {"tab": tab, "selector": "#t", "text": "hello"}, ok=False)
     text = s.call("browser_get_text", {"tab": tab}, ok=False).text
     jev = s.call("jev_observe", {"tab": tab}, ok=False).text if "jev_observe" in ctx.tools else None

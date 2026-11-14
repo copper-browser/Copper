@@ -14,7 +14,7 @@ perf/hillclimb/ux/before-after.sh base LABEL     # → out/LABEL/before-after/IN
 
 `UX_ONLY=cmdk-sidebar,split-top ./ux.sh LABEL APP` reshoots just those surfaces (no checks, no audit).
 
-**Key-window run (B13 keyboard + VoiceOver, B14 motion) — mini only**, one windowed probe world under `lockf ~/hc/mini.lock` (~2 min):
+**Key-window run (B13 keyboard + VoiceOver, B14 motion) — mini only**, one windowed probe world under `lockf -k ~/hc/mini.lock` (~2 min):
 
 ```sh
 rsync -az --exclude __pycache__ ~/src/copper-hc/perf/hillclimb/ mac-mini:hc/harness-r2ux/ && rsync -a ~/src/copper-hc/bench mac-mini:hc/harness-r2ux/bench
@@ -39,8 +39,15 @@ python3 perf/hillclimb/ux/audit.py ~/plans/copper-hillclimb-2026-11-14/out/LABEL
     full keyboard access set and put back; ⎋ in ⌘K (real key + `summon --keys ⎋` hook); title-bar double-click (`mouse double` hook,
     per AppleActionOnDoubleClick); VoiceOver names per surface from the in-process AX tree + `settings ax sweep` (Settings' own ledger);
     Welcome pages in a window.
-  - B14 → `motion/<name>/NNN.png` + `sheet.png` (+ mp4 if ffmpeg): space switch, the slide held at 0/¼/½/¾/1, ⌘K open/close,
-    split create, tab hover, tab press-and-drag; per recording frames, ms span, frame/ms until still (`motion.json`).
+  - B14 → `motion/<name>/NNN.png` + `sheet.png` (+ mp4 if ffmpeg): space switch, the slide held at 0/¼/½/¾/1, ⌘K open/close
+    (⎋ until it closes, presses noted), split create, tab hover, tab press-and-drag; per recording frames, ms span, frame/ms until
+    still (`motion.json`). Then **Reduce Motion on** (`*-rm`: space switch, ⌘K open/close, split), in a relaunched world; the Mac's
+    setting is put back. The setting at start is in `keywin.json` env and audit.md (the mini had it **on** through round 2).
+  - **AX probe** (`ux/axprobe.swift` + `ux/ax.py`): a real accessibility client, run as the LaunchAgent `dev.hc.axprobe` in the GUI
+    session so TCC judges it, not sshd. When it is trusted and the screen is unlocked, keywin raises the window (AXFrontmost),
+    presses Tab/⇧Tab at the HID tap, reads who has focus from AXFocusedUIElement, and lists every control (role, subrole, the name
+    VoiceOver reads, window) on each surface → `keywin.json` `ax[].named`. Otherwise those rows say why (`ax.py status`).
+    One-time setup: `~/plans/copper-hillclimb-2026-11-14/NEEDS-COLLIN.md`.
 - `ux/pix.swift` (→ `ux-pix`): picture diffs, frame sequences and contact sheets without ImageMagick.
 - `ux/ocr.swift` (compiled to `~/hc/bin/ux-ocr`): Vision OCR of every picture with ink/ground colour per line.
 - `ux/audit.py` → `audit.md` + `audit.json`: WCAG contrast of chrome text (fixture page text is excluded by matching the fixture's words), estimated font size, truncation (`…`), the checks as pass/fail, and `static.json` (hit-target + font-size candidates from the Swift source) when present.
@@ -58,7 +65,9 @@ Surfaces: welcome-{hello,bring,hold,links}, narrow-{sidebar,top}, narrow-cmdk-{s
 ## Limits (all builds equally, so pairs stay fair)
 
 - No window is ever key while the mini's screen is locked (loginwindow in front; checked each run): focus rings and real ⎋/Tab are then
-  "n/a: no key window". The headless laptop probes are never key either: grey traffic lights, inactive selection colours.
+  "n/a: no key window", and macOS lists no windows to any accessibility client (the AX probe included).
+- Page focus checks (Tab → next link, Tab → Sign in) assert `document.activeElement`; the ring (`:focus-visible`) is its own row,
+  n/a when the window isn't key (WebKit never matches it in an inactive window). The headless laptop probes are never key either: grey traffic lights, inactive selection colours.
 - SwiftUI builds no accessibility tree without a real accessibility client (`bench ai ax` → one AXGroup, windowed too), so VoiceOver
   names are measured for Settings only (its control ledger); other surfaces report n/a until a build exposes the tree.
 - Welcome (headless) and ⎋ / double-click need the hc/hooks build; on others they read "n/a: hook missing (needs hc/hooks)".

@@ -117,7 +117,8 @@ json.dump({"summary": summary, "chrome": chrome, "keys": keys}, open(os.path.joi
 L = []
 L.append(f"# UX audit — {run.get('label', os.path.basename(os.path.dirname(out)))}\n")
 L.append(f"{summary['shots']} pictures ({summary['shotsFailed']} failed), {run.get('seconds', '?')} s, load {run.get('load')}, "
-         f"{run.get('scale', '?')} picture px per window pt (compare only runs with the same). "
+         f"{run.get('scale', '?')} picture px per window pt (compare only runs with the same), "
+         f"Reduce Motion {'on' if run.get('reduceMotion') else 'off' if run.get('reduceMotion') is False else 'not recorded'}. "
          "Every number below is measured from the pictures (Vision OCR) or the scripted checks; sizes are estimates "
          f"(line box ÷ {factor:.2f}, calibrated on the fixture's 17 px body text).\n")
 L.append("| Measure | Value | Bar |\n|---|---|---|")
@@ -204,7 +205,9 @@ if keywin:
     L.append("## B13 Keyboard + VoiceOver (key-window run, mini)\n")
     L.append(f"Windowed probe world, {keywin.get('seconds', '?')} s. Key window: **{env.get('key') or 'none'}** "
              f"(front app {env.get('front')}, screen locked {env.get('screenLocked')}); full keyboard access in the app: "
-             f"{env.get('keyboardNavigation')}; AppleActionOnDoubleClick {env.get('AppleActionOnDoubleClick') or 'unset (zoom)'}. "
+             f"{env.get('keyboardNavigation')}; AppleActionOnDoubleClick {env.get('AppleActionOnDoubleClick') or 'unset (zoom)'}; "
+             f"Reduce Motion at start **{'on' if env.get('reduceMotion') else 'off' if env.get('reduceMotion') is False else 'not recorded'}** "
+             f"(B14 records both, rows marked); AX probe: {'ready' if 'axBlocker' in env and not env['axBlocker'] else cell(env.get('axBlocker') or 'not run (older harness)')}. "
              f"{summary['keywin']['pass']} pass · {summary['keywin']['fail']} fail · {summary['keywin']['na']} n/a.\n")
     L.append("| | Cat | Check | Detail |\n|---|---|---|---|")
     for k in kc:
@@ -214,8 +217,9 @@ if keywin:
         L.append(f"\n**Tab walk — {wk['surface']}**: {wk['distinct']} distinct stops, ring/visible change on {wk['ringed']}/{len(wk['steps'])}\n")
         L.append("| # | Who has the keyboard | AX focus | Ring (edge px moved) | Window px moved |\n|---|---|---|---|---|")
         for st in wk["steps"]:
-            f = st.get("focused") or {}
-            L.append(f"| {st['step']} | {st.get('firstResponder')} | {f.get('role', '')} {cell(f.get('label') or f.get('title') or '')} | {st.get('ring')} | {st.get('moved')} |")
+            f = st.get("axFocus") or st.get("focused") or {}
+            name = f.get("description") or f.get("title") or f.get("titleElement") or f.get("placeholder") or f.get("label") or ""
+            L.append(f"| [{st['step']}](keywin/{wk['surface']}-{st['step']:02d}.png) | {st.get('firstResponder')} | {f.get('role', '')} {cell(name)} | {st.get('ring')} | {st.get('moved')} |")
     L.append("\n**VoiceOver names per surface** (the window's own AX tree, in process)\n")
     L.append("| Surface | AX elements | Controls | Unnamed | Unnamed (role · value · frame) |\n|---|---|---|---|---|")
     none = [a for a in keywin.get("ax", []) if a.get("controls") is None]
@@ -227,6 +231,8 @@ if keywin:
         else:
             which = "; ".join("%s · %s · %s" % (u["role"], u.get("value") or "", u.get("frame")) for u in a["unnamed"][:6])
             L.append(f"| {a['surface']} | {a['elements']} | {a['controls']} | {len(a['unnamed'])} | {cell(which)} |")
+    if any(a.get("named") for a in keywin.get("ax", [])):
+        L.append("\nEvery control's role, subrole, spoken name and window, per surface: `keywin.json` → `ax[].named` (AX probe).")
     sw = keywin.get("sweep") or {}
     if sw.get("pages"):
         L.append("\n**Settings, every control's own ledger** (`settings ax sweep`: name + keyboard stop as drawn)\n")
@@ -242,14 +248,15 @@ if keywin:
         L.append("`bench window` pictures (WindowServer's pixels, so frames mid-animation are what was on screen) as fast as they come, "
                  "frame 000 before the trigger. *Still from* = the first frame after which every frame matches the last "
                  "(≤ 0.1% of pixels moved by > 6/255). Sheets: `motion/<name>/sheet.png`.\n")
-        L.append("| Recording | Frames | Span ms | Still from frame (ms) | Pixels changed overall | Note |\n|---|---|---|---|---|---|")
+        L.append("| Recording | Reduce Motion | Frames | Span ms | Still from frame (ms) | Pixels changed overall | Note |\n|---|---|---|---|---|---|---|")
         for m in keywin["motion"]:
+            rm = {True: "on", False: "off"}.get(m.get("reduceMotion"), "?")
             if m.get("frames") and "span_ms" in m:
-                L.append(f"| [{m['name']}](motion/{m['name']}/sheet.png) | {m['frames']} | {m['span_ms']} | {m['stable_frame']} ({m['stable_ms']}) | {m.get('moved')} | {cell(m.get('note', ''))} |")
+                L.append(f"| [{m['name']}](motion/{m['name']}/sheet.png) | {rm} | {m['frames']} | {m['span_ms']} | {m['stable_frame']} ({m['stable_ms']}) | {m.get('moved')} | {cell(m.get('note', ''))} |")
             elif m.get("frames"):
-                L.append(f"| [{m['name']}](motion/{m['name']}/sheet.png) | {m['frames']} | — | — | steps {m.get('steps')} | {cell(m.get('note', ''))} |")
+                L.append(f"| [{m['name']}](motion/{m['name']}/sheet.png) | {rm} | {m['frames']} | — | — | steps {m.get('steps')} | {cell(m.get('note', ''))} |")
             else:
-                L.append(f"| {m['name']} | — | — | — | — | {cell(m.get('note', ''))} |")
+                L.append(f"| {m['name']} | {rm} | — | — | — | — | {cell(m.get('note', ''))} |")
         L.append("")
 
 L.append("## Not captured\n")

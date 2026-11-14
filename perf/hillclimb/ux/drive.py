@@ -506,11 +506,20 @@ def narrow(w, shoot):
 
 # ---------------------------------------------------------------- keyboard + findability (B4, B8, B10)
 
+FOCUS_JS = "(()=>{const e=document.activeElement;return (e.id||e.tagName)+' fv='+e.matches(':focus-visible')+' outline='+getComputedStyle(e).outlineStyle})()"
+
+
 def checks(w, expected_order):
     res = []
     def rec(cat, name, ok, detail):
         res.append({"category": cat, "check": name, "pass": ok, "detail": detail})
         print(("PASS" if ok else ("N/A " if ok is None else "FAIL")) + f" {name}: {detail}", flush=True)
+    def ring_check(what, r):
+        """:focus-visible + an outline: only meaningful in a key window (WebKit doesn't match it in an inactive one)."""
+        if w.j("probe").get("key"):
+            rec("B10", f"Focus ring on the {what} after Tab (key window)", "fv=true" in r and "outline=none" not in r, r)
+        else:
+            rec("B10", f"Focus ring on the {what} after Tab", None, f"n/a: no key window (headless probe), :focus-visible can't match — {r}")
     active = lambda: w.j("probe").get("active")
     art = tab_id(w, "Field Notes")
     login = tab_id(w, "Sign in — Fixture Mail")
@@ -528,11 +537,12 @@ def checks(w, expected_order):
             w.b("key", login, "⇧⇥", *extra); time.sleep(0.4)
             got, still = w.b("eval", login, "document.activeElement.id").strip(), active() == login
             rec("B10", f"⇧Tab in a form field → previous field ({via})", got == "user" and still, f"focus={got!r} same tab={still}")
-            if via == "app":  # keyboard focus on a button draws a ring (:focus-visible + an outline)
+            if via == "app":  # Tab reaches the button (document.activeElement); its ring only in a key window
                 w.b("eval", login, "document.getElementById('pass').focus()")
                 w.b("key", login, "⇥", *extra); time.sleep(0.4)
-                r = w.b("eval", login, "(()=>{const e=document.activeElement;return e.id+' fv='+e.matches(':focus-visible')+' outline='+getComputedStyle(e).outlineStyle})()").strip()
-                rec("B10", "Tab from the password field reaches the Sign in button, ring visible", r.startswith("go ") and "fv=true" in r and "outline=none" not in r, r)
+                r = w.b("eval", login, FOCUS_JS).strip()
+                rec("B10", "Tab from the password field reaches the Sign in button (document.activeElement)", r.startswith("go "), r)
+                ring_check("Sign in button", r)
         except Exception as e:
             rec("B10", f"Tab in a form field ({via})", False, f"error: {e}")
 
@@ -599,12 +609,16 @@ def checks(w, expected_order):
     except Exception as e:
         rec("B4", "⌘L focuses the address field", False, f"error: {e}")
 
-    # Focus ring in the page (WebKit's :focus-visible after a keyboard Tab).
+    # Tab moves between links (Chromium/Arc do; WebKit's default is form controls only): the next link must
+    # become document.activeElement. Its ring (:focus-visible) is drawn only in a key window.
     try:
-        w.b("select", art); w.b("eval", art, "document.querySelector('header a').focus()")
+        w.b("select", art); w.b("eval", art, "window.__hcFrom=document.querySelector('header a');window.__hcFrom.focus()")
         w.b("key", art, "⇥", "--app"); time.sleep(0.4)
-        r = w.b("eval", art, "(()=>{const e=document.activeElement;return e.tagName+' fv='+e.matches(':focus-visible')+' outline='+getComputedStyle(e).outlineStyle})()").strip()
-        rec("B10", "Tab reaches links (Chromium/Arc do; WebKit's default is form controls only)", "fv=true" in r and "outline=none" not in r, r)
+        r = w.b("eval", art, "(()=>{const e=document.activeElement;return (e!==window.__hcFrom&&e.tagName==='A'?'moved ':'stayed ')"
+                             "+e.tagName+' fv='+e.matches(':focus-visible')+' outline='+getComputedStyle(e).outlineStyle})()").strip()
+        rec("B10", "Tab reaches the next link (document.activeElement; Chromium/Arc do, WebKit's default is form controls only)",
+            r.startswith("moved "), r)
+        ring_check("link", r)
     except Exception as e:
         rec("B10", "page focus ring", False, f"error: {e}")
     rec("B10", "Focus rings on Copper's own controls", None,
@@ -674,7 +688,10 @@ def main():
     if keys or not ONLY:
         json.dump(keys, open(os.path.join(out, "keys.json"), "w"), indent=1)
     load = os.getloadavg()
+    rm = subprocess.run(["osascript", "-l", "JavaScript", "-e", 'ObjC.import("AppKit"); $.NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion'],
+                        capture_output=True, text=True).stdout.strip()
     json.dump({"label": label, "app": app, "seconds": round(time.time() - started), "load": [round(x, 2) for x in load],
+               "reduceMotion": {"true": True, "false": False}.get(rm),
                "port": port, "shots": sum(1 for r in shoot.rows if r.get("ok")),
                # picture pixels per window point: 2.0 on a Retina panel at its default scaling; a "More Space"
                # setting renders lower (e.g. 1.96), which thins text ink — compare only runs with the same scale.

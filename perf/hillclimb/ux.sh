@@ -10,7 +10,7 @@
 # Writes ~/hc/out/LABEL/ux/{shots/,shots.json,keys.json,audit.md,audit.json,run.json}.
 # UX_ONLY=surface,surface reruns just those pictures (no checks).
 # UX_MODE=keywin (mini only): the key-window run instead — B13 keyboard/VoiceOver checks and B14
-#   motion recordings in one windowed probe world, under lockf ~/hc/mini.lock → keywin.json, motion/.
+#   motion recordings in one windowed probe world, under lockf -k ~/hc/mini.lock → keywin.json, motion/.
 # UX_PORTS=4231-4232 / UX_SITE_PORT=4233 / UX_BIN=dir: a worker's own ports and tool folder.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -49,7 +49,7 @@ trap '[ -n "$SERVER" ] && kill "$SERVER" 2>/dev/null || :' EXIT
 echo "load before: $(sysctl -n vm.loadavg)"
 if [ "${UX_MODE:-}" = keywin ]; then
   rm -rf "$OUT/keywin" "$OUT/motion"
-  lockf "$HOME/hc/mini.lock" python3 "$HERE/ux/keywin.py" "$LABEL" "$APP" "$OUT"
+  lockf -k "$HOME/hc/mini.lock" python3 "$HERE/ux/keywin.py" "$LABEL" "$APP" "$OUT"
   python3 "$HERE/ux/audit.py" "$OUT" "$HERE/ux/site"
   echo "done: $OUT"; exit 0
 fi

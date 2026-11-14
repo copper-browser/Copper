@@ -15,19 +15,34 @@ On the Mac it: writes the probe world `Copper (agentbench)` (agent.json with its
 4160, Jev on; intelligence.json = only `jevKey jevEndpoint jevModel routerKey routerURL routerModel
 textModel` copied from `Copper (dev)`, never printed), starts the build as a launchd job in the GUI
 session (`SEARCH_HEADLESS=1`; the page measured 1280×800 in base whatever `SEARCH_HEADLESS_SIZE` said — upstream used 1120×780; each run records it), starts
-`fixtures/server.py` on 4161, then runs one `lockf -k ~/hc/mini.lock` batch per (group, round), and
-stops both at exit. Never touches port 4123 or the installed Copper.
+`fixtures/server.py` on 4161, then works through the whole plan (every group × round × task × arm, the arms of a
+task alternating) in `lockf -k ~/hc/mini.lock` holds of `AGENTBENCH_CHUNK` seconds (300): the lock is shared and
+every wait for it is long. A Google Flights run waits `AGENTBENCH_FLIGHTS_GAP` (45 s) after the last one on the Mac
+(other runs go first meanwhile; when only Flights is left the wait is outside the lock). Already-recorded runs are
+skipped, so a rerun resumes. Stops both at exit. Never touches port 4123 or the installed Copper.
+
+When `ARMS` has `same`, a second probe world `Copper (agentbench-same)` runs on port+2 (`AGENTBENCH_SAME_PORT`)
+at upstream's conditions: page `AGENTBENCH_SAME_VIEWPORT` (1120×780; the headless window and the agent's
+backstage both that size) and no `textModel` (the build's default text model). `--meta` fails if a world's
+page isn't the size asked; `meta.json` has both worlds as configured, and `--summary` adds `resolved`: per arm,
+the Jev that answered, the text model that wrote values and the page size measured after each run.
 
 ## Suite
 
 | Group | Tasks | Checker (independent of Jev's DONE) | Runs/arm (default) |
 |---|---|---|---|
-| ultrafast | jev-ultrafast's 3 published: `hotel` (its fixture, frozen copy), `godel` (Main_Page → article), `flights` (ZRH→LON one-way, date moved to **2027-01-20**, upstream's 2026-09-20 is past) | hotel: `#casa-flora` + "Your filters: Design · Free cancellation enabled · Destination Lisbon" (upstream's smoke.py); godel: exact title; flights: search URL, `tfs` has the date, from/to field values, One way, ≥1 "Select flight" all on Wed Jan 20 (upstream's flights.py) | 10 each |
-| wikigame | perf/wikigame.py's 10 games | reached target, no typing, no search URL | 1 each (10/arm) |
+| ultrafast | jev-ultrafast's 3 published: `hotel` (its fixture, frozen copy), `godel` (Main_Page → article), `flights` (ZRH→LON one-way, date moved to **2027-01-20**, upstream's 2026-09-20 is past) | hotel: `#casa-flora` + "Your filters: Design · Free cancellation enabled · Destination Lisbon" (upstream's smoke.py); godel: exact title; flights: search URL, `tfs` has the date, from = Zürich/Zurich or its airport ("Zurich Airport (ZRH)"), to = London, One way, ≥1 "Select flight" all on Wed Jan 20 (upstream's flights.py) | 10 each |
+| wikigame | perf/wikigame.py's 10 games | reached target, no typing, no search URL | 3 each (30/arm) |
 | uibench | perf/uibench's 8 tasks (frozen copy of app.html) | the app server's verdict | 2 each (16/arm) |
-| realweb | `gh-issues` (vscode issue search "minimap"), `wiki-lang` (Alan Turing → German), `amazon-pdp` ("AA batteries" → a /dp/ page, no cart), `pydocs` (pathlib page), `mdn` (Array flatMap page) — all read-only, no login | URL/host/path (+ query/title) | 2 each (10/arm) |
+| realweb | `gh-issues` (vscode issue search "minimap"), `wiki-lang` (Alan Turing → German), `amazon-pdp` ("AA batteries" → a /dp/, /gp/product/ or mobile /gp/aw/d/ page, no cart), `pydocs` (pathlib page), `mdn` (Array flatMap page) — all read-only, no login | URL/host/path (+ query/title) | 2 each (10/arm) |
+| probes (opt-in) | local pages: `far-link` (the one "Annapurna" link ~40 screens down), `no-link` (a title that isn't linked; scroll for it), `human-check` (a shop whose search lands on a bot check with "I am human") | far-link: reached, no typing; no-link: BLOCKED within 8 actions; human-check: BLOCKED with a human-check hand-back, button never clicked | 2 each |
+| paraphrase (opt-in) | hotel and Flights said other ways: `hotel-lc` (all lowercase), `flights-lc` (lowercase), `flights-iata` ("ZRH → LHR on 2027-01-20"), `flights-de` (German) | as the originals (hotel-lc: any case; flights-iata: to = Heathrow) | 2 each |
 
 Pass = DONE **and** the checker (uibench: the app's verdict alone, as perf/uibench.py).
+Per run also: values typed straight from the goal (`literal_fills`) vs written by the text model (`text_calls`,
+`text_reused`), stale decisions and their operations (`stale_ops`), settles and settles at the 400 ms cap
+(builds from hc2/jev; with what was still moving, per step). The summary shows Stale % (stale / decisions),
+Settle % (settle ms / wall) and Capped (settles at the cap).
 Per run (`runs.jsonl`): pass, checks, status/note, wall (jev_run's clock: first decision → end,
 initial navigation excluded, upstream's boundary), decisions, actions, per-phase ms
 (observe/decide/text/act/settle — sums over steps from the json trace), Jev ms, input tokens,

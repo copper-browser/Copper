@@ -269,7 +269,7 @@ class Session:
         snap = self.call("browser_snapshot", {"tab": tab, "interactive": interactive}).text
         for line in snap.splitlines():
             if name in line:
-                m = re.search(r"\[ref=(e\d+)\]", line)
+                m = re.search(r"\[ref=((?:f\d+:)?e\d+)\]", line)  # f2:e7 = an element inside frame f2
                 if m:
                     return m.group(1)
         raise Fail("snapshot has no ref for %r" % name)

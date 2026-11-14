@@ -5,8 +5,10 @@
     run.py launch  OUT ARM...       A1: warm launches alternating arms, `bench pace` marks
     run.py cold    OUT ARM...       A1 cold: each launch from a fresh copy of the .app (COLD_NOTE)
     run.py session OUT ARM...       A2 A4 A6 A7: per launch: idle cost, memory, space + tab switches, typing
-    run.py load    OUT ARM...       A3: Copper page loads vs bare WKWebView (rawload.swift), same pages
-    run.py smooth  OUT ARM...       A5: scroll + canvas frame times (run on the Retina laptop)
+    run.py load    OUT ARM...       A3: Copper page loads vs bare WKWebView (rawload.swift), same pages, paired one
+                                    for one on the same clock (#142), HC_LOADS=21 per page per arm (run 0 dropped)
+    run.py smooth  OUT ARM...       A5: scripted scroll frame times (run on the Retina laptop)
+    run.py canvas  OUT ARM...       A5: canvas-big + canvas-easel pan+zoom (both Macs; Retina is the one that counts)
     run.py hooks   OUT ARM...       A7 `bench keylat` ⌘T/⌘K, A5 `bench wheel` at 120 Hz (HOOKS-SPEC.md);
                                     a build without the hooks gives "n/a: hook missing"
     run.py summary DEST DIR...      perf.json + perf.md from one or more OUT dirs (any machine)
@@ -73,6 +75,16 @@ def locked():
 
 def load_avg():
     return [round(x, 2) for x in os.getloadavg()]
+
+
+def display_asleep():
+    """True while the main display sleeps: no display-link ticks, so a page draws no frames (CoreGraphics works over ssh)."""
+    try:
+        cg = ctypes.CDLL("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")
+        cg.CGMainDisplayID.restype = ctypes.c_uint32
+        return bool(cg.CGDisplayIsAsleep(cg.CGMainDisplayID()))
+    except OSError:
+        return None
 
 
 def emit(out, phase, row):
@@ -224,13 +236,15 @@ def setup(out, arms_):
     site = os.path.join(TOOLS, "perf", "site")
     if not os.path.exists(os.path.join(site, "index.html")):
         subprocess.run([sys.executable, os.path.join(TOOLS, "perf", "site.py")], check=True)
-    serve(site, SITE_PORT)
+    pid = serve(site, SITE_PORT)
+    if pid:  # ours: teardown stops it (a run must not leave a server holding its port)
+        open(os.path.join(out, "site.pid"), "w").write(str(pid))
     if os.environ.get("HC_PHASES", "").find("load") >= 0:
         rawload_app()
     phases = os.environ.get("HC_PHASES", "").split()
-    if "smooth" in phases or "hooks" in phases:  # both scroll the fixture pages
+    if {"smooth", "hooks", "canvas"} & set(phases):  # all use the fixture pages / boards
         man = os.path.join(CANVAS_OUT, "big", "manifest.json")
-        if "smooth" in phases and not os.path.exists(man):
+        if {"smooth", "canvas"} & set(phases) and not os.path.exists(man):
             subprocess.run([sys.executable, os.path.join(FIX, "canvas-big", "gen.py"), "--scale", "big", "--out", CANVAS_OUT,
                             "--base", f"http://127.0.0.1:{FIXTURE_PORT}", "-q"], check=True)
         subprocess.run([os.path.join(FIX, "canvas-big", "serve.sh"), "start"], check=True,  # builds www/ if missing
@@ -246,20 +260,36 @@ def setup(out, arms_):
 
 
 def serve(directory, port):
+    """An http.server for DIRECTORY on PORT unless one answers there already → its pid when we started it."""
     import urllib.request
     try:
         urllib.request.urlopen(f"http://127.0.0.1:{port}/index.html", timeout=1)
-        return
+        return None
     except Exception:
         pass
-    subprocess.Popen([sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1", "-d", directory],
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    p = subprocess.Popen([sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1", "-d", directory],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     time.sleep(1)
+    return p.pid
+
+
+def teardown(out, arms_):
+    """Stop the servers setup started (by the pids it wrote), so no port stays held after the run."""
+    pidfile = os.path.join(out, "site.pid")
+    if os.path.exists(pidfile):
+        try:
+            os.kill(int(open(pidfile).read()), signal.SIGTERM)
+        except (ProcessLookupError, ValueError):
+            pass
+        os.unlink(pidfile)
+    if os.path.exists(os.path.join(CANVAS_OUT, "serve.pid")):
+        subprocess.run([os.path.join(FIX, "canvas-big", "serve.sh"), "stop"], capture_output=True,
+                       env={**os.environ, "FIXTURE_PORT": str(FIXTURE_PORT), "FIXTURE_OUT": CANVAS_OUT})
 
 
 def rawload_app():
     """perf/rawload.swift wrapped in an .app (it needs a window server). A build: locked on the mini."""
-    app = os.path.join(HOME, "hc", "RawLoad.app")
+    app = os.path.expanduser(os.environ.get("HC_RAWLOAD", f"{HOME}/hc/RawLoad.app"))
     binp = os.path.join(app, "Contents", "MacOS", "RawLoad")
     src = os.path.join(TOOLS, "perf", "rawload.swift")
     if os.path.exists(binp) and os.path.getmtime(binp) > os.path.getmtime(src):
@@ -362,7 +392,7 @@ def session(out, arms_):
     12 tabs twice (A2: wake, then warm), memory after (A4), typing in ⌘T and ⌘K (A7)."""
     settle, idle = N("HC_SETTLE", 30), N("HC_IDLE", 60)
     quiet = open(os.devnull, "w")
-    for r in range(N("HC_ROUNDS", 5)):
+    for r in range(N("HC_ROUNDS", 6)):
         for label, app in order(arms_, r):
             for attempt in range(2):  # a probe killed under us (memory, another runner): note it, go again once
                 try:
@@ -389,8 +419,11 @@ def one_session(out, label, app, r, settle, idle, quiet):
     pace = ask({"do": "pace"})
     row["idle"] = {**cost(b, a, time.time() - t0, pid), "seconds": idle, "busy": pace.get("busy"),
                    "longest": pace.get("longest"), "passes": pace.get("passes"), "slow": len(pace.get("slow", []))}
-    row["heat_idle"] = [{"mb": x.get("mb"), "cpu": round(x.get("cpu") or 0, 2), "title": (x.get("title") or "")[:40]}
-                        for x in ask({"do": "heat"}).get("tabs", [])]
+    # A4: pins never sleep (PinsAwake). `bench pins` lists them by short id (heat gives full uuids).
+    pins = {p["id"] for p in ask({"do": "pins"}).get("pins", [])}
+    pin = lambda x: (x.get("id") or "")[:8].lower() in pins
+    row["heat_idle"] = [{"mb": x.get("mb"), "cpu": round(x.get("cpu") or 0, 2), "title": (x.get("title") or "")[:40],
+                         "pid": x.get("pid"), "pin": pin(x)} for x in ask({"do": "heat"}).get("tabs", [])]
     row["spaces"] = space_switches()
     so, sys.stdout = sys.stdout, quiet  # perf.py prints its rows; we keep them in ours
     try:
@@ -400,7 +433,8 @@ def one_session(out, label, app, r, settle, idle, quiet):
     row["tabs"] = tb
     time.sleep(3)
     row["mem_loaded"] = mem(pid)
-    row["heat_loaded"] = [{"mb": x.get("mb"), "title": (x.get("title") or "")[:40]} for x in ask({"do": "heat"}).get("tabs", [])]
+    row["heat_loaded"] = [{"mb": x.get("mb"), "title": (x.get("title") or "")[:40], "pid": x.get("pid"), "pin": pin(x)}
+                          for x in ask({"do": "heat"}).get("tabs", [])]
     # A7: ⌘T card typing (Launcher.typing) and ⌘K (bar: summon + type + offers)
     row["typing"] = []
     for w in TYPE_WORDS:
@@ -456,25 +490,33 @@ LOAD_PAGES = [("local", SITE), ("wikipedia", "https://en.wikipedia.org/wiki/WebK
 
 
 def rawload(url, runs):
+    """Bare WKWebView control, stepped (rawload --step, #142): → (step, rows, proc). step(i) lets its load i go
+    and waits for its row, so Copper's and the bare view's loads alternate one for one on the same network."""
     app = rawload_app()
-    path = f"/tmp/hc-rawload-{os.getpid()}.txt"
-    if os.path.exists(path):
-        os.unlink(path)
-    subprocess.run(["open", "-W", "-n", "-g", app, "--stdout", path, "--args", url, str(runs)], check=True, timeout=300)
+    path, go = f"/tmp/hc-rawload-{os.getpid()}.txt", f"/tmp/hc-rawload-{os.getpid()}.go"
+    for p in (path, go):
+        if os.path.exists(p):
+            os.unlink(p)
+    proc = subprocess.Popen(["open", "-W", "-n", "-g", app, "--stdout", path, "--args", url, str(runs), "--step", go])
     rows = []
-    for line in open(path):
-        if line.startswith("{"):
-            m = json.loads(line)
+
+    def step(i):
+        open(go, "w").close()
+        t = time.time()
+        while len(rows) <= i and time.time() - t < 60:
+            time.sleep(0.05)
+            lines = list(open(path)) if os.path.exists(path) else []
+            rows[:] = [json.loads(l) for l in lines if l.startswith("{") and l.endswith("\n")]
+        for m in rows:
             m.pop("list", None); m.pop("events", None)
-            rows.append(m)
-    os.unlink(path)
-    return rows
+    return step, rows, proc
 
 
 def load(out, arms_):
-    """A3: N loads of each page in a fresh Copper tab, then N in a fresh bare WKWebView, interleaved
-    per page so the network is the same for both. The first of each N is dropped (cold DNS/cache)."""
-    n = N("HC_LOADS", 6)
+    """A3: HC_LOADS loads of each page in a fresh Copper tab, each followed by one in a fresh bare WKWebView
+    (paired, same network). Both clocks start in-app as the view is made (Copper's `open` reply carries its
+    t0; builds without it fall back to the harness clock). The first of each arm is dropped (cold DNS/cache)."""
+    n = N("HC_LOADS", 21)
     quiet = open(os.devnull, "w")
     for r in range(N("HC_LOAD_ROUNDS", 1)):
         for label, app in order(arms_, r):
@@ -482,16 +524,21 @@ def load(out, arms_):
                 l0 = start(app)["load0"]
                 time.sleep(10)
                 for name, url in LOAD_PAGES:
+                    step, raw, proc = rawload(url, n)
                     so, sys.stdout = sys.stdout, quiet
                     try:
-                        rows = perf.load(WORLD, url, n)
+                        rows = perf.load(WORLD, url, n, between=step)
                     finally:
                         sys.stdout = so
+                    try:
+                        proc.wait(timeout=30)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
                     for m in rows:
                         emit(out, "load", {"arm": label, "round": r, "who": "copper", "page": name, "load0": l0,
                                            **{k: m.get(k) for k in ("run", "app_overhead_ms", "req_to_fcp_ms", "req_to_load_ms", "fcp", "load",
                                                                      "ttfb", "wait_ms", "busy", "longest", "resources", "bytes")}})
-                    for m in rawload(url, n):
+                    for m in raw:
                         emit(out, "load", {"arm": label, "round": r, "who": "raw", "page": name, "load0": l0,
                                            **{k: m.get(k) for k in ("run", "app_overhead_ms", "req_to_fcp_ms", "req_to_load_ms", "fcp", "load",
                                                                      "ttfb", "finish_ms", "resources", "bytes")}})
@@ -513,8 +560,7 @@ def js_value(raw):
 
 
 def smooth(out, arms_):
-    """A5 (Retina): scripted scroll of 4 pages, then canvas-big and canvas-easel pan+zoom
-    (canvas-big/measure.js), 5 runs each, per arm."""
+    """A5 (Retina): scripted scroll of 4 pages, HC_SMOOTH_RUNS runs each, per arm (the boards: `canvas`)."""
     runs = N("HC_SMOOTH_RUNS", 5)
     js = open(os.path.join(HERE, "scroll.js")).read()
     for r in range(N("HC_SMOOTH_ROUNDS", 1)):
@@ -541,7 +587,15 @@ def smooth(out, arms_):
                         time.sleep(1)
                     ask({"do": "close", "id": tid})
                 perf.quit_world(WORLD)
-                canvas(out, label, app, r, runs)
+
+
+def canvas_phase(out, arms_):
+    """A5: canvas-big and canvas-easel pan+zoom (canvas-big/measure.js), HC_SMOOTH_RUNS runs each, arms alternating.
+    On the mini the probe draws at 1× (no Retina): its numbers are a floor, the laptop's count."""
+    for r in range(N("HC_CANVAS_ROUNDS", 1)):
+        for label, app in order(arms_, r):
+            with locked():
+                canvas(out, label, app, r, N("HC_SMOOTH_RUNS", 5))
 
 
 def copper_cli(app):
@@ -557,6 +611,12 @@ def canvas(out, label, app, r, runs):
     flags = ["-n", "-a"] if MODE == "fg" else ["-n", "-g", "-a"]
     sub = os.path.join(perf.folder(CANVAS_WORLD))
     os.makedirs(sub, exist_ok=True)
+    # The agent server on, on our port: a new world's agent.json says off (and 4123, the installed Copper's).
+    ag = os.path.join(sub, "agent.json")
+    cfg = json.load(open(ag)) if os.path.exists(ag) else {}
+    if not cfg.get("enabled") or cfg.get("port") != port:
+        cfg.update(enabled=True, port=port, announces=False, token=cfg.get("token") or os.urandom(32).hex())
+        json.dump(cfg, open(ag, "w"))
     started, l0 = time.time(), round(os.getloadavg()[0], 2)
     subprocess.run(["open", *flags, app, *env_for(CANVAS_WORLD, port, "1840x1240")], check=True)
     for _ in range(240):
@@ -622,19 +682,29 @@ def hook(req, timeout=60):
 
 
 def hooks(out, arms_):
-    """One launch per arm per round: `bench keylat` for ⌘T and ⌘K, then `bench wheel` on every scroll page."""
-    for r in range(N("HC_HOOK_ROUNDS", 1)):
-        for label, app in order(arms_, r):
-            with locked():
-                base = {"arm": label, "round": r, "load0": start(app)["load0"]}
-                time.sleep(10)
-                keylat(out, base)
-                # the wheel on the laptop only (HC_WHEEL=1 forces it): ProMotion, and the mini's fg window
-                # can be covered by other probes' windows, which stops the page's rAF
-                for page, url in scroll_pages() if LAPTOP or os.environ.get("HC_WHEEL") == "1" else []:
-                    if not wheel(out, {**base, "page": page}, url):
-                        break
-                perf.quit_world(WORLD)
+    """One launch per arm per round: `bench keylat` for ⌘T and ⌘K, then `bench wheel` on every scroll page.
+    A sleeping display gives no display ticks (no key→pixel; the page runs rAF on a 60 Hz timer): rows say so (display_asleep).
+    HC_WAKE_DISPLAY=1 wakes it for the phase (`caffeinate -u`: the screen lights up, nothing takes focus)."""
+    wake = None
+    if display_asleep() and os.environ.get("HC_WAKE_DISPLAY") == "1":
+        wake = subprocess.Popen(["caffeinate", "-u", "-d", "-t", "3600"])
+        time.sleep(3)
+    try:
+        for r in range(N("HC_HOOK_ROUNDS", 1)):
+            for label, app in order(arms_, r):
+                with locked():
+                    base = {"arm": label, "round": r, "load0": start(app)["load0"], "display_asleep": display_asleep()}
+                    time.sleep(10)
+                    keylat(out, base)
+                    # the wheel on the laptop only (HC_WHEEL=1 forces it): ProMotion, and the mini's fg window
+                    # can be covered by other probes' windows, which stops the page's rAF
+                    for page, url in scroll_pages() if LAPTOP or os.environ.get("HC_WHEEL") == "1" else []:
+                        if not wheel(out, {**base, "page": page}, url):
+                            break
+                    perf.quit_world(WORLD)
+    finally:
+        if wake:
+            wake.terminate()
 
 
 def keylat(out, base):
@@ -735,6 +805,14 @@ METRICS = [
     ("A4.idle.pages_loaded", "", "pages loaded at idle (pins + restored)"),
     ("A4.loaded.total_mb", "MB", "footprint after 12 tabs were visited"),
     ("A4.mb_per_page", "MB", "footprint per loaded page (bench heat)"),
+    ("A4.idle.pins_mb", "MB", "idle: pinned tabs' web processes (pins never sleep), each process once"),
+    ("A4.idle.nonpins_mb", "MB", "idle: every other loaded tab's web processes"),
+    ("A4.idle.pins_pages", "", "idle: pinned tabs loaded"),
+    ("A4.idle.nonpins_pages", "", "idle: other tabs loaded"),
+    ("A4.loaded.pins_mb", "MB", "after 12 tabs: pinned tabs' web processes"),
+    ("A4.loaded.nonpins_mb", "MB", "after 12 tabs: every other loaded tab's web processes"),
+    ("A4.loaded.pins_pages", "", "after 12 tabs: pinned tabs loaded"),
+    ("A4.loaded.nonpins_pages", "", "after 12 tabs: other tabs loaded"),
     *[x for p in SCROLL for x in (
         (f"A5.scroll.{p}.p95_ms", "ms", f"scripted scrollTop scroll, frame time p95 per run, {p} page"),
         (f"A5.scroll.{p}.janky", "", f"frames > 1.5× refresh per 4 s scroll, {p} page"))],
@@ -782,15 +860,16 @@ HOOKED = ("A5.wheel.", "A7.keylat.")  # metrics that need hc/hooks
 
 
 def collect(d, laptop):
-    """({metric: {arm: [(value, kept)]}}, {(prefix, arm): why it is n/a}) from one OUT dir.
-    kept = the sample counts: always on the mini; on the laptop only when it started at load < LOAD_MAX."""
+    """({metric: {arm: [(value, kept, round)]}}, {(prefix, arm): why it is n/a}) from one OUT dir.
+    kept = the sample counts: always on the mini; on the laptop only when it started at load < LOAD_MAX.
+    round = the ABBA round it came from (the paired Δ matches rounds)."""
     v, missing = {}, {}
 
     def put(k, r, x):
         if x is None:
             return
         load = r.get("load0", (r.get("loadavg") or [0])[0])
-        v.setdefault(k, {}).setdefault(r["arm"], []).append((x, not laptop or load < LOAD_MAX))
+        v.setdefault(k, {}).setdefault(r["arm"], []).append((x, not laptop or load < LOAD_MAX, r.get("round")))
 
     for ph, prefix in (("launch", "A1.launch"), ("cold", "A1.cold")):
         for r in rows(d, ph):
@@ -828,6 +907,12 @@ def collect(d, laptop):
         put("A4.loaded.total_mb", r, ml.get("total_mb"))
         for h in r.get("heat_loaded", []):
             put("A4.mb_per_page", r, h.get("mb"))
+        for when, heat in (("idle", r.get("heat_idle", [])), ("loaded", r.get("heat_loaded", []))):
+            if heat and "pin" in heat[0]:  # web processes once each (tabs can share one), pins vs the rest
+                for grp, pin in (("pins", True), ("nonpins", False)):
+                    by_pid = {h.get("pid") or id(h): h.get("mb") or 0 for h in heat if h.get("pin") == pin}
+                    put(f"A4.{when}.{grp}_mb", r, sum(by_pid.values()))
+                    put(f"A4.{when}.{grp}_pages", r, sum(1 for h in heat if h.get("pin") == pin))
         i = r.get("idle", {})
         mins = (i.get("seconds") or 60) / 60
         put("A6.idle.cpu_pct", r, i.get("cpu_pct"))
@@ -880,14 +965,17 @@ def collect(d, laptop):
         if r.get("missing"):
             missing[("A5.wheel.", r["arm"])] = r["missing"]
             continue
-        if not r.get("frames"):
-            continue  # the page never moved: logged in raw/wheel.jsonl, not a frame sample
-        put("A5.wheel.dropped_pct", r, r.get("dropped120_pct"))
-        put(f"A5.wheel.{r['page']}.dropped_pct", r, r.get("dropped120_pct"))
-        for x in r.get("d") or []:
-            put(f"A5.wheel.{r['page']}.frame_ms", r, x)
-        put("A5.wheel.refresh_ms", r, r.get("refreshMs"))
         h = r.get("hook") or {}
+        if r.get("display_asleep") or h.get("display_asleep"):
+            # WebKit then runs rAF on its own 60 Hz timer, not the display: frames vs 120 Hz mean nothing.
+            missing[("A5.wheel.", r["arm"])] = ("n/a: display asleep — the page's frames come from WebKit's 60 Hz timer "
+                                                "(HC_WAKE_DISPLAY=1 wakes it); hook send/tick times kept")
+        elif r.get("frames"):
+            put("A5.wheel.dropped_pct", r, r.get("dropped120_pct"))
+            put(f"A5.wheel.{r['page']}.dropped_pct", r, r.get("dropped120_pct"))
+            for x in r.get("d") or []:
+                put(f"A5.wheel.{r['page']}.frame_ms", r, x)
+            put("A5.wheel.refresh_ms", r, r.get("refreshMs"))
         put("A5.wheel.hook.hz", r, h.get("hz"))
         put("A5.wheel.hook.tick_p90_ms", r, (h.get("tick_ms") or {}).get("p90"))
         put("A5.wheel.hook.tick_max_ms", r, (h.get("tick_ms") or {}).get("max"))
@@ -897,6 +985,8 @@ def collect(d, laptop):
         if r.get("missing"):
             missing[("A7.keylat.", r["arm"])] = r["missing"]
             continue
+        if r.get("display_asleep") and r.get("frame_ms") is None:
+            missing[("A7.keylat.", r["arm"])] = "n/a: display asleep — no key→pixel (handled/commit kept)"
         for k, x in (("", r), ("esc", r.get("esc") or {})):
             name = k or r["key"]
             for f in ("handled_ms", "commit_ms", "frame_ms"):
@@ -906,7 +996,7 @@ def collect(d, laptop):
 
 def summary(dest, dirs):
     out = {"track": "perf", "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "machines": {}, "metrics": {}}
-    arm_order = []
+    arm_order, paired = [], {}
     for d in dirs:
         info = json.load(open(os.path.join(d, "machine.json")))
         host = os.path.basename(os.path.normpath(d))  # mini | laptop
@@ -916,12 +1006,16 @@ def summary(dest, dirs):
         phases = ("launch", "cold", "session", "load", "scroll", "canvas", "wheel", "keylat")
         info["load_during"] = stats([r.get("load0", r["loadavg"][0]) for ph in phases for r in rows(d, ph)])
         laptop = host == "laptop"
+        if (info["load_during"] or {}).get("median", 0) >= LOAD_MAX:
+            info["load_flag"] = (f"⚠ run at 1-min load ≥{LOAD_MAX:g} (median {info['load_during']['median']}): "
+                                 + ("its samples don't count (rubric)" if laptop else "noisy, read deltas with the paired column"))
         v, missing = collect(d, laptop)
+        paired.setdefault(host, v)
         for k, per in v.items():
             out["metrics"].setdefault(f"{k}@{host}", {})
             for arm, xs in per.items():
-                kept = [x for x, ok in xs if ok]
-                s = stats(kept or [x for x, _ in xs], THRESHOLDS.get(k))
+                kept = [x for x, ok, _ in xs if ok]
+                s = stats(kept or [x for x, _, _ in xs], THRESHOLDS.get(k))
                 if laptop:
                     s["n_total"] = len(xs)
                     if not kept:
@@ -948,10 +1042,29 @@ def summary(dest, dirs):
                 d = per[new]["median"] - per[base]["median"]
                 out["delta"][k] = {"abs": round(d, 2), "pct": round(100 * d / per[base]["median"], 1),
                                    "beyond_noise": band is not None and abs(d) > band}
+                p = paired_delta(paired.get(k.split("@")[1], {}).get(k.split("@")[0], {}), new, base)
+                if p:
+                    out["delta"][k]["paired"] = p
     os.makedirs(dest, exist_ok=True)
     json.dump(out, open(os.path.join(dest, "perf.json"), "w"), indent=1)
     open(os.path.join(dest, "perf.md"), "w").write(markdown(out))
     print(os.path.join(dest, "perf.json"))
+
+
+def paired_delta(per, new, base):
+    """Same-round pairs (ABBA: the two arms ran back to back): median of (new − base) over rounds, of each
+    round's median, and in how many rounds new was worse (higher). Drift between rounds cancels out."""
+    def by_round(xs):
+        g = {}
+        for x, ok, r in xs:
+            if ok and r is not None:
+                g.setdefault(r, []).append(x)
+        return {r: statistics.median(v) for r, v in g.items()}
+    a, b = by_round(per.get(new, [])), by_round(per.get(base, []))
+    diffs = [a[r] - b[r] for r in sorted(a) if r in b]
+    if len(diffs) < 2:
+        return None
+    return {"median": round(statistics.median(diffs), 2), "rounds": len(diffs), "worse": sum(x > 0 for x in diffs)}
 
 
 def cell(s):
@@ -972,7 +1085,8 @@ def markdown(o):
     for host, m in o["machines"].items():
         ld = m.get("load_during") or {}
         lines.append(f"- **{host}**: {m['model']}, macOS {m['macos']}, {', '.join(m['displays'])}, mode `{m['mode']}`, "
-                     f"seed {m.get('seed_tabs')} tabs, 1-min load at sample start {ld.get('min')}–{ld.get('max')} (median {ld.get('median')})")
+                     f"seed {m.get('seed_tabs')} tabs, 1-min load at sample start {ld.get('min')}–{ld.get('max')} (median {ld.get('median')})"
+                     + (f" — **{m['load_flag']}**" if m.get("load_flag") else ""))
     lines += ["", "Cells: p50 · p90 (nearest rank) · max, `>T: k/n` = samples over the target's threshold, n = samples. "
               f"**Laptop**: a sample counts only if the 1-min load was < {LOAD_MAX:g} when it started; n = kept/total; "
               "`⚠ load` = no sample kept, the cell shows all of them and does not count. Lower is better except fps.", "",
@@ -981,6 +1095,9 @@ def markdown(o):
               "the hook answered with that error on this Mac. The wheel runs on the laptop only (ProMotion, headless).", "",
               "| metric | " + " | ".join(arms_) + (" | Δ p50" if len(arms_) == 2 else "") + " | what |",
               "|---|" + "---|" * len(arms_) + ("---|" if len(arms_) == 2 else "") + "---|"]
+    if len(arms_) == 2:
+        lines[-2:-2] = ["Δ p50 = new vs base medians (⚠ = beyond the base's spread). *paired* = median over ABBA rounds of "
+                        "(new − base) in the same round, and how many rounds new was higher: the drift-proof read.", ""]
     whats = {m[0]: (m[1], m[2]) for m in METRICS}
     keys = sorted(o["metrics"], key=lambda k: ([m[0] for m in METRICS].index(k.split("@")[0]) if k.split("@")[0] in whats else 999, k))
     for k in keys:
@@ -988,7 +1105,9 @@ def markdown(o):
         delta = ""
         if len(arms_) == 2:
             d = o.get("delta", {}).get(k)
-            delta = f" {d['pct']:+g}%{' ⚠' if d['beyond_noise'] else ''} |" if d else " — |"
+            pd = (d or {}).get("paired")
+            delta = (f" {d['pct']:+g}%{' ⚠' if d['beyond_noise'] else ''}"
+                     + (f" · paired {pd['median']:+g} ({pd['worse']}/{pd['rounds']} rounds worse)" if pd else "") + " |") if d else " — |"
         lines.append(f"| `{k}` {u} | " + " | ".join(cell(o["metrics"][k].get(a)) for a in arms_) + " |" + delta + f" {w} |")
     lines.append("")
     return "\n".join(lines)
@@ -1001,7 +1120,8 @@ def main(argv):
     if phase == "summary":
         return summary(out, argv[2:])
     a = arms(argv[2:])
-    {"setup": setup, "launch": launch, "cold": cold, "session": session, "load": load, "smooth": smooth, "hooks": hooks}[phase](out, a)
+    {"setup": setup, "teardown": teardown, "launch": launch, "cold": cold, "session": session, "load": load, "smooth": smooth, "canvas": canvas_phase,
+     "hooks": hooks}[phase](out, a)
 
 
 if __name__ == "__main__":
