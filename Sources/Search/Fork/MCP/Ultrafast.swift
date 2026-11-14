@@ -2140,7 +2140,7 @@ enum Ultrafast {
                     "newTab": bool("url in a background tab of yours"),
                     "focus": bool("With newTab: show it"),
                     "private": bool("With newTab: private, nothing kept"),
-                    "tab": string("Tab id from browser_tabs"),
+                    "tab": Tools.tabProperty,
                     "maxSteps": number("Default \(maxSteps)"),
                     "elements": bool("Default true"),
                     "vision": string("auto (default), off, screenshot, marks, box, pixels"),
@@ -2154,7 +2154,7 @@ enum Ultrafast {
                 "description": "One jev-ultrafast step on your tab; the same goal again continues the session. Returns the choice, what happened and the element table.",
                 "inputSchema": ["type": "object", "properties": [
                     "goal": string("Same text to continue"),
-                    "tab": string("Tab id from browser_tabs"),
+                    "tab": Tools.tabProperty,
                     // As jev_run's, at the session's start.
                     "vision": ["type": "string"], "model": ["type": "string"], "strategy": ["type": "string"],
                 ], "required": ["goal"]] as [String: Any],
@@ -2165,17 +2165,17 @@ enum Ultrafast {
                 "inputSchema": ["type": "object", "properties": [
                     "instruction": string("What to pull out, e.g. \"each flight's airline, times and price\""),
                     "schema": ["type": "object", "description": "JSON schema (or an example object) the answer must match"] as [String: Any],
-                    "full": bool("Read the whole page's text, not just what is on screen; default false"),
-                    "tab": string("Tab id from browser_tabs"),
+                    "full": bool("Whole page, not just the screen"),
+                    "tab": Tools.tabProperty,
                 ], "required": ["instruction"]] as [String: Any],
             ],
             [
                 "name": "jev_observe",
                 "description": "Fast indexed read of the page's visible controls and text (what Jev sees); cheaper than a snapshot.",
                 "inputSchema": ["type": "object", "properties": [
-                    "text": bool("Include the page's visible text; default true"),
-                    "limit": number("Cap on elements listed; default 80"),
-                    "tab": string("Tab id from browser_tabs"),
+                    "text": bool("Visible text; default true"),
+                    "limit": number("Default 80"),
+                    "tab": Tools.tabProperty,
                 ]] as [String: Any],
             ],
         ]

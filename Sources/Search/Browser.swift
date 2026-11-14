@@ -2096,6 +2096,11 @@ final class Browser: NSObject, ObservableObject {
         ending = nil
         picked = nil
         fillPending()
+        // Every space's open tabs, for the first letter to match against, read
+        // once the card is up rather than in either keystroke.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            if let self, self.summoning, !self.launching { _ = Launcher.shared.openTabs(self) }
+        }
         editing = true
         focusRequest += 1
     }
