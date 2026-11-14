@@ -53,15 +53,30 @@ struct SplitCard: View {
     let tint: Color
     /// The room the stage measured for this card. Not negotiable: see above.
     let size: CGSize
+    /// Fork (motion): the toolbar's height — none at the start of a split's
+    /// glide, growing to `SplitMetrics.bar` with it.
+    var bar: CGFloat = SplitMetrics.bar
+    /// Fork (motion): the pane has finished gliding in.
+    var landed = true
+    /// Fork (motion): the page as it was before the split narrowed it, over
+    /// the page while it re-wraps (`Split.still`).
+    var still: NSImage?
 
     var body: some View {
         Page(tab: tab)
             .environment(\.pageCorners, PageCorners(radius: SplitMetrics.corner, bottomOnly: true))
-            .frame(width: size.width, height: max(size.height - SplitMetrics.bar, 1))
-            .padding(.top, SplitMetrics.bar)
+            .frame(width: size.width, height: max(size.height - bar, 1))
+            .padding(.top, bar)
             .frame(width: size.width, height: size.height)
             .background(plate)
-            .overlay(alignment: .top) { SplitBar(browser: browser, tab: tab, live: live) }
+            .overlay(alignment: .topLeading) { picture }
+            .overlay(alignment: .top) {
+                // Fork (motion): cut to the card, so a pane still narrow
+                // mid-glide shows part of its bar, never a pile of it.
+                SplitBar(browser: browser, tab: tab, live: live, landed: landed)
+                    .frame(width: size.width, height: bar, alignment: .bottom)
+                    .clipped()
+            }
             .overlay { edge }
             .animation(Motion.quick, value: live)
     }
@@ -70,7 +85,24 @@ struct SplitCard: View {
     /// shadow on the subtree instead and the page inside it loses its place.
     private var plate: some View {
         PageCard.plate(lifted: live)
-            .overlay { SplitWaiting(tab: tab).padding(.top, SplitMetrics.bar) }
+            .overlay { SplitWaiting(tab: tab).padding(.top, bar) }
+    }
+
+    /// Fork (motion): drawn at its own size from the page's top-left corner
+    /// and cut where the card ends — the page as it was, its right side
+    /// sliding under the new pane, until the page under it has re-wrapped
+    /// (`Split.landed`).
+    @ViewBuilder private var picture: some View {
+        if let still {
+            Image(nsImage: still)
+                .resizable()
+                .frame(width: still.size.width, height: still.size.height)
+                .frame(width: size.width, height: max(size.height - bar, 1), alignment: .topLeading)
+                .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: SplitMetrics.corner, bottomTrailingRadius: SplitMetrics.corner, style: .continuous))
+                .padding(.top, bar)
+                .allowsHitTesting(false)
+                .transition(.identity)
+        }
     }
 
     /// The live pane is outlined in the space's colour. The other is not
@@ -91,8 +123,28 @@ struct SplitCard: View {
 /// page covers it the moment WebKit has a frame (`PageView.showFirstFrame`).
 private struct SplitWaiting: View {
     @ObservedObject var tab: Tab
+    /// Fork (motion): the page has painted. Gone then (in 80 ms), so it can't
+    /// show through wherever a page mid-resize hasn't drawn yet.
+    @State private var painted: Bool
+
+    init(tab: Tab) {
+        self.tab = tab
+        _painted = State(initialValue: tab.built.map { !$0.unpainted } ?? false)
+    }
 
     var body: some View {
+        waiting
+            .opacity(painted ? 0 : 1)
+            .onAppear(perform: watch)
+            .onChange(of: tab.loading) { _, _ in watch() }
+    }
+
+    private func watch() {
+        guard !painted, let web = tab.built else { return }
+        web.whenPainted { withAnimation(.easeOut(duration: 0.08)) { painted = true } }
+    }
+
+    private var waiting: some View {
         VStack(spacing: 10) {
             Mark(icon: tab.icon, letter: tab.monogram, size: 28)
             Text(tab.title.isEmpty ? (tab.address.map(Address.pretty) ?? "New Tab") : tab.title)
@@ -114,21 +166,19 @@ struct SplitBar: View {
     @ObservedObject var browser: Browser
     @ObservedObject var tab: Tab
     let live: Bool
+    /// Fork (motion): the cross waits until the pane has glided in.
+    var landed = true
+    /// Fork (motion): back, forward and reload show under the pointer only —
+    /// at rest the bar is the page's address and its cross.
+    @State private var over = false
 
     var body: some View {
         // The doors are PaneDoor, the same square the agent's and Jev's
         // headers draw, at 24 here since the bar is only 32 tall.
         HStack(spacing: 1) {
-            PaneDoor(icon: "arrow.left", help: "Back", on: tab.canGoBack, tint: Palette.ink.opacity(0.65), size: 24) { tab.back() }
-            PaneDoor(icon: "arrow.right", help: "Forward", on: tab.canGoForward, tint: Palette.ink.opacity(0.65), size: 24) { tab.forward() }
-            PaneDoor(
-                icon: tab.loading ? "xmark" : "arrow.clockwise",
-                help: tab.loading ? "Stop" : "Reload",
-                tint: Palette.ink.opacity(0.65),
-                size: 24
-            ) {
-                tab.loading ? tab.stop() : tab.reload()
-            }
+            doors
+                .opacity(over ? 1 : 0)
+                .allowsHitTesting(over)
 
             Spacer(minLength: 2)
 
@@ -140,6 +190,7 @@ struct SplitBar: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
+            .fixedSize(horizontal: !landed, vertical: false) // Fork (motion): mid-glide the mark and the address never squeeze over each other
             .layoutPriority(1)
 
             Spacer(minLength: 2)
@@ -154,7 +205,11 @@ struct SplitBar: View {
                     Split.shared.dismiss(tab, in: browser)
                 }
             }
+            .opacity(landed ? 1 : 0)
+            .allowsHitTesting(landed)
         }
+        .animation(Motion.quick, value: over)
+        .animation(Motion.quick, value: landed)
         .padding(.horizontal, 7)
         .frame(height: SplitMetrics.bar)
         .background(alignment: .bottom) {
@@ -170,6 +225,22 @@ struct SplitBar: View {
         // A click anywhere on the bar is a click into the pane.
         .contentShape(Rectangle())
         .onTapGesture { Split.shared.touched(tab, in: browser) }
+        .onHover { over = $0 }
+    }
+
+    private var doors: some View {
+        HStack(spacing: 1) {
+            PaneDoor(icon: "arrow.left", help: "Back", on: tab.canGoBack, tint: Palette.ink.opacity(0.65), size: 24) { tab.back() }
+            PaneDoor(icon: "arrow.right", help: "Forward", on: tab.canGoForward, tint: Palette.ink.opacity(0.65), size: 24) { tab.forward() }
+            PaneDoor(
+                icon: tab.loading ? "xmark" : "arrow.clockwise",
+                help: tab.loading ? "Stop" : "Reload",
+                tint: Palette.ink.opacity(0.65),
+                size: 24
+            ) {
+                tab.loading ? tab.stop() : tab.reload()
+            }
+        }
     }
 
     /// Where the pane is, not what it is called: the tab in the column already
@@ -229,5 +300,21 @@ struct SplitHandle: View {
             }
         )
         .animation(Motion.quick, value: showing)
+    }
+}
+
+/// Fork (motion): the column's mark on both rows of a kept split — a 2 pt
+/// bar in the space's colour down each row's leading edge.
+struct SplitBracket: View {
+    let tint: SpaceTint
+
+    var body: some View {
+        Capsule(style: .continuous)
+            .fill(tint.bar)
+            .frame(width: 2)
+            .padding(.vertical, 7)
+            .padding(.leading, 3)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }

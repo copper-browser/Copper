@@ -161,7 +161,7 @@ struct BrowserPill: View {
             .overlay(Capsule().strokeBorder(Palette.hairline, lineWidth: 1))
             .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(Press(radius: 14)) // Fork (motion): the shared pressed state
         .onHover { hovering = $0 }
         .help(help ?? "Bring your tabs, bookmarks and passwords over from \(name)")
         .accessibilityLabel("Move in from \(name)")

@@ -482,6 +482,7 @@ struct SideDragCard: View {
                 SideDragCardRow(browser: browser, tab: tab, tint: tint)
                     .frame(width: max(40, drag.picked.width - inset), height: drag.picked.height)
                     .offset(x: drag.picked.minX + inset, y: hand.y - drag.grip)
+                    .transition(.identity) // Fork (motion): there at once, as the row goes
             }
         }
         .allowsHitTesting(false)
@@ -499,18 +500,16 @@ struct SideDragCardRow: View {
     var body: some View {
         HStack(spacing: 10) {
             SideGlyphMark(prefs: browser.prefs, icon: tab.icon, letter: tab.monogram, tint: tint, size: 16)
-            Text(tab.label)
-                .font(.system(size: 15))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .foregroundStyle(tint.ink)
+            FadingTitle(text: Text(tab.label) // Fork (motion): the row's own title, as on the row
+                .font(.system(size: SideBar.title))
+                .foregroundStyle(tint.ink))
             Spacer(minLength: 2)
         }
         .padding(.leading, SideBar.rowInset)
         .padding(.trailing, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(SideDragCardGround(tint: tint))
-        .shadow(color: .black.opacity(0.14), radius: 12, y: 4)
+        .modifier(SideDragLift.on)
     }
 }
 
@@ -532,8 +531,26 @@ struct SideDragHidden: ViewModifier {
     @ObservedObject var drag: SideDrag
     let held: Bool
 
+    // Fork (motion): at once, never faded — the target changes inside the
+    // gaps' spring, and a fade left the row and its card both on screen for
+    // ~3 frames.
     func body(content: Content) -> some View {
-        content.opacity(held && drag.target != nil ? 0 : 1)
+        let hidden = held && drag.target != nil
+        content.opacity(hidden ? 0 : 1).animation(nil, value: hidden)
+    }
+}
+
+/// Fork (motion): a row in the hand — a hair bigger than the column's rows,
+/// on a short soft shadow (the same on the row and on its card).
+struct SideDragLift: ViewModifier {
+    let held: Bool
+    static let on = SideDragLift(held: true)
+    @Environment(\.accessibilityReduceMotion) private var still
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(held && !still ? 1.02 : 1)
+            .shadow(color: .black.opacity(held ? 0.12 : 0), radius: 8, y: 3)
     }
 }
 
