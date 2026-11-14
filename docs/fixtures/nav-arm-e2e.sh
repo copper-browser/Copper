@@ -22,7 +22,7 @@ pid="" server=""
 folder="$HOME/Library/Application Support/Copper ($world)"
 cleanup() {
   [ -n "$pid" ] && { kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; }
-  [ -n "$server" ] && kill "$server" 2>/dev/null || true
+  [ -n "$server" ] && { kill "$server" 2>/dev/null || true; wait "$server" 2>/dev/null || true; }
   defaults delete "com.collinrijock.copper.test.$world" >/dev/null 2>&1 || true
   rm -f "$HOME/Library/Preferences/com.collinrijock.copper.test.$world.plist"
   rm -rf "$folder" "$tmp"
