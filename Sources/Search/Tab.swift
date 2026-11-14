@@ -20,15 +20,6 @@ enum Web {
     /// one. Set by key, the property being deprecated, not gone.
     @MainActor static let pool = WKWebViewConfiguration().value(forKey: "processPool") // Fork (agent-permissions): read by Permissions.GeoProvider
 
-    /// Fork (launch): a content process launched as the app starts, ~150 ms
-    /// before the session is read, so the restored page's load finds one up
-    /// instead of starting it while the window is drawn. WebKit's own private
-    /// call, and just as optional: a WebKit without it skips.
-    @MainActor static func warm() {
-        guard let pool = pool as? NSObject, pool.responds(to: NSSelectorFromString("_warmInitialProcess")) else { return }
-        pool.perform(NSSelectorFromString("_warmInitialProcess"))
-    }
-
     /// What every view says it is after "AppleWebKit … (KHTML, like Gecko)"
     /// — web tabs and extension views alike (see Extensions.init).
     static let userAgentName = "Version/26.5 Safari/605.1.15"
