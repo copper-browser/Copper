@@ -2636,6 +2636,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
         tab.failure = nil
         tab.typing = false
         Passkeys.drop(tab) // Fork (passkey-picker): a new document waits on nothing yet
+        Tools.Frames.reset(webView) // Fork (agent-frames): nor has it any of the old one's frames
         // Whatever you last set this site to, before it draws a single frame
         // at the wrong size.
         tab.applyRememberedZoom()

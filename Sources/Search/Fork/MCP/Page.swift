@@ -40,13 +40,25 @@ enum Page {
     /// Run in the page, with the helper installed first if it isn't yet.
     /// `script` is an expression. One round trip when the helper is already
     /// in this document, which is every call but the first.
+    ///
+    /// In Copper's own content world (Frames.swift): `window.__copper` there
+    /// is the helper and nothing else — whatever the page calls by that name
+    /// is in another world. `frame`: one of the page's frames instead of the
+    /// page itself (Frames).
     @MainActor
-    static func js(_ web: WKWebView, _ script: String) async throws -> Any? {
+    static func js(_ web: WKWebView, _ script: String, in frame: WKFrameInfo? = nil) async throws -> Any? {
         let missing = "__copper:missing"
-        let result = try await raw(web, "typeof window.__copper === 'object' ? (\(script)) : \(quote(missing))")
+        let result = try await raw(web, "typeof window.__copper === 'object' ? (\(script)) : \(quote(missing))", in: frame)
         guard result as? String == missing else { return result }
-        _ = try await raw(web, helper)
-        return try await raw(web, script)
+        _ = try await raw(web, helper, in: frame)
+        // The console recorder wraps the page's own console, so it lives in the page's world.
+        if frame == nil { _ = try? await raw(web, consoleShim, world: .page) }
+        return try await raw(web, script, in: frame)
+    }
+
+    @MainActor
+    static func js(_ web: WKWebView, at target: Tools.Locator, _ script: String) async throws -> Any? {
+        try await js(web, script, in: target.info(web))
     }
 
     /// Scripts of Copper's in flight, per web view: a page stopped in an
@@ -54,17 +66,17 @@ enum Page {
     @MainActor static var waiting: [ObjectIdentifier: Int] = [:]
 
     @MainActor
-    static func raw(_ web: WKWebView, _ script: String, counted: Bool = true) async throws -> Any? {
+    static func raw(_ web: WKWebView, _ script: String, counted: Bool = true, in frame: WKFrameInfo? = nil, world: WKContentWorld = .copper) async throws -> Any? {
         // Not counted: decoration (Trail) that nothing waits on, so a click's alert stays open for the agent.
         let key = ObjectIdentifier(web)
         if counted { waiting[key, default: 0] += 1 }
         defer { if counted { let left = (waiting[key] ?? 1) - 1; waiting[key] = left > 0 ? left : nil } }
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any?, Error>) in
-            web.evaluateJavaScript(script) { value, error in
-                if let error {
-                    continuation.resume(throwing: Failure(text: "JavaScript: \(detail(error))"))
-                } else {
-                    continuation.resume(returning: value)
+            web.evaluateJavaScript(script, in: frame, in: world) { result in
+                switch result {
+                // `undefined` comes boxed as an Any holding nil; only real values are objects.
+                case .success(let value): continuation.resume(returning: value as? NSObject)
+                case .failure(let error): continuation.resume(throwing: Failure(text: "JavaScript: \(detail(error))"))
                 }
             }
         }
@@ -74,7 +86,7 @@ enum Page {
     /// Promise it returns is awaited. `timeout` caps the wait: a Promise that
     /// never settles, or a document torn down mid-call, answers nothing.
     @MainActor
-    static func call(_ web: WKWebView, _ body: String, _ arguments: [String: Any] = [:], timeout: TimeInterval, late: String, counted: Bool = true) async throws -> Any? {
+    static func call(_ web: WKWebView, _ body: String, _ arguments: [String: Any] = [:], timeout: TimeInterval, late: String, counted: Bool = true, in frame: WKFrameInfo? = nil, world: WKContentWorld = .copper) async throws -> Any? {
         // Counted like `raw`, so an alert inside browser_evaluate is answered at once (AgentDialogs).
         // `frame` isn't: an alert a click raises during settle stays open for browser_handle_dialog.
         let key = ObjectIdentifier(web)
@@ -87,7 +99,7 @@ enum Page {
                 guard !Task.isCancelled, once.take() else { return }
                 continuation.resume(throwing: Failure(text: late))
             }
-            web.callAsyncJavaScript(body, arguments: arguments, in: nil, in: .page) { result in
+            web.callAsyncJavaScript(body, arguments: arguments, in: frame, in: world) { result in
                 guard once.take() else { return }
                 timer.cancel()
                 switch result {
@@ -124,8 +136,8 @@ enum Page {
     /// agent as errors and never as a quiet success.
     @MainActor
     @discardableResult
-    static func act(_ web: WKWebView, _ script: String) async throws -> String {
-        let said = render(try await js(web, script))
+    static func act(_ web: WKWebView, at target: Tools.Locator? = nil, _ script: String) async throws -> String {
+        let said = render(try await js(web, script, in: target?.info(web)))
         if said.hasPrefix("no ") || said.hasPrefix("not ") {
             throw Failure(text: "\(said). Take a fresh browser_snapshot and use a ref from it.")
         }
@@ -146,10 +158,19 @@ enum Page {
     // MARK: - what the tools ask
 
     @MainActor
-    static func snapshot(_ web: WKWebView, selector: String?, interactive: Bool, limit: Int) async throws -> String {
-        let result = try await js(web, "window.__copper.snapshot(\(quote(selector ?? "")), \(interactive), \(limit))")
-        guard let text = result as? String else { throw Failure(text: "snapshot gave nothing") }
-        return text
+    static func snapshot(_ web: WKWebView, selector: String?, interactive: Bool, limit: Int, frame: Int? = nil) async throws -> String {
+        if let frame {
+            // One frame alone, in full: for a frame too big for its share of the page's snapshot.
+            let result = try await js(web, "window.__copper.snapshot(\(quote(selector ?? "")), \(interactive), \(limit), 'f\(frame):')", in: Frames.frame(frame, in: web).info) as? [String: Any]
+            guard let text = result?["text"] as? String else { throw Failure(text: "snapshot gave nothing") }
+            return text
+        }
+        // The page and its frames at once; each frame's part goes under its iframe line (Frames.stitch).
+        // A frame gets a share of the nodes, so a page of embeds stays readable.
+        async let frames = Frames.parts(web, interactive: interactive, limit: min(limit, 200))
+        let result = try await js(web, "window.__copper.snapshot(\(quote(selector ?? "")), \(interactive), \(limit), '')") as? [String: Any]
+        guard let text = result?["text"] as? String else { _ = await frames; throw Failure(text: "snapshot gave nothing") }
+        return Frames.stitch(text, result?["frames"] as? [[String: Any]] ?? [], await frames)
     }
 
     /// Scroll the target into view and answer its rectangle in viewport
@@ -160,13 +181,14 @@ enum Page {
     /// way out (a fading toast, a closing sheet) gets three tries.
     @MainActor
     static func prepare(_ web: WKWebView, _ target: Tools.Locator, hit: Bool = true) async throws -> CGRect {
-        var result = try await js(web, "window.__copper.rect(\(quote(target.script)), \(hit))")
+        let frame = try target.info(web)
+        var result = try await js(web, "window.__copper.rect(\(quote(target.script)), \(hit))", in: frame)
         for _ in 0..<3 where (result as? [String: Any])?["blocked"] as? Bool == true {
             try await Task.sleep(nanoseconds: 100_000_000)
-            result = try await js(web, "window.__copper.rect(\(quote(target.script)), \(hit))")
+            result = try await js(web, "window.__copper.rect(\(quote(target.script)), \(hit))", in: frame)
         }
         guard let dict = result as? [String: Any],
-              let x = (dict["x"] as? NSNumber)?.doubleValue, let y = (dict["y"] as? NSNumber)?.doubleValue,
+              var x = (dict["x"] as? NSNumber)?.doubleValue, var y = (dict["y"] as? NSNumber)?.doubleValue,
               let w = (dict["width"] as? NSNumber)?.doubleValue, let h = (dict["height"] as? NSNumber)?.doubleValue
         else {
             let dict = result as? [String: Any]
@@ -176,7 +198,12 @@ enum Page {
                 : dict?["blocked"] as? Bool == true
                 ? "Open or scroll to whatever reveals it first, or pick another ref from a fresh browser_snapshot."
                 : "Take a fresh browser_snapshot — refs change when the page does."
-            throw Tools.Failure(text: "\(target.script): \(why). \(next)")
+            throw Tools.Failure(text: "\(target.label): \(why). \(next)")
+        }
+        // In a frame: the box is in the frame's own viewport, and the frame is somewhere on the page.
+        if frame != nil, let path = (dict["at"] as? [NSNumber])?.map(\.intValue), !path.isEmpty {
+            let offset = try await Frames.offset(path, in: web, point: CGPoint(x: x + w / 2, y: y + h / 2), hit: hit)
+            x += offset.x; y += offset.y
         }
         // The page's CSS pixels to the view's points: page zoom is the only
         // scale between them.
@@ -244,6 +271,8 @@ enum Page {
     /// The console, kept for browser_console_messages. Put in at document
     /// start for a tab an agent opened (Tab.arm → `arm`), so what a page logs
     /// while it loads is there; in any other tab, when the helper first goes in.
+    /// In the page's world — it is the page's `console` being wrapped — so
+    /// what it holds is the page's word, read as such (`console`, below).
     static let consoleShim = #"""
     (function () {
       if (window.__copperLogs) return;
@@ -271,11 +300,24 @@ enum Page {
         controller.addUserScript(WKUserScript(source: consoleShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
     }
 
-    static let helper = consoleShim + #"""
+    /// What the recorder holds, as JSON text. Read defensively: the list
+    /// sits in the page's world, where the page can put anything in it.
+    @MainActor
+    static func console(_ web: WKWebView) async throws -> String {
+        let read = """
+        (function () { try {
+          var logs = window.__copperLogs; if (!Array.isArray(logs)) return '[]';
+          return JSON.stringify(Array.prototype.slice.call(logs, -200).map(function (l) {
+            return { level: String(l && l.level).slice(0, 10), text: String(l && l.text).slice(0, 4000) }; }));
+        } catch (e) { return '[]'; } })()
+        """
+        return try await raw(web, read, world: .page) as? String ?? "[]"
+    }
+
+    static let helper = #"""
     (function () {
       if (window.__copper) return true;
       var refs = new Map(), byRef = new Map(), next = 1;
-      var logs = window.__copperLogs;
 
       function ref(el) {
         var r = refs.get(el);
@@ -378,10 +420,14 @@ enum Page {
         if (document.activeElement === el) out.push('[active]');
         return out.join(' ');
       }
-      function snapshot(selector, interactiveOnly, limit) {
+      // `prefix`: the frame's name on every ref (f2:e7), '' in the page itself.
+      // Answers the text and which of its lines are frames (`at`: the place
+      // among this document's frames), so each frame's own snapshot can go
+      // under its line (Frames.stitch).
+      function snapshot(selector, interactiveOnly, limit, prefix) {
         var root = selector ? find(selector.indexOf(':') > 0 ? selector : 'css:' + selector) : document.body;
-        if (!root) return 'nothing matches ' + selector;
-        var lines = [], count = 0;
+        if (!root) return { text: 'nothing matches ' + selector, frames: [] };
+        var lines = [], count = 0, frames = [];
         function walk(el, depth) {
           if (count >= limit) return;
           if (!(el instanceof Element)) return;
@@ -396,12 +442,22 @@ enum Page {
           for (var i = 0; i < el.childNodes.length; i++) { var n = el.childNodes[i]; if (n.nodeType === 3) ownText += n.textContent; }
           ownText = ownText.replace(/\s+/g, ' ').trim();
           var landmark = /navigation|main|banner|contentinfo|complementary|form|dialog|region|article|list|table|heading/.test(r);
+          var framed = shown && (tag === 'IFRAME' || tag === 'FRAME') ? frameIndex(el) : -1;
+          // A frame too small to show anything is a tracker or a bridge, not part of the page.
+          if (framed >= 0) { var box = el.getBoundingClientRect(); if (box.width < 8 || box.height < 8) return; }
+          if (framed >= 0) {
+            var title = el.getAttribute('title') || el.getAttribute('aria-label') || el.getAttribute('name') || '';
+            frames.push({ line: lines.length, at: framed });
+            lines.push('  '.repeat(Math.min(depth, 12)) + '- iframe' + (title ? ' ' + JSON.stringify(title.slice(0, 120)) : ''));
+            count++;
+            return;
+          }
           var emit = inter || (!interactiveOnly && shown && (landmark || (ownText && r === 'text') || (r === 'img' && nm)));
           if (emit) {
             var line = '  '.repeat(Math.min(depth, 12)) + '- ' + (r || 'generic');
             var label = inter || r === 'heading' || r === 'img' ? nm : landmark ? (el.getAttribute('aria-label') || '') : ownText;
             if (label) line += ' ' + JSON.stringify(label.length > 120 ? label.slice(0, 117) + '…' : label);
-            if (inter) line += ' [ref=' + ref(el) + ']';
+            if (inter) line += ' [ref=' + (prefix || '') + ref(el) + ']';
             var a = attrs(el); if (a) line += ' ' + a;
             if (!inter && r === 'text' && !landmark && lines.length && lines[lines.length - 1].endsWith(line.trim())) { /* skip duplicate */ } else { lines.push(line); count++; }
           }
@@ -411,7 +467,65 @@ enum Page {
         }
         walk(root, 0);
         if (count >= limit) lines.push('… (truncated at ' + limit + ' nodes; pass a selector or interactive: true for less)');
-        return lines.join('\n');
+        return { text: lines.join('\n'), frames: frames };
+      }
+      // Frames. Windows compare across origins, so a frame can say where it
+      // is and its parent which element holds it without reading each other.
+      function frameIndex(el) {
+        try { for (var i = 0; i < window.length; i++) if (window[i] === el.contentWindow) return i; } catch (e) {}
+        return -1;
+      }
+      // This document's place: its index among its parent's frames, at each level from the top. [] for the page.
+      function where() {
+        var path = [];
+        try {
+          for (var w = window; w !== w.parent; w = w.parent) {
+            var at = -1;
+            for (var i = 0; i < w.parent.length; i++) if (w.parent[i] === w) { at = i; break; }
+            if (at < 0) return [];
+            path.unshift(at);
+          }
+        } catch (e) { return []; }
+        return path;
+      }
+      // Where frame `at`'s viewport starts in this one's, after bringing the
+      // point (x, y of the frame's viewport) into view; with `hitTest`, the
+      // frame must be what is at that point here.
+      function frameBox(at, x, y, hitTest) {
+        var el = null;
+        // Through open shadow roots too: a component can hold the frame.
+        (function look(root) {
+          var all = root.querySelectorAll('iframe, frame');
+          for (var i = 0; i < all.length && !el; i++) if (frameIndex(all[i]) === at) el = all[i];
+          if (el) return;
+          var every = root.querySelectorAll('*');
+          for (var j = 0; j < every.length && !el; j++) if (every[j].shadowRoot) look(every[j].shadowRoot);
+        })(document);
+        if (!el) return { error: 'its frame is not on the page any more' };
+        function box() {
+          var r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+          return { x: r.left + el.clientLeft + (parseFloat(cs.paddingLeft) || 0), y: r.top + el.clientTop + (parseFloat(cs.paddingTop) || 0) };
+        }
+        var b = box(), px = b.x + x, py = b.y + y;
+        if (px < 0 || py < 0 || px >= innerWidth || py >= innerHeight) {
+          el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+          b = box(); px = b.x + x; py = b.y + y;
+          if (px < 0 || py < 0 || px >= innerWidth || py >= innerHeight) { window.scrollBy(px - innerWidth / 2, py - innerHeight / 2); b = box(); px = b.x + x; py = b.y + y; }
+        }
+        if (!hitTest) return b;
+        var hit = px >= 0 && py >= 0 && px < innerWidth && py < innerHeight ? deepAt(px, py) : null;
+        if (hit === el) return b;
+        if (!hit) return { error: 'its frame is outside the visible page', blocked: true };
+        return { error: 'covered by ' + describe(hit) + ' (it is on top of the frame, and would get the click)', blocked: true, cover: describe(hit) };
+      }
+      // browser_evaluate runs in the page's world, which has no refs: the
+      // element is handed over by an attribute the function's wrapper takes
+      // off again.
+      function mark(spec, token) {
+        var el = find(spec);
+        if (!el) return false;
+        el.setAttribute('data-copper-eval', token);
+        return true;
       }
       // The element at a point, through open shadow roots.
       function deepAt(x, y) {
@@ -444,7 +558,7 @@ enum Page {
         var r = el.getBoundingClientRect();
         // A tiny or offscreen box means a wrapper; the first sized child is the thing.
         if ((r.width < 2 || r.height < 2) && el.firstElementChild) r = el.firstElementChild.getBoundingClientRect();
-        var out = { x: r.left, y: r.top, width: r.width, height: r.height };
+        var out = { x: r.left, y: r.top, width: r.width, height: r.height, at: where() };
         if (!hitTest || el.tagName === 'OPTION') return out;
         var x = r.left + r.width / 2, y = r.top + r.height / 2;
         var hit = x >= 0 && y >= 0 && x < innerWidth && y < innerHeight ? deepAt(x, y) : null;
@@ -647,7 +761,8 @@ enum Page {
         }
         return out.length ? out.join('\n') : 'no visible text matches ' + JSON.stringify(needle);
       }
-      window.__copper = { snapshot: snapshot, find: find, rect: rect, setValue: setValue, select: select, fill: fill, click: click, hover: hover, focus: focus, submit: submit, key: key, drag: drag, draggable: draggable, hovered: hovered, watch: watch, changes: changes, scroll: scroll, text: text, findText: findText, console: function () { return logs; } };
+      window.__copper = { doc: function () { return window.__officeForms ? window.__officeForms.doc : ''; }, where: where, frameBox: frameBox, mark: mark,
+        snapshot: snapshot, find: find, rect: rect, setValue: setValue, select: select, fill: fill, click: click, hover: hover, focus: focus, submit: submit, key: key, drag: drag, draggable: draggable, hovered: hovered, watch: watch, changes: changes, scroll: scroll, text: text, findText: findText };
       return true;
     })();
     """#

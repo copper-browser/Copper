@@ -701,7 +701,7 @@ enum Ultrafast {
                     }
                 }
                 web.callAsyncJavaScript("const c = window.__jevFast; if (!c || !c.ready) return null; await c.settle(action); return c.observe();",
-                                        arguments: ["action": plain], in: nil, in: .page) { result in
+                                        arguments: ["action": plain], in: nil, in: .copper) { result in
                     if !once.done, case .success(let value) = result { once.raw = value as? [String: Any] }
                     finish()
                 }
@@ -759,10 +759,9 @@ enum Ultrafast {
     static func availability(_ tab: Tab) async -> (signIn: Bool, autofill: Set<String>) {
         guard !tab.shy else { return (false, []) }
         var signIn = false
-        if let rawHost = tab.address?.host()?.lowercased(), !rawHost.isEmpty {
-            var host = rawHost
-            if host.hasPrefix("www.") { host.removeFirst(4) }
-            signIn = await tab.hasPasswordField() && !AgentAccess.permitted(for: host).isEmpty
+        // Fork (form-origin): offered where browser_sign_in would fill — the page or the one frame a shared login is saved for.
+        if let target = try? await SignIn.place([:], tab: tab, otp: false, account: nil) {
+            signIn = await tab.hasPasswordField(at: target) && !SignIn.shared(for: target).isEmpty
         }
         let present = await tab.fieldsPresent()
         var autofill = Set<String>()

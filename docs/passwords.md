@@ -147,6 +147,15 @@ never the page's, so a page can't pull another site's password into a frame
 of its own. A password sent from a frame is offered for saving under the
 frame's site. Placement assumes one level of frames: for a sign-in two
 iframes deep the list hangs against the outer frame.
+A frame is believed about the caret only once the page itself says the caret
+is in that frame (its `activeElement` is that iframe); the forms script and
+its message handler live in Copper's own content world, so a page's script
+can neither call it nor post a focus of its own. A pick is pinned to the
+frame it was made for and goes in only while the document there still has the
+same origin (scheme, host and port).
+An **agent's** sign-in is narrower than your list: it never follows the
+caret, and a login goes only to the exact origin it was saved for
+([agents.md](agents.md#saved-sign-in-no-secret-contract)).
 `docs/fixtures/autofill-frame-e2e.sh` checks it with `login-frame.html`
 (127.0.0.1 embedding itself from localhost).
 

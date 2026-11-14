@@ -23,6 +23,7 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
         else { return }
         let frame = message.frameInfo
         MainActor.assumeIsolated {
+            Tools.Frames.heard(message) // Fork (agent-frames): which frames this page has (Fork/MCP/Frames.swift)
             switch kind {
             case "form":
                 tab?.foundSignIn()
@@ -39,55 +40,65 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
                 tab?.foundCodeBox() // Fork (auto-codes)
             case "frame":
                 // Fork (frame-autofill): the page around an embedded frame
-                // that has the caret, saying where the frame sits.
+                // that has the caret, saying where the frame sits — and
+                // which of its frames it is (form-origin).
                 guard frame.isMainFrame, let rect = body["rect"] as? [String: Double],
                       let x = rect["x"], let y = rect["y"] else { return }
-                tab?.frameMoved(CGPoint(x: x, y: y))
+                tab?.frameMoved(CGPoint(x: x, y: y), at: (body["at"] as? NSNumber)?.intValue ?? -1)
             case "focus":
-                let holding = (body["typing"] as? Bool ?? false) || body["rect"] is [String: Double]
-                guard tab?.focusFrom(frame, holding: holding) == true else { return } // Fork (frame-autofill)
-                tab?.typing = body["typing"] as? Bool ?? false
-                // Which box the caret is in, and where it sits on the page —
-                // so a list of accounts or vault fields can hang from it.
-                var focused: FocusedField?
-                if let field = body["field"] as? [String: Any],
-                   let raw = field["kind"] as? String {
-                    let known = FieldKind(rawValue: raw)
-                    let kind = known ?? .other
-                    let group = known == nil
-                        ? .other
-                        : FieldKind.Group(rawValue: field["group"] as? String ?? "") ?? kind.group
-                    focused = FocusedField(
-                        kind: kind,
-                        group: group,
-                        label: field["label"] as? String ?? ""
-                    )
-                    // Fork (new-password)
-                    focused?.role = (field["role"] as? String).flatMap(PasswordRole.init(rawValue:))
-                    if focused?.role?.makesPassword == true {
-                        focused?.rules = PasswordRules(
-                            passwordrules: field["rules"] as? String ?? "",
-                            minLength: (field["minLength"] as? NSNumber)?.intValue,
-                            maxLength: (field["maxLength"] as? NSNumber)?.intValue
-                        )
-                    }
-                }
-                if let rect = body["rect"] as? [String: Double],
-                   let x = rect["x"], let y = rect["y"], let w = rect["w"], let h = rect["h"] {
-                    tab?.fieldFocused(
-                        CGRect(x: x, y: y, width: w, height: h),
-                        hint: body["hint"] as? String ?? "",
-                        field: focused,
-                        frame: frame
-                    )
-                } else {
-                    tab?.fieldFocused(nil, hint: body["hint"] as? String ?? "", field: focused, frame: frame)
-                }
+                focus(body, from: frame)
             case "fullscreen":
                 tab?.immersed = body["on"] as? Bool ?? false
             default:
                 break
             }
+        }
+    }
+
+    /// Where the caret is, as a document's own forms script says it. Its own
+    /// method so a frame's word, held until the page confirms it
+    /// (Tab.focusFrom), can be heard again (Fork: form-origin).
+    @MainActor
+    func focus(_ body: [String: Any], from frame: WKFrameInfo) {
+        let holding = (body["typing"] as? Bool ?? false) || body["rect"] is [String: Double]
+        // Fork (frame-autofill, form-origin): a frame is believed once the page says the caret is in it.
+        guard tab?.focusFrom(frame, holding: holding, at: (body["at"] as? NSNumber)?.intValue, body: body) == true else { return }
+        tab?.typing = body["typing"] as? Bool ?? false
+        // Which box the caret is in, and where it sits on the page —
+        // so a list of accounts or vault fields can hang from it.
+        var focused: FocusedField?
+        if let field = body["field"] as? [String: Any],
+           let raw = field["kind"] as? String {
+            let known = FieldKind(rawValue: raw)
+            let kind = known ?? .other
+            let group = known == nil
+                ? .other
+                : FieldKind.Group(rawValue: field["group"] as? String ?? "") ?? kind.group
+            focused = FocusedField(
+                kind: kind,
+                group: group,
+                label: field["label"] as? String ?? ""
+            )
+            // Fork (new-password)
+            focused?.role = (field["role"] as? String).flatMap(PasswordRole.init(rawValue:))
+            if focused?.role?.makesPassword == true {
+                focused?.rules = PasswordRules(
+                    passwordrules: field["rules"] as? String ?? "",
+                    minLength: (field["minLength"] as? NSNumber)?.intValue,
+                    maxLength: (field["maxLength"] as? NSNumber)?.intValue
+                )
+            }
+        }
+        if let rect = body["rect"] as? [String: Double],
+           let x = rect["x"], let y = rect["y"], let w = rect["w"], let h = rect["h"] {
+            tab?.fieldFocused(
+                CGRect(x: x, y: y, width: w, height: h),
+                hint: body["hint"] as? String ?? "",
+                field: focused,
+                frame: frame
+            )
+        } else {
+            tab?.fieldFocused(nil, hint: body["hint"] as? String ?? "", field: focused, frame: frame)
         }
     }
 
@@ -122,9 +133,22 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
     })();
     """
 
+    /// Fork (agent-world): runs in Copper's own content world
+    /// (`WKContentWorld.copper`, Fork/MCP/AgentWorld.swift), in every frame —
+    /// the page's scripts can neither call `__officeForms` nor post to its
+    /// handler, so what Copper hears about focus and sign-ins is what its
+    /// own script saw.
     static let script = """
     (function () {
       if (window.__officeForms) return;
+
+      // Fork (agent-frames): this document's name, on everything it says —
+      // how Copper tells one frame's document from the next.
+      var doc = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      function say(message) {
+        message.doc = doc;
+        window.webkit.messageHandlers.officeForms.postMessage(message);
+      }
 
       // The password box, and the last box before it that could hold a name.
       function pair() {
@@ -903,6 +927,7 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
       }
 
       window.__officeForms = {
+        doc: doc,
         unsaved: unsaved,
         fill: function (user, password) {
           var both = pair();
@@ -972,7 +997,7 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
           // password worth keeping.
           if (made && again) {
             sentFresh = true;
-            window.webkit.messageHandlers.officeForms.postMessage({
+            say({
               kind: 'submit', user: accountOf(fresh), password: made, fresh: true
             });
           }
@@ -980,7 +1005,7 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
         }
         var both = pair();
         if (!both || !both.pass.value) return;
-        window.webkit.messageHandlers.officeForms.postMessage({
+        say({
           kind: 'submit',
           user: both.user ? both.user.value : '',
           password: both.pass.value
@@ -1012,7 +1037,7 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
       function tell() {
         if (told || !pair()) return;
         told = true;
-        window.webkit.messageHandlers.officeForms.postMessage({ kind: 'form' });
+        say({ kind: 'form' });
       }
       if (document.readyState === 'complete') { tell(); }
       else { window.addEventListener('load', tell); }
@@ -1031,7 +1056,7 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
         codeLook = setTimeout(function () {
           codeLook = null;
           var here = plainOTP();
-          if (here && !coded) window.webkit.messageHandlers.officeForms.postMessage({ kind: 'otp' });
+          if (here && !coded) say({ kind: 'otp' });
           coded = here;
         }, 300);
       }
@@ -1044,7 +1069,7 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
             freshSettling = null;
             if (freshForm()) return;
             sentFresh = false;
-            window.webkit.messageHandlers.officeForms.postMessage({ kind: 'settled' });
+            say({ kind: 'settled' });
           }, 400);
         }
         if (!told) { tell(); return; }
@@ -1053,7 +1078,7 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
         clearTimeout(settling);
         settling = setTimeout(function () {
           if (pair()) return;
-          window.webkit.messageHandlers.officeForms.postMessage({ kind: 'settled' });
+          say({ kind: 'settled' });
         }, 400);
       }).observe(document.documentElement, { childList: true, subtree: true });
 
@@ -1096,14 +1121,39 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
       // for its own boxes; the page around it only says where the frame is.
       var topFrame = window === window.top;
 
+      // Fork (form-origin): which of the page's frames this one is, or is
+      // inside — its place among `top.frames`. The page says the same of
+      // the frame its caret went into, and only a frame both agree on is
+      // believed (Tab.focusFrom). Windows compare across origins.
+      function branch() {
+        try {
+          var w = window;
+          while (w.parent !== window.top) w = w.parent;
+          for (var i = 0; i < window.top.length; i++) if (window.top[i] === w) return i;
+        } catch (ignored) {}
+        return -1;
+      }
+      function frameAt(el) {
+        for (var i = 0; i < window.length; i++) if (window[i] === el.contentWindow) return i;
+        return -1;
+      }
+
       function caret() {
         var el = document.activeElement;
         var tag = el && (el.tagName || '').toLowerCase();
+        if (topFrame && el && el.shadowRoot) {
+          // A frame inside a component: the document names the component, its shadow root the frame.
+          var deep = el;
+          while (deep.shadowRoot && deep.shadowRoot.activeElement) deep = deep.shadowRoot.activeElement;
+          var deepTag = (deep.tagName || '').toLowerCase();
+          if (deepTag === 'iframe' || deepTag === 'frame') { el = deep; tag = deepTag; }
+        }
         if (topFrame && (tag === 'iframe' || tag === 'frame')) {
           var f = el.getBoundingClientRect();
           var cs = window.getComputedStyle(el);
-          window.webkit.messageHandlers.officeForms.postMessage({
+          say({
             kind: 'frame',
+            at: frameAt(el),
             rect: {
               x: f.left + el.clientLeft + (parseFloat(cs.paddingLeft) || 0),
               y: f.top + el.clientTop + (parseFloat(cs.paddingTop) || 0),
@@ -1127,8 +1177,9 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
           field.maxLength = rules.maxLength;
         }
         var login = both && el && (el === both.user || el === both.pass);
-        window.webkit.messageHandlers.officeForms.postMessage({
+        say({
           kind: 'focus',
+          at: topFrame ? -1 : branch(),
           typing: editable(el),
           rect: rect,
           field: field,
@@ -1155,7 +1206,7 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
       // the animation. Knowing a moment early is enough to paint it black.
       function immersed() {
         var on = !!(document.fullscreenElement || document.webkitFullscreenElement);
-        window.webkit.messageHandlers.officeForms.postMessage({
+        say({
           kind: 'fullscreen', on: on
         });
       }
@@ -1164,24 +1215,37 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
       document.addEventListener('fullscreenchange', immersed, true);
       document.addEventListener('webkitfullscreenchange', immersed, true);
 
-      // The asking, caught before the animation starts.
-      ['requestFullscreen', 'webkitRequestFullscreen', 'webkitRequestFullScreen']
-        .forEach(function (name) {
-          var was = Element.prototype[name];
-          if (!was) return;
-          Element.prototype[name] = function () {
-            window.webkit.messageHandlers.officeForms.postMessage({
-              kind: 'fullscreen', on: true
-            });
-            return was.apply(this, arguments);
-          };
-        });
+      // The asking, caught before the animation starts — by the page's own
+      // side (`early`, below), which says so with an event. A page can fire
+      // that event itself, so three seconds later what is true is said again.
+      document.addEventListener('copper-fullscreen-soon', function () {
+        say({ kind: 'fullscreen', on: true });
+        setTimeout(immersed, 3000);
+      }, true);
       }
 
       document.addEventListener('focusin', caret, true);
       document.addEventListener('focusout', function () { setTimeout(caret, 0); }, true);
       document.addEventListener('mouseup', function () { setTimeout(caret, 0); }, true);
       caret();
+    })();
+    """
+
+    /// Fork (agent-world): the one part of the forms script that has to live
+    /// in the page's own world — `requestFullscreen` is the page's to call,
+    /// and only a patch there sees it asked. It says so with an event the
+    /// forms script hears; nothing of Copper's is reachable from here.
+    static let early = """
+    (function () {
+      ['requestFullscreen', 'webkitRequestFullscreen', 'webkitRequestFullScreen']
+        .forEach(function (name) {
+          var was = Element.prototype[name];
+          if (!was) return;
+          Element.prototype[name] = function () {
+            try { document.dispatchEvent(new Event('copper-fullscreen-soon')); } catch (ignored) {}
+            return was.apply(this, arguments);
+          };
+        });
     })();
     """
 }
