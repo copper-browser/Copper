@@ -17,7 +17,7 @@ On the Mac it: writes the probe world `Copper (agentbench)` (agent.json with its
 install ships, `dev` takes the dev world's haiku as rounds 1–2 did), starts the build as a launchd job in the GUI
 session (`SEARCH_HEADLESS=1`; the page measured 1280×800 in base whatever `SEARCH_HEADLESS_SIZE` said — upstream used 1120×780; each run records it), starts
 `fixtures/server.py` on 4161, then works through the whole plan (every group × round × task × arm, the arms of a
-task alternating) in `lockf -k ~/hc/mini.lock` holds of `AGENTBENCH_CHUNK` seconds (300): the lock is shared and
+task in ABBA order — as given in odd rounds, reversed in even ones) in `lockf -k ~/hc/mini.lock` holds of `AGENTBENCH_CHUNK` seconds (300): the lock is shared and
 every wait for it is long. A Google Flights run waits `AGENTBENCH_FLIGHTS_GAP` (45 s) after the last one on the Mac
 (other runs go first meanwhile; when only Flights is left the wait is outside the lock). Already-recorded runs are
 skipped, so a rerun resumes. Stops both at exit. Never touches port 4123 or the installed Copper.
@@ -27,6 +27,9 @@ at upstream's conditions. Since round 3 (Collin, 2026-11-14) the bench compares 
 other — no upstream/Chrome arm — so no arm uses it. `--meta` fails if a world's
 page isn't the size asked; `meta.json` has both worlds as configured, and `--summary` adds `resolved`: per arm,
 the Jev that answered, the text model that wrote values and the page size measured after each run.
+The summary's last table counts forms sent, duplicate submits (a form sent again with nothing shown between),
+resends Jev was stopped from, WAIT ms, and what the router billed per run (`x-litellm-response-cost` when the
+gateway gives it, else list price; Jev's own tokens are not priced).
 
 `meta.json` also has `sha` (the build's commit: run with `AGENTBENCH_SRC=<its git worktree>` on the devbox),
 `harness_sha` and `binary_sha256` (the first 16 hex of the Copper executable), so two runs say what they measured.
@@ -66,6 +69,7 @@ model/strategy/vision as answered, load average, every step.
 | `turbo` | strategy turbo, vision auto | no glide ever; headless never glides, so vs `shipped` it is an A/A noise check |
 | `classic` | strategy classic, vision off | the original loop (control) |
 | `llm-haiku` | strategy fast,llm=haiku, vision off | a small LLM decides instead of Jev |
+| `base` | none, on `AGENTBENCH_BASE_APP` | another build's shipped loop in the second probe world (port+2), interleaved with this build's arms task by task, so both builds meet Google (and the Mac's load) alike. `ARMS=shipped,base AGENTBENCH_BASE_APP=~/hc/r3/Copper.app` is an A/B of a change |
 | `ultrafast` | — | browser-use jev-ultrafast in Chrome. **Prepared, not run** (needs Collin's OK for Chrome) |
 | `phi-mcp` | — | stub: phi via browser_snapshot/click. A full LLM agent per run (~10–60 s, $); `play_phi` says how |
 
