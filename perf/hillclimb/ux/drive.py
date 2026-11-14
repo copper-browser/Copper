@@ -366,6 +366,8 @@ def welcome(w, snap):
     files, prev, note = [], None, ""
     for i, page in enumerate(WELCOME):
         path = snap(f"welcome-{page}")
+        if path is None:  # UX_ONLY left Welcome out
+            break
         if i and same_picture(prev, path):
             # r3 layout (Welcome.swift, ui-flows r3): Continue sits at the foot of a 560-pt card ~38% down
             w.b("ai", "click", W / 2 + 235, H * 0.38 + 193); time.sleep(1.2)
