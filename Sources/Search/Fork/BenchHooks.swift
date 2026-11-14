@@ -96,9 +96,13 @@ enum BenchHooks {
         let started = CACurrentMediaTime()
         // Screen's link, not the view's: a parked (headless) window is on no screen.
         guard let screen = window.screen ?? NSScreen.main else { answer(["error": "no screen"]); return }
-        let ticker = Ticker { link in
+        var link: CADisplayLink?
+        var timer: Timer?
+        var clock = "display link"
+        // One event per tick: of the display link, or of the fallback timer (`link` nil → its own period stands).
+        func fire(_ link: CADisplayLink?) {
             ticks.append(CACurrentMediaTime())
-            period = link.targetTimestamp - link.timestamp
+            if let link { period = link.targetTimestamp - link.timestamp }
             let last = sent == steps - 1
             // Whole points that add up to DY over the events before the last.
             let share = last ? 0 : Int32((dy * Double(sent + 1) / Double(steps - 1)).rounded() - (dy * Double(sent) / Double(steps - 1)).rounded())
@@ -115,23 +119,37 @@ enum BenchHooks {
             }
             sent += 1
             guard sent >= steps else { return }
-            link.invalidate()
+            link?.invalidate()
+            timer?.invalidate()
             let gaps = zip(ticks.dropFirst(), ticks).map { ($0 - $1) * 1000 }
             let nominal = 1000 * max(period, 1 / hz)
             answer(["events": sent, "hz": Int((1000 / nominal).rounded()), "asked_hz": hz, "screen_hz": screen.maximumFramesPerSecond,
                     "tick_ms": spread(gaps), "missed_ticks": gaps.filter { $0 > nominal * 1.5 }.count,
                     "send_ms": spread(sends), "duration_ms": (CACurrentMediaTime() - started) * 1000,
-                    "at": [Int(at.x), Int(window.frame.height - at.y)]])
+                    "at": [Int(at.x), Int(window.frame.height - at.y)],
+                    // "timer": the display slept, so nothing drew the page; send_ms still holds
+                    "clock": clock, "display_asleep": CGDisplayIsAsleep(CGMainDisplayID()) != 0])
         }
-        let link = screen.displayLink(target: ticker, selector: #selector(Ticker.tick(_:)))
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: Swift.Float(hz), maximum: Swift.Float(hz), preferred: Swift.Float(hz))
-        link.add(to: .main, forMode: .common)
-        // A display that is asleep never ticks: say so, and never let the link
-        // post a scroll long after the answer.
+        let ticker = Ticker { fire($0) }
+        link = screen.displayLink(target: ticker, selector: #selector(Ticker.tick(_:)))
+        link?.preferredFrameRateRange = CAFrameRateRange(minimum: Swift.Float(hz), maximum: Swift.Float(hz), preferred: Swift.Float(hz))
+        link?.add(to: .main, forMode: .common)
+        // A display that is asleep never ticks: after 0.25 s without one, a timer at
+        // `hz` sends the events instead, and the answer says so (clock "timer").
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            guard ticks.isEmpty else { return }
+            link?.invalidate()
+            clock = "timer"
+            let t = Timer(timeInterval: 1 / hz, repeats: true) { _ in MainActor.assumeIsolated { fire(nil) } }
+            RunLoop.main.add(t, forMode: .common)
+            timer = t
+        }
+        // Never let a link or timer post a scroll long after the answer.
         DispatchQueue.main.asyncAfter(deadline: .now() + Double(steps) / 30 + 1) {
             guard sent < steps else { return }
-            link.invalidate()
-            answer(["error": "the display link ticked \(ticks.count) of \(steps) times — is the display asleep?"])
+            link?.invalidate()
+            timer?.invalidate()
+            answer(["error": "only \(sent) of \(steps) events went out (\(clock)) — main thread too busy?"])
         }
     }
 
@@ -188,12 +206,17 @@ enum BenchHooks {
             commit = CACurrentMediaTime()
         }
         CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+        // A display that is asleep never ticks: then no key→pixel, but key→commit still holds.
+        let asleep = CGDisplayIsAsleep(CGMainDisplayID()) != 0
+        DispatchQueue.main.asyncAfter(deadline: .now() + (asleep ? 0.3 : 2)) {
             guard !done else { return }
             done = true
             link.invalidate()
             NSApp.sendEvent(up)
-            answer(["error": "no display-link tick within 2 s — is the display asleep?"])
+            guard let commit else { answer(["error": "no Core Animation commit within \(asleep ? 0.3 : 2) s"]); return }
+            answer(["key": raw, "handled_ms": (handled - start) * 1000, "commit_ms": (commit - start) * 1000,
+                    "changed": state() != was, "summoning": browser.summoning, "launching": browser.launching,
+                    "display_asleep": asleep, "note": "no display-link tick: the display is asleep, so no frame_ms"])
         }
     }
 

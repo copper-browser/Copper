@@ -7,9 +7,10 @@
 #   3. `mouse double X Y` on the column's title band zooms the window, and
 #      another puts it back (Settings › Desktop & Dock's double-click action
 #      is left as it is; with "Minimize" or "None" the answer is all it checks).
-#   4. `wheel DY` scrolls a long page by DY, one event per display tick.
-#   5. `keylat ⌘k|⎋|⌘t|letter`: handled ≤ commit ≤ frame, and the bar or
-#      card is up or down after it.
+#   4. `wheel DY` scrolls a long page by DY, one event per display tick (per
+#      timer tick when the display is asleep: it still answers, clock "timer").
+#   5. `keylat ⌘k|⎋|⌘t|letter`: handled ≤ commit ≤ frame (no frame while the
+#      display is asleep), and the bar or card is up or down after it.
 #   6. COPPER_KEEP_SYMBOLS=1 ./build.sh keeps the binary's symbols.
 #
 # Port 4230 for its agent server (COPPER_MCP_PORT), never the installed
@@ -93,21 +94,24 @@ fi
 
 # 4. The wheel scrolls the page by about DY.
 [ "$(bench eval "$id" 'scrollY')" = 0 ] || fail "wheel: page not at the top"
+t0=$(date +%s)
 out="$(bench wheel 600 --steps 30)"
 [ "$(echo "$out" | field events)" = 30 ] || fail "wheel: not 30 events: $out"
+[ $(( $(date +%s) - t0 )) -le 5 ] || fail "wheel: took $(( $(date +%s) - t0 )) s for 30 events"
 sleep 0.5
 y="$(bench eval "$id" 'Math.round(scrollY)')"
 python3 -c "import sys; sys.exit(0 if 400 <= $y <= 800 else 1)" || fail "wheel: page scrolled $y, not ~600"
-echo "ok 4 wheel scrolled $y px at $(echo "$out" | field hz) Hz (ticks $(echo "$out" | field tick_ms), missed $(echo "$out" | field missed_ticks))"
+echo "ok 4 wheel scrolled $y px at $(echo "$out" | field hz) Hz by $(echo "$out" | field clock), display asleep $(echo "$out" | field display_asleep) (ticks $(echo "$out" | field tick_ms), missed $(echo "$out" | field missed_ticks))"
 
 # 5. Key → commit → frame.
 bench ui focus none >/dev/null
 lat() {
   out="$(bench keylat "$1")"
   echo "$out" | python3 -c 'import json,sys; d=json.load(sys.stdin)
-assert 0 <= d["handled_ms"] <= d["commit_ms"] <= d["frame_ms"] < 1000, d' || fail "keylat $1: times out of order: $out"
+assert 0 <= d["handled_ms"] <= d["commit_ms"] <= d.get("frame_ms", d["commit_ms"]) < 1000, d
+assert "frame_ms" in d or d["display_asleep"], d' || fail "keylat $1: times out of order: $out"
   [ "$(echo "$out" | field "$2")" = "$3" ] || fail "keylat $1: $2 is not $3: $out"
-  echo "   $1 handled $(echo "$out" | field handled_ms) commit $(echo "$out" | field commit_ms) frame $(echo "$out" | field frame_ms) ms"
+  echo "   $1 handled $(echo "$out" | field handled_ms) commit $(echo "$out" | field commit_ms) frame $(echo "$out" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("frame_ms", "— (display asleep)"))') ms"
 }
 lat "⌘k" summoning True
 lat "a" summoning True
