@@ -61,6 +61,10 @@ struct SideBar: View {
     /// the window's edge.
     static let inset: CGFloat = 8
     static let rowInset: CGFloat = 10
+    /// Fork (uitype): a row's title (Arc's 14, the live one semibold), and
+    /// the space's name over the rows, a size under it.
+    static let title: CGFloat = 14
+    static let heading: CGFloat = 13
     private static let pinGap: CGFloat = 8
 
     private var tint: SpaceTint { SpaceTint(space: spaces.space(in: browser), dark: scheme == .dark) }
@@ -437,9 +441,10 @@ struct SideBar: View {
     }
 
     /// Arc's New Tab: a plus and the words, as quiet as the rows around it,
-    /// right under the rows you keep.
+    /// right under the rows you keep. Fork (uitype): the words at the
+    /// heading's strength (muted was 2.75:1 drawn), the plus quieter.
     private var newTab: some View {
-        Quiet(icon: "plus", title: "New Tab", height: SideBar.row, inset: SideBar.rowInset, glow: tint.hover, ink: tint.muted) {
+        Quiet(icon: "plus", title: "New Tab", height: SideBar.row, inset: SideBar.rowInset, glow: tint.hover, ink: tint.muted, words: tint.heading) {
             browser.launch() // Fork: the ⌘T card, as Arc's New Tab row opens it
         }
         .contextMenu { NewItemMenu(browser: browser) } // Fork (canvas): New Tab / New Canvas, Arc's new-item menu
@@ -662,7 +667,7 @@ struct SideRow: View { // Fork: was private; GroupedRows draws it
                         .foregroundStyle(colour.opacity(0.7))
                 }
                 Text(tab.label)
-                    .font(.system(size: 15, weight: live ? .semibold : .regular))
+                    .font(.system(size: SideBar.title, weight: live ? .semibold : .regular))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .foregroundStyle(colour)
@@ -671,46 +676,16 @@ struct SideRow: View { // Fork: was private; GroupedRows draws it
             Spacer(minLength: 2)
 
             if !editing { HandBadges(tab: tab.id) } // Fork: agents' hands (Hands.swift)
-
-            ZStack {
-                if hovering, !editing {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(tint.ink.opacity(0.7)) // muted is ~4.4:1 on the column; this is ≥4.5
-                        .frame(width: 15, height: 15)
-                        .background(tint.ink.opacity(0.07), in: Circle())
-                        .transition(.opacity)
-                } else if tab.loading {
-                    Ring().transition(.opacity)
-                } else if tab.noisy {
-                    Image(systemName: "speaker.wave.2.fill")
-                        .font(.system(size: 8))
-                        .foregroundStyle(tint.ink.opacity(0.7)) // muted is ~4.4:1 on the column; this is ≥4.5
-                        .transition(.opacity)
-                } else if heat.isHot(tab), let reading = heat.reading(for: tab) {
-                    Image(systemName: "flame.fill")
-                        .font(.system(size: 8))
-                        .foregroundStyle(Color.orange.opacity(0.9))
-                        .help("Using \(Int(reading.cpu))% CPU")
-                        .transition(.opacity)
-                }
-            }
-            .frame(width: editing ? 0 : 15, height: 15)
-            .opacity(editing ? 0 : 1)
-            .overlay {
-                if !editing {
-                    Color.clear
-                        .frame(width: 30, height: 28)
-                        .contentShape(Rectangle())
-                        .onTapGesture { if hovering { close() } }
-                }
-            }
-            .animation(Motion.quick, value: hovering)
-            .animation(Motion.quick, value: tab.loading)
-            .animation(Motion.quick, value: tab.noisy)
+        }
+        // Fork (uitype): the cross and the ring take no room at rest — a slot
+        // kept for them cut every title 22 pt short. They are drawn over the
+        // title's end, which fades out under them.
+        .padding(.trailing, editing ? 10 : 8)
+        .mask { RowEndFade(on: !editing && slotShown) }
+        .overlay(alignment: .trailing) {
+            if !editing { slot.padding(.trailing, 8) }
         }
         .padding(.leading, SideBar.rowInset)
-        .padding(.trailing, editing ? 10 : 8)
         .frame(height: SideBar.row)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background { ground }
@@ -736,6 +711,50 @@ struct SideRow: View { // Fork: was private; GroupedRows draws it
             withAnimation(.easeOut(duration: 0.5)) { shake = 1 }
         }
         .transition(.scale(scale: 0.94, anchor: .leading).combined(with: .opacity))
+    }
+
+    /// Whether anything is in the slot at the row's end right now.
+    private var slotShown: Bool {
+        hovering || tab.loading || tab.noisy || heat.isHot(tab)
+    }
+
+    /// One slot doing four jobs — the cross under the pointer, else the ring
+    /// while the page comes, the sound, the heat — never two at once.
+    private var slot: some View {
+        ZStack {
+            if hovering, !editing {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(tint.ink.opacity(0.7)) // muted is ~4.4:1 on the column; this is ≥4.5
+                    .frame(width: 15, height: 15)
+                    .background(tint.ink.opacity(0.07), in: Circle())
+                    .transition(.opacity)
+            } else if tab.loading {
+                Ring().transition(.opacity)
+            } else if tab.noisy {
+                Image(systemName: "speaker.wave.2.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(tint.ink.opacity(0.7)) // muted is ~4.4:1 on the column; this is ≥4.5
+                    .transition(.opacity)
+            } else if heat.isHot(tab), let reading = heat.reading(for: tab) {
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(Color.orange.opacity(0.9))
+                    .help("Using \(Int(reading.cpu))% CPU")
+                    .transition(.opacity)
+            }
+        }
+        .frame(width: 15, height: 15)
+        .overlay {
+            Color.clear
+                .frame(width: 30, height: 28)
+                .contentShape(Rectangle())
+                .onTapGesture { if hovering { close() } }
+                .allowsHitTesting(hovering)
+        }
+        .animation(Motion.quick, value: hovering)
+        .animation(Motion.quick, value: tab.loading)
+        .animation(Motion.quick, value: tab.noisy)
     }
 
     /// The live row is Arc's: paper half-way to white, lifting off the
@@ -776,6 +795,24 @@ struct SideRow: View { // Fork: was private; GroupedRows draws it
     }
 }
 
+/// Fork (uitype): a row's or a tab's end, faded out under the cross or the
+/// ring drawn over it (24 pt of fade, then clear under the 15 pt slot, its
+/// 8 pt of air and a little more) — so the slot costs the title nothing
+/// while it is empty. Off, it is one opaque rectangle.
+struct RowEndFade: View {
+    let on: Bool
+    var clear: CGFloat = 8 + 15 + 3
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Rectangle()
+            LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                .frame(width: on ? 24 : 0)
+            Color.clear.frame(width: on ? clear : 0)
+        }
+    }
+}
+
 /// A row that is an action rather than a page. Quiet until the pointer is on it.
 struct Quiet: View {
     let icon: String
@@ -790,6 +827,8 @@ struct Quiet: View {
     /// the column; the favourites' soft square for the one row Arc lets you
     /// see from across the room.
     var fill: Color?
+    /// Fork (uitype): the words' own ink, when the glyph's is too quiet for words.
+    var words: Color?
     let act: () -> Void
 
     @State private var hovering = false
@@ -801,7 +840,8 @@ struct Quiet: View {
                     .font(.system(size: 14, weight: .regular))
                     .frame(width: 16)
                 Text(title)
-                    .font(.system(size: 15))
+                    .font(.system(size: SideBar.title))
+                    .foregroundStyle(words ?? ink ?? Palette.muted) // Fork (uitype): words never in faint
                 Spacer(minLength: 0)
             }
             .foregroundStyle(hovering ? (ink ?? Palette.faint).opacity(1) : (ink ?? Palette.faint).opacity(0.82))
@@ -939,7 +979,7 @@ struct SideAddress: View {
         var body: some View {
             Text("Search or enter address") // Fork (first-run): one wording, readable
                 .font(.system(size: 14.5))
-                .foregroundStyle(tint.ink.opacity(0.7)) // muted is ~4.4:1 on the column; this is ≥4.5
+                .foregroundStyle(tint.ink.opacity(0.8)) // Fork (uitype): 0.7 drew 3.8:1 on a mid colour
                 .lineLimit(1)
         }
     }

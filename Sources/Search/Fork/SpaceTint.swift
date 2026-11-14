@@ -161,7 +161,8 @@ struct SpaceTint {
     /// Titles: the theme's hue taken nearly to black, or nearly to white in
     /// the dark — warm brown on salmon, the way Arc sets its own.
     var ink: Color { dark ? mix(0.06, 0.96) : mix(0.9, 0.19) }
-    var muted: Color { ink.opacity(0.62) }
+    /// Fork (uitype): was 0.62, under 4.5:1 drawn on a mid colour.
+    var muted: Color { ink.opacity(0.74) }
     /// Fork (space-chips): the space's name over its rows — the resting
     /// titles' strength; `muted` came to 4.0–4.4:1 there on a mid colour.
     var heading: Color { ink.opacity(0.88) }

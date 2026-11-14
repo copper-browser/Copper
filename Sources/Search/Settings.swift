@@ -729,9 +729,9 @@ struct Switch: View {
 }
 
 /// A small capsule that does one thing. Outlined by default; filled in the
-/// accent when it is the thing you came here to press. Fork (ui-system):
-/// a disabled one is always the outline, its word in muted ink — still
-/// readable, plainly not the one to press.
+/// accent when it is the thing you came here to press. Fork (ui-system,
+/// uitype): a disabled one is flat — a 6% ink fill, no outline, its word in
+/// muted ink, no hover — still readable, plainly not a button to press now.
 struct Pill: View {
     let title: String
     var filled = false
@@ -763,8 +763,8 @@ struct Pill: View {
                 .foregroundStyle(primary ? Palette.onAccent : (enabled ? tint : Palette.muted))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .background(primary ? Palette.accent : (hovering && enabled ? Palette.hover : Palette.ground), in: Capsule())
-                .overlay(Capsule().strokeBorder(primary ? .clear : Palette.hairline, lineWidth: 1))
+                .background(primary ? Palette.accent : (!enabled ? Palette.ink.opacity(0.06) : (hovering ? Palette.hover : Palette.ground)), in: Capsule())
+                .overlay(Capsule().strokeBorder(primary || !enabled ? .clear : Palette.hairline, lineWidth: 1))
                 .contentShape(Capsule())
         }
         .buttonStyle(PillPress()) // Fork (ui-system): .plain halves a disabled pill's word to ~2:1

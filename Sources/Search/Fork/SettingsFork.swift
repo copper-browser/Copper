@@ -65,7 +65,7 @@ struct IntelligencePage: View {
                 Line("Jev key", brain.cloudLine("jevKey", brain.cloud?.jev?.key) ?? jevDetail) {
                     SettingsFlow(spacing: 8) { // Fork (settings-merge): the pill goes above the field in a narrow column
                         if !brain.jevReady { JevKeyPagePill() }
-                        KeyField(text: $brain.keys.jevKey, placeholder: brain.cloudPlaceholder("jevKey", brain.cloud?.jev?.key, otherwise: "ts-…"),
+                        KeyField(text: $brain.keys.jevKey, placeholder: brain.cloudPlaceholder("jevKey", brain.cloud?.jev?.key, otherwise: "Paste a key: ts-…"),
                                  ready: brain.jevReady, refused: check.refused("jev"), label: "Jev key")
                     }
                 }
@@ -105,15 +105,16 @@ struct IntelligencePage: View {
         } else {
             Line("API key", brain.cloudLine("routerKey", brain.cloud?.router?.key) ?? "The key your model gateway gave you.") {
                 KeyField(text: brain.cloudLane ? .constant("") : $brain.keys.routerKey,
-                         placeholder: brain.cloudPlaceholder("routerKey", brain.cloud?.router?.key, otherwise: "sk-…"),
+                         placeholder: brain.cloudPlaceholder("routerKey", brain.cloud?.router?.key, otherwise: "Paste a key: sk-…"),
                          ready: brain.routerReady, refused: check.refused("router"), label: "Gateway API key")
                     .disabled(brain.cloudLane)
             }
             .settingsAnchor("intelligence.key")
             Rule()
             Line("Gateway address", gatewayDetail) {
-                TextField(brain.sources["routerURL"] == "cloud" || brain.cloudLane ? brain.effective.routerURL : "https://…",
-                          text: brain.cloudLane ? .constant("") : routerURLBinding)
+                TextField("", text: brain.cloudLane ? .constant("") : routerURLBinding)
+                    .fieldExample(brain.sources["routerURL"] == "cloud" || brain.cloudLane ? brain.effective.routerURL : "e.g. https://gateway.example.com/v1",
+                                  when: brain.cloudLane || routerURLBinding.wrappedValue.isEmpty)
                     .disabled(brain.cloudLane)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12, design: .monospaced))
@@ -299,11 +300,7 @@ struct KeyField: View {
                     SecureField("", text: $text)
                 }
             }
-            // Fork (ui-system): the prompt drawn in muted ink — the system's
-            // own is ~1.7:1, and a plain field ignores a prompt's colour.
-            .background(alignment: .leading) {
-                if text.isEmpty { Text(placeholder).foregroundStyle(Palette.muted).allowsHitTesting(false).accessibilityHidden(true) }
-            }
+            .fieldExample(placeholder, when: text.isEmpty) // Fork (ui-system, uitype)
             .textFieldStyle(.plain)
             .font(.system(size: 12, design: .monospaced))
             .frame(width: 200)
@@ -978,7 +975,8 @@ struct LinkCard: View {
             }
             Rule()
             Line("App address", "Shown at Agents › Connect in your agents app") {
-                TextField("https://…", text: $link.config.api)
+                TextField("", text: $link.config.api)
+                    .fieldExample("e.g. https://agents.example.com", when: link.config.api.isEmpty)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12, design: .monospaced))
                     .frame(width: 220)
@@ -1054,7 +1052,7 @@ struct LinkCard: View {
                                 ForEach(link.recentCalls.prefix(8)) { call in
                                     Text("@\(call.handle) · \(call.tool) · \(LinkWire.duration(call.ms)) · \(LinkWire.ago(context.date.timeIntervalSince(call.at)))")
                                         .font(.system(size: 11.5))
-                                        .foregroundStyle(call.ok ? Palette.muted : Color.red.opacity(0.85))
+                                        .foregroundStyle(call.ok ? Palette.muted : Palette.danger)
                                         .lineLimit(1).truncationMode(.middle)
                                         .help(call.error ?? "")
                                 }
@@ -1066,7 +1064,7 @@ struct LinkCard: View {
                 }
                 Rule()
                 Line("Revoke link", "Every bot loses these tools now; Copper disconnects.") {
-                    Pill("Revoke link", tint: Color.red.opacity(0.85)) { confirmRevoke = true }
+                    Pill("Revoke link", tint: Palette.danger) { confirmRevoke = true }
                 }
                 .confirmationDialog("Revoke this link?", isPresented: $confirmRevoke) {
                     Button("Revoke link", role: .destructive) { Task { try? await link.revokeLink() } }
@@ -1077,7 +1075,7 @@ struct LinkCard: View {
             }
             Rule()
             Line("Remove this app", "Forget this app and its connection") {
-                Pill("Remove", tint: Color.red.opacity(0.7)) { confirmRemove = true }
+                Pill("Remove", tint: Palette.danger) { confirmRemove = true }
             }
             .confirmationDialog("Remove this app?", isPresented: $confirmRemove) {
                 Button("Remove", role: .destructive) { Task { await AgentLinks.shared.remove(link) } }

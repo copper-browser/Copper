@@ -35,6 +35,9 @@ struct SpaceGlyph: View {
     /// space-chips) — the dot it used to wear was the same grey dot for
     /// every space.
     var bare = false
+    /// Fork (uitype): bare, whether the initial sits on its own colour's
+    /// tile. Not over the rows, where a tile read as one more tab's mark.
+    var plate = true
 
     var body: some View {
         let tint = SpaceTint(space: space, dark: dark)
@@ -45,7 +48,7 @@ struct SpaceGlyph: View {
                 Image(systemName: symbol)
                     .font(.system(size: size * (bare ? 0.78 : 0.48), weight: .semibold))
                     .foregroundStyle(ink ?? tint.mark)
-            } else if bare {
+            } else if bare, plate {
                 Text(space.letter)
                     .font(.system(size: size * 0.52, weight: .bold, design: .rounded))
                     .foregroundStyle(tint.tileInk)
@@ -53,7 +56,7 @@ struct SpaceGlyph: View {
                     .background(RoundedRectangle(cornerRadius: size * 0.26, style: .continuous).fill(tint.tile.color))
             } else {
                 Text(space.letter)
-                    .font(.system(size: size * 0.5, weight: .semibold))
+                    .font(.system(size: size * (bare ? 0.8 : 0.5), weight: bare ? .bold : .semibold, design: bare ? .rounded : .default))
                     .foregroundStyle(ink ?? tint.mark)
             }
         }
@@ -137,7 +140,7 @@ struct SpaceHeader: View {
         // icon is its own door, to Settings › Spaces; the rest is the menu.
         HStack(spacing: 0) {
             Button { SpaceEditing.shared.open(space.id) } label: {
-                SpaceGlyph(space: space, size: 16, dark: scheme == .dark, ink: tint.mark, bare: true)
+                SpaceGlyph(space: space, size: 16, dark: scheme == .dark, ink: tint.mark, bare: true, plate: false)
                     .frame(width: 24, height: 24)
                     .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(overMark ? tint.hover : .clear))
                     .contentShape(Rectangle())
@@ -172,7 +175,7 @@ struct SpaceHeader: View {
     private func header(_ space: Space, tint: SpaceTint) -> some View {
         HStack(spacing: 10) {
             Text(space.title)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: SideBar.heading, weight: .semibold)) // Fork (uitype): a size under the rows, as Arc's
                 .foregroundStyle(tint.heading)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -181,7 +184,7 @@ struct SpaceHeader: View {
                 let n = spaces.count(of: space.id, in: browser)
                 Text("\(n) tab\(n == 1 ? "" : "s")")
                     .font(.system(size: 11))
-                    .foregroundStyle(tint.faint)
+                    .foregroundStyle(tint.muted) // Fork (uitype): words never in faint
                     .transition(.opacity)
             }
             Image(systemName: "ellipsis")

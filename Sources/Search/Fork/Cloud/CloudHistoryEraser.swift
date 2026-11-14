@@ -113,7 +113,7 @@ struct CloudHistoryDeleteCard: View {
                     Image(systemName: "exclamationmark.circle").font(.system(size: 11))
                     Text(problem).font(.system(size: 11.5)).fixedSize(horizontal: false, vertical: true)
                 }
-                .foregroundStyle(Color.red.opacity(0.85))
+                .foregroundStyle(Palette.danger)
                 .padding(.leading, 2)
             }
         }
@@ -142,7 +142,7 @@ struct CloudHistoryDeleteCard: View {
         HStack(spacing: 8) {
             Text(status)
                 .font(.system(size: 11.5))
-                .foregroundStyle(typedBadly ? Color.red.opacity(0.85) : Palette.muted)
+                .foregroundStyle(typedBadly ? Palette.danger : Palette.muted)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             if eraser.working {
@@ -154,7 +154,7 @@ struct CloudHistoryDeleteCard: View {
                         .foregroundStyle(Palette.muted)
                 }
             }
-            Pill("Delete history on cloud…", tint: Color.red.opacity(0.85)) { confirming = true }
+            Pill("Delete history on cloud…", tint: Palette.danger) { confirming = true }
                 .disabled(eraser.working || typedBadly)
         }
         .padding(.horizontal, 14).padding(.vertical, 10)

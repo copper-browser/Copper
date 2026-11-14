@@ -46,7 +46,7 @@ struct BitwardenCard: View {
                 Line("Bitwarden couldn't do that", firstLine(error)) {
                     Pill("Dismiss") { retry() }
                 }
-                .foregroundStyle(.red.opacity(0.78))
+                .foregroundStyle(Palette.danger)
             }
         }
         .onAppear {
@@ -736,7 +736,7 @@ struct AgentAccessCard: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
                         if credential.agentHint == .allow { badge(allowReason) }
-                        if denied { badge("denied in \(credential.source.title)", tint: .red.opacity(0.72)) }
+                        if denied { badge("denied in \(credential.source.title)", tint: Palette.danger) }
                     }
                 }
                 Spacer(minLength: 8)
