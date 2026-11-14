@@ -583,7 +583,7 @@ private struct AgentsJevSection: View {
             if mcp.config.jev {
               SettingsAdvanced("agents.jev.more", holds: ["agents.textmodel", "agents.jevfast", "agents.jevvision"]) { // Fork (settings-merge)
                 Rule()
-                Line("Text model", brain.modelReady ? "Writes what Jev types and answers jev_extract. Small and fast is the point; empty uses \(brain.modelName)." : "Typing text and jev_extract need a model — set one up in Intelligence.") {
+                Line("Text model", brain.modelReady ? "Writes what Jev types and answers jev_extract. Small and fast is the point; empty types with a fast small model (\(Tools.Ultrafast.fastTextModel), else haiku) and reads with \(brain.modelName)." : "Typing text and jev_extract need a model — set one up in Intelligence.") {
                     HStack(spacing: 8) {
                         Circle().fill(brain.modelReady ? Color.green.opacity(0.8) : Color.orange.opacity(0.8)).frame(width: 8, height: 8)
                             .help(brain.modelReady ? "A model is set up" : "No model is set up")

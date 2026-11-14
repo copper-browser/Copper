@@ -38,6 +38,41 @@ struct JevStrategyTests {
         #expect(U.literals(in: "Open the settings and save").isEmpty)
     }
 
+    @Test func namedValuesWithoutQuotes() {
+        // jev-ultrafast's own three goals: the places and the date are typed
+        // as the goal says them; things to click or choose are not values.
+        #expect(U.literals(in: "Find one-way flights from Zurich to London on January 20, 2027, for one adult in economy. Stop when matching flight options are visible. Do not select or book a flight.")
+                == ["Zurich", "London", "January 20, 2027"])
+        #expect(U.literals(in: "Use the destination search and filters to find Design stays in Lisbon with Free cancellation, then open Casa Flora.") == ["Lisbon"])
+        #expect(U.literals(in: "Find and open the Wikipedia article about Gödel’s incompleteness theorems.").isEmpty)
+        #expect(U.literals(in: "Book a table at Chez Panisse in San Francisco for 2026-12-01.") == ["Chez Panisse", "San Francisco", "2026-12-01"])
+        // A month is a date, never a place; lowercase words end a name.
+        #expect(U.literals(in: "Show what is on in March and switch to the German-language version.").isEmpty)
+    }
+
+    @Test func aFieldIsRememberedByRoleAndLabel() {
+        #expect(U.fieldKey(["role": "combobox", "label": "Where to? "]) == U.fieldKey(["role": "combobox", "label": "where to?"]))
+        #expect(U.fieldKey(["role": "combobox", "label": "Where to?"]) != U.fieldKey(["role": "combobox", "label": "Where from?"]))
+        #expect(U.fieldKey(["role": "textbox", "label": "Name"]) != U.fieldKey(["role": "searchbox", "label": "Name"]))
+    }
+
+    @Test func textModelsFastFirstHaikuLast() {
+        var keys = Intelligence.Keys()
+        #expect(U.textModels(keys) == [U.fastTextModel, "haiku"])
+        keys.textModel = "haiku"
+        #expect(U.textModels(keys) == ["haiku"])
+        keys.textModel = "luna"
+        #expect(U.textModels(keys) == ["luna", "haiku"])
+        keys.textModel = ""
+        keys.lane = .claude
+        #expect(U.textModels(keys) == ["haiku"])
+    }
+
+    @Test func shippedVerifiesDone() {
+        #expect(U.Strategy.shipped.verify && !U.Strategy.parse("turbo")!.verify && U.Strategy.parse("verify")!.verify)
+        #expect(U.Strategy.shipped.submit && U.Strategy.shipped.name.hasSuffix("verify,submit"))
+    }
+
     @Test func visionParses() {
         #expect(U.Vision.parse("auto") == .auto)
         #expect(U.Vision.parse("hybrid") == .auto)
@@ -131,5 +166,13 @@ struct JevBurstTests {
         #expect(out.count == 1)
         #expect(out.first?.text == "482915")
         #expect((out.first?.action["id"] as? String) == "e2")
+    }
+
+    @Test func neverIntoAFieldThatSuggests() {
+        // "Where to?" answers typing with a list to pick from: that is the next read's.
+        var fills = self.fills
+        fills["2"]?["role"] = "combobox"
+        #expect(U.burstFills([U.Assignment(literal: "London", target: "2", probability: 0.99)], except: "1", fills: fills).isEmpty)
+        #expect(U.suggests(["role": "searchbox"]) && !U.suggests(["role": "textbox"]))
     }
 }

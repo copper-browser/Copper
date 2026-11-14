@@ -747,7 +747,11 @@ enum Router {
         let model: String
     }
 
-    static func ask(system: String, user: String, keys: Intelligence.Keys, timeout: TimeInterval = 20, maxTokens: Int = 400, model override: String? = nil) async throws -> Reply {
+    /// `json`: ask the gateway for JSON mode (`response_format`), which small
+    /// models answer faster and cleaner with. The Claude-account lane has no
+    /// such flag and the reply is read leniently either way.
+    static func ask(system: String, user: String, keys: Intelligence.Keys, timeout: TimeInterval = 20, maxTokens: Int = 400, model override: String? = nil,
+                    json: Bool = false) async throws -> Reply {
         if keys.lane == .claude {
             let token = try await ClaudeAccount.shared.token()
             let model = await MainActor.run { Intelligence.shared.model(override) }
@@ -778,7 +782,7 @@ enum Router {
             let body = Router.body(model: chosen, maxTokens: maxTokens, messages: [
                 ["role": "system", "content": system],
                 ["role": "user", "content": user],
-            ], cache: marks)
+            ], cache: marks, json: json)
             var sending = request
             sending.httpBody = try PromptCache.json(body)
             return try await URLSession.shared.data(for: sending)
@@ -817,7 +821,7 @@ enum Router {
     /// A Claude model gets prompt-cache marks (PromptCache); write it with
     /// `PromptCache.json` so the same history is the same bytes every turn.
     static func body(model: String, maxTokens: Int, messages: [[String: Any]], tools: [[String: Any]] = [],
-                     cache: PromptCache.Marks = .prefix) -> [String: Any] {
+                     cache: PromptCache.Marks = .prefix, json: Bool = false) -> [String: Any] {
         let marks = PromptCache.gatewayCaches(model) ? cache : .none
         let (messages, tools) = PromptCache.chat(messages: messages, tools: tools, marks: marks)
         var body: [String: Any] = ["model": model, "max_tokens": maxTokens, "messages": messages]
@@ -825,6 +829,7 @@ enum Router {
             body["tools"] = tools
             body["tool_choice"] = "auto"
         }
+        if json { body["response_format"] = ["type": "json_object"] }
         return body
     }
 
@@ -1021,6 +1026,8 @@ extension Intelligence {
         let chat = Router.body(model: "opus", maxTokens: 100, messages: [["role": "user", "content": "hi"]], tools: tool)
         check(chat["temperature"] == nil && chat["thinking"] == nil && chat["tool_choice"] as? String == "auto" && chat["model"] as? String == "opus", "gateway body")
         check(Router.body(model: "opus", maxTokens: 1, messages: [])["tool_choice"] == nil, "no tools, no tool_choice")
+        check(Router.body(model: "llama", maxTokens: 1, messages: [])["response_format"] == nil, "no JSON mode unless asked")
+        check((Router.body(model: "llama", maxTokens: 1, messages: [], json: true)["response_format"] as? [String: String]) == ["type": "json_object"], "JSON mode when asked")
         let messages = Claude.body(model: "claude-opus-5-5", system: [], messages: [], tools: [["name": "x"]], maxTokens: 10)
         check(messages["temperature"] == nil && messages["thinking"] == nil && (messages["tool_choice"] as? [String: String]) == ["type": "auto"], "claude body")
         // Prompt-cache marks on both lanes (Fork/PromptCache.swift).
