@@ -470,8 +470,15 @@ final class Tab: ObservableObject, Identifiable {
     func arm(hiding css: String) {
         veils = css
         guard let built else { return }
-        if CanvasHost.arm(built) { return } // Fork (canvas-hooks): a board gets one small script, not every page's
         let controller = built.configuration.userContentController
+        if CanvasHost.arm(built) { Tab.armed.removeObject(forKey: controller); return } // Fork (canvas-hooks): a board gets one small script, not every page's
+        // Fork (navperf): every main-frame navigation asks, and laying the
+        // same dozen scripts down again is IPC to the page's process for
+        // nothing; only a change in what goes in re-arms. Kept per controller,
+        // which a tab shares with the tabs its page opened.
+        let inputs = [css, "\(Passkeys.active)", "\(FormRelay.passkeysOffered)", PageVoice.script].joined(separator: "\u{1}")
+        guard Tab.armed.object(forKey: controller) as String? != inputs else { return }
+        Tab.armed.setObject(inputs as NSString, forKey: controller)
         controller.removeAllUserScripts()
         TabShare.arm(controller) // Fork (tab-share): getDisplayMedia offers a tab (Fork/TabShare/TabShareScript.swift)
         listenForPasskeys(controller) // Fork (passkeys-hooks): follows Settings › Passwords
@@ -522,6 +529,9 @@ final class Tab: ObservableObject, Identifiable {
             WKUserScript(source: Veiling.style(css), injectionTime: .atDocumentStart, forMainFrameOnly: true)
         )
     }
+
+    /// Fork (navperf): what each controller was last armed with (`arm(hiding:)`).
+    private static let armed = NSMapTable<WKUserContentController, NSString>.weakToStrongObjects()
 
     /// Fork (passkeys-hooks): the handler is the gate for the copy of the
     /// authenticator that rides in extensions' MAIN-world scripts, so it is
@@ -1399,6 +1409,7 @@ final class Tab: ObservableObject, Identifiable {
         controller.removeScriptMessageHandler(forName: ImageRelay.name)
         controller.removeScriptMessageHandler(forName: StoreRelay.name)
         controller.removeAllUserScripts()
+        Tab.armed.removeObject(forKey: controller) // Fork (navperf)
         passkeysListening = false
         web.onPull = nil
         web.onTouch = nil
