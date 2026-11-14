@@ -28,7 +28,11 @@ struct CommandPalette: View {
     /// way down is where the eye already is.
     private static let drop: CGFloat = 0.3
 
-    @State private var place = WindowRuler.Place()
+    @State private var place = CommandPalette.lastPlace
+    /// Fork (perf): where the last card stood. A card measures its window a
+    /// moment after it is drawn; starting from the last answer, it opens in
+    /// its place instead of at a guess for one frame and moving in a second.
+    private static var lastPlace = WindowRuler.Place()
     /// The site marks, arriving a moment after the rows they belong to.
     @ObservedObject private var marks = Marks.ticker
     /// The sections' headings, ⌘T's and ⌘K's alike (Fork/CardSections).
@@ -36,16 +40,17 @@ struct CommandPalette: View {
     /// What is typed and offered. The browser no longer announces it to
     /// every view it has; see `Browser.Field`.
     @ObservedObject private var state: Browser.Field
+    /// Fork (perf): ⌘T's card or ⌘K's — see `Browser.Bar`.
+    @ObservedObject private var bar: Browser.Bar
     @Environment(\.colorScheme) private var scheme
-    /// Fork (ui-flows): false for the first frame, so the card arrives the
-    /// way Arc's does — solid at once, a hair high, settling in
-    /// under 120 ms while only the dim behind it fades.
-    @State private var shown = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.displayScale) private var displayScale
 
     init(browser: Browser, over: Bool) {
         self.browser = browser
         self.over = over
         _state = ObservedObject(wrappedValue: browser.field)
+        _bar = ObservedObject(wrappedValue: browser.bar)
     }
 
     /// Fixed so the card's height can be worked out before it is drawn: a
@@ -74,32 +79,47 @@ struct CommandPalette: View {
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture { browser.dismiss() }
-                .opacity(shown ? 1 : 0)
+                .modifier(Arrive(fades: true))
 
             card
                 // Fork (perf): a slide, no scale — a scale redraws every glyph at
                 // each new size on a 1× screen (see the field's transition, App.swift).
-                .offset(y: shown ? 0 : -6)
+                // Fork (ui-motion): no travel under Reduce Motion.
+                .modifier(Arrive(travel: reduceMotion ? 0 : 6))
                 .frame(width: CommandPalette.width)
                 // The card belongs to the window, not to the page area it
                 // happens to be drawn in, so it is shifted back over the
                 // column of tabs by half that column's width.
                 .offset(x: -inset / 2, y: top)
         }
-        .background(WindowRuler { place = $0 })
+        .background(WindowRuler { place = $0; CommandPalette.lastPlace = $0 })
         // The rows change on every letter, and as Google and history land.
         // A spring on each of those kept the card resizing for a third of a
         // second behind every keystroke — it read as lag, not as motion, and
         // redrew the card on every frame of it. Only ⌘K's resting list, with
         // nothing typed, settles in.
-        .animation(browser.launching || !state.typed.isEmpty ? nil : Motion.settle, value: browser.offers)
+        .animation(bar.launching || !state.typed.isEmpty ? nil : Motion.settle, value: browser.offers)
         // Every row that names a site wants that site's mark, and most of
         // these rows have no page behind them to ask. See Fork/Marks.
-        .onAppear {
-            Marks.want(browser.offers.map(\.url))
-            withAnimation(.easeOut(duration: 0.11)) { shown = true }
-        }
+        .onAppear { Marks.want(browser.offers.map(\.url)) }
         .onChange(of: browser.offers) { _, offers in Marks.want(offers.map(\.url)) }
+    }
+
+    /// Fork (ui-flows): the card arrives the way Arc's does — solid at once,
+    /// a hair high, settling in under 120 ms while only the dim behind it
+    /// fades. Fork (perf): the state that starts it lives here, so the pass
+    /// it costs redraws this modifier and not the card's rows under it.
+    private struct Arrive: ViewModifier {
+        var travel: CGFloat = 0
+        var fades = false
+        @State private var shown = false
+
+        func body(content: Content) -> some View {
+            content
+                .offset(y: shown ? 0 : -travel)
+                .opacity(shown || !fades ? 1 : 0)
+                .onAppear { withAnimation(.easeOut(duration: 0.11)) { shown = true } }
+        }
     }
 
     /// Where to put the top of the card, counted from the top of the region
@@ -114,6 +134,12 @@ struct CommandPalette: View {
         browser.prefs.sidebar && !browser.folded ? browser.prefs.sideWidth : 0
     }
 
+    /// Fork (ux): ⌘K's empty field's import nudge, as a quiet line at the
+    /// card's foot rather than a row ahead of the doors (CommandBar.resting).
+    private var nudge: Suggestion? {
+        bar.launching || !state.typed.isEmpty || browser.offers.isEmpty ? nil : CommandBar.nudge
+    }
+
     private var card: some View {
         VStack(spacing: 0) {
             field
@@ -122,6 +148,26 @@ struct CommandPalette: View {
                     .fill(Palette.hairline.opacity(0.55))
                     .frame(height: 1)
                 rows
+            }
+            if let nudge {
+                Rectangle()
+                    .fill(Palette.hairline.opacity(0.55))
+                    .frame(height: 1)
+                Button {
+                    if CommandBar.run(nudge.url, in: browser) { browser.dismiss() }
+                } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: nudge.glyph.isEmpty ? "clock.arrow.circlepath" : nudge.glyph)
+                        Text(nudge.key).lineLimit(1)
+                    }
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.muted)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .frame(height: 34)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
         }
         .background(
@@ -133,11 +179,21 @@ struct CommandPalette: View {
         // shadow to the card's own bounds and leaves a flat rectangle with a
         // hard edge — which is what this was, for two rounds.
         .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-        // No outline. A card this size separates itself by sitting above the
-        // page, and the shadow is the only thing that says so — one tight
-        // shadow for the edge, one wide one for the lift.
-        .shadow(color: .black.opacity(0.09), radius: 3, y: 1)
-        .shadow(color: .black.opacity(0.26), radius: 48, y: 20)
+        // No outline in the light. A card this size separates itself by
+        // sitting above the page, and the shadow is the only thing that says
+        // so — one tight shadow for the edge, one wide one for the lift.
+        // Fork (ux): in the dark the card's ground and the dimmed page are
+        // near the same grey and a shadow barely shows: a pixel of light
+        // edge and a deeper shadow hold it.
+        .overlay {
+            if scheme == .dark {
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.10), lineWidth: 1 / max(displayScale, 1))
+                    .allowsHitTesting(false)
+            }
+        }
+        .shadow(color: .black.opacity(scheme == .dark ? 0.32 : 0.09), radius: 3, y: 1)
+        .shadow(color: .black.opacity(scheme == .dark ? 0.5 : 0.26), radius: 48, y: 20)
     }
 
     private var field: some View {
@@ -161,10 +217,17 @@ struct CommandPalette: View {
     /// ⌘K's the same way, so Tab means the same thing in both. Taller than
     /// the window allows, the list scrolls, and follows the arrow keys.
     private var rows: some View {
-        ScrollViewReader { reader in
+        let keyed = CommandPalette.keyed(browser.offers)
+        let tint = self.tint
+        return ScrollViewReader { reader in
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 1) {
-                    ForEach(Array(browser.offers.enumerated()), id: \.offset) { index, offer in
+                // Fork (perf): lazy, and each row keyed by what it is rather
+                // than where it is, and drawn again only when it changed
+                // (Row is Equatable): a letter typed lays out the rows that
+                // are new, not the dozen under the field.
+                LazyVStack(alignment: .leading, spacing: 1) {
+                    ForEach(keyed, id: \.id) { item in
+                        let index = item.index, offer = item.offer
                         // A section's heading and its first row scroll as
                         // one, so Tab back round to the top shows the label
                         // too, not just the row under it.
@@ -179,11 +242,11 @@ struct CommandPalette: View {
                                     .accessibilityAddTraits(.isHeader)
                             }
                             Row(offer: offer, picked: browser.picked == index, tint: tint.mark, fill: tint.dot, stamp: marks.landed,
-                                aside: browser.launching && browser.picked == index ? Launcher.aside(for: offer, in: browser) : "")
+                                aside: bar.launching && browser.picked == index ? Launcher.aside(for: offer, in: browser) : "")
+                                .equatable()
                                 .contentShape(Rectangle())
                                 .onTapGesture { browser.take(offer) }
                         }
-                        .id(index)
                     }
                 }
                 .padding(.horizontal, 8)
@@ -202,10 +265,34 @@ struct CommandPalette: View {
             }
             .frame(height: min(natural, room))
             .onChange(of: browser.picked) { _, picked in
-                guard let picked else { return }
-                withAnimation(Motion.quick) { reader.scrollTo(picked) }
+                guard let picked, keyed.indices.contains(picked) else { return }
+                withAnimation(Motion.quick) { reader.scrollTo(keyed[picked].id) }
             }
         }
+    }
+
+    /// Fork (perf): each row's identity — the tab, the address and the kind
+    /// of row — so a row that only moved keeps its view; the rare repeat
+    /// gets a count.
+    static func keyed(_ offers: [Suggestion]) -> [(id: String, index: Int, offer: Suggestion)] {
+        var seen: [String: Int] = [:]
+        return offers.enumerated().map { index, offer in
+            let base = "\(offer.kind)|\(offer.tab?.uuidString ?? "")|\(offer.url.absoluteString)"
+            let count = seen[base, default: 0]
+            seen[base] = count + 1
+            return (count == 0 ? base : "\(base)#\(count)", index, offer)
+        }
+    }
+
+    /// Fork (ux): a title that says its site twice or more — "GitHub · …
+    /// · GitHub · GitHub" — says it once: a " · " part already said earlier
+    /// in the title is dropped.
+    static func tidy(_ title: String) -> String {
+        let parts = title.components(separatedBy: " · ")
+        guard parts.count > 1 else { return title }
+        var seen: Set<String> = []
+        let kept = parts.filter { seen.insert($0.trimmingCharacters(in: .whitespaces).lowercased()).inserted }
+        return kept.count == parts.count ? title : kept.joined(separator: " · ")
     }
 
     /// As tall as the rows.
@@ -230,7 +317,11 @@ struct CommandPalette: View {
     /// pale enough in the dark, so the selected row belongs to where you are.
     private var tint: SpaceTint { SpaceTint(space: Spaces.shared.space(in: browser), dark: scheme == .dark).offColumn }
 
-    private struct Row: View {
+    private struct Row: View, Equatable {
+        static func == (a: Row, b: Row) -> Bool {
+            a.offer == b.offer && a.picked == b.picked && a.tint == b.tint && a.fill == b.fill && a.stamp == b.stamp && a.aside == b.aside
+        }
+
         let offer: Suggestion
         let picked: Bool
         let tint: Color
@@ -262,7 +353,7 @@ struct CommandPalette: View {
                 // the title, so neither cuts the other short; the title is the
                 // first thing given room.
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(offer.key)
+                    Text(CommandPalette.tidy(offer.key))
                         .font(.system(size: 13.5, weight: .medium))
                         .foregroundStyle(Palette.ink)
                         .lineLimit(1)

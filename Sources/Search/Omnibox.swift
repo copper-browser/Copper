@@ -11,6 +11,9 @@ struct Omnibox: View {
     let over: Bool
     /// Fork (new-tab-launcher): what is typed and offered; see `Browser.Field`.
     @ObservedObject private var state: Browser.Field
+    /// Fork (perf): ⌘K or ⌘L — see `Browser.Bar`.
+    @ObservedObject private var bar: Browser.Bar
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var shake: CGFloat = 0
     @State private var refused = false
@@ -19,13 +22,14 @@ struct Omnibox: View {
         self.browser = browser
         self.over = over
         _state = ObservedObject(wrappedValue: browser.field)
+        _bar = ObservedObject(wrappedValue: browser.bar)
     }
 
     @ViewBuilder
     var body: some View {
         // Fork (command-bar-hooks): ⌘K is its own instrument and gets its own
         // card; ⌘L over a page is still upstream's field.
-        if browser.summoning {
+        if bar.summoning {
             CommandPalette(browser: browser, over: over)
         } else {
             plain
@@ -87,6 +91,8 @@ struct Omnibox: View {
             .onChange(of: browser.refusals) { _, _ in
                 shake = 0
                 refused = true
+                // Fork (ui-motion): under Reduce Motion the red edge says it alone.
+                guard !reduceMotion else { return }
                 withAnimation(.easeOut(duration: 0.5)) { shake = 1 }
             }
             .onChange(of: browser.typed) { _, _ in
@@ -196,6 +202,8 @@ struct AddressField: NSViewRepresentable {
     var placeholder = "Search or enter address" // Fork (first-run): one wording everywhere
     /// Fork (new-tab-launcher): what is typed and offered; see `Browser.Field`.
     @ObservedObject private var state: Browser.Field
+    /// Fork (perf): the caret asked for (`focusRequest`) — see `Browser.Bar`.
+    @ObservedObject private var bar: Browser.Bar
 
     init(browser: Browser, literal: Bool = false, size: CGFloat = 15.5, placeholder: String = "Search or enter address") {
         self.browser = browser
@@ -203,6 +211,7 @@ struct AddressField: NSViewRepresentable {
         self.size = size
         self.placeholder = placeholder
         _state = ObservedObject(wrappedValue: browser.field)
+        _bar = ObservedObject(wrappedValue: browser.bar)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(browser: browser) }

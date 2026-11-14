@@ -110,9 +110,27 @@ final class Browser: NSObject, ObservableObject {
     @Published var folded = false
     @Published var peeking = false
 
+    /// Fork (perf): the field up or not, as ⌘K's bar or ⌘T's card, and the
+    /// caret asked back into it, in an object of their own. Published from
+    /// the browser, ⌘K told every view watching the browser — each sidebar
+    /// row and favourite, the tab strip, the menus — to draw again in the
+    /// key's own pass; now only the views that draw the field hear it, by
+    /// observing `bar` (ContentView, Omnibox, AddressField,
+    /// Fork/CommandPalette). A set that changes nothing tells no one.
+    final class Bar: ObservableObject {
+        @Published fileprivate(set) var editing = false
+        @Published fileprivate(set) var summoning = false
+        @Published fileprivate(set) var launching = false
+        @Published fileprivate(set) var focusRequest = 0
+    }
+    let bar = Bar()
+
     /// The address field, raised over a page by ⌘L. A blank tab shows it
     /// without being asked — there is nothing else for that tab to show.
-    @Published var editing = false
+    var editing: Bool {
+        get { bar.editing }
+        set { if bar.editing != newValue { bar.editing = newValue } }
+    }
     /// Fork (new-tab-launcher): what the field holds and offers, in an object
     /// of its own. Published from the browser, every letter typed told every
     /// view watching the browser — the sidebar, the tab strip, the menus — to
@@ -153,17 +171,26 @@ final class Browser: NSObject, ObservableObject {
     /// Bumped when what was typed isn't an address and can't be searched for.
     @Published private(set) var refusals = 0
     /// Bumped whenever the cursor should go back into the field.
-    @Published private(set) var focusRequest = 0
+    private(set) var focusRequest: Int {
+        get { bar.focusRequest }
+        set { bar.focusRequest = newValue }
+    }
 
     /// True while the field is a switcher rather than an address bar. ⌘K asks
     /// one question — which of the pages I already have open — and answering it
     /// with somewhere you went last week would be answering a different one.
-    @Published private(set) var summoning = false
+    private(set) var summoning: Bool {
+        get { bar.summoning }
+        set { if bar.summoning != newValue { bar.summoning = newValue } }
+    }
     /// Fork (new-tab-launcher): the card is up for ⌘T rather than ⌘K — it
     /// opens what you pick in a new tab instead of in this one, and nothing
     /// exists until you pick. Always true together with `summoning`, so
     /// everything that draws the card draws it the same. See Fork/Launcher.
-    @Published private(set) var launching = false
+    private(set) var launching: Bool {
+        get { bar.launching }
+        set { if bar.launching != newValue { bar.launching = newValue } }
+    }
     /// True between the first ⌘K and letting go of ⌘.
     var cycling = false
 
@@ -896,8 +923,10 @@ final class Browser: NSObject, ObservableObject {
     }
 
     func cancelTabEdit() {
-        editingTab = nil
-        tabDraft = ""
+        // Fork (perf): published, so only when there is an edit to cancel —
+        // ⌘K and every tab switch ask, and a set redraws every row.
+        if editingTab != nil { editingTab = nil }
+        if !tabDraft.isEmpty { tabDraft = "" }
     }
 
     // MARK: - saying so
@@ -2053,14 +2082,31 @@ final class Browser: NSObject, ObservableObject {
 
     /// ⌘K. Only what is open, nothing else.
     func summon() {
-        reviewing = false
+        if reviewing { reviewing = false } // Fork (perf): published — a set redraws every row
         cancelTabEdit()
         Launcher.shared.begin() // Fork (command-bar-hooks): ⌘K reads the open tabs, bookmarks and commands once, as ⌘T does
         launching = false
         summoning = true
-        typed = ""
+        // Fork (perf): the bar goes up empty in the key's own pass and its
+        // rows follow in the next, as ⌘T's card does (launch()). A Return or
+        // a second ⌘K before then fills it first (`fillPending`).
+        field.typed = ""
+        offers = []
+        ending = nil
+        picked = nil
+        Launcher.afterCommit { [weak self] in self?.fillPending() }
         editing = true
         focusRequest += 1
+    }
+
+    /// Fork (perf): ⌘K's and ⌘T's resting rows, if the card is up, nothing
+    /// is typed and they have not been laid out yet. The first fill does not
+    /// animate: the card has only just arrived.
+    private func fillPending() {
+        guard summoning, typed.isEmpty, offers.isEmpty else { return }
+        var still = Transaction()
+        still.disablesAnimations = true
+        withTransaction(still) { guess() }
     }
 
     /// Fork (new-tab-launcher): ⌘T, the way Arc has it — the card, asking
@@ -2071,7 +2117,7 @@ final class Browser: NSObject, ObservableObject {
             newTab()
             return
         }
-        reviewing = false
+        if reviewing { reviewing = false }
         cancelTabEdit()
         Launcher.shared.begin()
         launching = true
@@ -2085,8 +2131,8 @@ final class Browser: NSObject, ObservableObject {
         ending = nil
         picked = nil
         Launcher.afterCommit { [weak self] in
-            guard let self, self.launching, self.typed.isEmpty else { return }
-            self.guess()
+            guard let self, self.launching else { return }
+            self.fillPending()
         }
         editing = true
         focusRequest += 1
@@ -2284,6 +2330,7 @@ final class Browser: NSObject, ObservableObject {
 
     /// The arrow keys walk the list, and walking off the top lets go of it.
     func walk(_ step: Int) {
+        fillPending()
         guard !offers.isEmpty else { return }
         walked = true // Fork (developer-shortcuts)
         switch picked {
@@ -2324,6 +2371,7 @@ final class Browser: NSObject, ObservableObject {
     /// finishing for you wins; otherwise what you actually typed. If none of
     /// those is a place, nothing happens and the field says so.
     func submit() {
+        fillPending() // Fork (perf): ⌘K then Return at once still takes the most recent page
         // Fork (new-tab-launcher): ⌘T has its own idea of what Return does.
         if launching {
             if let picked, offers.indices.contains(picked) { Launcher.shared.take(offers[picked], in: self) }
@@ -2426,6 +2474,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
         decidePolicyFor action: WKNavigationAction,
         decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
     ) {
+        Tools.asked(webView, action) // Fork (perf): an agent's click knows it set off a page (Tools.settle)
         // "Download Image", "Download Linked File" from the page's own
         // context menu, and a link with the `download` attribute all arrive
         // as an ordinary-looking action with this one flag set. Answered

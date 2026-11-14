@@ -278,6 +278,9 @@ private struct MenuLine: View {
 
 struct ContentView: View {
     @ObservedObject var browser: Browser
+    /// Fork (perf): the field up, ⌘K or not (`fieldShowing`, the transition
+    /// below) — see `Browser.Bar`.
+    @ObservedObject private var bar: Browser.Bar
     @ObservedObject private var recent = Recent.shared
     @ObservedObject private var canvases = Canvases.shared
     @ObservedObject private var clearTabs = ClearTabs.shared
@@ -285,6 +288,11 @@ struct ContentView: View {
     @State private var keys: Any?
     @State private var window: NSWindow?
     @State private var resting: RestingLights?
+
+    init(browser: Browser) {
+        self.browser = browser
+        _bar = ObservedObject(wrappedValue: browser.bar)
+    }
 
 
     /// The window: room at the top, one stage for the page, and the row when
@@ -399,8 +407,9 @@ struct ContentView: View {
                 // Fork (perf): otherwise a fade. A scale redrew every letter on
                 // the card at a new size each frame, and on a 1× screen each new
                 // size of a glyph is hinted again, on the main thread.
-                .transition(browser.summoning
-                    ? .asymmetric(insertion: .identity, removal: AnyTransition.opacity.animation(Motion.quick))
+                // Fork (ui-motion): the dim and the card leave as one, in 120 ms.
+                .transition(bar.summoning
+                    ? .asymmetric(insertion: .identity, removal: AnyTransition.opacity.animation(.easeOut(duration: 0.12)))
                     : .opacity)
         }
     }

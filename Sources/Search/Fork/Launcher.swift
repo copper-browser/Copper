@@ -933,6 +933,9 @@ final class Launcher: ObservableObject {
         private var stretches: [Double] = []
 
         func start() {
+            // The turn that starts the meter is the one that opens the card:
+            // counted from here, or the open's own pass never reaches `take`.
+            woke = DispatchTime.now().uptimeNanoseconds
             let activities = CFRunLoopActivity.afterWaiting.rawValue | CFRunLoopActivity.beforeWaiting.rawValue
             observer = CFRunLoopObserverCreateWithHandler(nil, activities, true, 0) { [weak self] _, activity in
                 guard let self else { return }
