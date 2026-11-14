@@ -235,7 +235,7 @@ struct HandCapsule: View {
             .buttonStyle(.plain)
             .help("Show what it is doing")
             if drive.canStop(hand) {
-                DriveStop(help: hand.driver == .jev ? "Stop the run (⎋)" : "Take the browser back (⎋)") { drive.stop(hand.who.key) }
+                DriveStop(help: hand.driver == .jev ? "Stop the run (⎋)" : "Take the browser back (⎋)", compact: fits) { drive.stop(hand.who.key) }
             }
         }
         .padding(.leading, 6)

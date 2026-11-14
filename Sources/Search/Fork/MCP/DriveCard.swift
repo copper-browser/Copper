@@ -348,6 +348,9 @@ struct DriveStop: View {
     }
 
     let help: String
+    /// Fork (ui-flows): the square and the key alone, for the column's
+    /// narrow pill — the words beside it get the room.
+    var compact = false
     let action: () -> Void
     @State private var hovering = false
 
@@ -355,7 +358,7 @@ struct DriveStop: View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Image(systemName: "stop.fill").font(.system(size: 8))
-                Text("Stop").font(.system(size: 11.5, weight: .medium))
+                if !compact { Text("Stop").font(.system(size: 11.5, weight: .medium)) }
                 // Fork (ui-flows): the key as a keycap, not a glyph few can read.
                 Text("esc")
                     .font(.system(size: 10, weight: .medium))
@@ -365,7 +368,7 @@ struct DriveStop: View {
                     .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 1))
             }
             .foregroundStyle(Palette.ink)
-            .padding(.horizontal, 10).frame(height: 24)
+            .padding(.horizontal, compact ? 7 : 10).frame(height: 24)
             .background(hovering ? Palette.hover : Palette.ground, in: Capsule())
             .overlay(Capsule().strokeBorder(Palette.hairline, lineWidth: 1))
             .contentShape(Capsule())
@@ -740,7 +743,7 @@ struct DrivePill: View {
             }
             .buttonStyle(.plain)
             .help(elsewhere ? "Go to the tab it is driving" : "Show what it is doing")
-            DriveStop(help: drive.run?.driver == .jev ? "Stop the run (⎋)" : "Take the browser back (⎋)") { drive.stop() }
+            DriveStop(help: drive.run?.driver == .jev ? "Stop the run (⎋)" : "Take the browser back (⎋)", compact: fits) { drive.stop() }
         }
         .padding(.leading, 10)
         .padding(.trailing, 3)
