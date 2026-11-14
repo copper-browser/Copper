@@ -258,11 +258,15 @@ enum Page {
     })();
     """#
 
+    /// Part of `Tab.arm`'s inputs (navperf), so a tab an agent opens after its first arm is armed again.
+    @MainActor
+    static func armsConsole(_ tab: UUID) -> Bool { AgentTabs.opened.contains(tab) }
+
     /// Tab.arm(hiding:): the console shim for the next document of a tab an
     /// agent opened. Tabs the user opened are left alone.
     @MainActor
     static func arm(_ controller: WKUserContentController, tab: UUID) {
-        guard AgentTabs.opened.contains(tab) else { return }
+        guard armsConsole(tab) else { return }
         controller.addUserScript(WKUserScript(source: consoleShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
     }
 

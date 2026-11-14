@@ -489,7 +489,7 @@ final class Tab: ObservableObject, Identifiable {
         // same dozen scripts down again is IPC to the page's process for
         // nothing; only a change in what goes in re-arms. Kept per controller,
         // which a tab shares with the tabs its page opened.
-        let inputs = [css, "\(Passkeys.active)", "\(FormRelay.passkeysOffered)", PageVoice.script].joined(separator: "\u{1}")
+        let inputs = [css, "\(Passkeys.active)", "\(FormRelay.passkeysOffered)", PageVoice.script, "\(Tools.Page.armsConsole(id))"].joined(separator: "\u{1}")
         guard Tab.armed.object(forKey: controller) as String? != inputs else { return }
         Tab.armed.setObject(inputs as NSString, forKey: controller)
         controller.removeAllUserScripts()
