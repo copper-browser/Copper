@@ -1208,9 +1208,9 @@ enum Ultrafast {
                        vision: Vision = .off, shot: Shot? = nil, model: String? = nil, strategy: Strategy = Strategy(),
                        doneRefused: Bool = false, blockedRefused: Bool = false, noScroll: Bool = false,
                        askUnmet: Bool = false, confirmOnly: Bool = false, refusal: [String: Any]? = nil) async throws -> Decision {
-        let (elements, offered, offeredControls) = actionSpace(obs.actions, signInAvailable: signInAvailable, autofill: autofill)
+        let (elements, allTargets, allControls) = actionSpace(obs.actions, signInAvailable: signInAvailable, autofill: autofill)
         // A form sent once that the page took without a word: only DONE or BLOCKED is left to say.
-        let targets = confirmOnly ? [:] : offered, controls = confirmOnly ? [:] : offeredControls
+        let targets = confirmOnly ? [:] : allTargets, controls = confirmOnly ? [:] : allControls
         let quoted = strategy.literals ? literals(in: goal) : []
         let fills = targets["TYPE_TEXT"] ?? [:]
         let labels = [
