@@ -271,7 +271,7 @@ first:
 
 | tool | does |
 |---|---|
-| `jev_run` | `goal` (+ `url`, `newTab`, `focus`, `tab`, `maxSteps`, `elements`, `vision`, `model`, `json`) — runs [browser-use's jev-ultrafast](https://github.com/browser-use/jev-ultrafast) loop in your tab (`newTab`: a new background one) until DONE, BLOCKED or the budget (60 actions, 120 decisions, 3 minutes); answers with the trace, the page, and the indexed element table |
+| `jev_run` | `goal` (+ `url`, `newTab`, `focus`, `private`, `tab`, `maxSteps`, `elements`, `vision`, `model`, `json`) — runs [browser-use's jev-ultrafast](https://github.com/browser-use/jev-ultrafast) loop in your tab (`newTab`: a new background one) until DONE, BLOCKED or the budget (60 actions, 120 decisions, 3 minutes); answers with the trace, the page, and the indexed element table |
 | `jev_step` | one decision and its action; same `goal` continues the session |
 | `jev_observe` | what Jev sees: `[3] combobox  Where to? · London` for every visible control, plus the visible text |
 | `jev_extract` | `instruction` (+ `schema`, `full`) — one JSON object drawn from the page by the text model: values, not a tree |
@@ -292,8 +292,13 @@ stand-in: with no key every `jev_*` call refuses and names that page, so the
 agent can send the user there. It also needs, for anything that types or extracts, the model (Settings ›
 Intelligence). The picker names the model used for typing and
 `jev_extract`; small and fast is the point: Sonnet spends ~2.5 s writing a
-search string, a mercury-class model well under a second. DONE is the model's
-claim; the tool says so and the agent is told to check.
+search string, a mercury-class model well under a second. Left empty, typing
+asks a fast small model on the gateway first (`llama`, ~0.6 s) and haiku
+behind it, and a value written for a field is reused when the same field is
+typed again in the run. DONE is the model's claim; the tool says so and the
+agent is told to check (`verify`, below, refuses the ones the page contradicts).
+`private: true` with `newTab` runs in a private tab: empty cookies and
+storage, nothing kept.
 
 **Copy prompt** on the Agents page gives you one paragraph to paste into the
 chat with your agent — endpoint, token, how to add the server, what it can
@@ -338,7 +343,7 @@ games one way of seeing at a time and tables the arms (perf/README.md).
 
 Settings › Agents › Jev mode › *Fast mode* (on by default; `jevFast` in
 `intelligence.json`, `copper intelligence set --jev-fast on|off`) runs
-`turbo` with the pointer glide kept for a tab that is on screen; off runs
+`turbo`, `verify` and `submit` with the pointer glide kept for a tab that is on screen; off runs
 `classic`, the original loop. `jev_run` / `jev_step` take `strategy`,
 comma-separated speed-ups that can be measured one at a time against the
 classic loop (`perf/uibench.py`):
@@ -346,13 +351,15 @@ classic loop (`perf/uibench.py`):
 | word | what changes |
 |---|---|
 | `fast` | no cosmetic pointer glide before a click (it cost 120–320 ms a click); the trail still draws |
-| `literal` | each value the goal quotes (`"maya@northwind.test"`) becomes one Jev question in the same request — *which field holds this?* — and a TYPE_TEXT types the value Jev matched to that field. No text-model call; a field no quoted value fits still asks the text model |
-| `burst` | `literal`, and every other value Jev matched surely (≥ 60%) is typed in the same breath, before the next read: a sign-in form is one decision, not three |
+| `literal` | each value the goal names — what it quotes (`"maya@northwind.test"`), and the places, names and dates it says outright (*from Zurich to London on January 20, 2027*) — becomes one Jev question in the same request — *which field holds this?* — and a TYPE_TEXT types the value Jev matched to that field. No text-model call; a field no quoted value fits still asks the text model |
+| `burst` | `literal`, and every other value Jev matched surely (≥ 60%) is typed in the same breath, before the next read: a sign-in form is one decision, not three. Never into or after a combobox or search box: its list of suggestions is the next read |
 | `lean` | the state Jev reads is trimmed (page text to 1,200 characters, five recent actions) |
-| `paste` | a field's value is set in one go (native setter, input and change events) instead of a key event per character |
-| `watch` | WAIT ends when the page changes (a MutationObserver, capped at 1.5 s) instead of after 100 ms |
+| `paste` | a field's value goes in as one trusted edit (select all, insert text — the page hears it as typing, so an autocomplete opens) and is read back, instead of a key event per character |
+| `watch` | WAIT ends when the page changes (a MutationObserver, capped at 1.5 s) instead of after 100 ms; a click the page has not answered yet gets up to a second to show something before Jev is asked again (asked at once it clicks again, which starts the page's request over) |
 | `turbo` | all of the above |
-| `watched` | like `fast`, but the glide stays when the tab is on the user's screen (Fast mode is `turbo` + `watched`) |
+| `verify` | beside each decision Jev also says how likely something is visibly left undone; a DONE the page contradicts (≥ 50%) is refused, twice at most, and the next decision is asked without DONE on offer (`done_check`, `done_refused` in the JSON trace) |
+| `submit` | Return after typing into a search box that is its form's only field and shows no suggestions: the search is made, not just written |
+| `watched` | like `fast`, but the glide stays when the tab is on the user's screen (Fast mode is `turbo` + `verify` + `submit` + `watched`) |
 | `classic` | none of them: the original loop |
 | `llm`, `llm=<model>` | a small LLM decides instead of Jev: one chat call returns the operation, the target and any text (the comparison for *is Jev the fastest decider?*) |
 
