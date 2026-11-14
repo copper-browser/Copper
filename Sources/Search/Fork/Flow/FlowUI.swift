@@ -727,10 +727,8 @@ struct FlowSheet: View {
         Secondary(title: title, act: action)
     }
 
-    /// Fork (uiflows r4): the sheet is a key window, so its first button has
-    /// the keyboard, and the system's focus halo — drawn for a rectangle,
-    /// cut by the capsule — showed as stray 1 pt ticks at both ends. The
-    /// capsule's own ring instead (Settings' `settingsFocusRing`).
+    /// Fork (uiflows r4): the capsule's own focus ring (Settings'
+    /// `settingsFocusRing`), not the system halo, in the sheet's key window.
     private struct Secondary: View {
         let title: String
         let act: () -> Void
@@ -743,7 +741,9 @@ struct FlowSheet: View {
                     .foregroundStyle(Palette.ink)
                     .padding(.horizontal, 17).padding(.vertical, 10)
                     .background(Capsule().fill(Palette.ground))
-                    .overlay(Capsule().strokeBorder(Palette.hairline, lineWidth: 1))
+                    // A path stroke, not strokeBorder: the sheet's own window
+                    // drew strokeBorder's capsule with 1 pt ticks at both ends.
+                    .overlay(Capsule().inset(by: 0.5).stroke(Palette.hairline, lineWidth: 1))
                     .contentShape(Capsule())
             }
             .buttonStyle(Press(radius: 99))
