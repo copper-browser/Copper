@@ -197,7 +197,7 @@ struct AgentActivity: View {
                 Text("\(run.cycles.count - shown.count) earlier steps")
                     .font(.system(size: 11)).foregroundStyle(Palette.muted)
             }
-            ForEach(Array(shown)) { cycle in DriveStep(cycle: cycle, jev: true) }
+            ForEach(Array(shown)) { cycle in DriveStep(cycle: cycle, jev: true, runFailed: run.failed) }
             if !live, run.status != .running {
                 Text(run.statusLine(busy: false))
                     .font(.system(size: 11)).foregroundStyle(run.failed ? Palette.danger : Palette.muted)
