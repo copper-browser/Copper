@@ -12,26 +12,22 @@ struct WelcomePanel: View {
     @State private var page = 0
     @State private var forward = true
 
-    // Bringing things over.
-    @State private var source: Chromium.Source? = Chromium.installed().first
-    @State private var wantsPasswords = true
-    @State private var wantsHistory = true
-    @State private var wantsBookmarks = true
-    @State private var bringing = false
-    @State private var brought: String?
-
     // The default browser.
     @State private var isDefault = Links.isDefault
     @State private var asked = false
 
     private let pages = 4
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         ZStack {
+            // Fork (ui-flows): on the space's own wash, not bare white.
             Palette.ground.ignoresSafeArea()
+            SpaceTint(space: Spaces.shared.space(in: browser), dark: scheme == .dark).ground.opacity(0.45).ignoresSafeArea()
 
             VStack(spacing: 0) {
-                Spacer(minLength: 0)
+                // Fork (ui-flows): every page's heading at the same height, so
+                // Continue doesn't make the title jump up and down.
                 ZStack {
                     switch page {
                     case 0: welcome
@@ -41,12 +37,13 @@ struct WelcomePanel: View {
                     }
                 }
                 .frame(maxWidth: 520)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .padding(.top, 110)
                 .id(page)
                 .transition(.asymmetric(
                     insertion: .offset(x: forward ? 40 : -40).combined(with: .opacity),
                     removal: .offset(x: forward ? -40 : 40).combined(with: .opacity)
                 ))
-                Spacer(minLength: 0)
                 foot
             }
             .padding(40)
@@ -74,45 +71,17 @@ struct WelcomePanel: View {
         }
     }
 
+    /// Fork (ui-flows): Move in's own pills and sheet, not a second importer
+    /// with its own list of browsers (Fork/StartCard.swift `MoveFrom`).
     private var bring: some View {
         VStack(alignment: .leading, spacing: 22) {
-            heading("Bring things over.", "Passwords go into your keychain, bookmarks into the menu, and history means the address field already knows where you go. Nothing in the other browser changes.")
-
-            let sources = Chromium.installed()
-            if sources.isEmpty {
+            heading("Bring things over.", "Tabs, bookmarks, history, passwords and sign-ins from \(MoveFrom.names). Nothing in the other browser changes.")
+            if MoveFrom.found.isEmpty {
                 Text("No other browser found on this Mac — nothing to bring.")
                     .font(.system(size: 13))
                     .foregroundStyle(Palette.muted)
             } else {
-                VStack(alignment: .leading, spacing: 14) {
-                    if sources.count > 1 {
-                        Segmented(
-                            options: sources.map { ($0, $0.name) },
-                            selection: Binding(get: { source ?? sources[0] }, set: { source = $0 }),
-                            label: "Bring in from" // Fork (settings-a11y)
-                        )
-                    } else {
-                        Text("From \(sources[0].name)")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Palette.muted)
-                    }
-                    Choice("Passwords", "macOS will ask once for that browser's keychain key", on: $wantsPasswords)
-                    Choice("Bookmarks", "Folders and all, behind the bookmark button", on: $wantsBookmarks)
-                    Choice("History", "The last few thousand places, for finishing addresses", on: $wantsHistory)
-                }
-
-                HStack(spacing: 12) {
-                    Big(bringing ? "Bringing…" : "Bring them in", filled: true) { bringAll() }
-                        .disabled(bringing || brought != nil || !(wantsPasswords || wantsHistory || wantsBookmarks))
-                    if bringing { Ring(size: 10) }
-                    if let brought {
-                        Text(brought)
-                            .font(.system(size: 13))
-                            .foregroundStyle(Palette.muted)
-                            .transition(.opacity)
-                    }
-                }
-                .animation(Motion.settle, value: brought)
+                MoveFromPills(browser: browser, via: .welcome)
             }
         }
     }
@@ -150,7 +119,7 @@ struct WelcomePanel: View {
                     .font(.system(size: 13))
                     .foregroundStyle(Palette.ink)
                 } else {
-                    Big("Make Copper the default", filled: true) {
+                    Big("Make Copper the default") { // Fork (ui-flows): one primary per page, Continue's
                         asked = true
                         Links.becomeDefault { _ in isDefault = Links.isDefault }
                     }
@@ -184,7 +153,7 @@ struct WelcomePanel: View {
             HStack(spacing: 6) {
                 ForEach(0..<pages, id: \.self) { i in
                     Circle()
-                        .fill(i == page ? Palette.ink : Palette.faint.opacity(0.6))
+                        .fill(i == page ? Palette.ink : Palette.muted.opacity(0.8)) // Fork (ui-flows): ≥3:1, faint was 1.5:1
                         .frame(width: 6, height: 6)
                 }
             }
@@ -210,53 +179,6 @@ struct WelcomePanel: View {
     }
 
     // MARK: - doing
-
-    private func bringAll() {
-        guard let source else { return }
-        bringing = true
-        var lines: [String] = []
-        let group = DispatchGroup()
-        if wantsPasswords {
-            group.enter()
-            DispatchQueue.global(qos: .userInitiated).async {
-                let outcome = Result { try Chromium.read(source) }
-                DispatchQueue.main.async {
-                    switch outcome {
-                    case .success(let found):
-                        var kept = 0
-                        for login in found.logins
-                        where Vault.save(host: login.host, user: login.user, password: login.password, used: login.used) {
-                            kept += 1
-                        }
-                        var never = Vault.never
-                        found.never.forEach { never.insert($0) }
-                        Vault.never = never
-                        lines.append("\(kept) passwords")
-                    case .failure(Chromium.Trouble.noPassphrase):
-                        lines.append("passwords: macOS didn't hand over the key — allow it and try again")
-                    case .failure:
-                        lines.append("passwords: nothing readable")
-                    }
-                    group.leave()
-                }
-            }
-        }
-        if wantsBookmarks {
-            lines.append("\(browser.takeBookmarks(from: source)) bookmarks")
-        }
-        if wantsHistory {
-            group.enter()
-            browser.takePlaces(from: source) { count in
-                lines.append("\(count) places")
-                group.leave()
-            }
-        }
-        group.notify(queue: .main) {
-            bringing = false
-            brought = lines.joined(separator: " · ")
-            browser.relist()
-        }
-    }
 
     private func finish() {
         prefs.welcomed = true
@@ -302,29 +224,6 @@ struct WelcomePanel: View {
             }
             .buttonStyle(.plain)
             .onHover { hovering = $0 }
-        }
-    }
-
-    private struct Choice: View {
-        let title: String
-        let detail: String
-        @Binding var on: Bool
-
-        init(_ title: String, _ detail: String, on: Binding<Bool>) {
-            self.title = title
-            self.detail = detail
-            _on = on
-        }
-
-        var body: some View {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 13.5)).foregroundStyle(Palette.ink)
-                    Text(detail).font(.system(size: 11.5)).foregroundStyle(Palette.muted)
-                }
-                Spacer()
-                Switch(on: $on, label: title) // Fork (settings-a11y)
-            }
         }
     }
 

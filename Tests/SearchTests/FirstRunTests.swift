@@ -46,7 +46,9 @@ struct FirstRunTests {
         tabsOnly.cookies = false
         tabsOnly.localStorage = false
         #expect(tabsOnly.button(for: only) == "Bring over 3 tabs")
-        #expect(FlowModel.Choice().fitted(to: haul(tabs: 1, bookmarks: 120)).button(for: haul(tabs: 1, bookmarks: 120)) == "Bring over 1 tab and 120 bookmarks")
+        #expect(FlowModel.Choice().fitted(to: haul(tabs: 1, bookmarks: 120)).button(for: haul(tabs: 1, bookmarks: 120)) == "Bring over 1 tab and 120 bookmarks + sign-ins")
+        // Sign-ins on with the tabs: the button says they come too.
+        #expect(fitted.button(for: only) == "Bring over 3 tabs + sign-ins")
         let lots = haul(tabs: 2, bookmarks: 5, places: 9, logins: 4)
         #expect(FlowModel.Choice().fitted(to: lots).button(for: lots) == "Bring over 2 tabs, 5 bookmarks and more")
         // Nothing counted yet: every switch is the person's.
@@ -58,10 +60,19 @@ struct FirstRunTests {
         #expect(!none.anything)
     }
 
+    @Test func oneSentenceNamesTheBrowsersFound() {
+        #expect(MoveFrom.phrase([]) == "another browser")
+        #expect(MoveFrom.phrase(["Arc"]) == "Arc")
+        #expect(MoveFrom.phrase(["Arc", "Safari"]) == "Arc or Safari")
+        #expect(MoveFrom.phrase(["Arc", "Chrome", "Safari"]) == "Arc, Chrome or Safari")
+    }
+
     @Test func releaseNotesFoldToThreeLines() {
         let notes = "Tabs open faster. Move in names what it brings!\nSettings speaks plainly? A fourth thing. A fifth."
         #expect(UpdatesPage.bullets(notes) == ["Tabs open faster.", "Move in names what it brings!", "Settings speaks plainly?"])
         #expect(UpdatesPage.bullets("No full stop") == ["No full stop"])
+        // One line each: a long sentence ends where its first thought does.
+        #expect(UpdatesPage.bullets("A pin keeps its page: ⌘W takes you back. Sharing is quicker — six tabs first.") == ["A pin keeps its page.", "Sharing is quicker."])
     }
 
     @Test func noGatewayAddressUntilOneIsGiven() throws {

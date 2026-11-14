@@ -382,7 +382,7 @@ struct SettingsPanel: View {
     private var passwords: some View {
         Group {
             SettingsSection("Saved passwords") {
-                Line("Your passwords", "In the macOS keychain, shown with Touch ID — bring yours in from Dia, Chrome, Arc, Brave or Edge there") { // Fork (settings-merge): was also an Import… row that opened the same window
+                Line("Your passwords", "In the macOS keychain, shown with Touch ID — bring yours in from \(MoveFrom.names) there") { // Fork (ui-flows): the one list of browsers // Fork (settings-merge): was also an Import… row that opened the same window
                     Pill("Open…") {
                         browser.tuning = false
                         browser.managing = true
@@ -395,7 +395,7 @@ struct SettingsPanel: View {
                 }
                 .settingsAnchor("passwords.save")
                 Rule()
-                Line("Fill in sign-ins", "Click a sign-in box and the accounts kept for the site hang from it") {
+                Line("Fill in sign-ins", "Click a sign-in box to see the accounts saved for that site") { // Fork (ui-flows): plain words
                     Switch(on: $prefs.fillsPasswords)
                 }
                 .settingsAnchor("passwords.fill")
@@ -406,7 +406,7 @@ struct SettingsPanel: View {
                 }
                 .settingsAnchor("passwords.codes")
                 Rule()
-                Line("Fill addresses and cards", "Click into a checkout or address form and your Bitwarden and 1Password identities and cards hang from it") { // Fork: 1Password
+                Line("Fill addresses and cards", "Click into a checkout or address form to see your Bitwarden and 1Password identities and cards") { // Fork: 1Password; (ui-flows) plain words
                     Switch(on: $prefs.fillsEverything)
                 }
                 .settingsAnchor("passwords.everything")

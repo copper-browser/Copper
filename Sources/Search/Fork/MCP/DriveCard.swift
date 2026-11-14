@@ -23,6 +23,10 @@ enum DriveStyle {
 
     /// A duration as a person reads it: milliseconds until a second, then
     /// one decimal of seconds. No thousands separators anywhere.
+    /// Fork (ui-flows): a step's own time is shown only past this — a row of
+    /// "899 ms" beside every quick step is noise, a slow one is news.
+    static let slow = 2000
+
     static func ms(_ n: Int) -> String {
         n < 1000 ? "\(n) ms" : String(format: "%.1f s", Double(n) / 1000)
     }
@@ -265,6 +269,7 @@ struct DriveLiveStrip: View {
                         .font(.system(size: 11.5, weight: .medium))
                         .foregroundStyle(Palette.ink)
                         .lineLimit(1).truncationMode(.tail)
+                        .help(line)
                     Spacer(minLength: 4)
                     DriveClock(run: run, live: true).fixedSize()
                 }
@@ -280,12 +285,11 @@ struct DriveLiveStrip: View {
         .onHover { over = $0 }
     }
 
-    /// "phi is driving · 4 calls · Read 45 shapes", "Jev is driving · 3 actions · Clicking Search".
-    /// The count before the words, which can run long and are cut first.
+    /// "phi is driving · Read 45 shapes", "Jev is driving · Clicking Search".
+    /// Fork (ui-flows): no call count — the task gets the room (the card
+    /// below still counts).
     private var line: String {
-        let acted = run.cycles.filter { $0.outcome != nil }.count
-        let word = run.driver == .jev ? "action" : "call"
-        var bits = ["\(run.who.agent) is driving", "\(acted) \(word)\(acted == 1 ? "" : "s")"]
+        var bits = ["\(run.who.agent) is driving"]
         if let doing = run.cycles.last, doing.ended == nil, let phase = doing.phases.last {
             bits.append(phase.title)
         } else if let thought = run.thought, !thought.isEmpty {
@@ -344,6 +348,9 @@ struct DriveStop: View {
     }
 
     let help: String
+    /// Fork (ui-flows): the square and the key alone, for the column's
+    /// narrow pill — the words beside it get the room.
+    var compact = false
     let action: () -> Void
     @State private var hovering = false
 
@@ -351,11 +358,17 @@ struct DriveStop: View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Image(systemName: "stop.fill").font(.system(size: 8))
-                Text("Stop").font(.system(size: 11.5, weight: .medium))
-                Text("⎋").font(.system(size: 11)).foregroundStyle(Palette.muted)
+                if !compact { Text("Stop").font(.system(size: 11.5, weight: .medium)) }
+                // Fork (ui-flows): the key as a keycap, not a glyph few can read.
+                Text("esc")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Palette.muted)
+                    .padding(.horizontal, 4)
+                    .frame(height: 15)
+                    .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 1))
             }
             .foregroundStyle(Palette.ink)
-            .padding(.horizontal, 10).frame(height: 24)
+            .padding(.horizontal, compact ? 7 : 10).frame(height: 24)
             .background(hovering ? Palette.hover : Palette.ground, in: Capsule())
             .overlay(Capsule().strokeBorder(Palette.hairline, lineWidth: 1))
             .contentShape(Capsule())
@@ -404,7 +417,8 @@ struct DriveStep: View {
             Spacer(minLength: 6)
             if cycle.ended == nil {
                 Ring(size: 9)
-            } else if let started = cycle.phases.first?.started, let ended = cycle.ended {
+            } else if let started = cycle.phases.first?.started, let ended = cycle.ended,
+                      Int(ended.timeIntervalSince(started) * 1000) > DriveStyle.slow { // Fork (ui-flows): only a slow step's time
                 Text(DriveStyle.ms(Int(ended.timeIntervalSince(started) * 1000)))
                     .font(.system(size: 11)).monospacedDigit()
                     .foregroundStyle(Palette.muted) // Fork (agent-ux): was faint, 1.3:1
@@ -701,6 +715,8 @@ struct DrivePill: View {
     let browser: Browser
     /// The run is on a tab not in view: the pill names it and goes there.
     let elsewhere: Bool
+    /// Fork (ui-flows): as wide as the column it sits in (DriveSlot).
+    var fits = false
     @ObservedObject private var drive = Drive.shared
     @State private var breathing = false
 
@@ -722,12 +738,12 @@ struct DrivePill: View {
                     .font(.system(size: 11.5))
                     .foregroundStyle(Palette.ink)
                     .lineLimit(1).truncationMode(.tail)
-                    .frame(maxWidth: 300, alignment: .leading)
-                    .fixedSize(horizontal: true, vertical: false)
+                    .frame(maxWidth: fits ? .infinity : 300, alignment: .leading)
+                    .fixedSize(horizontal: !fits, vertical: false)
             }
             .buttonStyle(.plain)
             .help(elsewhere ? "Go to the tab it is driving" : "Show what it is doing")
-            DriveStop(help: drive.run?.driver == .jev ? "Stop the run (⎋)" : "Take the browser back (⎋)") { drive.stop() }
+            DriveStop(help: drive.run?.driver == .jev ? "Stop the run (⎋)" : "Take the browser back (⎋)", compact: fits) { drive.stop() }
         }
         .padding(.leading, 10)
         .padding(.trailing, 3)

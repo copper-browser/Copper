@@ -93,6 +93,10 @@ struct SideBar: View {
             column
                 .modifier(SpaceSlideBand(browser: browser))
 
+            // Fork (ui-flows): an agent driving — its pill and Stop — above
+            // the foot, not over the page (Fork/MCP/HandsUI.swift).
+            DriveSlot(browser: browser, activeID: browser.activeID)
+
             // Fork (update-pill): Arc's update button, just above the foot,
             // only while there is a newer Copper (Fork/UpdatePill.swift).
             UpdatePillSlot(browser: browser)
@@ -319,7 +323,10 @@ struct SideBar: View {
     /// under it — never parked at the foot of the window.
     private var column: some View {
         let kept = looseRows.filter { sections.isSaved($0.tab) }
-        let today = looseRows.filter { !sections.isSaved($0.tab) }
+        var today = looseRows.filter { !sections.isSaved($0.tab) }
+        // Fork (ui-flows): a lone blank tab is what "+ New Tab" already says;
+        // listed too, the column read "New Tab" twice.
+        if today.count == 1, today[0].tab.isBlank { today = [] }
         let clearCount = clearTabs.clearable(in: browser).count
         return ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {

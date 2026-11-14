@@ -26,7 +26,7 @@ struct StartCard: View {
     private var card: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text(StartCard.found.isEmpty ? "Getting around" : "Move in from")
+                Text(MoveFrom.found.isEmpty ? "Getting around" : "Move in from")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Palette.ink)
                 Spacer(minLength: 8)
@@ -41,14 +41,8 @@ struct StartCard: View {
                 .help("Hide this")
                 .accessibilityLabel("Hide the start card")
             }
-            if !StartCard.found.isEmpty {
-                HStack(spacing: 8) {
-                    ForEach(StartCard.found, id: \.name) { found in
-                        BrowserPill(name: found.name, icon: found.icon) {
-                            Flow.shared.present(from: browser, via: .start, prefer: found.name)
-                        }
-                    }
-                }
+            if !MoveFrom.found.isEmpty {
+                MoveFromPills(browser: browser)
                 Rectangle().fill(Palette.hairline).frame(height: 1)
             }
             HStack(spacing: 18) {
@@ -76,16 +70,26 @@ struct StartCard: View {
         }
         .accessibilityElement(children: .combine)
     }
+}
 
+/// Fork (ui-flows): the one list of browsers there are to move in from, and
+/// the sentence that names them. The start card, Welcome, Move in, the
+/// Passwords window and Settings › Passwords all read it, so no two of them
+/// can name different browsers (they named five different sets in round 2).
+/// Launch Services (is the app here?), never their folders: reading those
+/// waits for Move in itself.
+@MainActor
+enum MoveFrom {
     /// Browsers Move in reads, in the order people most often leave them.
     /// A test run answers from `flow.installed` (as FlowAccess does).
     static let known: [(name: String, bundle: String)] = [
         ("Arc", "company.thebrowser.Browser"), ("Chrome", "com.google.Chrome"), ("Dia", "company.thebrowser.dia"),
-        ("Brave", "com.brave.Browser"), ("Edge", "com.microsoft.edgemac"), ("Safari", "com.apple.Safari"),
+        ("Brave", "com.brave.Browser"), ("Edge", "com.microsoft.edgemac"), ("Vivaldi", "com.vivaldi.Vivaldi"),
+        ("Chromium", "org.chromium.Chromium"), ("Safari", "com.apple.Safari"),
     ]
 
-    /// Looked up once a launch: Launch Services, not a folder read.
-    @MainActor static let found = browsers()
+    /// Looked up once a launch.
+    static let found = browsers()
 
     static func browsers() -> [(name: String, icon: NSImage?)] {
         let ws = NSWorkspace.shared
@@ -95,14 +99,51 @@ struct StartCard: View {
             if let listed { return listed.contains(entry.name) ? (entry.name, app.map { ws.icon(forFile: $0.path) }) : nil }
             return app.map { (entry.name, ws.icon(forFile: $0.path)) }
         }
-        .prefix(3).map { $0 }
+    }
+
+    /// "Arc or Safari": the browsers found, for a sentence.
+    static var names: String { phrase(found.map(\.name)) }
+
+    /// The app's own icon, for Move in's cards; nil when it isn't here.
+    static func icon(_ name: String) -> NSImage? {
+        if let hit = found.first(where: { $0.name == name }) { return hit.icon }
+        guard let bundle = known.first(where: { $0.name == name })?.bundle,
+              let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) else { return nil }
+        return NSWorkspace.shared.icon(forFile: app.path)
+    }
+
+    /// "A", "A or B", "A, B or C"; "another browser" for none.
+    nonisolated static func phrase(_ names: [String]) -> String {
+        switch names.count {
+        case 0: return "another browser"
+        case 1: return names[0]
+        default: return names.dropLast().joined(separator: ", ") + " or " + names[names.count - 1]
+        }
+    }
+}
+
+/// Fork (ui-flows): the found browsers as pills, each opening Move in on
+/// itself — the start card's and Welcome's, the same row.
+struct MoveFromPills: View {
+    let browser: Browser
+    var via: Flow.Door = .start
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(MoveFrom.found, id: \.name) { found in
+                BrowserPill(name: found.name, icon: found.icon) {
+                    Flow.shared.present(from: browser, via: via, prefer: found.name)
+                }
+            }
+        }
     }
 }
 
 /// One browser to move in from: its own icon and name, outlined.
-private struct BrowserPill: View {
+struct BrowserPill: View {
     let name: String
     let icon: NSImage?
+    var help: String?
     let action: () -> Void
     @State private var hovering = false
 
@@ -122,7 +163,7 @@ private struct BrowserPill: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help("Bring your tabs, bookmarks and passwords over from \(name)")
+        .help(help ?? "Bring your tabs, bookmarks and passwords over from \(name)")
         .accessibilityLabel("Move in from \(name)")
     }
 }

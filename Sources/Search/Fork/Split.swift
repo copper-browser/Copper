@@ -102,8 +102,15 @@ final class Split: ObservableObject {
         open(with: other, in: browser)
     }
 
+    /// Fork (ui-flows): a split just made, before its pane has slid in. The
+    /// stage draws the new card at no width while this is set and glides it
+    /// out to the fraction (`SplitStage`); a split coming back (`resume`)
+    /// is simply there.
+    @Published var growing = false
+
     func open(with tab: Tab, in browser: Browser) {
         guard tab.id != browser.activeID else { return }
+        growing = !on(in: browser)
         // A tab on another window's stage is handed over first, as select
         // would; that window lands on another of its own.
         Spaces.shared.claim(tab, for: browser)
@@ -290,8 +297,10 @@ struct SplitStage: View {
             }
             // Fork (agent-ux): one place for either, top right, 8 pt in — and
             // none while the agent pane is open: its live band has the Stop.
+            // Fork (ui-flows): in the sidebar layout it sits in the column's
+            // foot instead (DriveSlot), off the site's own top right.
             .overlay(alignment: .topTrailing) {
-                if agent.open {
+                if agent.open || inset {
                     EmptyView()
                 } else if !here.isEmpty {
                     HandBar(tabs: shown).padding(8).transition(.opacity)
@@ -318,7 +327,9 @@ struct SplitStage: View {
                 // hangs off the window have taken theirs.
                 let tall = max(geo.size.height - spill.top - spill.bottom - 2 * margin, 1)
                 let least = min(SplitMetrics.least, span / 2)
-                let leftWidth = min(span - least, max(least, span * split.fraction))
+                // Growing, the new card starts at no width (the clamp would
+                // start it at `least`) and glides out (Fork: ui-flows).
+                let leftWidth = split.growing ? span : min(span - least, max(least, span * split.fraction))
 
                 ZStack(alignment: .topLeading) {
                     HStack(spacing: SplitMetrics.gutter) {
@@ -341,6 +352,13 @@ struct SplitStage: View {
             }
             .background { if !inset { backdrop } }
             .coordinateSpace(name: Split.space)
+            .onAppear {
+                guard split.growing else { return }
+                // An ease-out, not glide's spring: a spring's last few points of
+                // overshoot each re-lay the pages out, and the split kept
+                // shuffling for 300 ms after it looked done.
+                withAnimation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .easeOut(duration: 0.28)) { split.growing = false }
+            }
             .onChange(of: browser.activeID) { was, _ in split.reconcile(browser, was: was) }
             .onChange(of: browser.tabs.map(\.id)) { _, _ in split.reconcile(browser) }
         } else if inset {

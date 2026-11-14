@@ -12,7 +12,7 @@ struct PasswordsPanel: View {
     @State private var importing: String?
 
     var body: some View {
-        Plate("Passwords", width: 620, close: { browser.managing = false }) {
+        Plate("Passwords", width: 600, close: { browser.managing = false }) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 10) {
                     Hunt(text: $browser.hunting, prompt: "Search sites and accounts", focus: $hunting)
@@ -56,9 +56,14 @@ struct PasswordsPanel: View {
                     Text("Bring in from")
                         .font(.system(size: 12))
                         .foregroundStyle(Palette.muted)
-                    // Only the browsers actually on this Mac.
-                    ForEach(Chromium.installed()) { source in
-                        Pill(source.name) {
+                    // Fork (ui-flows): the one list of browsers (Fork/StartCard.swift
+                    // `MoveFrom`), with their icons. A Chromium browser's passwords
+                    // come straight in, as before; any other opens Move in on it.
+                    ForEach(MoveFrom.found, id: \.name) { found in
+                        BrowserPill(name: found.name, icon: found.icon, help: "Bring your passwords over from \(found.name)") {
+                            guard let source = Chromium.installed().first(where: { $0.name == found.name }) else {
+                                return Flow.shared.present(from: browser, via: .passwords, prefer: found.name)
+                            }
                             importing = source.name
                             // Off the main thread: four hundred passwords is a
                             // moment of arithmetic, and the panel stays alive.
@@ -87,7 +92,7 @@ struct PasswordsPanel: View {
                         Pill("Export…") { browser.exportPasswordsCSV() } // Fork (password-csv): out as well as in
                     }
                 }
-                Text("macOS asks once for that browser's keychain key. Nothing is changed there; everything lands in your own keychain, under \(Fork.name).")
+                Text("Passwords from \(MoveFrom.names) land in your own keychain, under \(Fork.name); nothing changes there. macOS asks once for that browser's key.") // Fork (ui-flows)
                     .font(.system(size: 11.5))
                     .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -129,6 +134,12 @@ struct PasswordsPanel: View {
                             .truncationMode(.middle)
                     }
                     Spacer(minLength: 8)
+                    // Fork (ui-flows): one account, its two copies under the
+                    // pointer without opening the row.
+                    if hovering, !open, logins.count == 1, let only = logins.first {
+                        if !only.user.isEmpty { Quick("Copy username") { SettingsActions.copy(only.user) } }
+                        Quick("Copy password") { copy(only) }
+                    }
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(Palette.muted)
@@ -195,7 +206,7 @@ struct PasswordsPanel: View {
 
                     if hovering || shown {
                         Quick(shown ? "Hide" : "Show") { shown ? conceal() : reveal() }
-                        Quick("Copy", act: copy)
+                        Quick("Copy password", act: copy) // Fork (ui-flows): says which
                         // Fork (keychain-codes)
                         if hasCode {
                             Quick("Copy code", act: copyCode)
