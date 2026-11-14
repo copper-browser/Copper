@@ -56,6 +56,7 @@ extension Drive.Run {
         case .running: return "Running"
         case .done: return said("Done")
         case .blocked: return said("Blocked")
+        case .unsure: return said("Not sure it worked")
         case .budget: return said("Out of steps")
         case .error: return said("Error")
         case .ended: return said("Let go")

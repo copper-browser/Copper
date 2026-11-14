@@ -111,7 +111,7 @@ final class Drive: ObservableObject {
         var thoughtAt: Date?
     }
 
-    enum Status: String { case running, done, blocked, budget, error, stopped, ended }
+    enum Status: String { case running, done, blocked, budget, error, stopped, ended, unsure }
 
     struct Cycle: Identifiable {
         let id: UUID

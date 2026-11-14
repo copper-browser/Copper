@@ -26,6 +26,9 @@ final class NetLog: NSObject {
         /// Order of asking, per log; `done` once WebKit says it ended.
         var seq: UInt64 = 0
         var done = false
+        /// When it was asked, and when its answer began (a status) or it ended.
+        var at = Date()
+        var answeredAt: Date? = nil
     }
 
     static let cap = 300
@@ -83,13 +86,14 @@ final class NetLog: NSObject {
 
     @objc(webView:resourceLoad:didReceiveResponse:)
     func received(_ web: WKWebView, _ load: NSObject, _ response: URLResponse) {
-        update(load) { $0.status = (response as? HTTPURLResponse)?.statusCode ?? $0.status ?? 200 }
+        update(load) { $0.status = (response as? HTTPURLResponse)?.statusCode ?? $0.status ?? 200; $0.answeredAt = $0.answeredAt ?? Date() }
     }
 
     @objc(webView:resourceLoad:didCompleteWithError:response:)
     func completed(_ web: WKWebView, _ load: NSObject, _ error: Error?, _ response: URLResponse?) {
         update(load) { entry in
             entry.done = true
+            entry.answeredAt = entry.answeredAt ?? Date()
             if let http = response as? HTTPURLResponse { entry.status = http.statusCode }
             if let error { entry.error = (error as NSError).localizedDescription }
             else if entry.status == nil { entry.status = 200 } // file:, data: — no HTTP status, but it came
@@ -127,26 +131,70 @@ final class NetLog: NSObject {
     /// Where the log is now: requests after this are the next action's.
     static func mark(_ web: WKWebView) -> UInt64 { log(for: web)?.sequence ?? 0 }
 
-    /// A data call of this page still out.
-    static func busy(_ web: WKWebView) -> Bool {
-        guard let log = log(for: web) else { return false }
-        return log.entries.contains { calls.contains($0.kind) && !$0.done }
+    /// A page's own bookkeeping, never its answer: analytics, logging and
+    /// beacons (Google's `log?format=json` is an xhr after every click).
+    nonisolated static func noise(_ e: Entry) -> Bool {
+        if ["beacon", "ping", "csp-report"].contains(e.kind) { return true }
+        guard let url = URL(string: e.url) else { return false }
+        let host = url.host?.lowercased() ?? ""
+        if ["google-analytics.", "googletagmanager.", "doubleclick.", "analytics.", "stats.", "telemetry.", "sentry."].contains(where: host.contains) { return true }
+        return ["log", "logs", "collect", "beacon", "ping", "track", "telemetry", "metrics", "rum", "csi", "jserror", "gen_204"]
+            .contains(url.lastPathComponent.lowercased())
     }
 
-    /// Until the page's data calls since `mark` (nil: since the page loaded)
-    /// are back, or `cap`: what they were. A page that left for another in
-    /// the meantime has nothing to wait for here (its load is waited for).
-    static func answered(_ web: WKWebView, after mark: UInt64?, cap: TimeInterval = 3) async -> [Entry] {
+    /// Still waited for: not back, no status yet, and asked less than
+    /// `expire` ago. A call with a status is answered (a stream that stays
+    /// open, a long poll); a call that never said anything is given up on
+    /// (WebKit never ends an aborted xhr).
+    nonisolated static func pending(_ e: Entry, now: Date = Date(), expire: TimeInterval = 1.5) -> Bool {
+        !e.done && e.status == nil && now.timeIntervalSince(e.at) < expire
+    }
+
+    /// The page's data calls since `mark` (nil: since the page loaded), less
+    /// its bookkeeping; nil when the page left for another since `mark`.
+    static func dataCalls(_ web: WKWebView, after mark: UInt64?) -> [Entry]? {
+        guard let log = log(for: web), mark.map({ log.documentAt <= $0 }) ?? true else { return nil }
+        let since = mark ?? log.documentAt
+        return log.entries.filter { $0.seq > since && calls.contains($0.kind) && !noise($0) }
+    }
+
+    /// `mark`, or the start of the page now in the tab if it came after:
+    /// what to wait on when the last action may have loaded a new page.
+    static func current(_ web: WKWebView, _ mark: UInt64?) -> UInt64? {
+        guard let log = log(for: web) else { return mark }
+        return max(mark ?? log.documentAt, log.documentAt)
+    }
+
+    /// Something went to the server that changes things there: a non-GET
+    /// request (a document or a data call) since `mark`, not bookkeeping.
+    static func posted(_ web: WKWebView, after mark: UInt64) -> Bool {
+        guard let log = log(for: web) else { return false }
+        return log.entries.contains { $0.seq > mark && (calls.contains($0.kind) || $0.kind == "document") && !noise($0)
+            && !["GET", "HEAD", "OPTIONS"].contains($0.method.uppercased()) }
+    }
+
+    /// A data call of this page still out (`pending`).
+    static func busy(_ web: WKWebView, after mark: UInt64? = nil) -> Bool {
+        (dataCalls(web, after: mark) ?? []).contains { pending($0) }
+    }
+
+    /// Until the page's data calls since `mark` are answered and nothing new
+    /// was answered for `linger` (a reply often asks for the next thing), or
+    /// `cap`: what they were. A page that left for another in the meantime
+    /// has nothing to wait for here (its load is waited for).
+    static func answered(_ web: WKWebView, after mark: UInt64?, cap: TimeInterval = 3, linger: TimeInterval = 0) async -> [Entry] {
         let deadline = Date().addingTimeInterval(cap)
-        func mine() -> [Entry]? {
-            guard let log = log(for: web), mark.map({ log.documentAt <= $0 }) ?? true else { return nil }
-            let since = mark ?? log.documentAt
-            return log.entries.filter { $0.seq > since && calls.contains($0.kind) }
-        }
-        while let out = mine(), out.contains(where: { !$0.done }), Date() < deadline {
+        while let out = dataCalls(web, after: mark), Date() < deadline, !quiet(out, linger: linger) {
             try? await Task.sleep(nanoseconds: 25_000_000)
         }
-        return mine() ?? []
+        return dataCalls(web, after: mark) ?? []
+    }
+
+    /// Nothing pending, and the last answer at least `linger` ago (or no call at all).
+    nonisolated static func quiet(_ calls: [Entry], now: Date = Date(), linger: TimeInterval = 0.15) -> Bool {
+        guard !calls.contains(where: { pending($0, now: now) }) else { return false }
+        guard let last = calls.compactMap(\.answeredAt).max() else { return true }
+        return now.timeIntervalSince(last) >= linger
     }
 
     /// `200 GetShoppingResults`, `pending batchexecute`: a call for the trace.
