@@ -2133,15 +2133,15 @@ enum Ultrafast {
         return [
             [
                 "name": "jev_run",
-                "description": "FAST PATH. One plain-English goal; Copper drives your tab (else the user's), ~200 ms a step, until DONE or BLOCKED. Returns the trace, page and element table. Verify DONE yourself.",
+                "description": "FAST PATH. One plain-English goal; Copper drives your tab (else the user's) until DONE or BLOCKED. Returns the trace, page and elements. Verify DONE yourself.",
                 "inputSchema": ["type": "object", "properties": [
                     "goal": string("Everything to achieve, with concrete values and when to stop"),
                     "url": string("Open this first"),
-                    "newTab": bool("Open url in a background tab of your own"),
-                    "focus": bool("With newTab: show it to the user"),
+                    "newTab": bool("url in a background tab of yours"),
+                    "focus": bool("With newTab: show it"),
                     "private": bool("With newTab: private, nothing kept"),
                     "tab": string("Tab id from browser_tabs"),
-                    "maxSteps": number("Cap on actions; default \(maxSteps)"),
+                    "maxSteps": number("Default \(maxSteps)"),
                     "elements": bool("Default true"),
                     "vision": string("auto (default), off, screenshot, marks, box, pixels"),
                     "model": string("jev-latest, jev-preview, jev-1.14.0"),
@@ -2163,7 +2163,7 @@ enum Ultrafast {
                 "name": "jev_extract",
                 "description": "Say what values you want from the page; get one JSON object (optionally matching a schema).",
                 "inputSchema": ["type": "object", "properties": [
-                    "instruction": string("What to pull out, e.g. \"the flight options with airline, departure time, duration and price\""),
+                    "instruction": string("What to pull out, e.g. \"each flight's airline, times and price\""),
                     "schema": ["type": "object", "description": "JSON schema (or an example object) the answer must match"] as [String: Any],
                     "full": bool("Read the whole page's text, not just what is on screen; default false"),
                     "tab": string("Tab id from browser_tabs"),
