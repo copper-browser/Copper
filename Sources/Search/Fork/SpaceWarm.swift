@@ -51,7 +51,7 @@ enum SpaceWarm {
                     guard let browser else { return }
                     var seen = Set<UUID>()
                     let order = ([last].compactMap { $0 } + Spaces.shared.all.map(\.id)).filter { seen.insert($0).inserted }
-                    next(order, in: browser)
+                    next(order, in: browser, first: last != nil)
                 }
             }
         }
@@ -70,11 +70,12 @@ enum SpaceWarm {
     private static var warming: Tab.ID?
 
     /// Fork (space-perf): the spaces' landing tabs in `queue`, one after
-    /// another, while there is room for them.
-    private static func next(_ queue: [UUID], in browser: Browser) {
+    /// another, while there is room for them. The space you were in last
+    /// (`first`) is warmed whatever the room, as before.
+    private static func next(_ queue: [UUID], in browser: Browser, first: Bool = false) {
         guard let space = queue.first else { return }
         let rest = Array(queue.dropFirst())
-        guard roomy else { return }
+        guard first || roomy else { return }
         if !warm(space: space, in: browser, then: { [weak browser] in if let browser { next(rest, in: browser) } }) {
             next(rest, in: browser)
         }
