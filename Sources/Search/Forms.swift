@@ -1141,6 +1141,13 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
       function caret() {
         var el = document.activeElement;
         var tag = el && (el.tagName || '').toLowerCase();
+        if (topFrame && el && el.shadowRoot) {
+          // A frame inside a component: the document names the component, its shadow root the frame.
+          var deep = el;
+          while (deep.shadowRoot && deep.shadowRoot.activeElement) deep = deep.shadowRoot.activeElement;
+          var deepTag = (deep.tagName || '').toLowerCase();
+          if (deepTag === 'iframe' || deepTag === 'frame') { el = deep; tag = deepTag; }
+        }
         if (topFrame && (tag === 'iframe' || tag === 'frame')) {
           var f = el.getBoundingClientRect();
           var cs = window.getComputedStyle(el);

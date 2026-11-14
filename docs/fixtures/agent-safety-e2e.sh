@@ -113,7 +113,7 @@ PY
 
 mkdir -p "$folder"
 token=$(python3 -c "import secrets; print(secrets.token_hex(32))")
-printf '{"enabled":true,"port":%s,"token":"%s","announces":false,"jev":false}' "$mcp_port" "$token" >"$folder/agent.json"
+printf '{"enabled":true,"port":%s,"token":"%s","announces":false,"jev":true}' "$mcp_port" "$token" >"$folder/agent.json"
 defaults write "$suite" bench -bool true
 defaults write "$suite" welcomed -bool true
 defaults write "$suite" probe.keychain -string file

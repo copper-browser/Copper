@@ -223,6 +223,6 @@ enum SignIn {
             found.append("f\(entry.number) (\(framed.origin))")
         }
         guard !found.isEmpty else { return "" }
-        return ". An embedded frame has the boxes: \(found.joined(separator: ", ")) — no shared login is saved for that address"
+        return ". An embedded frame has the boxes: \(found.joined(separator: ", ")) — the login asked for is not a shared one saved for that address"
     }
 }

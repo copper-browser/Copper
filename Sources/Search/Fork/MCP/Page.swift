@@ -492,8 +492,15 @@ enum Page {
       // point (x, y of the frame's viewport) into view; with `hitTest`, the
       // frame must be what is at that point here.
       function frameBox(at, x, y, hitTest) {
-        var all = document.querySelectorAll('iframe, frame'), el = null;
-        for (var i = 0; i < all.length && !el; i++) if (frameIndex(all[i]) === at) el = all[i];
+        var el = null;
+        // Through open shadow roots too: a component can hold the frame.
+        (function look(root) {
+          var all = root.querySelectorAll('iframe, frame');
+          for (var i = 0; i < all.length && !el; i++) if (frameIndex(all[i]) === at) el = all[i];
+          if (el) return;
+          var every = root.querySelectorAll('*');
+          for (var j = 0; j < every.length && !el; j++) if (every[j].shadowRoot) look(every[j].shadowRoot);
+        })(document);
         if (!el) return { error: 'its frame is not on the page any more' };
         function box() {
           var r = el.getBoundingClientRect(), cs = getComputedStyle(el);
