@@ -34,6 +34,14 @@ import WebKit
 // agent too. A few minutes after the agent's
 // last call the page lets go and is an ordinary background tab again — free
 // to sleep.
+//
+// Fork (idle-memory): between calls the window does not stay up. Ordered in,
+// its pages counted as on screen for those few minutes: timers at full speed,
+// rAF running, for a page nobody was looking at and no agent was touching.
+// Thirty seconds after the last call (`quiet`) the window is ordered out —
+// its pages turn hidden and WebKit throttles them — and the next call
+// orders it in again and gives the page its turn to see it, as a first
+// call does.
 
 @MainActor
 enum AgentTabs {
@@ -267,7 +275,8 @@ final class Backstage {
     /// on its next turn, so a caller about to read it should give it one.
     @discardableResult
     func stage(_ tab: Tab) -> Bool {
-        let fresh = held[tab.id] == nil || tab.built?.window == nil
+        // Fork (idle-memory): hung in a window ordered out between calls, it was hidden too.
+        let fresh = held[tab.id] == nil || tab.built?.window == nil || tab.built?.window?.isVisible == false
         held[tab.id] = Date()
         settle(tab, focus: true)
         if timer == nil {
@@ -306,6 +315,8 @@ final class Backstage {
         tabsIgnoring.insert(tab.id)
         if let window = web.window {
             if window === self.window {
+                // Fork (idle-memory): ordered out between calls; a call brings it back.
+                if focus, !window.isVisible { _ = ensureWindow() }
                 // Already here; keep it the size of the stage it would be on,
                 // and the one the keyboard goes to inside this window.
                 if let bounds = window.contentView?.bounds, web.frame != bounds { web.frame = bounds }
@@ -372,6 +383,17 @@ final class Backstage {
         }
         resize()
         idleIfEmpty()
+        // Fork (idle-memory): no call for a while — let the pages here turn hidden.
+        if let window, window.isVisible, let latest = held.values.max(), now.timeIntervalSince(latest) > Backstage.quiet {
+            window.orderOut(nil)
+        }
+    }
+
+    /// How long after an agent's last call its page stays drawn backstage:
+    /// thirty seconds, or `agents.quiet` in seconds — for the bench.
+    static var quiet: TimeInterval {
+        let set = Store.settings.double(forKey: "agents.quiet")
+        return set > 0 ? set : 30
     }
 
     private func idleIfEmpty() {

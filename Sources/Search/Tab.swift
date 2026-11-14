@@ -64,6 +64,16 @@ enum Web {
         config.mediaTypesRequiringUserActionForPlayback = .audio
         TabShare.configure(config) // Fork (tab-share): getDisplayMedia's way back to Copper (Fork/TabShare/)
         if Store.testing, !Store.measuring { config.preferences.inactiveSchedulingPolicy = .none }
+        // Fork (idle-memory): a page out of sight runs its timers further
+        // apart the longer it stays hidden, as Safari's do (WebKit's own
+        // switch, private: asked for only when this WebKit has it). Pins
+        // never sleep (Fork/PinsAwake.swift), so this is what keeps eight of
+        // them from waking the Mac all day. A page on screen, playing sound
+        // or hung for an agent (Backstage) is not throttled; nor are a test
+        // world's, which want their pace (the line above).
+        if !(Store.testing && !Store.measuring), config.preferences.responds(to: NSSelectorFromString("_setHiddenPageDOMTimerThrottlingAutoIncreases:")) {
+            config.preferences.setValue(true, forKey: "hiddenPageDOMTimerThrottlingAutoIncreases")
+        }
         CapturePreferences.configure(config) // Fork (page-capture): a hidden page keeps its microphone; test worlds' stand-in devices
         return config
     }

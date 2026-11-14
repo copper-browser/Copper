@@ -8,14 +8,21 @@ import WebKit
 // switch to it. So the first trip to each space after a launch landed on a
 // blank stage and a load — the slide was quick, the space was not.
 //
-// Once the launch has settled (Fork/Launch.swift), the page each other space
-// would open on is loaded in the background, one space at a time: hung in a
+// Once the launch has settled (Fork/Launch.swift), the page the last space
+// you were in would open on is loaded in the background: hung in a
 // window off every screen that WebKit is told not to treat as hidden (a page
 // loaded out of sight boots as a background tab, and some — x.com — then sit
 // on their placeholder), and taken out again once it has loaded, so it rests
 // like any tab you've left. A switch then puts a page already drawn on the
 // stage. Those tabs are the spaces' remembered ones, which idle sleep leaves
-// alone (Sleep.swift); memory pressure still puts them to sleep.
+// alone while the pages that may sleep fit their budget (Sleep.swift);
+// memory pressure still puts them to sleep.
+//
+// Fork (idle-memory): only the last space, not every one. Warming all of them
+// held a page per space all day (a Gmail nobody went to: 980 MB). The way back
+// to the space you just left is the common trip; any other space's page
+// starts the moment the pointer rests on its chip at the foot (`hover`), a
+// few hundred milliseconds before the click.
 //
 // Not on battery saver, never in a headless run, and not at all with
 // `defaults write <domain> spaces.warm -bool false`.
@@ -33,32 +40,37 @@ enum SpaceWarm {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 guard let browser else { return }
                 PinsAwake.shared.start(in: browser) { [weak browser] in
-                    guard let browser, !Headless.on, on, !ProcessInfo.processInfo.isLowPowerModeEnabled else { return }
-                    let spaces = Spaces.shared
-                    let here = spaces.current(in: browser)
-                    let waiting = spaces.all.map(\.id).filter { $0 != here }.compactMap { id -> (UUID, Tab)? in
-                        guard let landing = spaces.wouldLand(in: id, for: browser),
-                              let tab = spaces.projection(id).first(where: { $0.id == landing }),
-                              tab.pending != nil, !tab.shy else { return nil }
-                        return (id, tab)
-                    }
-                    next(waiting, in: browser)
+                    guard let browser, let last else { return }
+                    warm(space: last, in: browser)
                 }
             }
         }
     }
 
-    private static func next(_ waiting: [(UUID, Tab)], in browser: Browser) {
-        guard let (space, tab) = waiting.first else { return }
-        let rest = Array(waiting.dropFirst())
-        // Gone, woken or put on a stage since the list was made: skip it.
-        guard tab.pending != nil, tab.built == nil, Spaces.shared.current(in: browser) != space else {
-            return next(rest, in: browser)
-        }
-        Spaces.shared.remember(tab.id, in: space, for: browser)
-        warm(tab, size: browser.active?.built?.bounds.size, start: { _ = tab.wake() }) {
-            next(rest, in: browser)
-        }
+    /// The space the first window was in before the one it is in now, kept
+    /// across launches (Spaces.swap writes it).
+    static var last: UUID? { Store.settings.string(forKey: "spaces.last").flatMap(UUID.init(uuidString:)) }
+
+    static func left(_ space: UUID) { Store.settings.set(space.uuidString, forKey: "spaces.last") }
+
+    /// The pointer came to rest on a space's chip (SpacesUI): its page starts now.
+    static func hover(_ space: UUID, in browser: Browser) { warm(space: space, in: browser) }
+
+    /// The landing tab being warmed now: one at a time.
+    private static var warming: Tab.ID?
+
+    /// The page `browser` would land on in `space`, loaded out of sight —
+    /// unless it already has one, or is the space on screen.
+    static func warm(space: UUID, in browser: Browser) {
+        guard warming == nil, !Headless.on, on, !ProcessInfo.processInfo.isLowPowerModeEnabled else { return }
+        let spaces = Spaces.shared
+        guard space != spaces.current(in: browser), let landing = spaces.wouldLand(in: space, for: browser),
+              let tab = spaces.projection(space).first(where: { $0.id == landing }),
+              tab.pending != nil, tab.built == nil, !tab.shy else { return }
+        spaces.remember(tab.id, in: space, for: browser)
+        warming = tab.id
+        Breadcrumbs.note("space-warm", [("host", tab.pending?.host() ?? "-")])
+        warm(tab, size: browser.active?.built?.bounds.size, start: { _ = tab.wake() }) { warming = nil }
     }
 
     /// One tab's page loaded out of sight: its view in the Room, `start` sets
