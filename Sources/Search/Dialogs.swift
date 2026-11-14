@@ -18,6 +18,7 @@ extension Browser {
         initiatedByFrame frame: WKFrameInfo,
         completionHandler: @escaping () -> Void
     ) {
+        if AgentDialogs.take(webView, .alert, message, finish: { _, _ in completionHandler() }) { return } // Fork (agent-dialogs)
         let alert = Dialogs.alert(from: frame, saying: message)
         alert.addButton(withTitle: "OK")
         Dialogs.show(alert, over: webView) { _ in completionHandler() }
@@ -29,6 +30,7 @@ extension Browser {
         initiatedByFrame frame: WKFrameInfo,
         completionHandler: @escaping (Bool) -> Void
     ) {
+        if AgentDialogs.take(webView, .confirm, message, finish: { ok, _ in completionHandler(ok) }) { return } // Fork (agent-dialogs)
         let alert = Dialogs.alert(from: frame, saying: message)
         alert.addButton(withTitle: "OK")
         alert.addButton(withTitle: "Cancel")
@@ -44,6 +46,7 @@ extension Browser {
         initiatedByFrame frame: WKFrameInfo,
         completionHandler: @escaping (String?) -> Void
     ) {
+        if AgentDialogs.take(webView, .prompt, prompt, defaultText: defaultText, finish: { ok, text in completionHandler(ok ? text : nil) }) { return } // Fork (agent-dialogs)
         let alert = Dialogs.alert(from: frame, saying: prompt)
         alert.addButton(withTitle: "OK")
         alert.addButton(withTitle: "Cancel")

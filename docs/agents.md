@@ -81,8 +81,11 @@ forward; the pane opens itself only for work on the page on screen.
 | `browser_click` | `ref` or `selector`; `doubleClick`, `button`, `modifiers` — a real `NSEvent` at the element's centre |
 | `browser_type` | `text`, `submit`, `slowly` (real key events) — sets the value through the native setter so React/Vue notice |
 | `browser_fill_form` | `[{ref, type, value}]` for textbox / checkbox / radio / combobox / slider |
-| `browser_press_key` | `Enter`, `Escape`, `ArrowDown`, `Meta+a`, `a` … as real key events (⌘ shortcuts go to the window first) |
-| `browser_hover`, `browser_drag`, `browser_select_option`, `browser_scroll` | as named |
+| `browser_press_key` | `Enter`, `Escape`, `ArrowDown`, `Meta+a`, `a` … as real key events to the page. A ⌘ key goes to the page's view, never its window; one the page leaves alone runs its editing command on that page (⌘A select all, ⌘B/I/U, ⌘C/X/V, ⌘Z, ⇧⌘Z), as Safari's Edit and Format menus would. A key the page didn't use stops there: an agent's ⌘W, ⌘T, ⌘N, ⌃Tab or Escape never reach a window (`Input.returned`, checked first in the app's key monitor) |
+| `browser_hover` | the pointer onto the element (WebKit's `_simulateMouseMove:`, in, then a pixel on), then checks `el.matches(':hover')` and fails when it isn't — saying when something covers the element, or when the tab is in a window that isn't key (WebKit hovers nothing there; a tab of the agent's own always works) |
+| `browser_drag` | a `draggable="true"` source: an HTML5 drag in the page (one DataTransfer from `dragstart` to `drop`; fails when the target cancels no `dragover`). Anything else: a real press, twelve moves a frame (16 ms) apart, a dwell, a release. Fails when nothing on the page changed |
+| `browser_handle_dialog` | `accept`, `promptText` (Playwright's). An alert/confirm/prompt on an agent's tab stays open after the call that raised it and is listed under `### Dialogs` in that answer; this answers it. With none open it arms the answer for the next one. The agent's next other call on that tab, or 30 s, closes it as a closed sheet would (OK, false, null); one raised while Copper's own script waits on the page (inside `browser_evaluate`) gets that answer at once. Every question and its answer is listed in the next answer for that tab (after `browser_evaluate`'s, whose text is the value alone). A tab on the user's screen keeps its sheet for the user unless an answer was armed |
+| `browser_select_option`, `browser_scroll` | as named |
 | `browser_take_screenshot` | PNG/JPEG at 1×, so image pixels are CSS pixels; `ref` for one element, `fullPage`, `filename` |
 | `browser_evaluate` | `function: "() => …"` or `(element) => …` with `ref` |
 | `browser_wait_for` | `text`, `textGone`, `time` |

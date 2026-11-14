@@ -501,6 +501,7 @@ final class Drive: ObservableObject {
             return ("Filling \(n) field\(n == 1 ? "" : "s")", detail)
         case "browser_press_key": return ("Pressing \((args["key"] as? String) ?? "a key")", detail)
         case "browser_hover": return (sentence("Hovering"), detail)
+        case "browser_handle_dialog": return ((args["accept"] as? Bool) == true ? "Readying to accept the page's next dialog" : "Readying to dismiss the page's next dialog", detail)
         case "browser_select_option":
             let values = ((args["values"] as? [String]) ?? []).joined(separator: ", ")
             return (named.isEmpty ? "Choosing \(values)" : "Choosing \(values) in \(named)", detail)
@@ -564,6 +565,7 @@ final class Drive: ObservableObject {
         case "browser_type", "browser_fill_form": return "TYPE"
         case "browser_press_key": return "KEY"
         case "browser_hover": return "HOVER"
+        case "browser_handle_dialog": return "DIALOG"
         case "browser_select_option": return "SELECT"
         case "browser_drag": return "DRAG"
         case "browser_navigate", "browser_navigate_back", "browser_navigate_forward": return "GO"
@@ -593,7 +595,7 @@ final class Drive: ObservableObject {
     static func mayChange(_ tool: String) -> Bool {
         switch tool {
         case "browser_snapshot", "browser_get_text", "browser_console_messages", "browser_find", "browser_take_screenshot",
-             "browser_hover", "browser_perf_probe", "jev_observe", "jev_extract", "browser_resize", "browser_groups", "browser_wait_for",
+             "browser_hover", "browser_handle_dialog", "browser_perf_probe", "jev_observe", "jev_extract", "browser_resize", "browser_groups", "browser_wait_for",
              "browser_crashes", "cloud_history_delete", "browser_vault_save", "browser_vault_note":
             return false
         // The canvas tools change a board, not the page: their result is
