@@ -47,6 +47,7 @@ struct Omnibox: View {
             VStack(spacing: 8) {
                 field
                 if !browser.offers.isEmpty { list }
+                else if !over { StartCard(browser: browser).padding(.top, 8) } // Fork (first-run)
             }
             .frame(width: Metrics.fieldWidth)
             // Lifted a little above centre: dead centre reads as low, because
@@ -202,11 +203,11 @@ struct AddressField: NSViewRepresentable {
     /// walk past six answers to it.
     var literal = false
     var size: CGFloat = 15.5
-    var placeholder = "Enter a web address"
+    var placeholder = "Search or enter address" // Fork (first-run): one wording everywhere
     /// Fork (new-tab-launcher): what is typed and offered; see `Browser.Field`.
     @ObservedObject private var state: Browser.Field
 
-    init(browser: Browser, literal: Bool = false, size: CGFloat = 15.5, placeholder: String = "Enter a web address") {
+    init(browser: Browser, literal: Bool = false, size: CGFloat = 15.5, placeholder: String = "Search or enter address") {
         self.browser = browser
         self.literal = literal
         self.size = size

@@ -33,6 +33,8 @@ struct AgentActivity: View {
     let group: AgentActivityGroup
     @ObservedObject private var agent = Agent.shared
     @ObservedObject private var drive = Drive.shared
+    /// Fork (agent-ux): steps whose raw error is shown (Details).
+    @State private var details: Set<UUID> = []
 
     private var open: Bool { agent.expanded.contains(group.id) }
 
@@ -143,17 +145,27 @@ struct AgentActivity: View {
                         .font(.system(size: 12)).foregroundStyle(failed ? red : Palette.ink)
                         .lineLimit(2).truncationMode(.tail)
                         .fixedSize(horizontal: false, vertical: true)
-                    if !item.warning.isEmpty {
-                        Text(item.warning)
-                            .font(.system(size: 11)).foregroundStyle(red)
-                            .lineLimit(3).truncationMode(.tail)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .textSelection(.enabled)
-                    } else if failed, let reason = item.text.split(separator: "\n").last, reason.hasPrefix("→") {
-                        Text(reason.dropFirst(2))
-                            .font(.system(size: 11)).foregroundStyle(red)
-                            .lineLimit(3)
-                            .fixedSize(horizontal: false, vertical: true)
+                    // Fork (agent-ux): a sentence first; the tool's own words behind Details.
+                    if let raw = AgentActivity.raw(item) {
+                        HStack(spacing: 6) {
+                            Text(failed ? "That step didn't work." : "It worked, with a problem.")
+                                .font(.system(size: 11.5)).foregroundStyle(red)
+                            Button(details.contains(item.id) ? "Hide details" : "Details") {
+                                withAnimation(Motion.quick) {
+                                    if details.contains(item.id) { details.remove(item.id) } else { details.insert(item.id) }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11.5, weight: .medium))
+                            .foregroundStyle(Palette.ink)
+                        }
+                        if details.contains(item.id) {
+                            Text(raw)
+                                .font(.system(size: 11, design: .monospaced)).foregroundStyle(Palette.muted)
+                                .lineLimit(8).truncationMode(.tail)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
                     }
                 }
                 .layoutPriority(1)
@@ -162,8 +174,8 @@ struct AgentActivity: View {
                     Ring(size: 9)
                 } else if item.ms > 0 {
                     Text(DriveStyle.ms(Int(item.ms)))
-                        .font(.system(size: 10.5)).monospacedDigit()
-                        .foregroundStyle(Palette.muted)
+                        .font(.system(size: 11)).monospacedDigit()
+                        .foregroundStyle(Palette.muted) // Fork (agent-ux): was faint
                         .fixedSize()
                 }
             }
@@ -189,6 +201,15 @@ struct AgentActivity: View {
             }
         }
         .padding(.leading, 23)
+    }
+
+    /// What went wrong, in the tool's words: the warning, or a failure's
+    /// "→ reason" line. Nil when nothing did.
+    static func raw(_ item: Agent.Item) -> String? {
+        if !item.warning.isEmpty { return item.warning }
+        guard !item.ok else { return nil }
+        if let reason = item.text.split(separator: "\n").last, reason.hasPrefix("→") { return String(reason.dropFirst(2)) }
+        return item.text.isEmpty ? nil : item.text
     }
 
     /// An SF symbol per tool.

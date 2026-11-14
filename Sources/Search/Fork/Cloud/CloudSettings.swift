@@ -179,7 +179,7 @@ private struct CloudConnectCard: View {
         if Cloud.isBarePairingCode(typed) {
             return "That's the pairing code without its address — copy the whole code, from copper-cloud:// to the end"
         }
-        return "That isn't a link code, a join link or a pairing code — all start copper-cloud://, then #k=, #sso= or #p="
+        return "That isn't a Copper Cloud code. Copy the whole code, from copper-cloud:// to the end."
     }
 
     /// The last single sign-on's refusal, while that link is still the one pasted.
@@ -192,6 +192,11 @@ private struct CloudConnectCard: View {
             Caption("1 · Connect to an instance")
             Card {
                 if advanced {
+                    Text("Running your own server? `copper-cloud link-code` prints a code to paste instead.")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Palette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 14).padding(.top, 10)
                     Line("Address", "host:port, or https://…") {
                         field("cloud.example.com:443", text: $host, width: 200).focused($focus, equals: .host)
                     }
@@ -208,14 +213,19 @@ private struct CloudConnectCard: View {
                     .cloudAnchor("cloud.connect.fingerprint")
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Paste the link code or join link from your Copper Cloud administrator — or a pairing code from a Mac that is already signed in.")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Palette.ink)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text("Running your own server? `copper-cloud link-code` prints one.")
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(Palette.muted)
-                            .fixedSize(horizontal: false, vertical: true)
+                        // Fork (settings-plain): a picture and one sentence; the code formats
+                        // are for "Enter it by hand" and the problem line.
+                        HStack(alignment: .center, spacing: 12) {
+                            Image(systemName: "icloud")
+                                .font(.system(size: 26, weight: .regular))
+                                .foregroundStyle(Palette.muted)
+                                .accessibilityHidden(true)
+                            Text("Paste the code from whoever runs your Copper Cloud, or from a Mac that's already signed in.")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Palette.ink)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.bottom, 2)
                         HStack(spacing: 6) {
                             TextField("", text: $code, axis: .vertical)
                                 .textFieldStyle(.plain)
@@ -225,15 +235,13 @@ private struct CloudConnectCard: View {
                                 .focused($focus, equals: .code)
                                 // Fork (ui-system): the prompt in muted ink; a plain field ignores a prompt's colour.
                                 .background(alignment: .topLeading) {
-                                    if code.isEmpty { Text("copper-cloud://host:port/#k=…, #sso=… or #p=…").font(.system(size: 11.5, design: .monospaced)).foregroundStyle(Palette.muted).allowsHitTesting(false).accessibilityHidden(true) }
+                                    if code.isEmpty { Text("copper-cloud://…").font(.system(size: 11.5, design: .monospaced)).foregroundStyle(Palette.muted).allowsHitTesting(false).accessibilityHidden(true) }
                                 }
                                 .accessibilityLabel("Link code")
                                 .padding(.horizontal, 8).padding(.vertical, 6)
                                 .settingsField() // SB-04
                                 .onSubmit(go)
-                            Button {
-                                if let pasted = SettingsActions.pasteboard.string(forType: .string) { code = pasted.trimmingCharacters(in: .whitespacesAndNewlines) }
-                            } label: {
+                            Button(action: paste) {
                                 Image(systemName: "doc.on.clipboard").font(.system(size: 11)).foregroundStyle(Palette.muted)
                             }
                             .buttonStyle(.plain)
@@ -287,8 +295,14 @@ private struct CloudConnectCard: View {
                             .foregroundStyle(Palette.muted)
                             Spacer()
                             if connecting { ProgressView().controlSize(.small) }
+                            // Fork (settings-plain): with nothing typed yet, the one thing to
+                            // press is Paste, not a Connect that can't.
+                            if parsed == nil, !advanced, code.isEmpty {
+                                Pill("Paste code", filled: true, action: paste)
+                            } else {
                             Pill(buttonTitle, filled: parsed != nil && !connecting, action: go)
                                 .disabled(parsed == nil || connecting)
+                            }
                         }
                     }
                 }
@@ -323,6 +337,10 @@ private struct CloudConnectCard: View {
         // copper://cloud/join brought a code: it is the one in the field.
         .onAppear { take(sso.offer) }
         .onChange(of: sso.offer) { _, offer in take(offer) }
+    }
+
+    private func paste() {
+        if let pasted = SettingsActions.pasteboard.string(forType: .string) { code = pasted.trimmingCharacters(in: .whitespacesAndNewlines) }
     }
 
     private func take(_ offer: CloudSSO.Offer?) {

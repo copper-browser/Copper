@@ -376,18 +376,24 @@ tools one at a time (phi, Claude Code, the `copper` CLI — named by the
 `clientInfo` it gave at `initialize`), a bot through an agent link (`@dev-s ·
 agents`), or the agent in Copper's own pane.
 
-- **The pill** in the page's top-right corner — *phi is driving*, *Jev is
-  driving*, *@dev-s · agents is driving* — and a warm 1.5 pt ring just inside
-  the page's edge. The dot is solid while a call is in flight and breathes
-  while the driver thinks between calls. Both go when the driver lets go.
+- **The pill** in the page's top-right corner, 8 pt in, one format for every
+  driver: *<Agent> · <task> · Stop ⎋* (*Claude · Booking a table*, *Jev ·
+  nonstop SFO → JFK*). Only the tab being driven wears the warm 1.5 pt ring
+  just inside its edge; over any other tab the pill names the driven one
+  (*Jev · on Google Flights*) and a click goes to it. The dot is solid while a
+  call is in flight and breathes while the driver thinks between calls. While
+  the agent pane is open its live band says the same, so the pill steps
+  aside. Both go when the driver lets go.
 - **The driver's card** in the agent pane (⌥⌘J, ⌘K › *Driver Timeline*, or
   click the pill — the pane opens by itself when a run begins). There is one
   pane beside the page, the agent's (⌘E), and a run lands in its
   conversation as a live card: who (*phi · monkey board · Personal*, *Jev ·
   for Claude Code*), the goal, the latest thing the driver said about what it
   is doing, its last few steps in words — *Read 45 shapes on Personal*,
-  *Clicking Fit to screen*, a failed call in red with its error — with the
-  time each took, a ticking clock, and Stop. *Details* opens the whole
+  *Clicking Fit to screen*, a failed call in red as a sentence (*Changing the
+  canvas didn't work*) — with the time each took and a ticking clock; the
+  one Stop is on the live band above the conversation. *Details* (there
+  whenever a step failed, with the tool's own error) opens the whole
   timeline: every cycle numbered, each phase with its time, the operation
   chip and what it came to (*CLICK → page changed*), how sure Jev was and the
   moves it was offered. A finished run's card stays where it happened, with
@@ -398,7 +404,8 @@ agents`), or the agent in Copper's own pane.
   or typed into is outlined and named, a pointer glides to it, a numbered
   dot marks the press, the typed value rises beside the field (masked when
   the field sounds like a secret), a chevron marks a scroll.
-- **Stop** (the pill's square, or the card's) takes the browser back. A Jev
+- **Stop** — one labelled 24 pt button wherever it appears, and ⎋ in the
+  window (before the page has it) — takes the browser back. A Jev
   run ends before its next action. An agent's next tool calls are refused for
   30 s with *Stopped by the user in Copper: they took the browser back. Do not
   retry; tell them what you were doing and wait…* — the refused attempts show

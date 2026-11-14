@@ -271,25 +271,33 @@ struct SplitStage: View {
     /// that the page is moving on its own. Both go the moment the run ends.
     ///
     /// Both wear the colour of the agent whose hands are on the tab in view
-    /// (Hands.swift), and the bar sits top centre naming it and its thread.
-    /// A run on some other tab keeps the old corner pill, so a Jev loop in a
-    /// background tab still says it is going and can still be stopped.
+    /// (Hands.swift), and the bar sits top right naming it and its thread.
+    /// A run on some other tab is the corner pill alone (no ring: this page
+    /// is not the one moving), naming that tab and going to it on a click.
     private var driven: some View {
         let shown = [active.id] + (split.side.map { [$0] } ?? [])
         let here = shown.flatMap { trace.hands(on: $0) }
+        // Fork (agent-ux): only the tab being driven wears the ring; another
+        // tab's run is the pill alone, naming that tab.
+        let onShown = trace.live && trace.run.map { shown.contains($0.tabID) } == true
         let ring = here.first.map { Drive.colour(for: $0.who).fill.opacity(0.6) }
-            ?? DriveStyle.accent.opacity(trace.live ? 0.35 : 0)
+            ?? DriveStyle.accent.opacity(onShown ? 0.35 : 0)
         return stage
             .overlay {
                 RoundedRectangle(cornerRadius: split.on || inset ? SplitMetrics.corner : 0, style: .continuous)
                     .strokeBorder(ring, lineWidth: here.isEmpty ? 1.5 : 2)
                     .allowsHitTesting(false)
             }
-            .overlay(alignment: .top) {
-                if !here.isEmpty { HandBar(tabs: shown).padding(.top, 8).transition(.move(edge: .top).combined(with: .opacity)) }
-            }
+            // Fork (agent-ux): one place for either, top right, 8 pt in — and
+            // none while the agent pane is open: its live band has the Stop.
             .overlay(alignment: .topTrailing) {
-                if trace.live, here.isEmpty { DrivePill().padding(8).transition(.opacity) }
+                if agent.open {
+                    EmptyView()
+                } else if !here.isEmpty {
+                    HandBar(tabs: shown).padding(8).transition(.opacity)
+                } else if trace.live {
+                    DrivePill(browser: browser, elsewhere: !onShown).padding(8).transition(.opacity)
+                }
             }
             .animation(Motion.quick, value: trace.live)
             .animation(Motion.quick, value: here.map(\.id))

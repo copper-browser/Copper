@@ -54,7 +54,7 @@ struct IntelligencePage: View {
                 Rule()
                 Line("Model names", brain.lane == .claude
                      ? "What Haiku, Sonnet and Opus are called for your Claude account. Leave one empty for Copper's own."
-                     : "What Haiku, Sonnet and Opus are called on your gateway. Leave one empty for the plain name.") {
+                     : "What Haiku, Sonnet and Opus are called on your gateway. Leave one empty for the plain name. The gateway must speak /\u{2060}v1/\u{2060}chat/\u{2060}completions.") {
                     modelNames
                 }
                 .settingsAnchor("intelligence.names")
@@ -76,7 +76,7 @@ struct IntelligencePage: View {
 
     private var jevDetail: String {
         let speed = "Quick decisions for agents, in about a fifth of a second."
-        return brain.jevReady ? speed : speed + " Needs a key from your TypeSafe account."
+        return brain.jevReady ? speed : speed + " Get a key to turn it on."
     }
 
     private var footnote: String {
@@ -103,7 +103,7 @@ struct IntelligencePage: View {
             }
             .settingsAnchor("intelligence.account")
         } else {
-            Line("API key", brain.cloudLine("routerKey", brain.cloud?.router?.key) ?? "From your gateway — anything that speaks /\u{2060}v1/\u{2060}chat/\u{2060}completions.") {
+            Line("API key", brain.cloudLine("routerKey", brain.cloud?.router?.key) ?? "The key your model gateway gave you.") {
                 KeyField(text: brain.cloudLane ? .constant("") : $brain.keys.routerKey,
                          placeholder: brain.cloudPlaceholder("routerKey", brain.cloud?.router?.key, otherwise: "sk-…"),
                          ready: brain.routerReady, refused: check.refused("router"), label: "Gateway API key")
@@ -130,6 +130,7 @@ struct IntelligencePage: View {
     /// it should look like, before a check has to fail to say so.
     private var gatewayDetail: String {
         if brain.sources["routerURL"] == "cloud" { return "Provided by Copper Cloud (\(brain.cloud?.host ?? "your cloud"))" }
+        if brain.effective.routerURL.trimmingCharacters(in: .whitespaces).isEmpty { return "Its web address, from whoever gave you the key" }
         if !Self.isWebAddress(brain.effective.routerURL) { return "That isn't a web address — it should start with https://" }
         return "Where the gateway lives"
     }
@@ -426,7 +427,8 @@ struct UpdatesPage: View {
                     // Update — the same paragraph as the pill's What's New.
                     if let notes = updates.latest?.notes {
                         Rule()
-                        Line("What’s new in \(version)", notes) { EmptyView() }
+                        // Fork (settings-plain): three lines, not a paragraph; the rest is one click on.
+                        WhatsNew(version: version, notes: notes)
                             .settingsAnchor("updates.notes")
                     }
                 }
@@ -455,6 +457,24 @@ struct UpdatesPage: View {
             }
             .settingsAnchor("updates.source")
         }
+    }
+
+    /// Fork (settings-plain): the notes' first three sentences, for bullets.
+    static func bullets(_ notes: String, count: Int = 3) -> [String] {
+        var out: [String] = []
+        var current = ""
+        for char in notes.replacingOccurrences(of: "\n", with: " ") {
+            current.append(char)
+            if ".!?".contains(char) {
+                let line = current.trimmingCharacters(in: .whitespaces)
+                if !line.isEmpty { out.append(line) }
+                current = ""
+                if out.count == count { return out }
+            }
+        }
+        let rest = current.trimmingCharacters(in: .whitespaces)
+        if !rest.isEmpty, out.count < count { out.append(rest) }
+        return out
     }
 
     static func publishedDate(_ raw: String) -> String {
@@ -492,7 +512,7 @@ private struct AgentsServerSection: View {
 
     var body: some View {
         SettingsSection("MCP server", note: note) {
-            Line("Let agents drive this window", "An MCP server on this Mac only (127.0.0.1). Agents in your terminal or editor see your tabs and act in them, signed in as you.") {
+            Line("Let agents drive this window", "Agents in your terminal or editor can see your tabs and act in them, signed in as you. Only apps on this Mac can reach it.") {
                 Switch(on: $mcp.config.enabled)
             }
             .settingsAnchor("agents.server")
@@ -569,14 +589,14 @@ private struct AgentsJevSection: View {
 
     var body: some View {
         SettingsSection("Jev mode") {
-            Line("Let the agent hand Copper a goal", "Adds jev_run, jev_step, jev_observe and jev_extract: Jev clicks and types in this window about every 200 ms until the goal is done.") {
+            Line("Let the agent hand Copper a goal", "An agent can hand over a whole task; Jev clicks and types in this window, a few times a second, until it's done.") {
                 Switch(on: $mcp.config.jev)
             }
             .settingsAnchor("agents.jev")
             // Fork (settings-merge): the key has one home, Intelligence › Jev; this only points there.
             if mcp.config.jev, !brain.jevReady {
                 Rule()
-                Line("Jev key", "Jev mode needs a key from your TypeSafe account. It goes in Intelligence › Jev.") {
+                Line("Jev key", "Jev needs its own key. Add it in Intelligence.") {
                     Pill("Add key", filled: true) { browser.openSettings(.intelligence, at: "intelligence.jev") }
                 }
                 .settingsAnchor("agents.jevkey")
@@ -587,6 +607,8 @@ private struct AgentsJevSection: View {
             }
             if mcp.config.jev {
               SettingsAdvanced("agents.jev.more", holds: ["agents.textmodel", "agents.jevfast", "agents.jevvision"]) { // Fork (settings-merge)
+                Rule()
+                Line("Tools it adds", "jev_run, jev_step, jev_observe and jev_extract, about every 200 ms per step") { EmptyView() }
                 Rule()
                 Line("Text model", brain.modelReady ? "Writes what Jev types and answers jev_extract. Small and fast is the point; empty uses \(brain.modelName)." : "Typing text and jev_extract need a model — set one up in Intelligence.") {
                     HStack(spacing: 8) {
@@ -609,7 +631,7 @@ private struct AgentsJevSection: View {
                 }
                 .settingsAnchor("agents.jevfast")
                 Rule()
-                Line("What Jev sees", "Auto sends the element table, and a numbered picture of the page only when the table can't tell controls apart. Pictures are a TypeSafe preview.") {
+                Line("What Jev sees", "Auto sends the element table, and a numbered picture of the page only when the table can't tell controls apart. Pictures are still a preview.") {
                     Segmented(options: Tools.Ultrafast.Vision.offered.map { ($0, $0.title) }, selection: jevVision)
                 }
                 .settingsAnchor("agents.jevvision")
@@ -1224,5 +1246,36 @@ private struct JevKeyPagePill: View {
             if let url = URL(string: Jev.keyPage) { NSWorkspace.shared.open(url) }
         }
         .help(Jev.keyPage)
+    }
+}
+
+/// Fork (settings-plain): what a release brings, as three short lines and a
+/// link to the whole of it — the paragraph it was read as a wall of text.
+private struct WhatsNew: View {
+    let version: String
+    let notes: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("What’s new in \(version)")
+                .font(.system(size: 13)).foregroundStyle(Palette.ink)
+            ForEach(UpdatesPage.bullets(notes), id: \.self) { line in
+                HStack(alignment: .firstTextBaseline, spacing: 7) {
+                    Text("•").foregroundStyle(Palette.muted)
+                    Text(line).foregroundStyle(Palette.muted)
+                        .lineLimit(2).truncationMode(.tail)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .font(.system(size: 12))
+            }
+            if let url = URL(string: "https://github.com/copper-browser/Copper/releases/tag/v\(version)") {
+                Link("Read the release notes", destination: url)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Palette.ink)
+                    .padding(.top, 2)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14).padding(.vertical, 10)
     }
 }

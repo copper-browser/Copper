@@ -322,12 +322,14 @@ final class Flow: ObservableObject {
     // MARK: - the sheet
 
     /// Every way in: ⌘K, the Settings row, the menu, the bench.
-    enum Door: String { case command, settings, menu, bench }
+    enum Door: String { case command, settings, menu, bench, start }
 
     /// The one way to bring the sheet up. Each time it opens it starts
     /// fresh — a finished move is behind it, the switches are back to all on
     /// — unless a move is still running, which it shows.
-    func present(from browser: Browser?, via door: Door) {
+    /// `prefer`: the browser to show first once it can be read (the start
+    /// card's pill), as if picked.
+    func present(from browser: Browser?, via door: Door, prefer: String? = nil) {
         log("open", door.rawValue)
         requester = browser ?? Windows.current
         guard !open else { return FlowPresenter.shared.raise() }
@@ -347,6 +349,7 @@ final class Flow: ObservableObject {
             askedAccess = []
         }
         unseenDone = false
+        if let prefer, !moving { preferNext = prefer }
         open = true
         refresh("open")
     }
@@ -601,8 +604,18 @@ final class Flow: ObservableObject {
             guard case .preview(let haul) = phase else { return false }
             return FlowSafari.anything(FlowSafari.usable(choice, direct: selected.safariDirect != nil, look: haul.safari))
         }
-        return true
+        return effectiveChoice.anything
     }
+
+    /// Fork (move-in-polish): the read on screen, for a browser other than
+    /// Safari (whose rows are its own) — what the switches and the button count.
+    var counted: FlowModel.Haul? {
+        guard let selected, !selected.isSafari, case .preview(let haul) = phase else { return nil }
+        return haul
+    }
+
+    /// The switches as they will act: kinds the browser has none of, off.
+    var effectiveChoice: FlowModel.Choice { choice.fitted(to: counted) }
 
     /// Performs each choice independently. A failure is a line in the report,
     /// never a reason to abandon the remaining data.
@@ -631,7 +644,9 @@ final class Flow: ObservableObject {
             }.value
             : nil
         let look = safari.map(FlowSafari.look)
-        let choice = safari == nil ? self.choice : FlowSafari.usable(self.choice, direct: source.safariDirect != nil, look: look)
+        // Fork (move-in-polish): only what this browser has; empty kinds stay off.
+        let read = previewed == source.id && lastHaulSource == source.id ? lastHaul : nil
+        let choice = safari == nil ? self.choice.fitted(to: read) : FlowSafari.usable(self.choice, direct: source.safariDirect != nil, look: look)
         var steps = FlowStep.steps(for: choice)
         phase = .moving(steps)
         await pause()
@@ -755,7 +770,8 @@ final class Flow: ObservableObject {
                     report.extensions = landed
                     report.facts.extensionsQueued = landed
                     self.phase = .done(report)
-                    browser?.announce(landed == 0 ? "No extensions could be installed" : "\(landed) extensions installed")
+                    // The open sheet says it already; a toast under it said it twice.
+                    if !self.open { browser?.announce(landed == 0 ? "No extensions could be installed" : "\(landed) extensions installed") }
                 }
                 report.facts.extensionsQueued = report.extensions
                 if report.extensions > 0 {
@@ -772,6 +788,7 @@ final class Flow: ObservableObject {
         browser.objectWillChange.send()
         Session.write(now: true, Spaces.shared.shape(visible: browser.tabs, active: browser.activeID))
         noteMoved(source.name, at: Date())
+        Store.settings.set(false, forKey: "start.offer") // Fork (first-run): the start card has done its job
         // The summary stays until Done. The Chrome guide is one button away
         // on it (`openGuide`), never opened over the summary on its own.
         phase = .done(report)

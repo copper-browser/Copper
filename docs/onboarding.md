@@ -51,6 +51,14 @@ Four short pages, each skippable:
 4. **Links from other apps.** Make Copper the default browser if you want
    links from Mail, Slack and PDFs to open here.
 
+### The first window
+
+A new profile starts with tabs in the sidebar. Under the empty tab's field a
+small card offers **Move in from** the browsers on this Mac (Arc, Chrome, Dia,
+Brave, Edge, Safari — found by app, nothing is read until you pick one) and
+the three keys worth knowing: ⌘T, ⌘K and ⌃1–9. ✕ hides it for good; so does
+opening a page or finishing a Move in.
+
 ### Updates are automatic
 
 Copper checks its GitHub releases after launch and every six hours, downloads

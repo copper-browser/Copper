@@ -1,12 +1,13 @@
 #!/bin/bash
-# The Move-in sheet comes up once, in one window, at one size, and goes when
+# The Move-in sheet comes up once, in one window, at its step's size, and goes when
 # it is told to — whatever door it was opened through, with two windows open,
 # and while the page behind it is rebuilt. Counts every open, present,
 # dismiss and scan (`bench flow events`) and checks:
 #   - two windows => exactly one sheet, hung from the window that asked;
 #   - presents == the opens that brought it up, dismisses == closes, never
 #     two at once, at most one scan per open;
-#   - the sheet's size never changes between phases;
+#   - the sheet is always 560 wide, and the same step is always the same size
+#     (its height follows the step: the preview of one source, every time);
 #   - Escape closes it, Return presses the primary button;
 #   - taking the page away from under it does not dismiss it;
 #   - reopening after a move starts fresh (the picker, not the last summary);
@@ -117,16 +118,17 @@ for pass in 1 2 3; do
     OPENS=$((OPENS + 1))
     STATE=$(until_state '.showing and .sheetVisible and .attached')
     check "$door: one sheet across both windows" '.attachedSheets == 1 and .flowSheets == 1' "$STATE"
-    NOW=$(printf '%s\n' "$STATE" | jq -c '.sheet')
-    [ -z "$SIZE" ] && SIZE="$NOW"
-    [ "$NOW" = "$SIZE" ] || fail "$door: sheet size changed $SIZE -> $NOW"
+    [ "$(printf '%s\n' "$STATE" | jq '.sheet[0]')" = 560 ] || fail "$door: sheet is not 560 wide"
     # The other window asks too, while it is up: still one sheet.
     B flow open --via bench --window "$other" >/dev/null
     sleep 0.3
     STATE=$(B flow state)
     check "$door: a second ask adds no sheet" '.attachedSheets == 1 and .flowSheets == 1 and .showing' "$STATE"
     STATE=$(until_state '.phase == "preview"')
-    [ "$(printf '%s\n' "$STATE" | jq -c '.sheet')" = "$SIZE" ] || fail "$door: preview changed the size"
+    sleep 0.4   # the sheet takes the preview's height once it is drawn
+    NOW=$(B flow state | jq -c '.sheet')
+    [ -z "$SIZE" ] && SIZE="$NOW"
+    [ "$NOW" = "$SIZE" ] || fail "$door: the same preview came up at another size: $SIZE -> $NOW"
     if [ "$door" = settings ]; then
       [ "$(B probe | jq '.settings')" = false ] || fail "settings door left Settings open"
     fi
@@ -205,7 +207,7 @@ B flow open --via command >/dev/null
 until_state '.showing and .phase == "preview"' >/dev/null
 B flow choose --only tabs >/dev/null
 B flow key return >/dev/null   # Move in again
-B flow key return >/dev/null   # Bring it all over
+B flow key return >/dev/null   # Bring over …
 until_state '.phase == "moving"' >/dev/null
 B flow key cmd-w >/dev/null
 until_state '(.showing | not) and .phase == "done"' >/dev/null
