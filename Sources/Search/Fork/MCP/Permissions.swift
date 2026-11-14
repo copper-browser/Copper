@@ -70,10 +70,9 @@ enum Permissions {
             if let lat, let lon {
                 let accuracy = try Tools.number(args, "accuracy", within: 1_000_000) ?? 50
                 position = (lat, lon, max(accuracy, 1))
-            } else if (lat == nil) != (lon == nil) {
-                throw Tools.Failure(text: "Give both latitude and longitude with the geolocation grant.")
-            } else if position == nil {
-                // Fork (geo-needs-place): a grant with nowhere to be is a page told "position unavailable".
+            } else {
+                // Fork (geo-needs-place): a grant with nowhere to be is a page told "position unavailable" —
+                // or, after another site's grant, quietly given that site's position.
                 throw Tools.Failure(text: "geolocation needs latitude and longitude: Copper has no location of its own, so the page would only get \"position unavailable\". Call browser_permissions again with grant [\"geolocation\"], latitude and longitude (for example latitude 25.76, longitude -80.19). Nothing was granted.")
             }
             GeoProvider.install()
