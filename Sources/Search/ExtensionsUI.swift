@@ -53,10 +53,10 @@ struct StoreOffer: View {
                         Button("Add") { extensions.install(from: id) }
                             .buttonStyle(.plain)
                             .font(.system(size: 12))
-                            .foregroundStyle(Palette.ground)
+                            .foregroundStyle(Palette.onAccent)
                             .padding(.horizontal, 11)
                             .padding(.vertical, 5)
-                            .background(Palette.ink, in: Capsule())
+                            .background(Palette.accent, in: Capsule()) // Fork (ui-system)
                     }
                 }
                 .padding(.leading, 16)

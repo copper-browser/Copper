@@ -156,7 +156,6 @@ struct CloudHistoryDeleteCard: View {
             }
             Pill("Delete history on cloud…", tint: Color.red.opacity(0.85)) { confirming = true }
                 .disabled(eraser.working || typedBadly)
-                .opacity(eraser.working || typedBadly ? 0.5 : 1)
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
         .confirmationDialog(question, isPresented: $confirming) {

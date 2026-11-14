@@ -2533,6 +2533,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
             decisionHandler(.cancel)
             if let reason, let tab = tab(for: webView) {
                 tab.uncover()
+                tab.failureHost = nil; tab.failureDetail = nil // Fork (ui-system): not a connection's fault
                 tab.failure = reason
             }
         }
@@ -2692,7 +2693,12 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
         // page didn't load" over a download that had worked — clicked again,
         // it downloaded again.
         guard !(nsError.domain == "WebKitErrorDomain" && code == 102) else { return }
-        tab(for: webView)?.failure = message(for: code)
+        guard let tab = tab(for: webView) else { return }
+        // Fork (ui-system): which host, and what WebKit said, for the page.
+        let failed = nsError.userInfo[NSURLErrorFailingURLErrorKey] as? URL
+        tab.failureHost = (failed ?? tab.address)?.host()
+        tab.failureDetail = "\(nsError.localizedDescription)\n\(nsError.domain) \(code)" + (failed.map { "\n\($0.absoluteString)" } ?? "")
+        tab.failure = message(for: code)
     }
 
     private func message(for code: Int) -> String {

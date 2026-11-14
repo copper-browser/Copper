@@ -57,7 +57,7 @@ struct Page: View {
             }
 
             if let failure = tab.failure {
-                Trouble(message: failure) { tab.reload() }
+                Trouble(message: failure, host: tab.failureHost, detail: tab.failureDetail) { tab.reload() }
                     .clipShape(corners.shape)
                     .transition(.opacity)
             }
@@ -215,22 +215,75 @@ final class StageView: NSView {
     }
 }
 
-/// What there is to say when the page never came. One line, and the only thing
-/// worth offering — another go.
+/// What there is to say when the page never came, and the only thing worth
+/// offering — another go. Fork (ui-system): a symbol, which site, why in one
+/// line, a real button with its key, and WebKit's own words folded away
+/// under Details for whoever needs them.
 private struct Trouble: View {
     let message: String
+    var host: String?
+    var detail: String?
     let retry: () -> Void
+    @State private var details = false
 
     var body: some View {
-        VStack(spacing: 10) {
-            Text(message)
-                .font(.system(size: 14))
-                .foregroundStyle(Palette.ink)
-            Button("Try again", action: retry)
-                .buttonStyle(.plain)
-                .font(.system(size: 12))
+        VStack(spacing: 8) {
+            Image(systemName: host == nil ? "exclamationmark.triangle" : "wifi.exclamationmark")
+                .font(.system(size: 28, weight: .light))
                 .foregroundStyle(Palette.muted)
+                .padding(.bottom, 6)
+                .accessibilityHidden(true)
+            Text(host.map { "Can’t connect to \($0)" } ?? "This page didn’t load")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Palette.ink)
+                .multilineTextAlignment(.center)
+            Text(message)
+                .font(.system(size: 13))
+                .foregroundStyle(Palette.muted)
+                .multilineTextAlignment(.center)
+            Button(action: retry) {
+                HStack(spacing: 8) {
+                    Text("Try Again")
+                    Text("⌘R").foregroundStyle(Palette.muted)
+                }
+                .font(.system(size: 13))
+                .foregroundStyle(Palette.ink)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 28)
+                .background(Palette.ground, in: Capsule())
+                .overlay(Capsule().strokeBorder(Palette.hairline, lineWidth: 1))
+                .contentShape(Capsule())
+            }
+            .buttonStyle(PillPress())
+            .padding(.top, 10)
+            .accessibilityLabel("Try Again")
+            if let detail {
+                Button { withAnimation(Motion.quick) { details.toggle() } } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .rotationEffect(.degrees(details ? 90 : 0))
+                        Text("Details")
+                    }
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.muted)
+                    .frame(minHeight: 24)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 6)
+                if details {
+                    Text(detail)
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundStyle(Palette.muted)
+                        .multilineTextAlignment(.center)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: 420)
+                        .transition(.opacity)
+                }
+            }
         }
+        .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Palette.ground)
     }

@@ -293,10 +293,15 @@ struct KeyField: View {
                 .accessibilityHidden(true)
             Group {
                 if shown {
-                    TextField(placeholder, text: $text)
+                    TextField("", text: $text)
                 } else {
-                    SecureField(placeholder, text: $text)
+                    SecureField("", text: $text)
                 }
+            }
+            // Fork (ui-system): the prompt drawn in muted ink — the system's
+            // own is ~1.7:1, and a plain field ignores a prompt's colour.
+            .background(alignment: .leading) {
+                if text.isEmpty { Text(placeholder).foregroundStyle(Palette.muted).allowsHitTesting(false).accessibilityHidden(true) }
             }
             .textFieldStyle(.plain)
             .font(.system(size: 12, design: .monospaced))
@@ -331,7 +336,7 @@ struct KeyField: View {
         // plain fields draw none, and Tab has to land somewhere visible.
         .overlay {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder(Palette.ink.opacity(0.35), lineWidth: 1.5)
+                .strokeBorder(Palette.accent, lineWidth: 1.5) // Fork (ui-system)
                 .opacity(focused ? 1 : 0)
                 .animation(Motion.quick, value: focused)
                 .allowsHitTesting(false)
@@ -1155,7 +1160,7 @@ struct HistorySettingsLine: View {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Palette.muted)
             } else {
-                Pill("Bring in", filled: true) {
+                Pill("Bring in") { // Fork (ui-system): Move in above is the page's one primary
                     flow.importHistory(preferred: "Arc", in: browser)
                 }
             }

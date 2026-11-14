@@ -217,12 +217,17 @@ private struct CloudConnectCard: View {
                             .foregroundStyle(Palette.muted)
                             .fixedSize(horizontal: false, vertical: true)
                         HStack(spacing: 6) {
-                            TextField("copper-cloud://host:port/#k=…, #sso=… or #p=…", text: $code, axis: .vertical)
+                            TextField("", text: $code, axis: .vertical)
                                 .textFieldStyle(.plain)
                                 .font(.system(size: 11.5, design: .monospaced))
                                 .lineLimit(1...3)
                                 .autocorrectionDisabled()
                                 .focused($focus, equals: .code)
+                                // Fork (ui-system): the prompt in muted ink; a plain field ignores a prompt's colour.
+                                .background(alignment: .topLeading) {
+                                    if code.isEmpty { Text("copper-cloud://host:port/#k=…, #sso=… or #p=…").font(.system(size: 11.5, design: .monospaced)).foregroundStyle(Palette.muted).allowsHitTesting(false).accessibilityHidden(true) }
+                                }
+                                .accessibilityLabel("Link code")
                                 .padding(.horizontal, 8).padding(.vertical, 6)
                                 .settingsField() // SB-04
                                 .onSubmit(go)
@@ -284,7 +289,6 @@ private struct CloudConnectCard: View {
                             if connecting { ProgressView().controlSize(.small) }
                             Pill(buttonTitle, filled: parsed != nil && !connecting, action: go)
                                 .disabled(parsed == nil || connecting)
-                                .opacity(parsed == nil ? 0.5 : 1)
                         }
                     }
                 }
@@ -653,7 +657,6 @@ private struct CloudAccountForm: View {
             if working { ProgressView().controlSize(.small) }
             Pill(working ? "…" : (mode == .create ? "Create account" : "Sign in"), filled: ready && !working, action: go)
                 .disabled(!ready || working)
-                .opacity(ready ? 1 : 0.5)
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
         .cloudAnchor("cloud.account.submit")
@@ -1187,7 +1190,7 @@ private struct CloudTrustPill: View {
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: symbol).font(.system(size: 8.5, weight: .semibold))
-            Text(label).font(.system(size: 10.5, design: link.fingerprint == nil ? .default : .monospaced))
+            Text(label).font(.system(size: 11, design: link.fingerprint == nil ? .default : .monospaced))
         }
         .foregroundStyle(Palette.muted)
         .lineLimit(1)

@@ -12,8 +12,15 @@ import AppKit
 enum Palette {
     static let ground = Color(nsColor: NS.ground)
     static let ink = Color(nsColor: NS.ink)             // neutral-900 · neutral-100
-    static let muted = Color(nsColor: NS.muted)         // neutral-500
-    static let faint = Color(nsColor: NS.faint)         // neutral-300 · neutral-700
+    static let muted = Color(nsColor: NS.muted)         // every secondary word: ≥4.5:1 on ground and wash
+    static let faint = Color(nsColor: NS.faint)         // decoration only — rules, tracks, glyphs — never words
+    /// Fork (ui-system): Copper's one colour — the primary button, a switch
+    /// that is on, the keyboard's ring. Nothing else, so it always means
+    /// "this one".
+    static let accent = Color(nsColor: NS.accent)
+    /// Words on an accent fill: white on the deep light copper, near-black
+    /// on the bright dark one (white there is under 3:1).
+    static let onAccent = Color(nsColor: NS.onAccent)
     static let hairline = Color(nsColor: NS.hairline)   // neutral-200 · neutral-800
     static let wash = Color(nsColor: NS.wash)           // the live tab
     static let hover = Color(nsColor: NS.hover)         // the one under the pointer
@@ -23,13 +30,23 @@ enum Palette {
     enum NS {
         static let ground = pair(1.0, 0.11)
         static let ink = pair(0.09, 0.93)
-        static let muted = pair(0.55, 0.58)
+        // Fork (ui-system): was 0.55 · 0.58 — 3.4:1 on white. 0.40 (Settings'
+        // own detail ink) is 5.7:1 on ground and 5:1 on wash; 0.60 is 6:1
+        // and 4.8:1 in dark.
+        static let muted = pair(0.40, 0.60)
         static let faint = pair(0.83, 0.32)
         static let hairline = pair(0.91, 0.20)
         static let wash = pair(0.937, 0.175)
         static let hover = pair(0.965, 0.15)
         /// The resting traffic lights, drawn by hand when the app is behind.
         static let resting = pair(0.80, 0.30)
+        /// #BD522B (4.7:1 under white) · #E07A52 (5.7:1 on the dark ground).
+        static let accent = NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                ? NSColor(srgbRed: 0.878, green: 0.478, blue: 0.322, alpha: 1)
+                : NSColor(srgbRed: 0.741, green: 0.322, blue: 0.169, alpha: 1)
+        }
+        static let onAccent = pair(1.0, 0.11)
 
         private static func pair(_ light: CGFloat, _ dark: CGFloat) -> NSColor {
             NSColor(name: nil) { appearance in

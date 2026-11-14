@@ -96,7 +96,7 @@ a row (Show, Copy, Remove), lives in `Plate.swift`. The shared pieces are in
 - **Tab reaches every enabled control** when Keyboard navigation is on in System Settings
   (`settingsFocusable`, or `settingsFocusRing` for a `Button`, which is focusable already).
 - **The focus ring** is Settings' own (`SettingsFocusRing`): the control's shape, 3 points
-  outside it, in ink, and nothing while unfocused. The system's blue halo is turned off.
+  outside it, in Copper's copper accent, and nothing while unfocused. The system's blue halo is turned off.
 - **A row that can't apply here is not drawn** (Swipe between spaces with tabs across the top,
   Voice's options while voice is off); search lands on the row that brings it, through the
   entry's `fallback`. A control that is shown but can't act right now (set by Copper Cloud, a

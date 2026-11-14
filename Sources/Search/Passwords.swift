@@ -24,14 +24,15 @@ struct PasswordsPanel: View {
                         .transition(.opacity)
                 }
 
+                // Fork (ui-system): empty is a state; a list of one is one row tall.
                 if browser.shownSites.isEmpty {
-                    Card {
-                        Nothing(browser.saved.isEmpty
-                                ? "Nothing kept yet. Sign in somewhere and say yes, or bring yours in below."
-                                : "Nothing matches.")
+                    if browser.saved.isEmpty {
+                        EmptyState("key", "No passwords yet", "Say Save when you sign in somewhere, or bring yours in below.")
+                    } else {
+                        EmptyState("magnifyingglass", "No matches", "No site or account matches “\(browser.hunting)”.")
                     }
                 } else {
-                    ScrollView(showsIndicators: false) {
+                    Fitted {
                         Card {
                             ForEach(Array(browser.shownSites.enumerated()), id: \.element.host) { index, site in
                                 if index > 0 { Rule() }
@@ -47,7 +48,6 @@ struct PasswordsPanel: View {
                         }
                         .padding(.bottom, 2)
                     }
-                    .frame(maxHeight: 400)
                 }
             }
         } foot: {
@@ -80,13 +80,11 @@ struct PasswordsPanel: View {
                         Text("Reading \(importing)…")
                             .font(.system(size: 11.5))
                             .foregroundStyle(Palette.muted)
-                    } else {
+                    } else if !browser.saved.isEmpty { // Fork (ui-system): no count of nought
                         Text(browser.saved.count == 1 ? "1 password" : "\(browser.saved.count) passwords")
                             .font(.system(size: 12))
                             .foregroundStyle(Palette.muted)
-                        if !browser.saved.isEmpty { // Fork (password-csv): out as well as in
-                            Pill("Export…") { browser.exportPasswordsCSV() }
-                        }
+                        Pill("Export…") { browser.exportPasswordsCSV() } // Fork (password-csv): out as well as in
                     }
                 }
                 Text("macOS asks once for that browser's keychain key. Nothing is changed there; everything lands in your own keychain, under \(Fork.name).")
@@ -182,7 +180,7 @@ struct PasswordsPanel: View {
                 HStack(spacing: 10) {
                     Text(login.user.isEmpty ? "No username" : login.user)
                         .font(.system(size: 12))
-                        .foregroundStyle(login.user.isEmpty ? Palette.faint : Palette.ink)
+                        .foregroundStyle(login.user.isEmpty ? Palette.muted : Palette.ink)
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .frame(minWidth: 120, alignment: .leading)

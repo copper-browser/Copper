@@ -141,7 +141,7 @@ struct DriveCard: View {
                     if drive.run?.id == run.id { drive.stop() } else { drive.stop(run.who.key) }
                 } label: {
                     HStack(spacing: 4) {
-                        Image(systemName: "stop.fill").font(.system(size: 7.5))
+                        Image(systemName: "stop.fill").font(.system(size: 9))
                         Text("Stop").font(.system(size: 11, weight: .medium))
                     }
                     .foregroundStyle(Palette.ink)

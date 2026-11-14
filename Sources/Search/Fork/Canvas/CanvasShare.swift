@@ -1042,7 +1042,7 @@ struct CanvasShareSheet: View {
                 if model.canWithdraw(invite) {
                     Button { model.withdraw(invite) } label: {
                         Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
-                            .frame(width: 16, height: 16).contentShape(Rectangle())
+                            .frame(width: 24, height: 24).contentShape(Rectangle()) // Fork (ui-system): 24 pt to hit
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(Palette.muted)

@@ -233,7 +233,7 @@ struct AddressField: NSViewRepresentable {
             string: placeholder,
             attributes: [
                 .font: NSFont.systemFont(ofSize: size),
-                .foregroundColor: NSColor(Palette.ink.opacity(0.3)),
+                .foregroundColor: Palette.NS.muted, // Fork (ui-system): was ink at 0.3, ~2:1
             ]
         )
         return field

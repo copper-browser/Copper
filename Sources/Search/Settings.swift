@@ -676,7 +676,7 @@ struct Segmented<Option: Hashable>: View {
     }
 }
 
-/// On or off, in ink rather than in blue.
+/// On or off, in Copper's accent rather than the system's blue.
 struct Switch: View {
     @Binding var on: Bool
     /// Fork (settings-a11y): what VoiceOver calls it; a `Line` hands its
@@ -702,7 +702,7 @@ struct Switch: View {
         let _ = SettingsControlLedger.note("switch", page: pageName, name: SettingsControlRules.name(given: label, row: rowLabel),
                                            value: on ? "On" : "Off", keyboard: enabled, disabled: !enabled, focused: focused) // Fork (settings-a11y)
         Capsule()
-            .fill(on ? Palette.ink : Palette.faint)
+            .fill(on ? Palette.accent : Palette.faint) // Fork (ui-system)
             .frame(width: 30, height: 18)
             .overlay(alignment: on ? .trailing : .leading) {
                 Circle()
@@ -728,8 +728,10 @@ struct Switch: View {
     }
 }
 
-/// A small capsule that does one thing. Outlined by default; filled in ink
-/// when it is the thing you came here to press.
+/// A small capsule that does one thing. Outlined by default; filled in the
+/// accent when it is the thing you came here to press. Fork (ui-system):
+/// a disabled one is always the outline, its word in muted ink — still
+/// readable, plainly not the one to press.
 struct Pill: View {
     let title: String
     var filled = false
@@ -751,23 +753,32 @@ struct Pill: View {
     var body: some View {
         let _ = SettingsPerf.tick("pill") // Fork (settings-perf)
         let _ = SettingsControlLedger.note("button", page: pageName, name: title, keyboard: enabled, disabled: !enabled, focused: focused) // Fork (settings-a11y)
+        let primary = filled && enabled // Fork (ui-system)
         Button(action: action) {
             Text(title)
-                .font(.system(size: 11.5))
+                .font(.system(size: 11.5, weight: primary ? .medium : .regular))
                 .lineLimit(1)
                 // A pill is as wide as its word, never a tall wrapped column.
                 .fixedSize()
-                .foregroundStyle(filled ? Palette.ground : tint)
+                .foregroundStyle(primary ? Palette.onAccent : (enabled ? tint : Palette.muted))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .background(filled ? Palette.ink : (hovering ? Palette.hover : Palette.ground), in: Capsule())
-                .overlay(Capsule().strokeBorder(filled ? .clear : Palette.hairline, lineWidth: 1))
+                .background(primary ? Palette.accent : (hovering && enabled ? Palette.hover : Palette.ground), in: Capsule())
+                .overlay(Capsule().strokeBorder(primary ? .clear : Palette.hairline, lineWidth: 1))
                 .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PillPress()) // Fork (ui-system): .plain halves a disabled pill's word to ~2:1
         .onHover { hovering = $0 }
         .animation(Motion.quick, value: hovering)
         .settingsFocusRing($focused, shape: Capsule()) // Fork (settings-a11y)
+    }
+}
+
+/// Fork (ui-system): a press dims the pill a little; being disabled is the
+/// pill's own business (above), not a second fade on top.
+struct PillPress: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.opacity(configuration.isPressed ? 0.75 : 1)
     }
 }
 

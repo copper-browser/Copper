@@ -63,7 +63,7 @@ struct AgentActivity: View {
                     .shimmer()
                 TimelineView(.periodic(from: group.started, by: 1)) { beat in
                     Text("· \(DriveStyle.span(beat.date.timeIntervalSince(group.started)))")
-                        .font(.system(size: 12)).monospacedDigit().foregroundStyle(Palette.faint)
+                        .font(.system(size: 12)).monospacedDigit().foregroundStyle(Palette.muted)
                 }
                 .fixedSize()
             } else {
@@ -163,7 +163,7 @@ struct AgentActivity: View {
                 } else if item.ms > 0 {
                     Text(DriveStyle.ms(Int(item.ms)))
                         .font(.system(size: 10.5)).monospacedDigit()
-                        .foregroundStyle(Palette.faint)
+                        .foregroundStyle(Palette.muted)
                         .fixedSize()
                 }
             }
@@ -179,7 +179,7 @@ struct AgentActivity: View {
         return VStack(alignment: .leading, spacing: 5) {
             if run.cycles.count > shown.count {
                 Text("\(run.cycles.count - shown.count) earlier steps")
-                    .font(.system(size: 11)).foregroundStyle(Palette.faint)
+                    .font(.system(size: 11)).foregroundStyle(Palette.muted)
             }
             ForEach(Array(shown)) { cycle in DriveStep(cycle: cycle, jev: true) }
             if !live, run.status != .running {

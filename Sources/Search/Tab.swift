@@ -56,6 +56,11 @@ enum Web {
         // Off by default on macOS, which is why a full-screen button on a video
         // did nothing at all: the page asks, and WebKit refuses without a word.
         config.preferences.isElementFullscreenEnabled = true
+        // Fork (ui-system): Tab reaches links and buttons, as in Chrome and
+        // Arc. WebKit's own default (Safari's) stops only at text fields
+        // unless the Mac's Keyboard navigation is on, so Tab from a password
+        // box never reached Sign in. ⌥Tab still walks fields alone.
+        config.preferences.tabFocusesLinks = true
         config.mediaTypesRequiringUserActionForPlayback = .audio
         TabShare.configure(config) // Fork (tab-share): getDisplayMedia's way back to Copper (Fork/TabShare/)
         if Store.testing, !Store.measuring { config.preferences.inactiveSchedulingPolicy = .none }
@@ -120,7 +125,15 @@ final class Tab: ObservableObject, Identifiable {
     @Published private(set) var canGoForward = false
     /// Set when the page never arrived — no host, no network, a refused
     /// connection. Shown in place of the page rather than in a dialog.
-    @Published var failure: String?
+    @Published var failure: String? {
+        didSet { if failure == nil { failureHost = nil; failureDetail = nil } } // Fork (ui-system)
+    }
+    /// Fork (ui-system): the host that couldn't be reached and the error as
+    /// WebKit gave it, for the error page's title and its Details. Set
+    /// before `failure`, which is what redraws; nil for a failure that isn't
+    /// the network's (a refused download, a missing canvas).
+    var failureHost: String?
+    var failureDetail: String?
     /// How far down the page you are, nought to one. The tab's own pill fills
     /// with it.
     @Published var reading: Double = 0

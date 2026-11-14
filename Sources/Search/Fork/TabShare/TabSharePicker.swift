@@ -407,10 +407,10 @@ struct SharePickerCard: View {
             } label: {
                 Text("Share")
                     .font(.system(size: 12))
-                    .foregroundStyle(Palette.ground)
+                    .foregroundStyle(Palette.onAccent)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 5)
-                    .background(Palette.ink, in: Capsule())
+                    .background(Palette.accent, in: Capsule()) // Fork (ui-system)
             }
             .buttonStyle(.plain)
         }

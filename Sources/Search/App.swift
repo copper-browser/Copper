@@ -408,7 +408,7 @@ struct ContentView: View {
                 close: { browser.hoarding = false }
         }
         if browser.tuning {
-            sheet { SettingsPanel(browser: browser, prefs: browser.prefs) }
+            sheet(fitted: false) { SettingsPanel(browser: browser, prefs: browser.prefs) }
                 close: { browser.tuning = false }
         }
         if browser.bookmarking {
@@ -496,6 +496,7 @@ struct ContentView: View {
             keys = nil
         }
         .modifier(WindowOpener())
+        .tint(Palette.accent) // Fork (ui-system): system controls in Copper's accent, not the Mac's blue
     }
 
     /// Give the keyboard back to the page once the field is done with it.
@@ -545,7 +546,21 @@ struct ContentView: View {
         let login = offer.login
         let vault = offer.target != .keychain // Fork: Bitwarden or 1Password
         let name = offer.target.title
-        return HStack(spacing: 12) {
+        return HStack(spacing: 10) {
+            // Fork (ui-system): whose password, at a glance — the site's
+            // mark with a key on its corner.
+            Mark(icon: Favicons.shared.cached(login.host), letter: login.host.first.map { String($0).uppercased() } ?? "•", size: 18)
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: "key.fill")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(Palette.onAccent)
+                        .frame(width: 13, height: 13)
+                        .background(Palette.accent, in: Circle())
+                        .overlay(Circle().strokeBorder(Palette.ground, lineWidth: 1.5))
+                        .offset(x: 5, y: 5)
+                }
+                .padding(.trailing, 4)
+                .accessibilityHidden(true)
             Text(vault
                  ? (offer.changed
                     ? "Update the password in \(name) for \(login.user) on \(login.host)?"
@@ -558,22 +573,26 @@ struct ContentView: View {
                 .font(.system(size: 12.5))
                 .foregroundStyle(Palette.ink)
                 .lineLimit(1)
-            Button(vault ? (offer.changed ? "Update in \(name)" : "Save to \(name)") : (offer.changed ? "Update" : "Save")) { browser.keepOffer() }
-                .buttonStyle(.plain)
-                .font(.system(size: 12))
-                .foregroundStyle(Palette.ground)
-                .padding(.horizontal, 11)
-                .padding(.vertical, 5)
-                .background(Palette.ink, in: Capsule())
-            Button("Not now") { browser.dropOffer() }
-                .buttonStyle(.plain)
-                .font(.system(size: 12))
-                .foregroundStyle(Palette.muted)
+            // Fork (ui-system): one accent button, one bordered, and the
+            // rarely-wanted "never" tucked under ⌄ rather than a third word.
+            Pill(vault ? (offer.changed ? "Update in \(name)" : "Save to \(name)") : (offer.changed ? "Update" : "Save"), filled: true) { browser.keepOffer() }
+            Pill("Not now") { browser.dropOffer() }
             if !offer.changed {
-                Button("Never here") { browser.neverOffer() }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Palette.muted)
+                Menu {
+                    Button("Never here") { browser.neverOffer() }
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Palette.muted)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .tint(Palette.muted) // a menu's label takes the tint, not its own colour
+                .fixedSize()
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+                .help("Never here: don't offer for \(login.host) again")
+                .accessibilityLabel("More")
             }
         }
         .padding(.leading, 16)
@@ -599,17 +618,25 @@ struct ContentView: View {
 
     /// The same dimmed ground and spring for every panel that floats over a
     /// page, so they read as one kind of thing.
-    @ViewBuilder
     private func sheet<Panel: View>(
+        fitted: Bool = true,
         @ViewBuilder _ panel: () -> Panel,
         close: @escaping () -> Void
     ) -> some View {
-        ZStack {
-            Color.black.opacity(0.10)
-                .ignoresSafeArea()
-                .onTapGesture(perform: close)
-            panel()
-                .transition(.scale(scale: 0.97).combined(with: .opacity))
+        // Fork (ui-system): a panel is as tall as what it holds, up to 70% of
+        // the window; its list (`Fitted`) scrolls past that. Settings keeps
+        // its own size.
+        let content = panel()
+        return GeometryReader { room in
+            ZStack {
+                Color.black.opacity(0.10)
+                    .ignoresSafeArea()
+                    .onTapGesture(perform: close)
+                content
+                    .frame(maxHeight: fitted ? max(280, room.size.height * 0.7) : nil)
+                    .transition(.scale(scale: 0.97).combined(with: .opacity))
+            }
+            .frame(width: room.size.width, height: room.size.height)
         }
         .transition(.opacity)
     }
