@@ -116,7 +116,7 @@ struct GroupedRows: View {
                     .modifier(SideDragHidden(drag: drag, held: held))
                     .offset(y: held ? travel - CGFloat(index - from) * step : 0)
                     .zIndex(held ? 1 : 0)
-                    .shadow(color: .black.opacity(held ? 0.14 : 0), radius: 12, y: 4)
+                    .modifier(SideDragLift(held: held)) // Fork (motion): scale 1.02, shadow .12 r8 y3
                     .gesture(reorder(tab: tab, index: index, step: step))
                     if block == .saved { SavedDropGap(drag: drag, anchor: .after(tab.id), tint: tint) }
                 }

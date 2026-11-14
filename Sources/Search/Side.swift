@@ -606,6 +606,7 @@ private struct PinSquare: View {
         .modifier(OneClick(double: live) {
             if live { browser.editLetter(tab) } else { browser.select(tab) }
         })
+        .modifier(Pressable(radius: radius)) // Fork (motion)
         .onHover { pointing = $0 }
         // Fork (calendar-peek): a Calendar pin shows the next meetings while
         // the pointer rests on it or on the card.
@@ -649,6 +650,8 @@ struct SideRow: View { // Fork: was private; GroupedRows draws it
     private var hovering: Bool { pointing || benchHover.forced == tab.id }
     @State private var shake: CGFloat = 0
     @ObservedObject private var heat = Heat.shared
+    @ObservedObject private var paired = SplitPairs.shared // Fork (motion)
+    private var inPair: Bool { paired.ids.contains(tab.id) }
 
     private var editing: Bool { browser.editingTab == tab.id }
 
@@ -673,11 +676,9 @@ struct SideRow: View { // Fork: was private; GroupedRows draws it
                         .font(.system(size: 9))
                         .foregroundStyle(colour.opacity(0.7))
                 }
-                Text(tab.label)
+                FadingTitle(text: Text(tab.label) // Fork (motion): a long title fades out, no "…"
                     .font(.system(size: SideBar.title, weight: live ? .semibold : .regular))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .foregroundStyle(colour)
+                    .foregroundStyle(colour))
             }
 
             Spacer(minLength: 2)
@@ -696,11 +697,13 @@ struct SideRow: View { // Fork: was private; GroupedRows draws it
         .frame(height: SideBar.row)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background { ground }
+        .overlay(alignment: .leading) { if inPair { SplitBracket(tint: tint) } } // Fork (motion): the two halves of a split
         .modifier(Shake(travel: shake))
         .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .modifier(OneClick(double: false) {
             if live { browser.beginTabEdit(tab) } else { browser.select(tab) }
         })
+        .modifier(Pressable()) // Fork (motion): the shared pressed state, after the tap so the tap keeps the click
         .onHover { pointing = $0 }
         .contextMenu { TabMenu(browser: browser, tab: tab, close: close) }
         .modifier(CanvasTabRow(tab: tab)) // Fork (canvas): a canvas's rename field hangs from its row
@@ -792,6 +795,9 @@ struct SideRow: View { // Fork: was private; GroupedRows draws it
         } else if hovering {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(tint.hover)
+        } else if inPair {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(tint.ink.opacity(0.05)) // Fork (motion): a split's other half, tinted like its partner's pill
         }
     }
 

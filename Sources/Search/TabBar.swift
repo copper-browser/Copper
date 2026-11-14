@@ -385,6 +385,7 @@ private struct TabPill: View {
                 browser.select(tab)
             }
         })
+        .modifier(Pressable(radius: 9)) // Fork (motion): the shared pressed state
         .onHover { hovering = $0 }
         .contextMenu { TabMenu(browser: browser, tab: tab, close: close) }
         .help(pinned || compact ? tab.label : "")
@@ -440,11 +441,9 @@ private struct TabPill: View {
                         .font(.system(size: 9))
                         .foregroundStyle(colour.opacity(0.7))
                 }
-                Text(tab.label)
+                FadingTitle(text: Text(tab.label) // Fork (motion): a long title fades out, no "…"
                     .font(.system(size: 12.5, weight: live ? .semibold : .regular))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .foregroundStyle(colour)
+                    .foregroundStyle(colour))
             }
 
             Spacer(minLength: 2)

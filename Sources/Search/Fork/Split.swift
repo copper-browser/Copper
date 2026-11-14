@@ -30,13 +30,17 @@ final class Split: ObservableObject {
         side = nil
         swapped = false
         holder = nil
+        landing = false
+        still = nil
     }
 
     /// Which tabs are kept side by side, both ways round. Arc's split views
     /// are sidebar items: you leave one by picking another tab and come back
     /// to it by picking either half. A pair is made by opening a split and
     /// ends when the split is closed; it rides in the session (`Entry.split`).
-    @Published private(set) var pairs: [Tab.ID: Tab.ID] = [:]
+    @Published private(set) var pairs: [Tab.ID: Tab.ID] = [:] {
+        didSet { SplitPairs.shared.update(Set(pairs.keys)) } // Fork (motion): the column marks both halves
+    }
 
     private func pair(_ a: Tab.ID, _ b: Tab.ID) {
         unpair(a); unpair(b)
@@ -107,10 +111,30 @@ final class Split: ObservableObject {
     /// out to the fraction (`SplitStage`); a split coming back (`resume`)
     /// is simply there.
     @Published var growing = false
+    /// Fork (motion): the pane is still gliding in — its toolbar keeps its
+    /// cross until it has landed, so a click mid-glide can't hit it.
+    @Published var landing = false
+
+    /// Fork (motion): the page that was on screen, as it looked before the
+    /// split made it narrower. Drawn over it while the pane glides in (its
+    /// web view re-wraps a beat behind the glide: clipped, then one snap)
+    /// and faded off once it has re-wrapped (`SplitStage`).
+    @Published var still: (id: Tab.ID, picture: NSImage)?
 
     func open(with tab: Tab, in browser: Browser) {
         guard tab.id != browser.activeID else { return }
         growing = !on(in: browser)
+        // Asked before the pane exists, so WebKit draws it at the old width.
+        if growing, let left = browser.active, let web = left.built, !web.unpainted, web.bounds.width > 1 {
+            let id = left.id
+            web.takeSnapshot(with: nil) { [weak self] image, _ in
+                MainActor.assumeIsolated {
+                    guard let self, let image, self.landing else { return }
+                    self.still = (id, image)
+                }
+            }
+        }
+        landing = growing || landing
         // A tab on another window's stage is handed over first, as select
         // would; that window lands on another of its own.
         Spaces.shared.claim(tab, for: browser)
@@ -122,7 +146,7 @@ final class Split: ObservableObject {
         tab.touch()
     }
 
-    func close() { unpair(side); side = nil; swapped = false; holder = nil }
+    func close() { unpair(side); side = nil; swapped = false; holder = nil; landing = false; still = nil }
 
     /// The cross on a pane's own toolbar. The tab goes, the split goes with
     /// it, and the other pane's page is what you are left looking at — which
@@ -133,6 +157,8 @@ final class Split: ObservableObject {
         side = nil
         swapped = false
         holder = nil
+        landing = false
+        still = nil
         browser.close(tab)
         if let other, other.id != tab.id, browser.tabs.contains(where: { $0.id == other.id }) {
             browser.select(other)
@@ -224,6 +250,17 @@ final class Split: ObservableObject {
             self.side = nil
         }
     }
+}
+
+/// Fork (motion): which tabs are kept in a split, for the column's rows. An
+/// object of its own: a row watching `Split` would redraw on every point of
+/// a handle drag (`fraction`).
+@MainActor
+final class SplitPairs: ObservableObject {
+    static let shared = SplitPairs()
+    @Published private(set) var ids: Set<Tab.ID> = []
+
+    func update(_ next: Set<Tab.ID>) { if next != ids { ids = next } }
 }
 
 extension Tab {
@@ -371,7 +408,17 @@ struct SplitStage: View {
                 // An ease-out, not glide's spring: a spring's last few points of
                 // overshoot each re-lay the pages out, and the split kept
                 // shuffling for 300 ms after it looked done.
-                withAnimation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .easeOut(duration: 0.28)) { split.growing = false }
+                // Fork (motion): the cross comes once the pane has landed; the
+                // picture of the old page goes once its page has re-wrapped.
+                let still = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+                withAnimation(still ? nil : .easeOut(duration: 0.28), completionCriteria: .logicallyComplete) {
+                    split.growing = false
+                } completion: {
+                    split.landing = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        withAnimation(.easeOut(duration: 0.12)) { split.still = nil }
+                    }
+                }
             }
             .onChange(of: browser.activeID) { was, _ in split.reconcile(browser, was: was) }
             .onChange(of: browser.tabs.map(\.id)) { _, _ in split.reconcile(browser) }
@@ -403,7 +450,12 @@ struct SplitStage: View {
             tab: tab,
             live: tab.id == browser.activeID,
             tint: split.tint(dark: scheme == .dark).mark.opacity(0.85),
-            size: CGSize(width: max(size.width, 1), height: max(size.height, 1))
+            size: CGSize(width: max(size.width, 1), height: max(size.height, 1)),
+            // Fork (motion): the toolbars grow in with the pane rather than
+            // popping in and pushing the page down a bar's height at once.
+            bar: split.growing ? 0 : SplitMetrics.bar,
+            landed: !split.landing,
+            still: split.still.flatMap { $0.id == tab.id ? $0.picture : nil }
         )
     }
 }

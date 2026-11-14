@@ -302,6 +302,7 @@ struct SpaceStrip<Tools: View>: View {
             .shadow(color: .black.opacity(held ? 0.16 : 0), radius: 8, y: 2)
             .contentShape(Rectangle())
             .onTapGesture { SpaceEditing.shared.pressed(space.id, in: browser) }
+            .modifier(Pressable(radius: 8)) // Fork (motion): the shared pressed state
             .gesture(reorder(space, index: index))
             .onHover { over in
                 hovering = over ? space.id : (hovering == space.id ? nil : hovering)
