@@ -24,6 +24,14 @@ import WebKit
 // starts the moment the pointer rests on its chip at the foot (`hover`), a
 // few hundred milliseconds before the click.
 //
+// Fork (space-perf): then every other space's, one at a time, while the
+// pages that may sleep hold under half their byte budget (`roomy`,
+// Sleep.swift's `footprintBudget`): a first trip to a space after a launch
+// woke its page inside the switch, ~300 ms of main thread on top of the
+// rows (four of five switches in the A2 bench). Hidden, they are throttled
+// like any tab you've left, and idle sleep's byte budget and heavy rule
+// still put them down. A swipe towards a space starts its page too.
+//
 // Not on battery saver, never in a headless run, and not at all with
 // `defaults write <domain> spaces.warm -bool false`.
 //
@@ -40,8 +48,10 @@ enum SpaceWarm {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 guard let browser else { return }
                 PinsAwake.shared.start(in: browser) { [weak browser] in
-                    guard let browser, let last else { return }
-                    warm(space: last, in: browser)
+                    guard let browser else { return }
+                    var seen = Set<UUID>()
+                    let order = ([last].compactMap { $0 } + Spaces.shared.all.map(\.id)).filter { seen.insert($0).inserted }
+                    next(order, in: browser)
                 }
             }
         }
@@ -59,18 +69,43 @@ enum SpaceWarm {
     /// The landing tab being warmed now: one at a time.
     private static var warming: Tab.ID?
 
+    /// Fork (space-perf): the spaces' landing tabs in `queue`, one after
+    /// another, while there is room for them.
+    private static func next(_ queue: [UUID], in browser: Browser) {
+        guard let space = queue.first else { return }
+        let rest = Array(queue.dropFirst())
+        guard roomy else { return }
+        if !warm(space: space, in: browser, then: { [weak browser] in if let browser { next(rest, in: browser) } }) {
+            next(rest, in: browser)
+        }
+    }
+
+    /// Fork (space-perf): the pages that may sleep (every loaded page but
+    /// the pins) hold less than half their byte budget between them.
+    static var roomy: Bool {
+        var pids = Set<pid_t>()
+        let bytes = Spaces.shared.everyTab.filter { $0.pin == nil && $0.built != nil && !$0.asleep }.reduce(UInt64(0)) { sum, tab in
+            guard let weight = Heat.shared.weight(of: tab), pids.insert(weight.pid).inserted else { return sum }
+            return sum + weight.bytes
+        }
+        return bytes < Browser.footprintBudget / 2
+    }
+
     /// The page `browser` would land on in `space`, loaded out of sight —
-    /// unless it already has one, or is the space on screen.
-    static func warm(space: UUID, in browser: Browser) {
-        guard warming == nil, !Headless.on, on, !ProcessInfo.processInfo.isLowPowerModeEnabled else { return }
+    /// unless it already has one, or is the space on screen. False when
+    /// there was nothing to warm (`then` is not called).
+    @discardableResult
+    static func warm(space: UUID, in browser: Browser, then: (() -> Void)? = nil) -> Bool {
+        guard warming == nil, !Headless.on, on, !ProcessInfo.processInfo.isLowPowerModeEnabled else { return false }
         let spaces = Spaces.shared
         guard space != spaces.current(in: browser), let landing = spaces.wouldLand(in: space, for: browser),
               let tab = spaces.projection(space).first(where: { $0.id == landing }),
-              tab.pending != nil, tab.built == nil, !tab.shy else { return }
+              tab.pending != nil, tab.built == nil, !tab.shy else { return false }
         spaces.remember(tab.id, in: space, for: browser)
         warming = tab.id
         Breadcrumbs.note("space-warm", [("host", tab.pending?.host() ?? "-")])
-        warm(tab, size: browser.active?.built?.bounds.size, start: { _ = tab.wake() }) { warming = nil }
+        warm(tab, size: browser.active?.built?.bounds.size, start: { _ = tab.wake() }) { warming = nil; then?() }
+        return true
     }
 
     /// One tab's page loaded out of sight: its view in the Room, `start` sets

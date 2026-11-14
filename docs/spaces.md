@@ -32,8 +32,12 @@ editor*, so it gets a name, an icon and a colour straight away.
 the old space's out, the new one's in, while the ground under them changes
 colour in place. With Reduce Motion on nothing travels — the old rows fade
 out, then the new ones fade in, never the two lists over each other. The
-page you were on stays on the card until the new space's page has drawn,
-so the card never flashes white.
+new space's page takes the card in the same frame as its rows: a page
+already drawn is swapped in once WebKit has a frame of it (never faded over
+the old one); a page that is waking shows its own last picture, or its
+ground, until it draws. After a launch, every space's landing page is
+loaded in the background while the pages that may sleep fit half their
+memory budget, so a first trip to a space rarely wakes one.
 
 ## The space menu
 

@@ -233,11 +233,13 @@ struct SideTargets: PreferenceKey, Equatable {
 
     /// The tab under a point in SwiftUI's global space (as the sidebar
     /// notification carries it), read in the listener's own geometry.
-    func hit(_ point: CGPoint, in geo: GeometryProxy) -> Tab.ID? {
+    /// Fork (space-perf): rows hand up no anchor each; `row` finds one from
+    /// a global point (SideDrag.row), inside the scroll only.
+    func hit(_ point: CGPoint, in geo: GeometryProxy, row: (CGPoint) -> Tab.ID? = { _ in nil }) -> Tab.ID? {
         let origin = geo.frame(in: .global).origin
         let local = CGPoint(x: point.x - origin.x, y: point.y - origin.y)
         if let pin = pins.first(where: { geo[$0.value].contains(local) }) { return pin.key }
         if let window, !geo[window].contains(local) { return nil }
-        return rows.first { geo[$0.value].contains(local) }?.key
+        return rows.first { geo[$0.value].contains(local) }?.key ?? row(point)
     }
 }

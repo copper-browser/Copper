@@ -4,7 +4,9 @@ import WebKit
 @testable import Search
 
 // A page coming onto the stage keeps the one going out under it until it has
-// drawn (Stage.swift, StageView `hold`; Fork: page-hold).
+// drawn (Stage.swift, StageView `hold`; Fork: page-hold) — only a page that
+// has drawn before and was out of a window a second or more, or comes in with
+// a space switch (`StageView.holds`; Fork: space-perf).
 
 @Suite("The page going out stays until the one coming in has drawn")
 @MainActor
@@ -21,8 +23,8 @@ struct PageHoldTests {
 
     private func page() -> PageView { PageView(frame: .zero, configuration: WKWebViewConfiguration()) }
 
-    @Test("A page that has never drawn comes in over the old one, which goes once it has")
-    func holdsUntilFirstFrame() async throws {
+    @Test("A page that has never drawn never keeps another page under it (no two pages faded over each other)")
+    func freshPageTakesTheStageAtOnce() async throws {
         let (window, stage) = stage()
         defer { window.close() }
         let old = page()
@@ -31,12 +33,26 @@ struct PageHoldTests {
         new.holdForFirstFrame()
         guard new.unpainted else { return } // a WebKit without the first-frame event shows a page at once
         stage.show(new)
-        #expect(stage.subviews.contains(old), "the old page stays while the new one has nothing to show")
-        #expect(stage.subviews.last === new && new.alphaValue == 0)
+        #expect(stage.subviews == [new], "the old page goes in the same frame; the ground (or the tab's own picture) shows")
+        #expect(new.alphaValue == 0)
         new.showFirstFrame()
-        try await Task.sleep(for: .milliseconds(400))
-        #expect(!stage.subviews.contains(old), "the old page goes once the new one has drawn")
+        try await Task.sleep(for: .milliseconds(300))
         #expect(new.alphaValue == 1)
+    }
+
+    @Test("A page back on the stage within a second swaps in one frame; one out longer is held")
+    func holdOnlyAfterASecondOut() async throws {
+        let (window, stage) = stage()
+        defer { window.close() }
+        let one = page(), two = page()
+        stage.show(one)
+        stage.show(two)
+        try await Task.sleep(for: .milliseconds(350)) // any hold of `two` over `one` ends (≤0.3 s)
+        stage.show(one) // `one` left the window ~0.35 s ago
+        #expect(stage.subviews == [one], "back inside a second: no hold, `two` goes at once")
+        #expect(one.alphaValue == 1)
+        try await Task.sleep(for: .milliseconds(1100))
+        #expect(StageView.holds(two), "out for over a second: WebKit may give it back white, so the stage holds")
     }
 
     @Test("A hold cut short by the stage leaving its window never leaves the page unseen")

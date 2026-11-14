@@ -12,6 +12,7 @@ struct GroupedRows: View {
     @ObservedObject var browser: Browser
     @ObservedObject var prefs: Preferences
     @ObservedObject var groups = Groups.shared
+    @ObservedObject private var heat = Heat.shared // Fork (space-perf): once for the block, not once a row
     let pill: Namespace.ID
     let tint: SpaceTint
     /// The sidebar draws the loose list as two blocks (Saved, Today); each
@@ -76,10 +77,14 @@ struct GroupedRows: View {
                     let held = dragging == tab.id
                     if block == .saved { SavedDropGap(drag: drag, anchor: .before(tab.id), tint: tint) }
                     VStack(spacing: GroupedRows.gap) {
+                        let editing = browser.editingTab == tab.id
                         SideRow(
                             browser: browser,
                             tab: tab,
                             live: tab.id == browser.activeID,
+                            editing: editing,
+                            hot: heat.isHot(tab),
+                            refusals: editing ? browser.refusals : 0,
                             tint: tint,
                             pill: pill,
                             // Fork (saved-close): the cross (and Close Tab on the
@@ -87,8 +92,8 @@ struct GroupedRows: View {
                             // out of Saved; ⌘W only puts it down.
                             close: { Sections.shared.remove(tab, in: browser) }
                         )
+                        .equatable() // Fork (space-perf): only the rows whose values changed draw again
                         .padding(.leading, CGFloat(depth) * Folders.step)
-                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { SideHand.frames[tab.id] = $0 }
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SavedDrop.space)) } action: { frame in
                             if dragging != tab.id { drag.rows[tab.id] = frame } // in the hand its frame rides the offset: its home stays put
                         }

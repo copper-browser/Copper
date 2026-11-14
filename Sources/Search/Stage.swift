@@ -198,8 +198,9 @@ final class StageView: NSView {
     }
 
     private func settle() {
-        // Fork (page-hold): a page coming in keeps the one on screen under it.
-        if let wanted, window != nil, wanted.superview !== self, leaving?.superview !== self {
+        // Fork (page-hold): a page coming in keeps the one on screen under it
+        // — only when it may come back white (`StageView.holds`).
+        if let wanted, window != nil, wanted.superview !== self, leaving?.superview !== self, StageView.holds(wanted) {
             leaving = subviews.last { $0 !== wanted && $0.alphaValue > 0 && ($0 as? PageView)?.unpainted == false }
         }
         if wanted == nil || window == nil || leaving === wanted {
@@ -232,15 +233,26 @@ final class StageView: NSView {
         wanted.frame = bounds
     }
 
+    /// Fork (page-hold): whether a page coming onto the stage keeps the one
+    /// there under it until it has drawn. Only a page that has drawn before
+    /// and has been out of a window a while (≥1 s) or comes in with a space
+    /// switch: WebKit gives such a view back white for a few frames. A page
+    /// that has never drawn (a new tab, a woken one) never does — its own
+    /// last picture (`Page`'s cover) or its ground shows until its first
+    /// frame, and two pages of text are never faded over each other. A tab
+    /// switch back and forth inside a second swaps in one frame.
+    static func holds(_ page: NSView) -> Bool {
+        guard let web = page as? PageView, !web.unpainted else { return false }
+        return SpaceSlide.shared.moving || ProcessInfo.processInfo.systemUptime - web.outSince >= 1
+    }
+
     /// Fork (page-hold): the page coming in stays unseen over the one going
-    /// out until WebKit has put a frame of it on screen — or, for a page that
-    /// has never drawn (one just woken), until its first frame has faded in
-    /// over the one going out — and then the one going out goes. At most
-    /// 0.3 s, or 1 s for a page still loading, if WebKit never says.
+    /// out until WebKit has put a frame of it on screen, and then the one
+    /// going out goes — in one frame, never a fade. At most 0.3 s if WebKit
+    /// never says. (A page that has never drawn is not held: `holds`.)
     private func hold(_ page: NSView) {
         holding += 1
         let mine = holding
-        let fresh = (page as? PageView)?.unpainted == true
         page.alphaValue = 0
         let done = { [weak self, weak page] in
             guard let self else { return }
@@ -254,14 +266,12 @@ final class StageView: NSView {
             if let leaving = self.leaving, leaving.superview === self { leaving.removeFromSuperview() }
             self.leaving = nil
         }
-        if let web = page as? PageView, fresh {
-            web.whenPainted { DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: done) }
-        } else if let web = page as? PageView {
+        if let web = page as? PageView {
             web.afterNextPresentation(done)
         } else {
             done()
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + (fresh ? 1 : 0.3), execute: done)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: done)
     }
 }
 

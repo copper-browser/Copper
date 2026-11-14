@@ -133,7 +133,7 @@ struct SideBar: View {
             GeometryReader { geo in
                 Color.clear.onReceive(NotificationCenter.default.publisher(for: MouseButtons.middleClickedSidebar)) { note in
                     guard let point = MouseButtons.point(of: note),
-                          let id = targets.hit(point, in: geo), browser.editingTab != id,
+                          let id = targets.hit(point, in: geo, row: { drag.row(at: $0, among: SideBar.shown(browser)) }), browser.editingTab != id,
                           let tab = browser.tabs.first(where: { $0.id == id }) else { return }
                     browser.close(tab)
                 }
@@ -158,6 +158,19 @@ struct SideBar: View {
         .animation(Motion.glide, value: browser.editingTab)
         .animation(Motion.settle, value: browser.tabs.map(\.id))
         .animation(Motion.settle, value: browser.pinnedCount)
+    }
+
+    /// Fork (space-perf): the loose rows the column draws now — none inside
+    /// a shut folder, whose last frames the drag still remembers.
+    static func shown(_ browser: Browser) -> [Tab] {
+        let loose = browser.tabs.filter { $0.pin == nil }
+        let space = Spaces.shared.current(in: browser)
+        return [true, false].flatMap { saved in
+            FolderTree.plan(loose.filter { Sections.shared.isSaved($0) == saved }, space: space).compactMap { row -> Tab? in
+                if case .tab(let tab, _, _, _) = row { return tab }
+                return nil
+            }
+        }
     }
 
     // MARK: - the lights' band
@@ -355,7 +368,7 @@ struct SideBar: View {
                 // worked out from, a folder lit for a drop onto it, and the
                 // card in the hand (Fork/SavedDrop.swift).
                 .coordinateSpace(name: SavedDrop.space)
-                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { drag.contentTop = $0 } // Fork (saved-drag)
+                .onGeometryChange(for: CGPoint.self) { $0.frame(in: .global).origin } action: { drag.contentTop = $0.y; drag.contentLeft = $0.x } // Fork (saved-drag; space-perf: and where rows are, SideDrag.global)
                 .overlay(alignment: .topLeading) { SavedDropMark(drag: drag, tint: tint) }
                 .overlay(alignment: .topLeading) { SideDragCard(drag: drag, browser: browser, tint: tint) }
                 .padding(.horizontal, SideBar.inset)
@@ -635,22 +648,37 @@ private struct PinSquare: View {
 }
 
 /// One tab, as a line in the column.
-struct SideRow: View { // Fork: was private; GroupedRows draws it
-    @ObservedObject var browser: Browser
+///
+/// Fork (space-perf): what the row needs from the window and from Heat comes
+/// in as plain values, and the row is Equatable (`GroupedRows` draws it
+/// `.equatable()`). It used to observe the whole Browser and Heat: every
+/// change to the window — the live tab, the field, the tab list — drew every
+/// row again, 185 of them in a big space with its folders open (a warm tab
+/// switch there was ~210 ms of main thread).
+struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
+    let browser: Browser // Fork (space-perf): not observed, see above
     @ObservedObject var tab: Tab
     let live: Bool
+    /// This row is the address field (`browser.editingTab`).
+    var editing = false
+    /// Heat says its page is burning a core.
+    var hot = false
+    /// The window's refusals while this row is the field (else 0): each one shakes it.
+    var refusals = 0
     let tint: SpaceTint
     let pill: Namespace.ID
     let close: () -> Void
+
+    static func == (a: SideRow, b: SideRow) -> Bool {
+        a.tab === b.tab && a.live == b.live && a.editing == b.editing && a.hot == b.hot && a.refusals == b.refusals
+            && a.pill == b.pill && a.tint.theme == b.tint.theme && a.tint.dark == b.tint.dark && a.tint.night == b.tint.night
+    }
 
     @State private var pointing = false
     @ObservedObject private var benchHover = SideRowHover.shared // Fork (saved-close): `bench sections hover ID`
     /// Under the pointer — or, for a picture, under the bench's.
     private var hovering: Bool { pointing || benchHover.forced == tab.id }
     @State private var shake: CGFloat = 0
-    @ObservedObject private var heat = Heat.shared
-
-    private var editing: Bool { browser.editingTab == tab.id }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -707,12 +735,12 @@ struct SideRow: View { // Fork: was private; GroupedRows draws it
         // The wheel button over a row closes it, as in Arc and Chrome. SwiftUI
         // never sees that button; the app's monitor does and says where
         // (Fork: MouseButtons). The row's own frame decides, not its hover
-        // state, which a synthetic pointer never sets — handed up to the
-        // column, which has the one listener (Fork: SideTargets).
-        .anchorPreference(key: SideTargets.self, value: .bounds) { SideTargets(rows: [tab.id: $0]) }
+        // state, which a synthetic pointer never sets — the column has the
+        // one listener, and finds the row from the frames the rows already
+        // hand the drag (Fork: SideTargets, space-perf: no anchor per row).
         .animation(Motion.quick, value: hovering)
         .animation(Motion.glide, value: editing)
-        .onChange(of: browser.refusals) { _, _ in
+        .onChange(of: refusals) { _, _ in
             guard editing else { return }
             shake = 0
             withAnimation(.easeOut(duration: 0.5)) { shake = 1 }
@@ -725,7 +753,7 @@ struct SideRow: View { // Fork: was private; GroupedRows draws it
 
     /// Whether anything is in the slot at the row's end right now.
     private var slotShown: Bool {
-        hovering || tab.loading || tab.noisy || heat.isHot(tab)
+        hovering || tab.loading || tab.noisy || hot
     }
 
     /// One slot doing four jobs — the cross under the pointer, else the ring
@@ -746,7 +774,7 @@ struct SideRow: View { // Fork: was private; GroupedRows draws it
                     .font(.system(size: 8))
                     .foregroundStyle(tint.ink.opacity(0.7)) // muted is ~4.4:1 on the column; this is ≥4.5
                     .transition(.opacity)
-            } else if heat.isHot(tab), let reading = heat.reading(for: tab) {
+            } else if hot, let reading = Heat.shared.reading(for: tab) {
                 Image(systemName: "flame.fill")
                     .font(.system(size: 8))
                     .foregroundStyle(Color.orange.opacity(0.9))

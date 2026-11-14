@@ -253,6 +253,19 @@ final class SideDrag: ObservableObject {
     /// in the column's space whether it has gone up over the favourites.
     var pinLine: CGFloat = 0
     var contentTop: CGFloat = 0
+    var contentLeft: CGFloat = 0
+
+    /// Fork (space-perf): a row's frame in SwiftUI's global space — its
+    /// place in the column moved by where the column's content is. The
+    /// rows used to report a global frame each, and during a space slide
+    /// that was every row's action on every frame.
+    func global(_ id: Tab.ID) -> CGRect? { rows[id]?.offsetBy(dx: contentLeft, dy: contentTop) }
+
+    /// The row of `tabs` under a point in SwiftUI's global space.
+    func row(at point: CGPoint, among tabs: [Tab]) -> Tab.ID? {
+        let local = CGPoint(x: point.x - contentLeft, y: point.y - contentTop)
+        return tabs.first { $0.pin == nil && rows[$0.id]?.contains(local) == true }?.id
+    }
 
     private var closing: DispatchWorkItem?
 
