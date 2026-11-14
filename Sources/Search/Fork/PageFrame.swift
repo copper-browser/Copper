@@ -46,8 +46,11 @@ extension EnvironmentValues {
 
 extension StageView {
     /// Cuts the page's corners on the layer that holds it. Square (the
-    /// default) costs nothing: no mask at all.
+    /// default) costs nothing: no mask at all. Called on every update of the
+    /// stage, so a layer already cut this way is left alone.
     func round(_ corners: PageCorners) {
+        guard corners != cut else { return }
+        cut = corners
         wantsLayer = true
         guard let layer else { return }
         let r = corners.radius

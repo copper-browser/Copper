@@ -735,7 +735,10 @@ struct SideRow: View { // Fork: was private; GroupedRows draws it
             shake = 0
             withAnimation(.easeOut(duration: 0.5)) { shake = 1 }
         }
-        .transition(.scale(scale: 0.94, anchor: .leading).combined(with: .opacity))
+        // Fork (perf): a fade. A scale redrew the row's text at a new size every
+        // frame, and on a 1× screen each new size of a glyph is hinted again —
+        // CPU work on every tab opened or closed.
+        .transition(.opacity)
     }
 
     /// The live row is Arc's: paper half-way to white, lifting off the

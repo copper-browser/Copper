@@ -83,6 +83,18 @@ final class Launcher: ObservableObject {
 
     // MARK: - asking
 
+    /// Fork (perf): `body` in the main run loop's next pass, once this pass's
+    /// Core Animation commit has gone out. A block queued with
+    /// `DispatchQueue.main.async` still runs in this pass (the run loop drains
+    /// the queue before it commits), so its redraw would join this one's.
+    static func afterCommit(_ body: @escaping () -> Void) {
+        // Ordered after Core Animation's own before-waiting observer (2,000,000).
+        let after = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, false, CFIndex.max) { _, _ in
+            DispatchQueue.main.async(execute: body)
+        }
+        CFRunLoopAddObserver(CFRunLoopGetMain(), after, .commonModes)
+    }
+
     /// A fresh card. The last question's leftovers are not this one's.
     func begin() {
         waiting?.cancel()
@@ -428,7 +440,9 @@ final class Launcher: ObservableObject {
                 // A ranking for an older question is no use to this one.
                 guard self.asked.lowercased() == needle else { return }
                 self.visited = (needle, rows)
-                self.refresh()
+                // Fork (perf): drawn in a pass of its own, not on top of the
+                // keystroke's (whose rows are being drawn as it lands).
+                Launcher.afterCommit { self.refresh() }
             }
         }
     }
