@@ -413,8 +413,8 @@ def session(out, arms_):
 
 def idle_phase(out, arms_):
     """A4 + A6 alone (r4): per launch, the idle minute of `session` (cost, wakeups per process, pins), then quit."""
-    settle, idle = N("HC_SETTLE", 30), N("HC_IDLE", 60)
-    for r in range(N("HC_ROUNDS", 6)):
+    settle, idle, r0 = N("HC_SETTLE", 30), N("HC_IDLE", 60), N("HC_ROUND0", 0)  # HC_ROUND0: a run split into one-round calls
+    for r in range(r0, r0 + N("HC_ROUNDS", 6)):
         for label, app in order(arms_, r):
             with locked():
                 t = start(app)
