@@ -116,7 +116,8 @@ struct CommandPalette: View {
         // shadow for the edge, one wide one for the lift.
         .shadow(color: .black.opacity(0.09), radius: 3, y: 1)
         .shadow(color: .black.opacity(0.26), radius: 48, y: 20)
-        .transition(.scale(scale: 0.985, anchor: .top).combined(with: .opacity))
+        // Fork (perf): a fade, not a scale — see the field's transition (App.swift).
+        .transition(.opacity)
     }
 
     private var field: some View {

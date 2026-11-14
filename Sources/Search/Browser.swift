@@ -2072,7 +2072,18 @@ final class Browser: NSObject, ObservableObject {
         Launcher.shared.begin()
         launching = true
         summoning = true
-        typed = ""
+        // Fork (perf): the card goes up empty in the key's own pass and its
+        // rows follow in the next one: laying out a dozen rows doubled the
+        // time from ⌘T to the card on screen. Anything typed by then lays
+        // out its own rows (`typed`), and these are not wanted.
+        field.typed = ""
+        offers = []
+        ending = nil
+        picked = nil
+        Launcher.afterCommit { [weak self] in
+            guard let self, self.launching, self.typed.isEmpty else { return }
+            self.guess()
+        }
         editing = true
         focusRequest += 1
     }

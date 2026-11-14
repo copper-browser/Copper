@@ -393,7 +393,10 @@ struct ContentView: View {
                 // is not what the field is standing over, and dimming it along
                 // with the page says otherwise.
                 .padding(.leading, sidebar ? browser.prefs.sideWidth : 0)
-                .transition(.scale(scale: 0.97).combined(with: .opacity))
+                // Fork (perf): a fade. A scale redrew every letter on the card
+                // at a new size each frame, and on a 1× screen each new size of
+                // a glyph is hinted again, on the main thread.
+                .transition(.opacity)
         }
     }
 
@@ -468,7 +471,13 @@ struct ContentView: View {
             }
             .onChange(of: browser.fieldShowing) { _, showing in
                 if showing {
-                    DispatchQueue.main.async { browser.askFocus() }
+                    DispatchQueue.main.async {
+                        // Fork (perf): ⌘T and ⌘K have already put the caret in
+                        // their field; asking again redrew the whole window a
+                        // second time in the key's pass.
+                        if (Windows.window(of: browser)?.firstResponder as? NSTextView)?.isFieldEditor == true { return }
+                        browser.askFocus()
+                    }
                 } else {
                     handBack()
                 }
