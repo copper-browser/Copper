@@ -102,7 +102,8 @@ out="$(mcp browser_hover '{"selector":"#file","element":"File menu"}')"
 check "hover answers without error ($(head -c 160 <<<"$out"))" noerror "$out"
 check "hover opens the :hover menu" test "$(js 'getComputedStyle(document.querySelector("#file .items")).display')" = '"block"'
 out="$(mcp browser_hover '{"selector":"#lidded","element":"Under a lid"}')"
-check "hover under a lid fails loudly" grep -q '^ERROR Hover did not reach' <<<"$out"
+# Either refusal: the hit test before the move (page tools: "covered by span.lid") or the :hover check after it.
+check "hover under a lid fails loudly" grep -qE '^ERROR (Hover did not reach|.*covered by)' <<<"$out"
 
 # … and on the user's own tab, in their window (parked, Copper not in front).
 own="$tab"; tab="$user"
