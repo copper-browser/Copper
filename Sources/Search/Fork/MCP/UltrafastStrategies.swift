@@ -172,6 +172,7 @@ extension Tools.Ultrafast {
         let name = #"\p{Lu}[\p{L}\p{N}'’-]*"#
         // One to three words, not starting with an article: a place, not a phrase.
         let place = #"(?!(?:the|a|an|my|your|this|that|der|die|das|le|la|les|el|los|il|het|de)\b)[\p{L}\p{N}][\p{L}\p{N}'’.-]*(?: [\p{L}\p{N}][\p{L}\p{N}'’.-]*){0,2}?"#
+        let word = #"[\p{L}\p{N}]+(?:['.-][\p{L}\p{N}]+)*"#
         let end = #"(?=\s+(?:on|for|in|at|by|with|and|via|departing|leaving|returning|am|um|für|mit|und|le|pour|avec|et|el|para|con|y|il|per|e|op|voor|met|en|em|com)\b|\s*[,.;:!?()]|\s*$)"#
         let patterns: [(String, [Int])] = [
             (#""([^"]{1,200})""#, [1]),
@@ -183,7 +184,8 @@ extension Tools.Ultrafast {
             ("(?i)\\b(?:from|von|van|desde|de|da) (\(place)) (?:to|nach|naar|à|a|vers|hasta|para|per) (\(place))\(end)", [1, 2]),
             ("\\b(?i:from|to|in|near|at|named|called|titled|von|nach|bei|ab|aus|vers|depuis|desde|hacia|naar) ((?!(?i:\(month))\\b)\(name)(?: \(name))*)", [1]),
             // What a page or article is about, to its end: "the article about Gödel's incompleteness theorems".
-            ("\\b(?i:about|(?:article|page|entry) on) (\(place)(?: [\\p{L}\\p{N}][\\p{L}\\p{N}'.-]*){0,3}?)\(end)", [1]),
+            // (Words join by ' . - only inside them, so the sentence's own full stop stays out.)
+            ("\\b(?i:about|(?:article|page|entry) on) ((?!(?:the|a|an)\\b)\(word)(?: \(word)){0,5}?)\(end)", [1]),
             (#"\b([A-Z]{3})\s*(?:→|->|–|—|-|>|/)\s*([A-Z]{3})\b"#, [1, 2]),
             ("(?i)\\b\(month)\\.? \\d{1,2}(?:st|nd|rd|th)?(?:,? \\d{4})?\\b", [0]),
             ("(?i)\\b\\d{1,2}(?:\\.|st|nd|rd|th|er|º)? (?:de )?\(month)\\.?(?:,? (?:de )?\\d{4})?\\b", [0]),
