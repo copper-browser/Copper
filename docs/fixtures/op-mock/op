@@ -28,6 +28,7 @@ Mock-only commands (not in the real CLI):
                             answer with broken JSON)
     op mock bulk N          add N generated logins (unicode titles, several URLs, shared hosts)
     op mock reset           back to the seed
+    op mock url TITLE HREF  that login's first address (a fixture server's port)
     op mock check TITLE USER PASSWORD   does that login hold exactly this? (true/false)
 
 State lives in $OP_MOCK_STATE (default ~/.config/op-mock/state.json); every call
@@ -778,6 +779,13 @@ def cmd_mock(st, args):
         st.data = seed()
         st.save()
         print("reset")
+    elif sub == "url":
+        # a login's address, e.g. the port a fixture's server took: `op mock url Localhost http://localhost:PORT/`
+        for i in st.data["items"]:
+            if i["title"] == args[1]:
+                i["urls"][0]["href"] = args[2]
+        st.save()
+        print(args[2])
     elif sub == "expire":
         for s in st.data["sessions"].values():
             s["expired"] = True

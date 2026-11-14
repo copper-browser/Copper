@@ -96,6 +96,8 @@ for _ in {1..40}; do [ -s "$tmp/port" ] && break; sleep 0.1; done
 [ -s "$tmp/port" ] || fail "localhost server"
 port=$(<"$tmp/port")
 op mock reset >/dev/null
+# A login fills only the address it was saved for, port included (agent-safety): alice's is this server's.
+op mock url Localhost "http://localhost:$port/" >/dev/null
 
 suite="com.collinrijock.copper.test.$world"
 defaults write "$suite" bench -bool true
