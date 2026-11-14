@@ -465,32 +465,37 @@ struct ThemeBackdrop: View {
         static let nightVeil = 0.65
 
         var body: some View {
-            Colour(theme: theme, dark: dark)
-            if theme.motion == nil, let name = theme.image, let picture = ThemeBackdrop.picture(name, blur: theme.blur) {
-                GeometryReader { geo in
-                    let wide = span.map { min($0, geo.size.width) } ?? geo.size.width
-                    ZStack {
-                        Image(nsImage: picture)
-                            .resizable()
-                            .interpolation(.high)
-                            .scaledToFill()
-                            .frame(width: wide, height: geo.size.height)
-                            .clipped()
-                            .saturation(dark ? 1.3 : 1)
-                        // A neutral veil first — white in the light, black in
-                        // the dark — so the picture's own darks (or lights) are
-                        // pulled towards the ground the ink was chosen for: over
-                        // a photo's shadowed band the brown titles were going
-                        // under. It greys the picture less than more colour would.
-                        (dark ? Color.black.opacity(Still.nightVeil) : Color.white.opacity(0.22))
-                        // The colour stays on the picture, thinly, so the ink
-                        // that is right for the colour stays right over it — thin
-                        // enough that a vivid picture keeps its colour; deeper in
-                        // the dark, where light ink needs the picture held down.
-                        Colour(theme: theme, dark: dark).opacity(dark ? 0.4 : 0.15)
+            // One ZStack: as a bare pair, a parent that wraps this view in a
+            // modifier (SpaceGround's `.equatable().opacity`) stacked the colour
+            // over the picture, each half the column, instead of one on the other.
+            ZStack {
+                Colour(theme: theme, dark: dark)
+                if theme.motion == nil, let name = theme.image, let picture = ThemeBackdrop.picture(name, blur: theme.blur) {
+                    GeometryReader { geo in
+                        let wide = span.map { min($0, geo.size.width) } ?? geo.size.width
+                        ZStack {
+                            Image(nsImage: picture)
+                                .resizable()
+                                .interpolation(.high)
+                                .scaledToFill()
+                                .frame(width: wide, height: geo.size.height)
+                                .clipped()
+                                .saturation(dark ? 1.3 : 1)
+                            // A neutral veil first — white in the light, black in
+                            // the dark — so the picture's own darks (or lights) are
+                            // pulled towards the ground the ink was chosen for: over
+                            // a photo's shadowed band the brown titles were going
+                            // under. It greys the picture less than more colour would.
+                            (dark ? Color.black.opacity(Still.nightVeil) : Color.white.opacity(0.22))
+                            // The colour stays on the picture, thinly, so the ink
+                            // that is right for the colour stays right over it — thin
+                            // enough that a vivid picture keeps its colour; deeper in
+                            // the dark, where light ink needs the picture held down.
+                            Colour(theme: theme, dark: dark).opacity(dark ? 0.4 : 0.15)
+                        }
+                        .frame(width: wide, height: geo.size.height)
+                        .mask { if span != nil { Still.fade(wide) } else { Rectangle() } }
                     }
-                    .frame(width: wide, height: geo.size.height)
-                    .mask { if span != nil { Still.fade(wide) } else { Rectangle() } }
                 }
             }
         }
@@ -508,17 +513,19 @@ struct ThemeBackdrop: View {
         let grain: Double
 
         var body: some View {
-            if abs(tone) > 0.005 {
-                (tone < 0 ? Color.black : Color.white)
-                    .opacity(abs(tone) * SpaceTheme.toneReach)
-                    .allowsHitTesting(false)
-            }
-            if grain > 0.01 {
-                Image(nsImage: ThemeBackdrop.noise)
-                    .resizable(resizingMode: .tile)
-                    .opacity(min(1, grain) * 0.45)
-                    .blendMode(.overlay)
-                    .allowsHitTesting(false)
+            ZStack { // one on the other wherever it is put, as `Still`
+                if abs(tone) > 0.005 {
+                    (tone < 0 ? Color.black : Color.white)
+                        .opacity(abs(tone) * SpaceTheme.toneReach)
+                        .allowsHitTesting(false)
+                }
+                if grain > 0.01 {
+                    Image(nsImage: ThemeBackdrop.noise)
+                        .resizable(resizingMode: .tile)
+                        .opacity(min(1, grain) * 0.45)
+                        .blendMode(.overlay)
+                        .allowsHitTesting(false)
+                }
             }
         }
     }
