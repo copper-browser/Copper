@@ -377,8 +377,22 @@ def welcome(w, snap):
         if i < len(WELCOME) - 1:
             win = next(x for x in w.j("probe")["windows"] if x["kind"] == "AppKitWindow" and x["visible"])
             W, H = win["frame"][2], win["frame"][3]
+            ref, now = path + ".ref.png", path + ".now.png"
+            w.j("canvas", "picture", ref)
             w.b("ai", "click", W / 2 + 216, H - 57)  # Continue: the right end of the 520-pt foot, 40 pt off the bottom (Welcome.swift)
             time.sleep(1.2)
+            # r4 layout (Welcome.swift, uiflows r4): the card hugs its page from a fixed top
+            # (max(0.4·H − 166, 24)), so Continue sits 36 + 260…420 pt below it: walk up its column
+            # (only Continue sits that far right on the card's foot).
+            top, y = max(H * 0.4 - 166, 24), max(H * 0.4 - 166, 24) + 36 + 420
+            w.j("canvas", "picture", now)
+            while same_picture(ref, now) and y >= top + 36 + 240:
+                w.b("ai", "click", W / 2 + 216, y); time.sleep(0.9)
+                w.j("canvas", "picture", now)
+                y -= 14
+            for f in (ref, now):
+                if os.path.exists(f):
+                    os.remove(f)
     w.b("ui", "welcome", "off"); time.sleep(1)
     return {"pages": len(files), "files": files, "note": note}
 
