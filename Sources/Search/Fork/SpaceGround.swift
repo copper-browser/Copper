@@ -7,13 +7,16 @@ import SwiftUI
 // changes in place — salmon becomes sage across the whole column at once,
 // with no edge between the two. So the ground here is one view that is
 // always drawn live, never pictured: at rest it is the current space's
-// theme; while a slide or a swipe is on it is the outgoing theme blended
-// towards the incoming one by the slide's progress. Two plain themes
-// (colours and gradients) are morphed stop by stop, so a flat salmon turns
-// into a three-stop gradient as one surface; anything with a picture is
-// crossfaded; an animated space keeps the column's one scene, which mixes
-// its own colours (see AnimatedBackdrop) and fades in or out against a
-// still neighbour.
+// theme; while a slide or a swipe is on it is the outgoing theme fading
+// out over the incoming one by the slide's progress; an animated space keeps
+// the column's one scene, which mixes its own colours (see AnimatedBackdrop)
+// and fades in or out against a still neighbour.
+//
+// Fork (space-switch perf): each space's ground is a still layer, drawn once
+// when the slide starts, and only the outgoing one's opacity moves. The
+// ground used to be redrawn on every frame of a slide — gradient, picture,
+// mask, tone and grain, window-wide since the page became a card on it —
+// and a click's slide sent the scene a new mix on every frame too.
 //
 // It is plain SwiftUI, sitting as the column's `.background` inside the
 // window's own hosting view — the one that already ignores the safe area,
@@ -26,7 +29,7 @@ import SwiftUI
 
 /// Two themes and how far between them: 0 is all `from`, 1 all `to`. At
 /// rest both are the current space's.
-struct SpaceGround: View, Animatable {
+struct SpaceGround: View {
     var from: SpaceTheme
     var to: SpaceTheme
     /// Which spaces these are the looks of — the scene keeps a clock per key.
@@ -37,27 +40,31 @@ struct SpaceGround: View, Animatable {
     /// Fork (page-frame): a picture's width, when the ground is the window's (ThemeBackdrop.Still).
     var span: CGFloat? = nil
 
-    /// Animatable, so a timed slide's `withAnimation { phase = 1 }` runs
-    /// this body with every value in between rather than jumping the
-    /// colours from one end to the other.
-    var animatableData: CGFloat {
-        get { t }
-        set { t = newValue }
+    /// The grounds on screen, the incoming first: one at rest, two while a
+    /// slide is on. Keyed by space, so the ground on screen when a slide
+    /// starts is the same view as it fades out — nothing is drawn again.
+    private var layers: [Layer] {
+        let incoming = Layer(key: toKey, theme: to, incoming: true)
+        return fromKey == toKey ? [incoming] : [incoming, Layer(key: fromKey, theme: from, incoming: false)]
+    }
+
+    private struct Layer: Identifiable {
+        let key: String
+        let theme: SpaceTheme
+        let incoming: Bool
+        var id: String { key }
     }
 
     var body: some View {
         let x = Double(min(1, max(0, t)))
         ZStack {
-            if from.simple, to.simple {
-                // One surface changing colour: the stops move, nothing fades.
-                ThemeBackdrop.Colour(theme: from.mixed(to, x), dark: dark)
-            } else {
-                // A picture (or a scene's own still colour) cannot be morphed
-                // into something else, so the incoming ground fades in over
-                // the outgoing one — both drawn live, both whole-column, so
-                // there is still no edge, only a change.
-                ThemeBackdrop.Still(theme: from, dark: dark, span: span)
-                if x > 0.001 { ThemeBackdrop.Still(theme: to, dark: dark, span: span).opacity(x) }
+            // The outgoing ground fades out over the incoming one, both whole,
+            // so there is no edge, only a change. A timed slide animates `t`:
+            // SwiftUI moves the one opacity, frame by frame, and runs no body.
+            ForEach(layers) { layer in
+                Still(theme: layer.theme, dark: dark, span: span)
+                    .equatable()
+                    .opacity(layer.incoming ? 1 : 1 - x)
             }
             // Fork (page-frame): as wide as the column, never the window —
             // the scene is a WebGL page, and under the page card only its
@@ -66,10 +73,28 @@ struct SpaceGround: View, Animatable {
                 .frame(width: span)
                 .mask { if let span { ThemeBackdrop.Still.fade(span) } else { Rectangle() } }
                 .frame(maxWidth: .infinity, alignment: .leading)
-            ThemeBackdrop.Veil(tone: from.tone + (to.tone - from.tone) * x,
-                               grain: from.grain + (to.grain - from.grain) * x)
+            ForEach(layers) { layer in
+                Veil(tone: layer.theme.tone, grain: layer.theme.grain)
+                    .equatable()
+                    .opacity(layer.incoming ? 1 : 1 - x)
+            }
         }
         .clipped()
+    }
+
+    /// One space's colour, gradient or picture, redrawn only when the theme does.
+    private struct Still: View, Equatable {
+        let theme: SpaceTheme
+        let dark: Bool
+        let span: CGFloat?
+        var body: some View { ThemeBackdrop.Still(theme: theme, dark: dark, span: span) }
+    }
+
+    /// One space's tone and grain, the same.
+    private struct Veil: View, Equatable {
+        let tone: Double
+        let grain: Double
+        var body: some View { ThemeBackdrop.Veil(tone: tone, grain: grain) }
     }
 
     /// The column's scene: one web view for the column's whole life (see
@@ -101,10 +126,17 @@ struct SpaceGround: View, Animatable {
         private func drive(_ a: BackdropScene.Look?, _ b: BackdropScene.Look?) -> BackdropScene.Drive {
             var drive = BackdropScene.Drive(look: a ?? b, fade: SpaceSlide.duration + 0.08)
             if let a, let b, a != b {
-                // Both animated: the shader mixes the two by the progress.
-                drive.look = a
-                drive.toward = b
-                drive.x = x
+                if x > 0, x < 1 {
+                    // Both animated, under the fingers: the shader mixes the
+                    // two by how far they have come.
+                    drive.look = a
+                    drive.toward = b
+                    drive.x = x
+                } else {
+                    // A click's slide: one change, which the page fades over
+                    // `fade` on its own clock (Fork: space-switch perf).
+                    drive.look = x >= 1 ? b : a
+                }
             } else if a == nil, let b {
                 // Still to animated: the scene is the incoming look from the
                 // first frame, and fades in over the still ground.

@@ -418,12 +418,16 @@ struct SpaceChip: View {
 
     static let size: CGFloat = 28
     static let gap: CGFloat = 5
+    /// The mark inside the chip: a 20 pt tile with an 11 pt initial, or the
+    /// space's chosen icon at the same size. At 17 the initial came out
+    /// 9 pt on a 15 pt tile, too small to read at a glance.
+    static let tile: CGFloat = 20
 
     /// Every space in its own colour (Fork: space-chips) — greyed to one
     /// colour they could not be told apart — the others a little thinner
     /// than the current one, which sits on the live pill.
     var body: some View {
-        SpaceGlyph(space: space, size: 17, dark: dark, ink: ink, bare: true)
+        mark
             .opacity(current || over ? 1 : 0.72)
             .frame(width: SpaceChip.size, height: SpaceChip.size)
             .background(
@@ -434,6 +438,20 @@ struct SpaceChip: View {
             .animation(Motion.quick, value: over)
             .animation(Motion.quick, value: current)
     }
+
+    @ViewBuilder private var mark: some View {
+        if space.emoji == nil, space.symbol == nil {
+            let tint = SpaceTint(space: space, dark: dark)
+            Text(space.letter)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(tint.tileInk)
+                .frame(width: SpaceChip.tile, height: SpaceChip.tile)
+                .background(RoundedRectangle(cornerRadius: SpaceChip.tile * 0.26, style: .continuous).fill(tint.tile.color))
+        } else {
+            SpaceGlyph(space: space, size: SpaceChip.tile, dark: dark, ink: ink, bare: true)
+        }
+    }
+
     /// The tooltip: the name, and the key that goes there (⌃1–⌃9).
     static func help(_ space: Space, index: Int, current: Bool) -> String {
         let key = index < 9 ? " · ⌃\(index + 1)" : ""

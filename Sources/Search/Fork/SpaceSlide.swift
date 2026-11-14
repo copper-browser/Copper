@@ -50,8 +50,9 @@ import SwiftUI
 // springs back and the live band is where it never left.
 //
 // Which way: towards a space after this one in `Spaces.all`, the old column
-// leaves to the left; before it, to the right. Reduce Motion keeps the
-// crossfade and drops the travel.
+// leaves to the left; before it, to the right. Reduce Motion drops the
+// travel and fades instead — the old rows out, then the new ones in, never
+// the two lists over each other (HalfFade).
 //
 // Earlier versions pictured the column (the window's pixels, or the views
 // drawn twice over black and white for a matte) and slid the pictures. The
@@ -201,9 +202,11 @@ final class SpaceSlide: ObservableObject {
             set(phase: 0)
             ink.objectWillChange.send()
             way = still ? 0 : (forward ? 1 : -1)
-            // The neighbours kept drawn stay the old space's through the
-            // slide, so nothing is built or dropped while it moves.
-            anchor.home = old.id
+            // The neighbours kept drawn stay the ones drawn now through the
+            // slide, so nothing is built or dropped while it moves — the old
+            // space's, or an earlier one's if the column has not settled
+            // since (see `end`).
+            if anchor.home == nil { anchor.home = old.id }
             anchor.arriving = nil
         }
         timing = Timing(asked: started, planned: CACurrentMediaTime())
@@ -229,7 +232,9 @@ final class SpaceSlide: ObservableObject {
             withTransaction(calm) { set(phase: hold) }
             return
         }
-        withAnimation(SpaceSlide.curve, completionCriteria: .logicallyComplete) {
+        // A fade out and in wants an even pace; the travel's curve is over
+        // its first half in a few frames.
+        withAnimation(way == 0 ? .easeInOut(duration: SpaceSlide.duration) : SpaceSlide.curve, completionCriteria: .logicallyComplete) {
             set(phase: 1)
         } completion: { [weak self] in
             guard let self, mine == self.serial else { return }
@@ -239,10 +244,14 @@ final class SpaceSlide: ObservableObject {
 
     private func end() {
         let mine = serial
+        // A slide that ends on the space it went to already wears that
+        // space's own ink at its last step (SlideInk): the lights, the
+        // address and the strip are not drawn again for the end.
+        let landed = to.map { $0.id == Spaces.shared.current(in: owner ?? Windows.main) } ?? true
         withTransaction(calm) {
             sliding = false
             set(phase: 1)
-            ink.objectWillChange.send()
+            if !landed { ink.objectWillChange.send() }
             dragging = false
             swiping = false
             switched = false
@@ -255,9 +264,12 @@ final class SpaceSlide: ObservableObject {
         }
         timing?.ended = CACurrentMediaTime()
         unwatch()
-        // The neighbours kept drawn become the new space's — a moment
-        // later, so building them is not in the slide's last frame.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+        // The neighbours kept drawn become the new space's once the column
+        // has been still for a second (Fork: space-switch perf) — building
+        // them was a pass of its own inside every switch, and a run of ⌃1…⌃9
+        // built them at every stop. A swipe sooner than that builds the
+        // space it heads for on its first frame, as it would unmounted.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
             guard let self, mine == self.serial, !self.moving else { return }
             self.anchor.home = nil
         }
@@ -445,10 +457,17 @@ final class SpaceSlide: ObservableObject {
     }
 
     /// Where a click's outgoing preview is: on its way out, or — with no
-    /// travel under Reduce Motion — in place and fading.
+    /// travel under Reduce Motion — in place, fading (`fading`).
     func leavingPlace(in browser: Browser) -> (x: CGFloat, shown: Double) {
         guard owner === browser, sliding, !swiping else { return (0, 0) }
-        return (-way * column.width * phase, way == 0 ? Double(1 - phase) : 1)
+        return (-way * column.width * phase, 1)
+    }
+
+    /// A click's switch under Reduce Motion: how far its fade has got, for
+    /// `HalfFade`. Nil when the switch travels instead, or nothing moves.
+    func fading(in browser: Browser) -> CGFloat? {
+        guard owner === browser, sliding, !swiping, way == 0 else { return nil }
+        return phase
     }
 
     // MARK: - the bench
@@ -518,6 +537,7 @@ final class SpaceSlide: ObservableObject {
                                    "way": Double(way), "stretch": (Double(stretch) * 10).rounded() / 10,
                                    "from": from?.name ?? "", "to": to?.name ?? "", "leaving": leaving?.space.name ?? "",
                                    "premount": SpacePreview.premount, "clip": SpaceSlide.clipsBand,
+                                   "reduceMotion": NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
                                    "space": Spaces.shared.space(in: browser).name,
                                    "owner": Windows.all.firstIndex { $0 === browser } ?? -1,
                                    "window": Windows.window(of: browser).map { w in [Int(w.frame.minX), Int(w.frame.minY), Int(w.frame.width), Int(w.frame.height),
@@ -567,6 +587,7 @@ struct SpaceSlideBand: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            .modifier(HalfFade(phase: slide.fading(in: browser) ?? 1, incoming: true))
             .offset(x: slide.bandOffset(in: browser))
             .clipShape(BandEdge(on: SpaceSlide.clipsBand && slide.moving(in: browser)))
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { slide.place(band: $0, in: browser) }
@@ -605,6 +626,11 @@ struct SlideInk<Content: View>: View {
         let slide = SpaceSlide.shared
         let tint: SpaceTint = {
             if slide.sliding, slide.owner === browser, let from = slide.from, let to = slide.to, from.id != to.id {
+                // The two ends are each space's own tint, exactly what it
+                // wears at rest: nothing jumps as a slide starts, and its end
+                // needs no redraw (`SpaceSlide.end`).
+                if ink.step <= 0 { return SpaceTint(space: from, dark: dark) }
+                if CGFloat(ink.step) >= SpaceSlide.inkSteps { return SpaceTint(space: to, dark: dark) }
                 return SpaceTint(theme: from.look.mixed(to.look, Double(CGFloat(ink.step) / SpaceSlide.inkSteps)), dark: dark)
             }
             return SpaceTint(space: spaces.space(in: browser), dark: dark)
@@ -639,6 +665,7 @@ struct SpaceSlideCurtain: View {
                 let place = slide.leavingPlace(in: browser)
                 SpacePreview(model: leaving, width: width, height: height, dark: scheme == .dark)
                     .equatable()
+                    .modifier(HalfFade(phase: slide.fading(in: browser) ?? 0, incoming: false))
                     .offset(x: place.x)
                     .opacity(place.shown)
             }
@@ -647,6 +674,24 @@ struct SpaceSlideCurtain: View {
         .clipped()
         .offset(y: top)
         .allowsHitTesting(false)
+    }
+}
+
+/// Reduce Motion's switch, in two halves: the outgoing rows fade out over
+/// the first, the incoming in over the second, so the two lists are never
+/// on screen together. Animatable, so it sees every step of the phase — left
+/// to an `.opacity` SwiftUI blends the two ends' values and the halves meet.
+struct HalfFade: ViewModifier, Animatable {
+    var phase: CGFloat
+    let incoming: Bool
+
+    var animatableData: CGFloat {
+        get { phase }
+        set { phase = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        content.opacity(Double(incoming ? max(0, phase * 2 - 1) : max(0, 1 - phase * 2)))
     }
 }
 
