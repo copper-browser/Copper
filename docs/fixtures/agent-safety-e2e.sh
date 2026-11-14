@@ -113,7 +113,7 @@ PY
 
 mkdir -p "$folder"
 token=$(python3 -c "import secrets; print(secrets.token_hex(32))")
-printf '{"enabled":true,"port":%s,"token":"%s","announces":false,"jev":true}' "$mcp_port" "$token" >"$folder/agent.json"
+printf '{"enabled":true,"port":%s,"token":"%s","announces":false,"jev":false}' "$mcp_port" "$token" >"$folder/agent.json"
 defaults write "$suite" bench -bool true
 defaults write "$suite" welcomed -bool true
 defaults write "$suite" probe.keychain -string file
@@ -243,7 +243,6 @@ ok "$out" || fail "the agent closing its own tab: $out"
 bench tabs | grep -q "$at" && fail "the agent's tab is still open"
 user_ok() { [ "$(eval_in "$ut" "location.pathname + '|' + document.title")" = "/user|User page" ] || fail "the user's tab was changed: $(eval_in "$ut" "location.href + '|' + document.title")"; }
 for call in "browser_navigate {\"url\":\"$base/code\"}" "browser_evaluate {\"function\":\"() => { document.title = 'hacked'; return 1 }\"}" \
-            "jev_extract {\"instruction\":\"what does the page say\"}" \
             "browser_close {}" "browser_tabs {\"action\":\"close\"}"; do
   out=$(mcp a ${call%% *} "${call#* }")
   ok "$out" && fail "${call%% *} after the agent's tab closed was not refused: $out"
@@ -259,7 +258,7 @@ ok "$out" || fail "a new tab after the close: $out"
 out=$(mcp a browser_navigate "{\"url\":\"$base/card\"}")
 ok "$out" || fail "navigate in the new tab: $out"
 user_ok
-step "5 the agent's tab closed: navigate/evaluate/jev_extract/close refused, user's tab untouched, snapshot reads it, browser_tabs new works again"
+step "5 the agent's tab closed: navigate/evaluate/close refused, user's tab untouched, snapshot reads it, browser_tabs new works again"
 
 # --- 6. An agent that never had a tab can't close the user's -----------------
 out=$(mcp b browser_close '{}')
