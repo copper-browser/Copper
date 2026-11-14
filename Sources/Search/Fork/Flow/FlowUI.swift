@@ -595,14 +595,9 @@ struct FlowSheet: View {
             // Fork (ui-flows r3): every kind that was switched on, its value
             // inline ("✓ Tabs: 3 tabs in 1 space") — one this browser had none
             // of says so rather than vanishing from the list.
-            let said = Set(report.summary.map(\.category))
-            let empty = FlowStep.steps(for: flow.choice).map(\.category).filter { !said.contains($0) }
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(report.summary, id: \.category) { line in
+                ForEach(FlowSummary.doneLines(report.summary, chosen: FlowStep.steps(for: flow.choice).map(\.category)), id: \.category) { line in
                     doneRow(line.category, ok: line.ok, line.detail)
-                }
-                ForEach(empty, id: \.self) { category in
-                    doneRow(category, ok: false, "none to bring")
                 }
             }
             .fixedSize(horizontal: false, vertical: true)

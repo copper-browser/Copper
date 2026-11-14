@@ -567,6 +567,17 @@ enum FlowSummary {
         return out
     }
 
+    /// Fork (ui-flows r3): the done step's lines — every kind that was
+    /// switched on, in the summary's order: its own line, or "none to bring"
+    /// for one the move left out because the browser had none.
+    static func doneLines(_ lines: [Line], chosen: [Category]) -> [Line] {
+        let said = Set(lines.map(\.category))
+        let empty = chosen.filter { !said.contains($0) }.map { Line(category: $0, ok: false, text: "\($0.title): none to bring") }
+        return (lines + empty).sorted { a, b in
+            (Category.allCases.firstIndex(of: a.category) ?? 0) < (Category.allCases.firstIndex(of: b.category) ?? 0)
+        }
+    }
+
     /// The heading over the lines.
     static func title(_ lines: [Line], source: String) -> String {
         if lines.contains(where: \.ok) { return "Moved in from \(source)" }

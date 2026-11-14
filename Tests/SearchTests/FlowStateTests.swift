@@ -164,3 +164,23 @@ struct FlowEventsTests {
         #expect(log.entries.first?.detail == "50")
     }
 }
+
+@Suite("Flow sheet: the done step")
+struct FlowDoneLinesTests {
+    @Test("Every kind switched on is listed: a kind the browser had none of says 'none to bring', in the summary's order")
+    func everyChosenKindHasALine() {
+        let tabs = FlowSummary.Line(category: .tabs, ok: true, text: "Tabs: 3 tabs in 1 space")
+        let lines = FlowSummary.doneLines([tabs], chosen: [.tabs, .bookmarks, .cookies])
+        #expect(lines.map(\.category) == [.tabs, .bookmarks, .cookies])
+        #expect(lines[0].detail == "3 tabs in 1 space")
+        #expect(lines[1] == .init(category: .bookmarks, ok: false, text: "Bookmarks: none to bring"))
+        #expect(lines[2].detail == "none to bring")
+    }
+
+    @Test("A kind not switched on stays out, and a summary line is never doubled")
+    func onlyChosenKinds() {
+        let tabs = FlowSummary.Line(category: .tabs, ok: true, text: "Tabs: 2 tabs in 1 space")
+        let history = FlowSummary.Line(category: .history, ok: false, text: "History: Arc has none")
+        #expect(FlowSummary.doneLines([tabs, history], chosen: [.tabs, .history]) == [tabs, history])
+    }
+}
