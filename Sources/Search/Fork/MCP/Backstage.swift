@@ -349,6 +349,7 @@ final class Backstage {
         // Before it joins the window: WebKit works out the page's visibility
         // as the view arrives.
         Backstage.ignoreOcclusion(web, true)
+        Backstage.probeScale(web)
         web.removeFromSuperview()
         web.frame = content.bounds
         web.isHidden = false
@@ -498,6 +499,19 @@ final class Backstage {
         if let window = web.window, !(window is Window) {
             NotificationCenter.default.post(name: NSWindow.didChangeOcclusionStateNotification, object: window)
         }
+    }
+
+    /// A probe world started with SEARCH_PROBE_DPR=2 draws its agents' pages
+    /// at that device pixel ratio, as a Retina screen does, even on a 1×
+    /// headless Mac (the hill-climb's c6.canvas_dpr2). Test worlds only.
+    private static let probeDPR: CGFloat? = Store.testing
+        ? Double(ProcessInfo.processInfo.environment["SEARCH_PROBE_DPR"] ?? "").map { CGFloat($0) }.flatMap { $0 >= 1 && $0 <= 3 ? $0 : nil }
+        : nil
+    private static let scaleSetter = NSSelectorFromString("_setOverrideDeviceScaleFactor:")
+    static func probeScale(_ web: WKWebView) {
+        guard let dpr = probeDPR, web.responds(to: scaleSetter) else { return }
+        typealias Setter = @convention(c) (AnyObject, Selector, CGFloat) -> Void
+        unsafeBitCast(web.method(for: scaleSetter), to: Setter.self)(web, scaleSetter, dpr)
     }
 
     /// For the bench and `copper tabs`.

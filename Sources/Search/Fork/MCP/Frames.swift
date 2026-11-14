@@ -19,7 +19,23 @@ import WebKit
 // (`f2:e7`); every tool that takes a ref acts in that frame.
 
 extension WKContentWorld {
-    static let copper = WKContentWorld.world(name: "CopperAgent")
+    /// Copper's own world. Where WebKit offers it (`_WKContentWorldConfiguration`),
+    /// it also sees into closed shadow roots — `el.shadowRoot` answers for them
+    /// here, never in the page's world — so a widget that closes its root (a
+    /// checkout box, a design system's buttons) is in snapshots and takes
+    /// clicks and typing like the rest of the page. Otherwise a plain world.
+    static let copper: WKContentWorld = {
+        let name = "CopperAgent"
+        let make = NSSelectorFromString("_worldWithConfiguration:")
+        guard let kind = NSClassFromString("_WKContentWorldConfiguration") as? NSObject.Type,
+              (WKContentWorld.self as AnyObject).responds(to: make) else { return .world(name: name) }
+        let config = kind.init()
+        guard config.responds(to: NSSelectorFromString("setName:")),
+              config.responds(to: NSSelectorFromString("setAllowAccessToClosedShadowRoots:")) else { return .world(name: name) }
+        config.setValue(name, forKey: "name")
+        config.setValue(true, forKey: "allowAccessToClosedShadowRoots")
+        return (WKContentWorld.self as AnyObject).perform(make, with: config)?.takeUnretainedValue() as? WKContentWorld ?? .world(name: name)
+    }()
 }
 
 extension Tools {

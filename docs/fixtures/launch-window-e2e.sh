@@ -39,7 +39,9 @@
 #
 # ./build.sh first unless COPPER_SKIP_BUILD=1. No Docker; nothing here touches
 # the main world, the keychain or the installed Copper.
-set -euo pipefail
+set -Eeuo pipefail
+# Any step that stops the script says which, rather than exiting with nothing.
+trap 'echo "FAIL line $LINENO: $BASH_COMMAND (exit $?)"' ERR
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 world="launchwin-$$"
 folder="$HOME/Library/Application Support/Copper ($world)"
@@ -80,9 +82,13 @@ cp -R "$root/build/Copper.app" "$app"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $bundle" "$app/Contents/Info.plist"
 xattr -cr "$app"
 codesign -d --entitlements :- "$root/build/Copper.app" >"$tmp/entitlements.plist" 2>/dev/null
-vtool -set-build-version macos 14.0 15.5 -replace -output "$app/Contents/MacOS/Copper.stamped" "$app/Contents/MacOS/Copper" 2>/dev/null
+vtool -set-build-version macos 14.0 15.5 -replace -output "$app/Contents/MacOS/Copper.stamped" "$app/Contents/MacOS/Copper" 2>"$tmp/vtool.log" \
+  || fail "stamp the copy: $(grep -v warning "$tmp/vtool.log" | tail -1)"
 mv "$app/Contents/MacOS/Copper.stamped" "$app/Contents/MacOS/Copper"
-codesign --force -s - --options runtime --entitlements "$tmp/entitlements.plist" "$app" >/dev/null 2>&1
+# A local ad-hoc build has no entitlements (build.sh signs with them only when
+# a signing identity exists); codesign refuses an empty entitlements file.
+ents=(); [ -s "$tmp/entitlements.plist" ] && ents=(--entitlements "$tmp/entitlements.plist")
+codesign --force -s - --options runtime ${ents[@]+"${ents[@]}"} "$app" >"$tmp/codesign.log" 2>&1 || fail "re-sign the stamped copy: $(tail -1 "$tmp/codesign.log")"
 otool -l "$app/Contents/MacOS/Copper" | grep -A4 LC_BUILD_VERSION | grep -q "sdk 15.5" || fail "could not stamp the copy as a release"
 
 # Browser windows of a process on a display (layer 0, ordered in, at least

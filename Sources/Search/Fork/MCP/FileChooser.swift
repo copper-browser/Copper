@@ -1,5 +1,6 @@
 import AppKit
 import WebKit
+import UniformTypeIdentifiers
 
 // browser_file_upload: an agent answers a page's file chooser without a panel
 // on anybody's screen.
@@ -83,11 +84,12 @@ enum FileChooser {
 
     nonisolated static var tool: [String: Any] { [
         "name": "browser_file_upload",
-        "description": "Choose files for the page's file chooser on your tab. After a click opened one, answers it; before the click, arms the next one the tab opens. Omit paths to cancel.",
+        "description": "Choose files for the page's file chooser on your tab. After a click opened one, answers it; before the click, arms the next one the tab opens. Omit paths to cancel. With ref: drop the files onto that element instead, as if dragged in from Finder (a drop zone with no file input).",
         "inputSchema": [
             "type": "object",
             "properties": [
                 "paths": ["type": "array", "items": ["type": "string"], "description": "Absolute paths of the files to upload; omit to cancel the chooser"] as [String: Any],
+                "ref": ["type": "string", "description": "Drop zone ref (from browser_snapshot): drop the files there"] as [String: Any],
                 "reason": Tools.reasonProperty,
                 "tab": Tools.tabProperty,
             ] as [String: Any],
@@ -103,6 +105,7 @@ enum FileChooser {
             if armed.removeValue(forKey: tab.id) != nil { return [.text("Disarmed: the next file chooser on this tab opens as usual.")] }
             return [.text("No file chooser is open on this tab, and none was armed.")]
         }
+        if let ref = args["ref"] as? String, !ref.isEmpty { return try await drop(paths, on: ref, in: tab) }
         let held = pending[tab.id]
         let urls = try checked(paths, directories: held?.directories ?? false)
         guard let held else {
@@ -115,6 +118,35 @@ enum FileChooser {
         // The page hears `change` on its next turn.
         try await Task.sleep(nanoseconds: 150_000_000)
         return [.text("Uploaded \(names(urls)). \(Tools.pageLine(tab))")]
+    }
+
+    /// Fork (agent-drop): files dragged onto a drop zone, as from Finder: one
+    /// DataTransfer holding real File objects, through dragenter, dragover
+    /// and drop on the element (in its frame). The page reads them as it
+    /// reads a person's drop; only what the zone accepts is dropped.
+    static let dropLimit = 25 << 20
+
+    private static func drop(_ paths: [String], on ref: String, in tab: Tab) async throws -> [Tools.Content] {
+        guard !paths.isEmpty else { throw Tools.Failure(text: "paths: the files to drop") }
+        let urls = try checked(paths, directories: false)
+        var files: [[String: Any]] = []
+        var total = 0
+        for url in urls {
+            let data = try Data(contentsOf: url)
+            total += data.count
+            guard total <= dropLimit else { throw Tools.Failure(text: "more than \(dropLimit >> 20) MB to drop; drop fewer or smaller files") }
+            files.append(["name": url.lastPathComponent, "data": data.base64EncodedString(),
+                          "type": UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? ""])
+        }
+        let json = String(decoding: try JSONSerialization.data(withJSONObject: files), as: UTF8.self)
+        let target = Tools.Locator(ref: ref)
+        let result = try await Tools.Page.js(tab.web, at: target, "window.__copper.drop(\(Tools.Page.quote(target.script)), \(json))") as? [String: Any]
+        if let error = result?["error"] as? String { throw Tools.Failure(text: "\(error). Take a fresh browser_snapshot — refs change when the page does.") }
+        guard result?["accepted"] as? Bool == true else {
+            throw Tools.Failure(text: "\(ref) did not take the files: it cancelled no dragover, so it is not a drop zone. Drop on the element the page treats as the zone, or click its file input.")
+        }
+        try await Task.sleep(nanoseconds: 150_000_000)
+        return [.text("Dropped \(names(urls)) on \(ref). \(Tools.pageLine(tab))")]
     }
 
     /// Every path absolute (or ~), existing, and a file unless folders are taken.

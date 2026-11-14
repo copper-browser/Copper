@@ -256,8 +256,25 @@ enum Page {
                 else { continuation.resume(throwing: Failure(text: error?.localizedDescription ?? "no picture")) }
             }
         }
-        guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
-              let data = rep.representation(using: jpeg ? .jpeg : .png, properties: jpeg ? [.compressionFactor: 0.8] : [:])
+        guard let tiff = image.tiffRepresentation, var rep = NSBitmapImageRep(data: tiff) else { throw Failure(text: "couldn't encode the picture") }
+        // A Retina screen (or a page at another device pixel ratio) snapshots
+        // at 2× its points: drawn down to one pixel per point, so the
+        // picture's coordinates are the ones browser_mouse_click_xy takes.
+        let size = image.size
+        if rep.pixelsWide != Int(size.width.rounded()), size.width >= 1, size.height >= 1,
+           let one = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width.rounded()), pixelsHigh: Int(size.height.rounded()),
+                                      bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                      colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+           let context = NSGraphicsContext(bitmapImageRep: one) {
+            one.size = size
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = context
+            context.imageInterpolation = .high
+            rep.draw(in: NSRect(origin: .zero, size: size))
+            NSGraphicsContext.restoreGraphicsState()
+            rep = one
+        }
+        guard let data = rep.representation(using: jpeg ? .jpeg : .png, properties: jpeg ? [.compressionFactor: 0.8] : [:])
         else { throw Failure(text: "couldn't encode the picture") }
         return data
     }
@@ -710,6 +727,30 @@ enum Page {
         send(src, 'dragend');
         return { accepted: accepted };
       }
+      // Files dropped as from Finder (browser_file_upload ref): real File
+      // objects in one DataTransfer, dragenter → dragover → drop.
+      function drop(spec, files) {
+        var el = find(spec);
+        if (!el) return { error: 'no element for ' + spec };
+        if (el.scrollIntoView) el.scrollIntoView({ block: 'center', inline: 'center' });
+        var dt = new DataTransfer();
+        files.forEach(function (f) {
+          var bin = atob(f.data), bytes = new Uint8Array(bin.length);
+          for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          dt.items.add(new File([bytes], f.name, { type: f.type }));
+        });
+        var r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+        var hit = document.elementFromPoint(x, y), over = hit && el.contains(hit) ? hit : el;
+        function send(type) {
+          var ev = new DragEvent(type, { bubbles: true, cancelable: type !== 'dragleave', composed: true, dataTransfer: dt, clientX: x, clientY: y });
+          over.dispatchEvent(ev);
+          return ev;
+        }
+        send('dragenter');
+        var accepted = send('dragover').defaultPrevented;
+        send(accepted ? 'drop' : 'dragleave');
+        return { accepted: accepted };
+      }
       function draggable(spec) { var el = find(spec); return !!(el && el.closest('[draggable="true"]')); }
       // What a pointer at the centre of spec would be over, and whether the
       // page now says it is hovered.
@@ -779,7 +820,7 @@ enum Page {
         return out.length ? out.join('\n') : 'no visible text matches ' + JSON.stringify(needle);
       }
       window.__copper = { doc: function () { return (window.__officeForms || window.__officeFormsStub || { doc: '' }).doc; }, where: where, frameBox: frameBox, mark: mark,
-        snapshot: snapshot, find: find, rect: rect, setValue: setValue, select: select, fill: fill, click: click, hover: hover, focus: focus, submit: submit, key: key, drag: drag, draggable: draggable, hovered: hovered, watch: watch, changes: changes, scroll: scroll, text: text, findText: findText };
+        snapshot: snapshot, find: find, rect: rect, setValue: setValue, select: select, fill: fill, click: click, hover: hover, focus: focus, submit: submit, key: key, drag: drag, drop: drop, draggable: draggable, hovered: hovered, watch: watch, changes: changes, scroll: scroll, text: text, findText: findText };
       return true;
     })();
     """#

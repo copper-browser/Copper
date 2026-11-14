@@ -729,6 +729,14 @@ final class Flow: ObservableObject {
             report.bookmarks = report.facts.bookmarksRead
             finish(.bookmarks, report.facts, &steps)
             await pause()
+        } else if self.choice.bookmarks {
+            // Fork (flow-empty-bookmarks): chosen, but the source has none now, so no step on screen. Its
+            // complete empty read still takes away the roots an earlier move brought and nobody touched since.
+            var read = safari?.bookmarkRead
+            if safari == nil { read = await Task.detached(priority: .userInitiated) { FlowChromium.bookmarks(in: source) }.value }
+            if let read, read.complete, read.nodes.isEmpty {
+                await FlowBookmarks.takeInBackground(read, from: source.name, into: browser.bookmarks)
+            }
         }
 
         if choice.history {
