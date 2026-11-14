@@ -126,6 +126,19 @@ def record(out, to, home, seconds=0.9):
     return {"dir": out, "ms": [m for _, m in frames]}
 
 
+def weigh():
+    """After the settle: MB of the loaded pages that may sleep (every one but the pins), each process once, and how many."""
+    pins = {p["id"] for p in ask({"do": "pins"}).get("pins", [])}
+    seen, mb, n = set(), 0, 0
+    for x in ask({"do": "heat"}).get("tabs", []):
+        if (x.get("id") or "")[:8].lower() in pins or x.get("pid") in seen:
+            continue
+        seen.add(x.get("pid"))
+        mb += x.get("mb") or 0
+        n += 1
+    return {"nonpins_mb": round(mb), "nonpins_pages": n}
+
+
 def tabs():
     listing = ask({"do": "tabs"}).get("tabs", [])
     space = next((t.get("space") for t in listing if t.get("active")), None)
@@ -157,7 +170,7 @@ def run(out, rounds, arms_, rms, open_folders, settle, rec):
                             got = reduce_motion(rm == "on")
                             start(app, open_folders)
                             time.sleep(settle)
-                            row = {"arm": label, "round": r, "rm": rm, "rm_seen": got, "load": os.getloadavg()[0],
+                            row = {"arm": label, "round": r, "rm": rm, "rm_seen": got, "load": os.getloadavg()[0], "settled_mb": weigh(),
                                    "spaces": spaces(os.path.join(out, "motion", f"{label}-rm{rm}-r{r}") if rec else None),
                                    "tabs": tabs()}
                         finally:
@@ -193,6 +206,7 @@ def summary(out):
                 put("space.big.busy", r["arm"], r["rm"], s["busy"])
                 put("space.big.longest", r["arm"], r["rm"], s["longest"])
             put(f"space.landing_{s['landing']}.busy", r["arm"], r["rm"], s["busy"])
+        put("settled.nonpins_mb", r["arm"], r["rm"], (r.get("settled_mb") or {}).get("nonpins_mb"))
         for t in r["tabs"]:
             put("tab.warm.busy" if t["round"] == 1 and t["built"] else "tab.wake.busy" if t["round"] == 0 else "tab.other.busy",
                 r["arm"], r["rm"], t["busy"])
@@ -203,6 +217,7 @@ def summary(out):
     print("|---|---|" + "---|" * len(arms_))
     for (key, rm), per in sorted(cells.items()):
         def cell(xs):
+            xs = [x for x in xs if x is not None]
             return f"{pct(xs, 50)} · {pct(xs, 90)} · {max(xs)} ({len(xs)})" if xs else "—"
         print(f"| {key} | {rm} | " + " | ".join(cell(per.get(a, [])) for a in arms_) + " |")
     over = {}
