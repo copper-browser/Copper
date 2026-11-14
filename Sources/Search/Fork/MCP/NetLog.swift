@@ -173,11 +173,6 @@ final class NetLog: NSObject {
             && !["GET", "HEAD", "OPTIONS"].contains($0.method.uppercased()) }
     }
 
-    /// A data call of this page still out (`pending`).
-    static func busy(_ web: WKWebView, after mark: UInt64? = nil) -> Bool {
-        (dataCalls(web, after: mark) ?? []).contains { pending($0) }
-    }
-
     /// Until the page's data calls since `mark` are answered and nothing new
     /// was answered for `linger` (a reply often asks for the next thing), or
     /// `cap`: what they were. A page that left for another in the meantime

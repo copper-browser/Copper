@@ -1208,9 +1208,9 @@ enum Ultrafast {
                        vision: Vision = .off, shot: Shot? = nil, model: String? = nil, strategy: Strategy = Strategy(),
                        doneRefused: Bool = false, blockedRefused: Bool = false, noScroll: Bool = false,
                        askUnmet: Bool = false, confirmOnly: Bool = false, refusal: [String: Any]? = nil) async throws -> Decision {
-        var (elements, targets, controls) = actionSpace(obs.actions, signInAvailable: signInAvailable, autofill: autofill)
+        let (elements, offered, offeredControls) = actionSpace(obs.actions, signInAvailable: signInAvailable, autofill: autofill)
         // A form sent once that the page took without a word: only DONE or BLOCKED is left to say.
-        if confirmOnly { targets = [:]; controls = [:] }
+        let targets = confirmOnly ? [:] : offered, controls = confirmOnly ? [:] : offeredControls
         let quoted = strategy.literals ? literals(in: goal) : []
         let fills = targets["TYPE_TEXT"] ?? [:]
         let labels = [
@@ -2041,6 +2041,11 @@ enum Ultrafast {
             if let sent = quietSend, (kind == "click" && action["submits"] as? Bool == true) || (node != nil && node == sent.node) {
                 resendsStopped += 1
                 confirmOnly = true
+                if strategy.llm || seeing == .pixels {
+                    // A decider that can't be asked "DONE or BLOCKED" alone: the run ends here.
+                    status = "unsure"
+                    note = "Submitted, no confirmation shown: \(label) was sent once and the page shows nothing back — check it"
+                }
                 trace.outcome(Drive.Outcome(operation: decision.operation, label: "not sent again: " + label, text: nil,
                                                probability: decision.probability, confidence: decision.confidence,
                                                pageChanged: nil, stale: true, candidates: decision.candidates))
@@ -2055,7 +2060,7 @@ enum Ultrafast {
             var actStarted: Date?
             var submitted = false
             var burstSteps: [Step] = []
-            var netMark: UInt64 = 0
+            var netMark = NetLog.mark(web)
             var waitMs = 0.0
             do {
                 if kind == "fill", text == nil {

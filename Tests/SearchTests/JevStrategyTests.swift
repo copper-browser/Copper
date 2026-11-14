@@ -181,6 +181,7 @@ struct JevHybridTests {
     }
 }
 
+@MainActor
 @Suite("Jev's claims and waits")
 struct JevClaimTests {
     private typealias E = NetLog.Entry
