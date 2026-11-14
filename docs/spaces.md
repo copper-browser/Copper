@@ -35,9 +35,18 @@ out, then the new ones fade in, never the two lists over each other. The
 new space's page takes the card in the same frame as its rows: a page
 already drawn is swapped in once WebKit has a frame of it (never faded over
 the old one); a page that is waking shows its own last picture, or its
-ground, until it draws. After a launch, every space's landing page is
-loaded in the background while the pages that may sleep fit half their
-memory budget, so a first trip to a space rarely wakes one.
+ground, until it draws. After a launch, the landing page of the space you
+were in last is loaded in the background; another space's starts loading
+when you show you are going there — the pointer resting on its chip, a
+swipe setting off towards it, ⌃ held a moment (the spaces either side). A
+page loaded ahead that you don't go to within a minute goes back to sleep
+(`spaces.warm.cool`, seconds), so a guess costs no memory for long.
+
+Where a switch's main-thread time goes: `bench pace` after a switch lists
+its steps (`swap`, `swap.projection`, `swap.selected`, `swap.done`, then
+`page.attach`, `slide.go` and `swap.committed` — the next pass after the
+switch's own) beside every pass of 1 ms or more; `perf/a2steps.py` sums
+them per arm from a `perf/a2.py` run.
 
 ## The space menu
 
@@ -103,6 +112,7 @@ views (header, strip, editor, menu, delete sheet).
 ./bench spaces colour N|NAME Teal|…|Graphite
 ./bench spaces reorder N|NAME M             move a space to index M
 ./bench spaces move N|NAME                  the active tab, into that space
+./bench spaces warm N|NAME | sides          load a space's landing page ahead, as hovering its chip (sides: as ⌃ held)
 ./bench spaces remove N|NAME [--keep]       --keep moves its tabs to the neighbour
 ./bench spaces edit [N|NAME]                the editor popover, on the header
 ./bench spaces delete N|NAME                the Delete sheet (prints its text)

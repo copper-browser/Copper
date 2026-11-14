@@ -98,6 +98,9 @@ enum SpaceWarm {
         }
     }
 
+    /// Fork (switch): when each warmed page's latest warm-up started.
+    private static var warmed: [Tab.ID: Date] = [:]
+
     /// Fork (switch): how long a warmed page waits for its space before it
     /// goes back to sleep (`defaults write <domain> spaces.warm.cool <s>`).
     static var cool: TimeInterval {
@@ -117,11 +120,12 @@ enum SpaceWarm {
               tab.pending != nil, tab.built == nil, !tab.shy else { return false }
         spaces.remember(tab.id, in: space, for: browser)
         warming = tab.id
-        let looked = tab.touched
+        let looked = tab.touched, at = Date()
+        warmed[tab.id] = at
         Breadcrumbs.note("space-warm", [("host", tab.pending?.host() ?? "-")])
         warm(tab, size: browser.active?.built?.bounds.size, start: { _ = tab.wake() }) { [weak browser, weak tab] in
             warming = nil
-            if let browser, let tab { cooling(tab, unless: looked, in: browser) }
+            if let browser, let tab { cooling(tab, unless: looked, since: at, in: browser) }
             then?()
         }
         return true
@@ -131,9 +135,12 @@ enum SpaceWarm {
     /// to sleep (Browser.sleep: never one on screen, holding something typed,
     /// or kept awake for any other reason). Looking at it touches it, which
     /// lets it stay.
-    private static func cooling(_ tab: Tab, unless looked: Date, in browser: Browser) {
+    private static func cooling(_ tab: Tab, unless looked: Date, since at: Date, in browser: Browser) {
         DispatchQueue.main.asyncAfter(deadline: .now() + cool) { [weak browser, weak tab] in
-            guard let browser, let tab, tab.touched == looked, !tab.asleep, tab.built != nil else { return }
+            // Only the clock of the page's latest warm-up: one put to sleep and warmed again starts over.
+            guard let tab, warmed[tab.id] == at else { return }
+            warmed[tab.id] = nil
+            guard let browser, tab.touched == looked, !tab.asleep, tab.built != nil else { return }
             Breadcrumbs.note("space-warm", [("cooled", tab.address?.host() ?? "-")])
             browser.sleep(tab)
         }

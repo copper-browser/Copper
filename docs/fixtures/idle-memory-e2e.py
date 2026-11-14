@@ -184,7 +184,10 @@ try:
     until("B warmed by intent", lambda: "Page b" in loaded(), 30)
     t0 = time.time()
     until("B's unvisited page back asleep", lambda: "Page b" not in loaded(), 40)
-    print(f"   warmed, then asleep again {time.time() - t0:.1f} s later")
+    took = time.time() - t0
+    print(f"   warmed, then asleep again {took:.1f} s later")
+    if took < 9:  # the cool clock starts at this warm-up, not at the launch's (12 s, less the load)
+        fail(f"B went back to sleep after {took:.1f} s: an older warm-up's clock put it down")
     print("PASS idle-memory")
 finally:
     cleanup()
