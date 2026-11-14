@@ -128,7 +128,7 @@ extension CanvasTools {
             guard let path = words.first, let window = Windows.window(of: browser) ?? Links.window else {
                 return answer(["error": "canvas picture PATH"])
             }
-            var extras = NSApp.windows.filter { $0 !== window && $0.isVisible && ($0.sheetParent === window || $0.className.contains("Popover")) }
+            var extras = NSApp.windows.filter { $0 !== window && $0.isVisible && ($0.sheetParent === window || $0.parent === window || $0.className.contains("Popover")) } // a child window too: Move in's card (Fork/Flow/FlowPresenter)
             // A sheet held open for the bench (CanvasSheets) is drawn where it would hang.
             for held in [CanvasDelete.asking, CanvasRenameSheet.asking].compactMap({ $0 }) where !held.window.isVisible {
                 held.layout()
@@ -369,7 +369,7 @@ enum CanvasBench {
             if !extra.className.contains("Popover") {
                 // A sheet: AppKit's place for a real one; from the top of the
                 // window, centred, for one held open for the bench.
-                guard extra.sheetParent !== window else { return extra.frame }
+                guard extra.sheetParent !== window, extra.parent !== window else { return extra.frame } // a child window: where it is
                 return NSRect(x: window.frame.midX - size.width / 2, y: window.frame.maxY - 28 - size.height, width: size.width, height: size.height)
             }
             guard !extra.frame.intersects(window.frame) else { return extra.frame }

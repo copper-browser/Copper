@@ -53,7 +53,7 @@ struct Omnibox: View {
             // the strip at the top isn't part of what the eye is measuring.
             // Fork (ui-flows r3): with the start card or the empty space's
             // keys under it, the pair sits ~40% down instead.
-            .padding(.bottom, !over && browser.tabs.allSatisfy(\.isBlank) ? 140 : 60)
+            .padding(.bottom, !over && browser.spaceIsEmpty ? 140 : 60)
             .animation(Motion.settle, value: browser.offers)
             .animation(Motion.settle, value: refused)
         }

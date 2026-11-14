@@ -16,15 +16,13 @@ struct StartCard: View {
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        if browser.tabs.allSatisfy(\.isBlank) {
-            if offer {
-                card.onDisappear {
-                    // A page opened: the card has done its job.
-                    if !browser.tabs.allSatisfy(\.isBlank) { offer = false }
-                }
-            } else {
-                emptySpace
+        if offer, browser.tabs.allSatisfy(\.isBlank) {
+            card.onDisappear {
+                // A page opened: the card has done its job.
+                if !browser.tabs.allSatisfy(\.isBlank) { offer = false }
             }
+        } else if browser.spaceIsEmpty {
+            emptySpace
         }
     }
 
@@ -190,6 +188,12 @@ struct BrowserPill: View {
         .help(help ?? "Bring your tabs, bookmarks and passwords over from \(name)")
         .accessibilityLabel("Move in from \(name)")
     }
+}
+
+extension Browser {
+    /// Fork (ui-flows r3): nothing open in this space but the favourites
+    /// (which every space shows) and blank tabs.
+    var spaceIsEmpty: Bool { tabs.allSatisfy { $0.pin != nil || $0.isBlank } }
 }
 
 extension Preferences {
