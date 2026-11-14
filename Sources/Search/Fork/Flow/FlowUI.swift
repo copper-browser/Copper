@@ -687,9 +687,11 @@ struct FlowSheet: View {
         Button(title, action: action)
             .buttonStyle(.plain)
             .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(Palette.onAccent)
+            // Fork (uitype): disabled is flat — a 6% ink fill and muted words
+            // (white on a 35% accent was ~1.6:1).
+            .foregroundStyle(disabled ? Palette.muted : Palette.onAccent)
             .padding(.horizontal, 17).padding(.vertical, 10)
-            .background(Palette.accent.opacity(disabled ? 0.35 : 1), in: Capsule()) // Fork (ui-system)
+            .background(disabled ? Palette.ink.opacity(0.06) : Palette.accent, in: Capsule()) // Fork (ui-system)
             .keyboardShortcut(.defaultAction)
             .disabled(disabled)
     }

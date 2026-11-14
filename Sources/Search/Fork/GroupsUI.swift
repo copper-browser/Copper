@@ -36,7 +36,7 @@ struct GroupedRows: View {
 
     private var drag: SideDrag { SideDrag.of(browser) }
 
-    static let row: CGFloat = 37
+    static let row: CGFloat = 34 // Fork (uitype): Arc's ~34 with 14 pt titles (was 37 with 15)
     static let gap: CGFloat = 4
 
     private var loose: [Tab] {
@@ -263,7 +263,7 @@ struct GroupHead: View {
             mark
                 .padding(.trailing, 10)
             Text(label ?? group.name)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: SideBar.title, weight: .semibold))
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .foregroundStyle(tint.ink)
@@ -273,7 +273,7 @@ struct GroupHead: View {
             if group.collapsed, count > 0, hovering {
                 Text("\(count)")
                     .font(.system(size: 11))
-                    .foregroundStyle(tint.faint)
+                    .foregroundStyle(tint.muted) // Fork (uitype): words never in faint
                     .padding(.trailing, 9)
                     .transition(.opacity)
             }

@@ -183,7 +183,7 @@ struct HistoryPanel: View {
                 }
                 Spacer(minLength: 8)
                 if hovering {
-                    Quick("Remove", tint: .red.opacity(0.75), act: forget)
+                    Quick("Remove", tint: Palette.danger, act: forget)
                 } else {
                     Text(When.clock(trace.last))
                         .font(.system(size: 11.5))

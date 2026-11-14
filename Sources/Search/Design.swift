@@ -14,6 +14,9 @@ enum Palette {
     static let ink = Color(nsColor: NS.ink)             // neutral-900 · neutral-100
     static let muted = Color(nsColor: NS.muted)         // every secondary word: ≥4.5:1 on ground and wash
     static let faint = Color(nsColor: NS.faint)         // decoration only — rules, tracks, glyphs — never words
+    /// Fork (uitype): the one red — a failure's glyph or count, a word that
+    /// deletes. A sentence about a failure stays in ink with this on its glyph.
+    static let danger = Color(nsColor: NS.danger)
     /// Fork (ui-system): Copper's one colour — the primary button, a switch
     /// that is on, the keyboard's ring. Nothing else, so it always means
     /// "this one".
@@ -33,7 +36,10 @@ enum Palette {
         // Fork (ui-system): was 0.55 · 0.58 — 3.4:1 on white. 0.40 (Settings'
         // own detail ink) is 5.7:1 on ground and 5:1 on wash; 0.60 is 6:1
         // and 4.8:1 in dark.
-        static let muted = pair(0.40, 0.60)
+        // Fork (uitype): 0.40 drew 3.4–4.4:1 once 11–12 pt strokes were
+        // antialiased (measured off the pictures), and 0.33 still 4.2–4.4;
+        // 0.28 (#474747, 9.6:1 on paper) draws ≥4.5. 0.66 in dark.
+        static let muted = pair(0.28, 0.66)
         static let faint = pair(0.83, 0.32)
         static let hairline = pair(0.91, 0.20)
         static let wash = pair(0.937, 0.175)
@@ -47,6 +53,12 @@ enum Palette {
                 : NSColor(srgbRed: 0.741, green: 0.322, blue: 0.169, alpha: 1)
         }
         static let onAccent = pair(1.0, 0.11)
+        /// #B3261E (6.6:1 on white) · #FF8A80 (7.4:1 on the dark ground).
+        static let danger = NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                ? NSColor(srgbRed: 1.0, green: 0.541, blue: 0.502, alpha: 1)
+                : NSColor(srgbRed: 0.702, green: 0.149, blue: 0.118, alpha: 1)
+        }
 
         private static func pair(_ light: CGFloat, _ dark: CGFloat) -> NSColor {
             NSColor(name: nil) { appearance in
@@ -127,7 +139,7 @@ enum Metrics {
     /// narrower than tabTitled they show their site's mark alone, and they
     /// stop at tabMinWidth, the mark and its air. Past that the row scrolls,
     /// inside its own edges.
-    static let tabWidth: CGFloat = 186
+    static let tabWidth: CGFloat = 220 // Fork (uitype): spare strip width goes to the tabs (was 186)
     static let tabTitled: CGFloat = 80
     static let tabMinWidth: CGFloat = 36
     static let tabGap: CGFloat = 2

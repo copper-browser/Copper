@@ -319,7 +319,7 @@ struct ContentView: View {
 
                     // One stage, always.
                     if let tab = browser.active {
-                        SplitStage(browser: browser, active: tab, inset: sidebar) // Fork (page-frame)
+                        SplitStage(browser: browser, active: tab, inset: sidebar, framed: band > 0) // Fork (page-frame; uitype: the top-tab page is a card too)
                             .overlay {
                                 if recent.showing {
                                     RecentStrip(browser: browser)
@@ -335,7 +335,7 @@ struct ContentView: View {
                             .overlay(alignment: .topLeading) {
                                 if let asked = browser.suggesting, asked.tab == tab.id {
                                     AccountList(browser: browser, asked: asked)
-                                        .padding(.top, sidebar ? SplitMetrics.margin : 0) // Fork (page-frame): the page card starts a margin down
+                                        .padding(.top, sidebar || band > 0 ? SplitMetrics.margin : 0) // Fork (page-frame): the page card starts a margin down
                                         .transition(.opacity)
                                 }
                             }

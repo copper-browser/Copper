@@ -627,7 +627,7 @@ struct SpacePage: View {
                     Spacer()
                     Text("Bright")
                 }
-                .font(.system(size: 10.5))
+                .font(.system(size: 11)) // Fork (uitype): 11 pt floor for labels
                 .foregroundStyle(Palette.muted)
             }
             Text(look.tone == 0 ? "—" : String(format: "%@%d", look.tone < 0 ? "−" : "+", Int((abs(look.tone) * 100).rounded())))
@@ -733,7 +733,7 @@ struct SpacePage: View {
         if spaces.all.count > 1 {
             Card {
                 Line("Delete this space", "Asks first, and can move its tabs to the space beside it") {
-                    Pill("Delete Space…", tint: .red) { SpaceDelete.ask(id, in: browser) }
+                    Pill("Delete Space…", tint: Palette.danger) { SpaceDelete.ask(id, in: browser) }
                 }
             }
             .settingsAnchor("spaces.delete", card: true)

@@ -388,7 +388,7 @@ private struct ExtensionCardRow: View {
                     }
                     Quick("Reload") { extensions.reload(item.id) }
                         .accessibilityLabel("Reload \(item.name)")
-                    Quick("Remove", tint: .red.opacity(0.8)) { ExtensionRemoval.ask(item.id, name: item.name, icon: found?.icon(for: CGSize(width: 64, height: 64))) }
+                    Quick("Remove", tint: Palette.danger) { ExtensionRemoval.ask(item.id, name: item.name, icon: found?.icon(for: CGSize(width: 64, height: 64))) }
                         .accessibilityLabel("Remove \(item.name)")
                 }
                 .padding(.top, 2)
@@ -598,7 +598,7 @@ private struct ExtensionDetails: View {
                     // Granted later, when it asked and was told yes.
                     ForEach(extra, id: \.string) { pattern in
                         row(Extensions.site(pattern), detail: "Allowed when it asked") {
-                            Quick("Revoke", tint: .red.opacity(0.8)) {
+                            Quick("Revoke", tint: Palette.danger) {
                                 context?.grantedPermissionMatchPatterns.removeValue(forKey: pattern)
                                 manager.noteChange()
                             }
@@ -675,7 +675,7 @@ private struct ExtensionDetails: View {
                     VStack(spacing: 0) {
                         ForEach(later, id: \.rawValue) { permission in
                             row(permission.rawValue, detail: "Allowed when it asked") {
-                                Quick("Revoke", tint: .red.opacity(0.8)) {
+                                Quick("Revoke", tint: Palette.danger) {
                                     context?.grantedPermissions.removeValue(forKey: permission)
                                     manager.noteChange()
                                 }
@@ -683,7 +683,7 @@ private struct ExtensionDetails: View {
                         }
                         ForEach(ours, id: \.self) { name in
                             row(name, detail: "Allowed when it asked") {
-                                Quick("Revoke", tint: .red.opacity(0.8)) {
+                                Quick("Revoke", tint: Palette.danger) {
                                     Store.settings.set(ours.filter { $0 != name }, forKey: "extensions.granted.\(item.id)")
                                     manager.noteChange()
                                 }
@@ -833,7 +833,7 @@ private struct ExtensionTag: View {
     init(_ text: String, warn: Bool = false) { self.text = text; self.warn = warn }
     var body: some View {
         Text(text)
-            .font(.system(size: 10, weight: .medium))
+            .font(.system(size: 11, weight: .medium)) // Fork (uitype): 11 pt floor for labels
             .foregroundStyle(warn ? Color.orange : Palette.muted)
             .padding(.horizontal, 6)
             .padding(.vertical, 1.5)

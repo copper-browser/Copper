@@ -16,11 +16,11 @@ enum SettingsInk {
     static let content = Color(nsColor: pair(0.976, 0.108))
     static let card = Color(nsColor: pair(1.0, 0.150))
     static let cardEdge = Color(nsColor: pair(0.905, 0.205))
-    /// Secondary text: darker than `Palette.muted` in light (5:1 on white
-    /// rather than 3.4:1), the same in dark.
-    static let detail = Color(nsColor: pair(0.40, 0.64))
+    /// Secondary text: `Palette.muted`'s strength (Fork, uitype: 0.40 drew
+    /// under 4.5:1 once antialiased at 11–12 pt).
+    static let detail = Color(nsColor: pair(0.28, 0.66))
     /// Section titles: between the ink and the detail.
-    static let heading = Color(nsColor: pair(0.26, 0.80))
+    static let heading = Color(nsColor: pair(0.18, 0.80)) // Fork (uitype): stays between ink and the darker detail
     /// The field at the top of the rail.
     static let field = Color(nsColor: pair(0.905, 0.185))
     /// A row chosen in the results, or a page in the rail.

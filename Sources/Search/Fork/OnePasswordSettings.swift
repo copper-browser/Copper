@@ -37,7 +37,7 @@ struct OnePasswordCard: View {
                 Line("1Password couldn't do that", problem.message) {
                     Pill("Dismiss") { onePassword.clearProblem() }
                 }
-                .foregroundStyle(.red.opacity(0.78))
+                .foregroundStyle(Palette.danger)
             }
         }
         .onAppear {

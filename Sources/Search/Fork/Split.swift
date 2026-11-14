@@ -237,7 +237,14 @@ struct SplitStage: View {
     /// Fork (page-frame): the sidebar layout, where the stage is a card (or
     /// two) inset in the space's ground, which the window draws behind it.
     var inset = false
+    /// Fork (uitype): the top-tab layout, page on screen (not immersed): the
+    /// page is the same card there, on the split's ground, a margin all round.
+    var framed = false
     @Environment(\.colorScheme) private var scheme
+
+    /// The page is a card: beside the column, or alone under the strip (a
+    /// pair there keeps its own cards, margin and ground).
+    private var card: Bool { inset || (framed && !paired) }
 
     /// How far the page area spills past the window's top and bottom edges.
     /// Zero in a sane layout; see `PaneSpill`.
@@ -250,12 +257,12 @@ struct SplitStage: View {
     /// loopback server, a linked bot) shows as a card. It takes its width
     /// from the page, never from the sidebar.
     var body: some View {
-        HStack(spacing: inset ? SplitMetrics.gutter : 0) {
+        HStack(spacing: card ? SplitMetrics.gutter : 0) {
             driven
             if agent.open {
-                if !inset { Rectangle().fill(Palette.hairline).frame(width: 1) }
+                if !card { Rectangle().fill(Palette.hairline).frame(width: 1) }
                 AgentSlot(browser: browser) // Fork (addons): the slot's addon, else AgentPane (Fork/Addons/AddonUI.swift)
-                    .modifier(PaneCard(on: inset))
+                    .modifier(PaneCard(on: card))
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
@@ -263,6 +270,10 @@ struct SplitStage: View {
         // space's ground, with the margin round them (not left of them: the
         // column is the margin there).
         .padding(inset ? EdgeInsets(top: SplitMetrics.margin, leading: 0, bottom: SplitMetrics.margin, trailing: SplitMetrics.margin) : EdgeInsets())
+        // Fork (uitype): framed, the one page (or page and pane) sits in the
+        // split's own margin and ground — the pair keeps its own (below).
+        .padding(card && !inset ? SplitMetrics.margin : 0)
+        .background { if card && !inset { backdrop } }
         .animation(Motion.glide, value: agent.open)
     }
 
@@ -284,7 +295,7 @@ struct SplitStage: View {
             ?? DriveStyle.accent.opacity(onShown ? 0.35 : 0)
         return stage
             .overlay {
-                RoundedRectangle(cornerRadius: split.on || inset ? SplitMetrics.corner : 0, style: .continuous)
+                RoundedRectangle(cornerRadius: split.on || card ? SplitMetrics.corner : 0, style: .continuous)
                     .strokeBorder(ring, lineWidth: here.isEmpty ? 1.5 : 2)
                     .allowsHitTesting(false)
             }
@@ -302,6 +313,9 @@ struct SplitStage: View {
             .animation(Motion.quick, value: trace.live)
             .animation(Motion.quick, value: here.map(\.id))
     }
+
+    /// Two pages on the stage.
+    private var paired: Bool { split.on(in: browser) && split.side.map { id in browser.tabs.contains { $0.id == id } } == true }
 
     @ViewBuilder
     private var stage: some View {
@@ -343,7 +357,7 @@ struct SplitStage: View {
             .coordinateSpace(name: Split.space)
             .onChange(of: browser.activeID) { was, _ in split.reconcile(browser, was: was) }
             .onChange(of: browser.tabs.map(\.id)) { _, _ in split.reconcile(browser) }
-        } else if inset {
+        } else if card {
             PageCard(tab: active)
         } else {
             Page(tab: active)
@@ -363,7 +377,7 @@ struct SplitStage: View {
     /// The top-tab layout's ground for the pair: the space's own colour
     /// half over the window's, so the gutter is the space's and not a blue
     /// nobody chose. (Inset, the window draws the space's ground itself.)
-    private var wash: Color { split.tint(dark: scheme == .dark).ground.opacity(0.5) }
+    private var wash: Color { SpaceTint(space: spaces.space(in: browser), dark: scheme == .dark).ground.opacity(0.5) } // Fork (uitype): this window's space, split or not
 
     private func card(_ tab: Tab, _ size: CGSize) -> some View {
         SplitCard(

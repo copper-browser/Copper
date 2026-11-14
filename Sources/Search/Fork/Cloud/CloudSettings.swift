@@ -860,7 +860,7 @@ private struct CloudSyncCard: View {
         case .idle: return Color.green.opacity(0.8)
         case .syncing: return Color.yellow.opacity(0.85)
         case .offline: return Color.orange.opacity(0.85)
-        case .error: return Color.red.opacity(0.8)
+        case .error: return Palette.danger
         }
     }
 }
@@ -1067,7 +1067,7 @@ private struct CloudPairCard: View {
                         .foregroundStyle(left < 60 ? Color.orange.opacity(0.95) : Palette.muted)
                     Spacer()
                     if pairing.working { ProgressView().controlSize(.small) }
-                    CloudQuietButton("Revoke", tint: Color.red.opacity(0.85)) { confirmRevoke = true }
+                    CloudQuietButton("Revoke", tint: Palette.danger) { confirmRevoke = true }
                         .disabled(pairing.working)
                     Pill(pairing.copied ? "Copied" : "Copy", filled: true, action: pairing.copy)
                 }
@@ -1178,7 +1178,7 @@ private struct CloudConnection: View {
                 .padding(.horizontal, 14).padding(.vertical, 10)
                 Rule()
                 Line("Disconnect", "Signs out and forgets this instance, to connect to another. Nothing is deleted.") {
-                    Pill("Disconnect", tint: Color.red.opacity(0.85)) { confirm = true }
+                    Pill("Disconnect", tint: Palette.danger) { confirm = true }
                 }
                 .confirmationDialog("Disconnect from \(cloud.link?.host ?? "this instance")?", isPresented: $confirm) {
                     Button("Disconnect", role: .destructive) {
@@ -1438,7 +1438,7 @@ private struct CloudProblem: View {
             Image(systemName: "exclamationmark.circle").font(.system(size: 11))
             Text(text).font(.system(size: 11.5)).fixedSize(horizontal: false, vertical: true)
         }
-        .foregroundStyle(Color.red.opacity(0.85))
+        .foregroundStyle(Palette.danger)
         .padding(.leading, 2)
     }
 }

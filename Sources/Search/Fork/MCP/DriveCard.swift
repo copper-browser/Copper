@@ -190,10 +190,10 @@ struct DriveCard: View {
             } else {
                 Image(systemName: run.failed ? "exclamationmark.circle.fill" : (run.status == .stopped ? "stop.circle" : "checkmark.circle"))
                     .font(.system(size: 10.5))
-                    .foregroundStyle(run.failed ? Color.red.opacity(0.8) : Palette.muted)
+                    .foregroundStyle(run.failed ? Palette.danger : Palette.muted)
             }
             Text(run.statusLine(busy: busy))
-                .font(.system(size: 11)).foregroundStyle(run.failed ? Color.red.opacity(0.85) : Palette.muted)
+                .font(.system(size: 11)).foregroundStyle(run.failed ? Palette.ink : Palette.muted) // Fork (uitype): a sentence in ink, the red on its glyph
                 .lineLimit(2).truncationMode(.tail)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 6)
@@ -394,10 +394,10 @@ struct DriveStep: View {
         HStack(alignment: .firstTextBaseline, spacing: 7) {
             Image(systemName: DriveStep.icon(cycle.outcome?.operation ?? cycle.phases.last.map { $0.kind.rawValue.uppercased() } ?? ""))
                 .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(failed ? Color.red.opacity(0.8) : Palette.muted)
+                .foregroundStyle(failed ? Palette.danger : Palette.muted)
                 .frame(width: 16)
             Text(line)
-                .font(.system(size: 12)).foregroundStyle(failed ? Color.red.opacity(0.85) : Palette.ink)
+                .font(.system(size: 12)).foregroundStyle(Palette.ink) // Fork (uitype): the red is the glyph's; the line says what failed
                 .lineLimit(2).truncationMode(.tail)
                 .fixedSize(horizontal: false, vertical: true)
                 .layoutPriority(1)
@@ -549,7 +549,7 @@ struct DriveTimeline: View {
                 Spacer(minLength: 6)
                 if let ms = phase.ms {
                     Text(DriveStyle.ms(ms))
-                        .font(.system(size: 11, design: .monospaced)).monospacedDigit()
+                        .font(.system(size: 11)).monospacedDigit() // Fork (uitype): the monospaced face's thin strokes drew 3.8:1
                         .foregroundStyle(Palette.muted)
                 } else {
                     Ring(size: 9)
@@ -577,7 +577,7 @@ struct DriveTimeline: View {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     chip(outcome.operation)
                     Text(error.split(whereSeparator: \.isNewline).first.map(String.init) ?? error)
-                        .font(.system(size: 12)).foregroundStyle(Color.red.opacity(0.8))
+                        .font(.system(size: 12)).foregroundStyle(Palette.danger)
                         .lineLimit(2).truncationMode(.tail)
                         .fixedSize(horizontal: false, vertical: true)
                         .help(error)
@@ -629,7 +629,7 @@ struct DriveTimeline: View {
 
     private func chip(_ operation: String) -> some View {
         Text(operation)
-            .font(.system(size: 9.5, design: .monospaced))
+            .font(.system(size: 10, design: .monospaced)) // Fork (uitype): the 10 pt floor for words
             .foregroundStyle(Palette.ink)
             .padding(.horizontal, 5).padding(.vertical, 1.5)
             .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Palette.ink.opacity(0.25), lineWidth: 1))

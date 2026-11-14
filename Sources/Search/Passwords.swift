@@ -199,11 +199,11 @@ struct PasswordsPanel: View {
                         // Fork (keychain-codes)
                         if hasCode {
                             Quick("Copy code", act: copyCode)
-                            Quick("Remove code", tint: .red.opacity(0.75), act: removeCode)
+                            Quick("Remove code", tint: Palette.danger, act: removeCode)
                         } else {
                             Quick("Add code") { addingCode.toggle() }
                         }
-                        Quick("Remove", tint: .red.opacity(0.75), act: forget)
+                        Quick("Remove", tint: Palette.danger, act: forget)
                     }
                 }
                 if addingCode { codeForm } // Fork (keychain-codes)
@@ -239,7 +239,7 @@ struct PasswordsPanel: View {
                      ? "That key doesn't make a code — copy it again from the site's two-step setup"
                      : "Copper fills the code on the page that asks for it, right after you sign in")
                     .font(.system(size: 11))
-                    .foregroundStyle(seedRefused ? Color.red.opacity(0.75) : Palette.muted)
+                    .foregroundStyle(seedRefused ? Palette.danger : Palette.muted)
             }
         }
 
