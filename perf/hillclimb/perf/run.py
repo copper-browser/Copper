@@ -915,7 +915,8 @@ METRICS = [
         (f"A3.load.{p}.overhead_pct", "%", f"{n}: Copper over bare WebKit FCP (p50 vs p50, p90 vs p90)"),
         (f"A3.load.{p}.app_overhead_ms", "ms", f"{n}: request → navigation timeOrigin (Copper)"),
         (f"A3.load.{p}.raw_app_overhead_ms", "ms", f"{n}: same, bare WKWebView"))],
-    ("A3.load.busy_ms", "ms", "main-thread busy during one page load (all pages)"),
+    ("A3.load.busy_ms", "ms", "main-thread busy during one page load, open → load finished (all pages; r4: the harness's own after-phase left out)"),
+    ("A3.load.window_busy_ms", "ms", "main-thread busy over the whole load window incl. the after phase (r3's A3.load.busy_ms)"),
     ("A3.load.phase.open_ms", "ms", "A3 busy split (bench pace log): open → the page's policy ask"),
     ("A3.load.phase.commit_ms", "ms", "A3 busy split: ask → commit"),
     ("A3.load.phase.paint_ms", "ms", "A3 busy split: commit → first paint"),
@@ -963,7 +964,12 @@ METRICS = [
     ("A6.idle.pins_wakeups_per_s", "/s", "idle wakeups/s of the pinned tabs' web processes (each once); per pin: A6.pin.*"),
     ("A6.idle.pins_cpu_pct", "%", "idle CPU of the pinned tabs' web processes; per pin: A6.pin.*"),
     ("A6.idle.pins_visible", "", "pins whose page WebKit counts visible at idle (want 0: hidden pages get timer throttling)"),
-    ("A6.idle.main_passes_per_min", "", "main run-loop passes per idle minute"),
+    ("A6.idle.main_passes_per_min", "", "main run-loop passes per idle minute, Reduce Motion off (gate ≤200, r4)", 200),
+    ("A6.idle.rm.main_passes_per_min", "", "main run-loop passes per idle minute, Reduce Motion on"),
+    *[(f"A6.idle.{k}.wakeups_per_s", "/s", f"idle wakeups/s: {w}") for k, w in (
+        ("app", "the Copper process"), ("gpu", "WebKit's GPU process"), ("net", "WebKit's network process"),
+        ("pins", "pinned tabs' web processes"), ("pages", "other loaded tabs' web processes"),
+        ("web_other", "web processes with no tab (the animated column, spares)"), ("other", "anything else it owns"))],
     ("A7.address.key_ms", "ms", "⌘T card: main-thread ms to take one typed letter"),
     ("A7.address.key_max_ms", "ms", "⌘T card: worst letter per word"),
     ("A7.address.longest_ms", "ms", "⌘T card: longest main-thread stretch while typing a word", 16.7),
@@ -980,6 +986,8 @@ METRICS = [
         (f"A7.keylat.{k}.frame_ms", "ms", f"`bench keylat` {n}: key → pixel (display tick after that commit)"))],
 ]
 THRESHOLDS = {m[0]: m[3] for m in METRICS if len(m) > 3}
+# Pass/fail lines at the top of perf.md: (metric, statistic, limit, what). r4: A6 idle with Reduce Motion off.
+GATES = [("A6.idle.main_passes_per_min", "p90", 200, "idle main passes/min, Reduce Motion off")]
 HOOKED = ("A5.wheel.", "A7.keylat.")  # metrics that need hc/hooks
 
 
@@ -1060,7 +1068,10 @@ def collect(d, laptop):
         put("A6.idle.app_cpu_pct", r, i.get("app_cpu_pct"))
         put("A6.idle.wakeups_per_s", r, i.get("wakeups_per_s"))
         put("A6.idle.main_busy_ms_per_min", r, i.get("busy") / mins if i.get("busy") is not None else None)
-        put("A6.idle.main_passes_per_min", r, i.get("passes") / mins if i.get("passes") is not None else None)
+        rm = ".rm" if r.get("reduce_motion") else ""  # r4: rows say which; older rows (no field) count as off
+        put(f"A6.idle{rm}.main_passes_per_min", r, i.get("passes") / mins if i.get("passes") is not None else None)
+        for k, e in (i.get("by_kind") or {}).items():
+            put(f"A6.idle.{k}.wakeups_per_s", r, e.get("wakeups_per_s"))
         for t in r.get("typing", []):
             for k in t.get("keyMs") or []:
                 put("A7.address.key_ms", r, k)
@@ -1084,8 +1095,11 @@ def collect(d, laptop):
         if r["who"] == "copper":
             put(f"A3.load.{p}.fcp_ms", r, r.get("req_to_fcp_ms"))
             put(f"A3.load.{p}.app_overhead_ms", r, r.get("app_overhead_ms"))
-            put("A3.load.busy_ms", r, r.get("busy"))
-            for ph, ms in (r.get("phases") or {}).items():
+            ph_ = r.get("phases") or {}
+            # r4: the after phase is the harness's own settle + timing read, not the load: out of busy_ms
+            put("A3.load.busy_ms", r, round(r["busy"] - ph_["after"], 1) if ph_ and r.get("busy") is not None else r.get("busy"))
+            put("A3.load.window_busy_ms", r, r.get("busy"))
+            for ph, ms in ph_.items():
                 put(f"A3.load.phase.{ph}_ms", r, ms)
         else:
             put(f"A3.load.{p}.raw_fcp_ms", r, r.get("req_to_fcp_ms"))
@@ -1232,6 +1246,12 @@ def markdown(o):
         lines.append(f"- **{host}**: {m['model']}, macOS {m['macos']}, {', '.join(m['displays'])}, mode `{m['mode']}`, "
                      f"seed {m.get('seed_tabs')} tabs, 1-min load at sample start {ld.get('min')}–{ld.get('max')} (median {ld.get('median')})"
                      + (f" — **{m['load_flag']}**" if m.get("load_flag") else ""))
+    for key, q, lim, what in GATES:
+        for k in sorted(x for x in o["metrics"] if x.split("@")[0] == key):
+            for a in arms_:
+                s = o["metrics"][k].get(a) or {}
+                if s.get(q) is not None:
+                    lines.append(f"- **gate** {what}: {q} ≤ {lim:g} @{k.split('@')[1]} · {a}: {s[q]:g} → " + ("PASS" if s[q] <= lim else "FAIL"))
     lines += ["", "Cells: p50 · p90 (nearest rank) · max, `>T: k/n` = samples over the target's threshold, n = samples. "
               f"**Laptop**: a sample counts only if the 1-min load was < {LOAD_MAX:g} when it started; n = kept/total; "
               "`⚠ load` = no sample kept, the cell shows all of them and does not count. Lower is better except fps.", "",
@@ -1265,7 +1285,7 @@ def main(argv):
     if phase == "summary":
         return summary(out, argv[2:])
     a = arms(argv[2:])
-    {"setup": setup, "teardown": teardown, "launch": launch, "cold": cold, "session": session, "load": load, "smooth": smooth, "canvas": canvas_phase,
+    {"setup": setup, "teardown": teardown, "launch": launch, "cold": cold, "session": session, "idle": idle_phase, "load": load, "smooth": smooth, "canvas": canvas_phase,
      "hooks": hooks}[phase](out, a)
 
 

@@ -11,7 +11,7 @@
 #          (the 120 Hz wheel); laptop samples count only at 1-min load < 3 (waits up to HC_LOAD_WAIT=60 s for it),
 #          and a run whose median load is ≥ 3 is flagged in perf.md. A sleeping display gives no display ticks: wheel frames and
 #          key→pixel read n/a unless HC_WAKE_DISPLAY=1 (lights the screen for the hooks phase; nothing takes focus).
-# Knobs (env): HC_PHASES, HC_LAUNCHES=8, HC_COLD=6, HC_ROUNDS=6, HC_SETTLE=30, HC_IDLE=60, HC_LOADS=21,
+# Knobs (env): HC_PHASES (also `idle`: the session's idle minute alone, A4/A6, with wakeups per process), HC_LAUNCHES=8, HC_COLD=6, HC_ROUNDS=6, HC_SETTLE=30, HC_IDLE=60, HC_LOADS=21,
 #   HC_SMOOTH_RUNS=5, HC_PRESSES=20, HC_WHEEL_RUNS=5, HC_MODE=fg|headless, HC_SEED=~/hc/seed, HC_WORLD=hcperf,
 #   HC_PORT/HC_SITE_PORT/HC_FIXTURE_PORT/HC_CANVAS_PORT (any of 4130–4239, never 4123), HC_CANVAS_OUT=~/hc/canvas-out,
 #   HC_TOOLS=~/hc/tools (perf/ + docs/fixtures/canvas-*).
