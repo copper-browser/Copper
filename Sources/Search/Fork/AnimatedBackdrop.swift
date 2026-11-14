@@ -176,7 +176,7 @@ final class BackdropWeb: WKWebView, WKNavigationDelegate {
     private var loaded = false
     private var sent: String?
     private var observers: [NSObjectProtocol] = []
-    private var occlusion: NSObjectProtocol?
+    private var windowWatch: [NSObjectProtocol] = []
 
     /// One throwaway store for every backdrop: the page keeps no state, and
     /// sharing one lets WebKit warm a second column's process from the first.
@@ -217,9 +217,10 @@ final class BackdropWeb: WKWebView, WKNavigationDelegate {
         BackdropWeb.alive.add(self)
         guard BackdropScene.folder != nil, let page = URL(string: "\(SceneFiles.scheme)://scene/scene.html") else { return }
         load(URLRequest(url: page))
+        Attention.start()
         let center = NotificationCenter.default
         for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification,
-                     NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, .NSProcessInfoPowerStateDidChange] {
+                     NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, .NSProcessInfoPowerStateDidChange, Attention.changed] {
             // Power-state changes arrive on a background queue.
             observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in self?.refresh() })
         }
@@ -229,8 +230,7 @@ final class BackdropWeb: WKWebView, WKNavigationDelegate {
     required init?(coder: NSCoder) { fatalError() }
 
     deinit {
-        observers.forEach(NotificationCenter.default.removeObserver)
-        if let occlusion { NotificationCenter.default.removeObserver(occlusion) }
+        (observers + windowWatch).forEach(NotificationCenter.default.removeObserver)
     }
 
     // Nothing here is for the pointer: rows, doors and drags belong to the
@@ -240,6 +240,8 @@ final class BackdropWeb: WKWebView, WKNavigationDelegate {
 
     func apply(_ drive: BackdropScene.Drive) {
         guard drive != self.drive else { return }
+        // A new look (a space switch, a swipe, a slider) is someone at work.
+        if drive.look != self.drive?.look || drive.toward != nil { Attention.touch() }
         let before = self.drive
         self.drive = drive
         // A still space has nothing for the scene to draw: hidden, which is
@@ -292,10 +294,13 @@ final class BackdropWeb: WKWebView, WKNavigationDelegate {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if let occlusion { NotificationCenter.default.removeObserver(occlusion) }
-        occlusion = window.map { window in
-            NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main) { [weak self] _ in self?.refresh() }
-        }
+        windowWatch.forEach(NotificationCenter.default.removeObserver)
+        windowWatch = window.map { window in
+            [NSWindow.didChangeOcclusionStateNotification, NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification,
+             NSWindow.didBecomeMainNotification, NSWindow.didResignMainNotification].map { name in
+                NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in self?.refresh() }
+            }
+        } ?? []
         refresh()
     }
 
@@ -305,12 +310,19 @@ final class BackdropWeb: WKWebView, WKNavigationDelegate {
     /// What the page should be doing right now. `still` draws one frame and
     /// stops — the scene is there, it just doesn't move; `pause` draws
     /// nothing new, for a column nobody can see.
+    ///
+    /// Fork (idle): it also stands still (`still`, so a new colour still
+    /// lands) when nobody has touched Copper for `Attention.window` seconds,
+    /// even under test, and when its window is neither key nor main (another
+    /// Copper window is in front). Each of those used to draw 24 frames a
+    /// second, a main-thread commit each, for nobody.
     private var mode: String {
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || ProcessInfo.processInfo.isLowPowerModeEnabled { return "still" }
         guard let window, !isHiddenOrHasHiddenAncestor else { return "pause" }
+        guard Attention.awake else { return "still" }
         if BackdropScene.forced { return "run" }
         guard window.occlusionState.contains(.visible), NSApp.isActive else { return "pause" }
-        return "run"
+        return window.isKeyWindow || window.isMainWindow ? "run" : "still"
     }
 
     private func refresh() {
@@ -344,7 +356,7 @@ final class BackdropWeb: WKWebView, WKNavigationDelegate {
         var left = views.count
         for (i, view) in views.enumerated() {
             var row: [String: Any] = ["hidden": view.isHidden, "window": view.window != nil, "loaded": view.loaded,
-                                      "mode": view.sent ?? "", "key": view.shown?.key ?? ""]
+                                      "mode": view.sent ?? "", "key": view.shown?.key ?? "", "awake": Attention.awake]
             if view.responds(to: NSSelectorFromString("_webProcessIdentifier")),
                let pid = view.value(forKey: "_webProcessIdentifier") as? NSNumber { row["pid"] = pid.intValue }
             view.evaluateJavaScript("window.backdrop ? JSON.stringify(window.backdrop.status()) : null") { result, error in

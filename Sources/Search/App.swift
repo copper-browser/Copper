@@ -15,6 +15,7 @@ struct SearchApp: App {
         Instance.acquireIfNeeded() // Fork: one process per world, before anything is restored (Fork/Instance.swift)
         Fork.migratePasskeysPreference()
         Bridge.runIfAsked()
+        Web.warm() // Fork (launch): a content process starting now, for the restored page to take (Tab.swift, Web)
         Voice.shared.boot() // Fork (voice): the speech engine behind Settings › Voice, and ⌃⇧D (Fork/Voice/VoiceSession.swift)
     } // Fork: `--mcp-stdio` pipes to the running app and exits
 
