@@ -574,6 +574,7 @@ enum Fork {
                 ["index": index, "key": row.key, "kind": "\(row.kind)", "heading": CardSections.shared.headings[index] ?? ""] as [String: Any]
             }
             out["picked"] = browser.picked ?? -1
+            out["summoning"] = browser.summoning
             return out
         case "window":
             // The whole window as the compositor shows it — sidebar, page,
