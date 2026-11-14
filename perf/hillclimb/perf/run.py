@@ -15,7 +15,7 @@ ARM = label=/path/to/Copper.app. Rows land in OUT/raw/<phase>.jsonl. Every launc
 probe world from HC_SEED (a frozen copy of a real session: tabs, spaces, history, icons; never
 cookies or passwords) so every launch of every arm starts from the same state.
 """
-import ctypes, fcntl, glob, json, os, platform, re, shutil, signal, socket, statistics, subprocess, sys, time
+import contextlib, ctypes, fcntl, glob, json, os, platform, re, shutil, signal, socket, statistics, subprocess, sys, time
 from contextlib import contextmanager
 
 HOME = os.path.expanduser("~")
@@ -58,17 +58,29 @@ def order(arms_, r):
     return arms_ if r % 2 == 0 else arms_[::-1]
 
 
+_held = False
+
+
 @contextmanager
 def locked():
-    if not LOCK:
+    global _held
+    if not LOCK or _held:  # already held for the whole round (round_locked)
         yield
         return
     with open(os.path.expanduser(LOCK), "a") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
+        _held = True
         try:
             yield
         finally:
+            _held = False
             fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def round_locked():
+    """HC_LOCK_ROUND=1: one lock per ABBA round (both arms back to back) instead of per launch, for a
+    long queue for the lock; the per-launch `locked()` inside then takes nothing."""
+    return locked() if os.environ.get("HC_LOCK_ROUND") == "1" else contextlib.nullcontext()
 
 
 def load_avg():
@@ -279,16 +291,17 @@ def rawload_app():
 def launch(out, arms_):
     """A1: restored-page paint per launch, arms alternating. Round 0 is dropped in the summary."""
     for r in range(N("HC_LAUNCHES", 8)):
-        for label, app in order(arms_, r):
-            with locked():
-                t = start(app)
-                time.sleep(3)  # let `settled` land; launchBusy then covers the launch
-                pace = ask({"do": "pace"})
-                emit(out, "launch", {"arm": label, "round": r, **t, "marks": pace.get("marks", {}),
-                                     "launchBusy": pace.get("launchBusy"),
-                                     "firstPass": (pace.get("launchSlow") or [[0, None]])[0][1],
-                                     "launchSlow": pace.get("launchSlow")})
-                perf.quit_world(WORLD)
+        with round_locked():
+            for label, app in order(arms_, r):
+                with locked():
+                    t = start(app)
+                    time.sleep(3)  # let `settled` land; launchBusy then covers the launch
+                    pace = ask({"do": "pace"})
+                    emit(out, "launch", {"arm": label, "round": r, **t, "marks": pace.get("marks", {}),
+                                         "launchBusy": pace.get("launchBusy"),
+                                         "firstPass": (pace.get("launchSlow") or [[0, None]])[0][1],
+                                         "launchSlow": pace.get("launchSlow")})
+                    perf.quit_world(WORLD)
 
 
 # A1 cold without sudo (no `purge`): what it does and doesn't cover is COLD_NOTE, printed in perf.md.
@@ -486,27 +499,28 @@ def load(out, arms_):
     n = N("HC_LOADS", 21)
     quiet = open(os.devnull, "w")
     for r in range(N("HC_LOAD_ROUNDS", 1)):
-        for label, app in order(arms_, r):
-            with locked():
-                l0 = start(app)["load0"]
-                time.sleep(10)
-                for name, url in LOAD_PAGES:
-                    step, raw, proc = rawload(url, n)
-                    so, sys.stdout = sys.stdout, quiet
-                    try:
-                        rows = perf.load(WORLD, url, n, between=step)
-                    finally:
-                        sys.stdout = so
-                    proc.wait(timeout=60)
-                    for m in rows:
-                        emit(out, "load", {"arm": label, "round": r, "who": "copper", "page": name, "load0": l0,
-                                           **{k: m.get(k) for k in ("run", "app_overhead_ms", "req_to_fcp_ms", "req_to_load_ms", "fcp", "load",
-                                                                     "ttfb", "wait_ms", "busy", "longest", "resources", "bytes")}})
-                    for m in raw:
-                        emit(out, "load", {"arm": label, "round": r, "who": "raw", "page": name, "load0": l0,
-                                           **{k: m.get(k) for k in ("run", "app_overhead_ms", "req_to_fcp_ms", "req_to_load_ms", "fcp", "load",
-                                                                     "ttfb", "finish_ms", "resources", "bytes")}})
-                perf.quit_world(WORLD)
+        with round_locked():
+            for label, app in order(arms_, r):
+                with locked():
+                    l0 = start(app)["load0"]
+                    time.sleep(10)
+                    for name, url in LOAD_PAGES:
+                        step, raw, proc = rawload(url, n)
+                        so, sys.stdout = sys.stdout, quiet
+                        try:
+                            rows = perf.load(WORLD, url, n, between=step)
+                        finally:
+                            sys.stdout = so
+                        proc.wait(timeout=60)
+                        for m in rows:
+                            emit(out, "load", {"arm": label, "round": r, "who": "copper", "page": name, "load0": l0,
+                                               **{k: m.get(k) for k in ("run", "app_overhead_ms", "req_to_fcp_ms", "req_to_load_ms", "fcp", "load",
+                                                                         "ttfb", "wait_ms", "busy", "longest", "resources", "bytes")}})
+                        for m in raw:
+                            emit(out, "load", {"arm": label, "round": r, "who": "raw", "page": name, "load0": l0,
+                                               **{k: m.get(k) for k in ("run", "app_overhead_ms", "req_to_fcp_ms", "req_to_load_ms", "fcp", "load",
+                                                                         "ttfb", "finish_ms", "resources", "bytes")}})
+                    perf.quit_world(WORLD)
 
 
 def scroll_pages():
@@ -635,17 +649,18 @@ def hook(req, timeout=60):
 def hooks(out, arms_):
     """One launch per arm per round: `bench keylat` for ⌘T and ⌘K, then `bench wheel` on every scroll page."""
     for r in range(N("HC_HOOK_ROUNDS", 1)):
-        for label, app in order(arms_, r):
-            with locked():
-                base = {"arm": label, "round": r, "load0": start(app)["load0"]}
-                time.sleep(10)
-                keylat(out, base)
-                # the wheel on the laptop only (HC_WHEEL=1 forces it): ProMotion, and the mini's fg window
-                # can be covered by other probes' windows, which stops the page's rAF
-                for page, url in scroll_pages() if LAPTOP or os.environ.get("HC_WHEEL") == "1" else []:
-                    if not wheel(out, {**base, "page": page}, url):
-                        break
-                perf.quit_world(WORLD)
+        with round_locked():
+            for label, app in order(arms_, r):
+                with locked():
+                    base = {"arm": label, "round": r, "load0": start(app)["load0"]}
+                    time.sleep(10)
+                    keylat(out, base)
+                    # the wheel on the laptop only (HC_WHEEL=1 forces it): ProMotion, and the mini's fg window
+                    # can be covered by other probes' windows, which stops the page's rAF
+                    for page, url in scroll_pages() if LAPTOP or os.environ.get("HC_WHEEL") == "1" else []:
+                        if not wheel(out, {**base, "page": page}, url):
+                            break
+                    perf.quit_world(WORLD)
 
 
 def keylat(out, base):
