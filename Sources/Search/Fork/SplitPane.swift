@@ -124,7 +124,12 @@ private struct SplitWaiting: View {
     @ObservedObject var tab: Tab
     /// Fork (motion): the page has painted. Gone then (in 80 ms), so it can't
     /// show through wherever a page mid-resize hasn't drawn yet.
-    @State private var painted = false
+    @State private var painted: Bool
+
+    init(tab: Tab) {
+        self.tab = tab
+        _painted = State(initialValue: tab.built.map { !$0.unpainted } ?? false)
+    }
 
     var body: some View {
         waiting
