@@ -128,7 +128,7 @@ forward; the pane opens itself only for work on the page on screen.
 | `browser_get_text`, `browser_find`, `browser_console_messages` | reading without a snapshot; refs for text you name; console since load (from document start in a tab the agent opened, else from the first tool call) |
 | `browser_resize`, `browser_close` | the window; your own tab (refused when you have none — name one with `tab`) |
 | `browser_groups` | Copper's tab groups: `list`, `assign {group}`, `remove` |
-| `browser_file_upload` | `paths: [absolute]` answers the file chooser your click opened; before the click it arms the next one; no `paths` cancels ([Files and browser state](#files-and-browser-state)) |
+| `browser_file_upload` | `paths: [absolute]` answers the file chooser your click opened; before the click it arms the next one; no `paths` cancels; with `ref` it drops the files on that element, as from Finder, for a drop zone with no file input ([Files and browser state](#files-and-browser-state)) |
 | `browser_pdf_save` | the page as a paged PDF; `filename` (absolute, or a name under the downloads folder) |
 | `browser_downloads` | downloads your tab (or a popup it opened) started: name, state, bytes, path; `wait` seconds for running ones |
 | `browser_network_requests` | `[GET] url => [200] (fetch)` per request since the page loaded; `includeStatic`, `limit` (≤300) |

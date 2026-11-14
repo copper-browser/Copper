@@ -1989,7 +1989,8 @@ final class Browser: NSObject, ObservableObject {
             // account with this name is read — one item, not the site's list.
             if target == .keychain, let same = known.first(where: { $0.user == user }) {
                 if let full = Vault.resolve(same), full.password == password {
-                    Vault.touch(full)
+                    // Fork (origin-save): one kept before its scheme and port were learns them from this sign-in (a bare localhost login becomes an agent's again).
+                    if same.origin == nil, let origin { _ = Vault.save(host: host, user: user, password: password, used: Date(), origin: origin) } else { Vault.touch(full) }
                     return
                 }
             }
