@@ -365,7 +365,10 @@ enum CanvasTools {
         func content(_ parts: [Content]) -> [String: Any] {
             var texts: [String] = []
             for part in parts { if case .text(let text) = part { texts.append(text) } }
-            return decoded(texts.joined(separator: "\n"))
+            // The answer is the first part; a first canvas_read adds the op guide after it.
+            var out = decoded(texts.first ?? "")
+            if texts.count > 1 { out["more"] = Array(texts.dropFirst()) }
+            return out
         }
         Task { @MainActor in
             do {
