@@ -55,7 +55,10 @@ extension Credentials {
     /// localhost, *.localhost, 127.0.0.0/8 and ::1: this Mac.
     nonisolated static func loopback(_ host: String) -> Bool {
         let host = host.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-        return host == "localhost" || host.hasSuffix(".localhost") || host == "::1" || host.hasPrefix("127.")
+        // 127.0.0.0/8 as an address only: "127.example.com" is a name anyone can register.
+        let octets = host.split(separator: ".", omittingEmptySubsequences: false)
+        let v4 = octets.count == 4 && octets.allSatisfy { UInt8($0) != nil }
+        return host == "localhost" || host.hasSuffix(".localhost") || host == "::1" || (v4 && octets[0] == "127")
     }
 
     /// Fork (agent-autofill): an autofill item — a login whose custom field
