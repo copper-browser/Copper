@@ -364,8 +364,17 @@ final class Backstage {
             if let web = browser.active?.built, let window = web.window, !(window is Window),
                web.bounds.width > 200, web.bounds.height > 200 { return web.bounds.size }
         }
-        return NSSize(width: 1280, height: 800)
+        return Backstage.unstaged
     }
+
+    /// With no stage to match (headless, or nothing loaded in front): a
+    /// laptop's worth, or SEARCH_BACKSTAGE_SIZE=WxH — a benchmark runs at
+    /// the other side's viewport (perf/hillclimb/agentbench: 1120x780).
+    private static let unstaged: NSSize = {
+        let parts = (ProcessInfo.processInfo.environment["SEARCH_BACKSTAGE_SIZE"] ?? "").lowercased().split(separator: "x").compactMap { Double($0) }
+        if parts.count == 2, parts[0] >= 320, parts[1] >= 240 { return NSSize(width: parts[0], height: parts[1]) }
+        return NSSize(width: 1280, height: 800)
+    }()
 
     private func ensureWindow() -> Window {
         let size = Backstage.stageSize

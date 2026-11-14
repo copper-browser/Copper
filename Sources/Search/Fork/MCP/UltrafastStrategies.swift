@@ -6,17 +6,34 @@ import WebKit
 //
 //   fast     no cosmetic pointer glide before a click (it cost 120–320 ms
 //            per click); the trail still draws.
-//   literal  the values the goal quotes ("maya@acme.test") are offered to Jev
-//            as choices, one question per value — "which field holds this?" —
-//            in the same request as the operation. A TYPE_TEXT then types the
-//            value Jev matched to that field, with no call to the text model.
-//            A field no quoted value fits still goes to the text model.
+//   literal  the values the goal names — what it quotes ("maya@acme.test"),
+//            and the places, names and dates it says outright ("from Zurich
+//            to London on January 20, 2027") — are offered to Jev as choices,
+//            one question per value — "which field holds this?" — in the
+//            same request as the operation. A TYPE_TEXT then types the value
+//            Jev matched to that field, with no call to the text model. A
+//            field no named value fits still goes to the text model.
 //   burst    literal, and every other confident value → field match in that
 //            answer is typed too, one after another, before the next read:
-//            a login form is one decision, not three.
+//            a login form is one decision, not three. Never into a field
+//            that answers typing with a list to pick from (a combobox, a
+//            search box), and never after one: that list is the next read.
 //   lean     the state Jev reads is trimmed (page text to 1,200 characters,
 //            five recent actions): fewer tokens per decision.
-//   turbo    fast + burst + lean.
+//   paste    a field's value goes in as one trusted edit (select all, insert
+//            text — what upstream's Input.insertText does) and is read back,
+//            instead of a key event per character.
+//   watch    WAIT ends when the page changes, and a click the page has not
+//            answered yet gets up to a second to show something.
+//   turbo    fast + burst + lean + paste + watch.
+//   verify   (not in Fast mode: at the 0.5 floor it refused 2 right DONEs in
+//            96 hill-climb runs and caught no wrong one; the run then ends
+//            BLOCKED.) Beside each decision Jev also says how likely something is
+//            visibly left undone; a DONE the page contradicts is not taken
+//            at its word (the next decision is asked without DONE on offer).
+//   submit   Return after typing into a search box that is its form's only
+//            field and shows no suggestions: the search is made, not just
+//            written (Jev 1.14 skipped the search button 4 runs in 5).
 //   llm      a small LLM (the text model, or llm=<name>) decides instead of
 //            Jev: one chat call returns the operation, the target and any
 //            text. The comparison for "is Jev the fastest decider?".
@@ -37,9 +54,13 @@ extension Tools.Ultrafast {
         var lean = false
         var llm = false
         var llmModel: String? = nil
-        /// Set a field's value in one go (the way frameworks notice: native
-        /// setter, input and change events) instead of a key event per character.
+        /// A field's value as one trusted edit (select all + insertText,
+        /// read back) instead of a key event per character.
         var paste = false
+        /// A DONE the page contradicts is refused (Ultrafast.unmetStatement).
+        var verify = false
+        /// Return after typing into a search box that is its form's only field.
+        var submit = false
         /// WAIT returns when the page changes (a MutationObserver, capped at
         /// 1.5 s) instead of after a fixed 100 ms.
         var watch = false
@@ -59,6 +80,8 @@ extension Tools.Ultrafast {
                 case "lean": s.lean = true
                 case "paste": s.paste = true
                 case "watch": s.watch = true
+                case "verify": s.verify = true
+                case "submit": s.submit = true
                 case "turbo": s.glide = false; s.literals = true; s.burst = true; s.lean = true; s.paste = true; s.watch = true
                 case "llm": s.llm = true
                 default:
@@ -75,6 +98,7 @@ extension Tools.Ultrafast {
         static var shipped: Strategy {
             var s = Strategy.parse("turbo")!
             s.glideWatched = true
+            s.submit = true
             return s
         }
 
@@ -85,6 +109,8 @@ extension Tools.Ultrafast {
             if lean { parts.append("lean") }
             if paste { parts.append("paste") }
             if watch { parts.append("watch") }
+            if verify { parts.append("verify") }
+            if submit { parts.append("submit") }
             if llm { parts.append(llmModel.map { "llm=\($0)" } ?? "llm") }
             return parts.isEmpty ? "classic" : parts.joined(separator: ",")
         }
@@ -99,18 +125,27 @@ extension Tools.Ultrafast {
 
     // MARK: - the goal's own values
 
-    /// What the goal quotes: "…" and “…” spans, and email addresses. These
-    /// are the only strings `literal` mode will type without a text model.
+    /// The values a goal names, in its own words: "…" and “…” spans, email
+    /// addresses, and — unquoted — a name right after from/to/in/near/at/
+    /// named/called/titled ("from Zurich to London", "in Lisbon") and a
+    /// written-out or ISO date. These are the only strings `literal` mode
+    /// will type without a text model, and only into the field Jev matches
+    /// each one to; a value it matches to no field costs one question.
     static func literals(in goal: String) -> [String] {
         var out: [String] = []
         func add(_ s: String) {
             let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
             if !t.isEmpty, t.count <= 200, !out.contains(t) { out.append(t) }
         }
+        let month = "(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+        let name = #"\p{Lu}[\p{L}\p{N}'’-]*"#
         let patterns: [(String, Int)] = [
             (#""([^"]{1,200})""#, 1),
             (#"“([^”]{1,200})”"#, 1),
             (#"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+"#, 0),
+            ("\\b(?:from|to|in|near|at|named|called|titled) ((?!\(month)\\b)\(name)(?: \(name))*)", 1),
+            ("\\b\(month)\\.? \\d{1,2}(?:st|nd|rd|th)?(?:,? \\d{4})?\\b", 0),
+            (#"\b\d{4}-\d{2}-\d{2}\b"#, 0),
         ]
         let whole = NSRange(goal.startIndex..., in: goal)
         for (pattern, group) in patterns {
@@ -178,6 +213,7 @@ extension Tools.Ultrafast {
         for a in assignments where a.target != target && a.probability >= 0.6 {
             let current = (fills[a.target]?["value"] as? String) ?? ""
             if current == a.literal { continue }
+            if let field = fills[a.target], suggests(field) { continue }
             if let have = best[a.target], have.probability >= a.probability { continue }
             best[a.target] = a
         }
@@ -306,7 +342,8 @@ extension Tools.Ultrafast {
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: user, options: [.sortedKeys]) else { throw Tools.Failure(text: "couldn't encode the page") }
         let model = strategy.llmModel ?? (keys.textModel.isEmpty ? "haiku" : keys.textModel)
-        let reply = try await Router.ask(system: llmRule, user: String(decoding: data, as: UTF8.self), keys: keys, timeout: 30, maxTokens: 200, model: model)
+        // 200 tokens cut a reply short mid-object (it then parsed as nothing: "operation not on offer ()").
+        let reply = try await Router.ask(system: llmRule, user: String(decoding: data, as: UTF8.self), keys: keys, timeout: 30, maxTokens: 500, model: model, json: true)
         let op = (reply.json["operation"] as? String ?? "").uppercased()
         var decision: Decision
         if let candidates = targets[op] {
@@ -387,8 +424,10 @@ extension Tools.Ultrafast {
         if Input.canPost(to: web), !paste {
             Input.type(web, text)
         } else {
+            // One trusted edit over the selection (as in act()); a field that
+            // refuses the command has its value set the way frameworks notice.
             let quoted = Tools.Page.quote(text)
-            _ = try await Tools.Page.raw(web, "(function(t){var e=document.activeElement; if(!e) return false; var d=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e),'value'); if(d&&d.set) d.set.call(e,t); else e.value=t; e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true})); return true})(\(quoted))")
+            _ = try await Tools.Page.raw(web, "(function(t){var e=document.activeElement; if(!e) return false; var ok=false; try{ok=document.execCommand('insertText',false,t)}catch(_){} if(ok) return true; var d=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e),'value'); if(d&&d.set) d.set.call(e,t); else e.value=t; e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true})); return true})(\(quoted))")
         }
         Tools.Trail.typed(web, x: x, y: y, text: text)
     }
