@@ -54,10 +54,11 @@ enum Page {
     @MainActor static var waiting: [ObjectIdentifier: Int] = [:]
 
     @MainActor
-    static func raw(_ web: WKWebView, _ script: String) async throws -> Any? {
+    static func raw(_ web: WKWebView, _ script: String, counted: Bool = true) async throws -> Any? {
+        // Not counted: decoration (Trail) that nothing waits on, so a click's alert stays open for the agent.
         let key = ObjectIdentifier(web)
-        waiting[key, default: 0] += 1
-        defer { let left = (waiting[key] ?? 1) - 1; waiting[key] = left > 0 ? left : nil }
+        if counted { waiting[key, default: 0] += 1 }
+        defer { if counted { let left = (waiting[key] ?? 1) - 1; waiting[key] = left > 0 ? left : nil } }
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any?, Error>) in
             web.evaluateJavaScript(script) { value, error in
                 if let error {

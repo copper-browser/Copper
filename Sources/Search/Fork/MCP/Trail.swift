@@ -103,7 +103,7 @@ enum Trail {
     @MainActor
     static func clear(_ web: WKWebView) {
         Task { @MainActor in
-            _ = try? await Page.raw(web, "(function(){ if (window.__jevTrail) window.__jevTrail.clear(); return true; })()")
+            _ = try? await Page.raw(web, "(function(){ if (window.__jevTrail) window.__jevTrail.clear(); return true; })()", counted: false)
         }
     }
 
@@ -123,8 +123,8 @@ enum Trail {
     /// the overlay is decoration.
     @MainActor
     private static func install(_ web: WKWebView) async {
-        let installed = try? await Page.raw(web, "typeof window.__jevTrail === 'object' && window.__jevTrail !== null") as? Bool
-        if installed != true { _ = try? await Page.raw(web, script) }
+        let installed = try? await Page.raw(web, "typeof window.__jevTrail === 'object' && window.__jevTrail !== null", counted: false) as? Bool
+        if installed != true { _ = try? await Page.raw(web, script, counted: false) }
     }
 
     /// One call into the layer, installing it first if this document hasn't
@@ -137,7 +137,7 @@ enum Trail {
         let json = String(decoding: data, as: UTF8.self)
         Task { @MainActor in
             await install(web)
-            _ = try? await Page.raw(web, "window.__jevTrail && window.__jevTrail.\(name)(\(json))")
+            _ = try? await Page.raw(web, "window.__jevTrail && window.__jevTrail.\(name)(\(json))", counted: false)
         }
     }
 
