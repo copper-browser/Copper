@@ -394,10 +394,14 @@ struct ContentView: View {
                 // is not what the field is standing over, and dimming it along
                 // with the page says otherwise.
                 .padding(.leading, sidebar ? browser.prefs.sideWidth : 0)
-                // Fork (perf): a fade. A scale redrew every letter on the card
-                // at a new size each frame, and on a 1× screen each new size of
-                // a glyph is hinted again, on the main thread.
-                .transition(.opacity)
+                // Fork (ui-flows): ⌘K's card draws its own arrival (solid, no
+                // ghost; Fork/CommandPalette) and leaves in one quick fade.
+                // Fork (perf): otherwise a fade. A scale redrew every letter on
+                // the card at a new size each frame, and on a 1× screen each new
+                // size of a glyph is hinted again, on the main thread.
+                .transition(browser.summoning
+                    ? .asymmetric(insertion: .identity, removal: AnyTransition.opacity.animation(Motion.quick))
+                    : .opacity)
         }
     }
 
@@ -639,7 +643,11 @@ struct ContentView: View {
         let content = panel()
         return GeometryReader { room in
             ZStack {
-                Color.black.opacity(0.10)
+                // Fork (ui-flows): the window steps back — blurred and about a
+                // quarter dimmer — so the panel is the one thing in front (0.10
+                // left the page reading as part of the panel).
+                Rectangle().fill(.ultraThinMaterial)
+                    .overlay(Color.black.opacity(0.18))
                     .ignoresSafeArea()
                     .onTapGesture(perform: close)
                 content
@@ -816,7 +824,13 @@ struct ContentView: View {
                 browser.closeFind()
                 return true
             }
-            // One step at a time: the list first, then the field.
+            // Fork (ui-flows): ⌘K's card goes in one press, as Arc's does —
+            // its first row is always picked, so a step back there was a
+            // second ⎋ for nothing. ⌘L keeps the step: the list, then the field.
+            if browser.summoning {
+                browser.dismiss()
+                return true
+            }
             if browser.picked != nil {
                 browser.picked = nil
                 return true

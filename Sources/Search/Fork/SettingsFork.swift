@@ -353,9 +353,9 @@ struct UpdatesPage: View {
         Fork.version == "dev" || Fork.version.split(separator: ".").count == 2
     }
 
-    private var currentLine: String {
-        "You have \(Updater.version) (build \(Updater.build))" + (isDevBuild ? " · dev build" : "")
-    }
+    /// Fork (ui-flows): the version is About's header; this row says only
+    /// what that header can't.
+    private var currentLine: String? { isDevBuild ? "This is a dev build" : nil }
 
     /// What the feed said, in the words of the one next step. Before the
     /// first answer it says so, not "Couldn't check".
@@ -389,7 +389,7 @@ struct UpdatesPage: View {
         let _ = SettingsPerf.tick("updatesPage") // Fork (settings-perf)
         VStack(alignment: .leading, spacing: 10) {
             SettingsSection("Updates") {
-                Line(currentLine, latestLine) {
+                Line(latestLine, currentLine) {
                     // One pill in both states: the row neither jumps nor
                     // loses its button while the feed is read.
                     Pill(updates.checking ? "Checking…" : "Check now") { updates.check(force: true) }
@@ -456,14 +456,19 @@ struct UpdatesPage: View {
         }
     }
 
-    /// Fork (settings-plain): the notes' first three sentences, for bullets.
+    /// Fork (settings-plain): the notes' first three sentences, for bullets —
+    /// each cut at its first colon, semicolon or dash (ui-flows), so a bullet
+    /// is one line that ends where its thought does, not mid-word.
     static func bullets(_ notes: String, count: Int = 3) -> [String] {
         var out: [String] = []
         var current = ""
         for char in notes.replacingOccurrences(of: "\n", with: " ") {
             current.append(char)
             if ".!?".contains(char) {
-                let line = current.trimmingCharacters(in: .whitespaces)
+                var line = current.trimmingCharacters(in: .whitespaces)
+                if let cut = [": ", "; ", " — "].compactMap({ line.range(of: $0)?.lowerBound }).min() {
+                    line = String(line[..<cut]) + "."
+                }
                 if !line.isEmpty { out.append(line) }
                 current = ""
                 if out.count == count { return out }
@@ -508,7 +513,7 @@ private struct AgentsServerSection: View {
     @ObservedObject var mcp = MCP.shared
 
     var body: some View {
-        SettingsSection("MCP server", note: note) {
+        SettingsSection("Outside agents", note: note) { // Fork (ui-flows): plain words; "MCP" only under Advanced
             Line("Let agents drive this window", "Agents in your terminal or editor can see your tabs and act in them, signed in as you. Only apps on this Mac can reach it.") {
                 Switch(on: $mcp.config.enabled)
             }
@@ -545,7 +550,7 @@ private struct AgentsServerSection: View {
         if let trouble = mcp.trouble {
             return MCP.portOverride == nil ? trouble + " — choose another port below." : trouble
         }
-        if mcp.running { return "Listening at \(mcp.endpoint)" }
+        if mcp.running { return "On — apps on this Mac can connect" }
         return mcp.config.enabled ? "Starting…" : "Off — no agent can reach this browser."
     }
 
@@ -557,8 +562,9 @@ private struct AgentsServerSection: View {
             // 0 would mean "any port", which no client could be told.
             if let valid = UInt16(exactly: value), valid > 0 { mcp.config.port = valid }
         })
-        return Line("Port", pinned.map { "This run listens on \($0), set by SEARCH_MCP_PORT." }
-                    ?? "Change it if another app already uses \(mcp.config.port).") {
+        let at = mcp.running ? "The MCP server listens at \(mcp.endpoint). " : ""
+        return Line("Port", at + (pinned.map { "This run listens on \($0), set by SEARCH_MCP_PORT." }
+                    ?? "Change it if another app already uses \(mcp.config.port).")) {
             TextField("4123", value: port, format: .number.grouping(.never))
                 .textFieldStyle(.plain)
                 .font(.system(size: 12, design: .monospaced))
@@ -585,7 +591,7 @@ private struct AgentsJevSection: View {
     }
 
     var body: some View {
-        SettingsSection("Jev mode") {
+        SettingsSection("Fast clicks (Jev)") {
             Line("Let the agent hand Copper a goal", "An agent can hand over a whole task; Jev clicks and types in this window, a few times a second, until it's done.") {
                 Switch(on: $mcp.config.jev)
             }
@@ -643,12 +649,12 @@ private struct AgentsLinksSection: View {
     @ObservedObject var links = AgentLinks.shared
 
     var body: some View {
-        SettingsSection("Agents apps", carded: false) {
+        SettingsSection("Agent apps", carded: false) {
             ForEach(links.all) { link in
                 LinkCard(link: link)
             }
             Card {
-                Line("Add an agents app", "Paste its address and a personal token") {
+                Line("Add an agent app", "Paste its address and a personal token") {
                     Pill("Add…", filled: links.all.isEmpty) { links.addEmpty() }
                 }
                 .settingsAnchor("agents.add")
@@ -672,7 +678,7 @@ private struct AgentsPaneSection: View {
             }
             .settingsAnchor("agents.context")
             Rule()
-            Line("Your other MCP servers", serversLine) {
+            Line("Your other tool servers", serversLine) {
                 HStack(spacing: 8) {
                     Pill("Open mcp.json") {
                         if !FileManager.default.fileExists(atPath: Servers.file.path) {
@@ -756,7 +762,7 @@ private struct AgentsTerminalSection: View {
             Rule()
             // Fork (settings-merge): the four copies were four rows.
             VStack(alignment: .leading, spacing: 0) {
-                Line("Copy for another agent", "A /jev command, a prompt with the address and token, the MCP config, or the line that installs the copper CLI on another Mac") { EmptyView() }
+                Line("Copy for another agent", "A /jev command, a prompt with the address and token, the config, or the line that installs the copper CLI on another Mac") { EmptyView() }
                 SettingsFlow(spacing: 8) {
                     Pill(copied == "jev" ? "Copied" : "Copy /jev") { copy(MCP.jevCommand(goal: nil), "jev") }
                     Pill(copied == "prompt" ? "Copied" : "Copy prompt") { copy(mcp.config.jev ? mcp.jevPrompt : mcp.agentPrompt, "prompt") }
@@ -1161,7 +1167,7 @@ struct FlowSettingsLine: View {
     @ObservedObject var browser: Browser
 
     var body: some View {
-        Line("Move in from another browser", "Tabs, spaces, bookmarks, history and passwords from Chrome, Safari or Arc") {
+        Line("Move in from another browser", "Tabs, spaces, bookmarks, history and passwords from \(MoveFrom.names)") { // Fork (ui-flows): the one list
             Pill("Move in…", filled: true) { Flow.presentFromSettings(browser) }
         }
     }
@@ -1261,8 +1267,7 @@ private struct WhatsNew: View {
                 HStack(alignment: .firstTextBaseline, spacing: 7) {
                     Text("•").foregroundStyle(Palette.muted)
                     Text(line).foregroundStyle(Palette.muted)
-                        .lineLimit(2).truncationMode(.tail)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(1).truncationMode(.tail)
                 }
                 .font(.system(size: 12))
             }

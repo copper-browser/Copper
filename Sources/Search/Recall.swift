@@ -165,10 +165,14 @@ struct HistoryPanel: View {
         let forget: () -> Void
 
         @State private var hovering = false
+        @Environment(\.colorScheme) private var scheme // Fork (ui-flows)
 
         var body: some View {
             HStack(spacing: 12) {
-                Mark(icon: Favicons.shared.cached(trace.url.host()?.lowercased() ?? ""),
+                // Fork (ui-flows): in the panel's own look's ink — a one-colour
+                // mark (GitHub's) inked for the app's look vanished on a panel
+                // drawn in the other one.
+                Mark(icon: Favicons.shared.cached(trace.url.host()?.lowercased() ?? "").map { IconInk.legible($0, dark: scheme == .dark) },
                      letter: trace.key.first.map { String($0).uppercased() } ?? "•", size: 16)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(trace.title.isEmpty ? trace.key : trace.title)
@@ -221,7 +225,7 @@ struct DownloadsPanel: View {
         let folder = browser.prefs.downloads.lastPathComponent
         // Fork (ui-system): empty is a state with one way out (the folder),
         // and no foot; a short list is short.
-        Plate("Downloads", width: 560, footed: !none, close: { browser.hoarding = false }) {
+        Plate("Downloads", width: 600, footed: !none, close: { browser.hoarding = false }) {
             if none {
                 EmptyState("arrow.down.circle", "No downloads yet", "Files you download land in \(folder).") {
                     Pill("Open \(folder)") { browser.openDownloadsFolder() }

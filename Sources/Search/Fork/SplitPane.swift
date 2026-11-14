@@ -68,7 +68,10 @@ struct SplitCard: View {
 
     /// The card's own ground, and the only thing carrying the shadow — put the
     /// shadow on the subtree instead and the page inside it loses its place.
-    private var plate: some View { PageCard.plate(lifted: live) }
+    private var plate: some View {
+        PageCard.plate(lifted: live)
+            .overlay { SplitWaiting(tab: tab).padding(.top, SplitMetrics.bar) }
+    }
 
     /// The live pane is outlined in the space's colour. The other is not
     /// outlined at all — that is the whole point of the outline.
@@ -80,6 +83,28 @@ struct SplitCard: View {
         } else {
             PageCard.edge
         }
+    }
+}
+
+/// Fork (ui-flows): what a pane shows under its page until the page first
+/// paints — the site's mark and title on the wash, never a white card. The
+/// page covers it the moment WebKit has a frame (`PageView.showFirstFrame`).
+private struct SplitWaiting: View {
+    @ObservedObject var tab: Tab
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Mark(icon: tab.icon, letter: tab.monogram, size: 28)
+            Text(tab.title.isEmpty ? (tab.address.map(Address.pretty) ?? "New Tab") : tab.title)
+                .font(.system(size: 13))
+                .foregroundStyle(Palette.muted)
+                .lineLimit(1)
+                .padding(.horizontal, 24)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Palette.wash)
+        .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: SplitMetrics.corner, bottomTrailingRadius: SplitMetrics.corner, style: .continuous))
+        .allowsHitTesting(false)
     }
 }
 

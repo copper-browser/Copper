@@ -96,6 +96,9 @@ final class Agent: ObservableObject {
         /// What went partly wrong in a step that still ran — canvas ops the
         /// board turned away. Empty when nothing did.
         var warning = ""
+        /// Fork (ui-flows): a note's own words behind Details, under the
+        /// plain sentence in `text`.
+        var detail = ""
     }
 
     @Published var config: Config { didSet { if config != oldValue { save() } } }
@@ -411,7 +414,8 @@ final class Agent: ObservableObject {
                     }
                     // Half an answer, with more to come: narration, not the answer.
                     if !said.isEmpty, let last = items.indices.last { items[last].aside = true }
-                    items.append(Item(kind: .note, text: "The reply ran past the model's output limit and was cut off — asking it to carry on in smaller pieces.", ok: false))
+                    items.append(Item(kind: .note, text: Agent.tooLong, ok: false,
+                                      detail: "The reply ran past the model's output limit (\(Agent.outputLimit.formatted()) tokens) and was cut off."))
                     messages.append(["role": "user", "content": Agent.cutNudge])
                     continue
                 }
@@ -434,7 +438,8 @@ final class Agent: ObservableObject {
             if cut {
                 cutoffs += 1
                 let name = ((calls.last?["function"] as? [String: Any])?["name"] as? String) ?? "tool"
-                items.append(Item(kind: .note, text: "The model's reply ran past its output limit (\(Agent.outputLimit.formatted()) tokens) while it was writing a \(Agent.plain(name)) call, so that call was not run. Asking it to split the work into smaller calls.", ok: false))
+                items.append(Item(kind: .note, text: Agent.tooLong, ok: false,
+                                  detail: "The model's reply ran past its output limit (\(Agent.outputLimit.formatted()) tokens) while it was writing a \(Agent.plain(name)) call, so that call was not run."))
             } else {
                 cutoffs = 0
             }
@@ -706,6 +711,8 @@ final class Agent: ObservableObject {
     /// Cut off this many replies running and the question ends: the model is
     /// not finding a smaller step, and the user should hear so.
     static let cutLimit = 3
+    /// Fork (ui-flows): the output limit, said plainly; the numbers are under Details.
+    static let tooLong = "That was too much to do in one go, so Copper asked for it in smaller pieces."
     static let cutGiveUp = "The model kept running past its output limit, so it stopped there. Ask for the job in smaller pieces — say, 30 notes at a time."
     /// Told after a reply was cut off with no tool call in it.
     static let cutNudge = "Your last reply was cut off at the output-token limit. Carry on from where it stopped. If you were about to call a tool, call it now, with the work split into several smaller calls (at most 40 ops per canvas_apply)."
@@ -1024,7 +1031,8 @@ final class Agent: ObservableObject {
             user("create 100 notes with different monkey species and then draw lines between the closest related", -120)
             step("canvas_read", "Read 5 shapes on Personal", 210, -117)
             step("canvas_apply", "Changing the canvas", 0, -95, ok: false, text: "→ Cut off at the output limit — not run")
-            items.append(Item(kind: .note, text: "The model's reply ran past its output limit (16,000 tokens) while it was writing a canvas apply call, so that call was not run. Asking it to split the work into smaller calls.", ok: false, at: at(-95)))
+            items.append(Item(kind: .note, text: Agent.tooLong, ok: false, at: at(-95),
+                              detail: "The model's reply ran past its output limit (16,000 tokens) while it was writing a canvas apply call, so that call was not run."))
             answer("Splitting it up: 40 species at a time, then the arrows.", -80, aside: true)
             step("canvas_apply", "40 operations applied on Personal", 1400, -72)
             step("canvas_apply", "40 operations applied on Personal", 1300, -61)

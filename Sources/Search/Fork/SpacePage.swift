@@ -688,21 +688,35 @@ struct SpacePage: View {
     /// Shared, one of the names in use, or a new one.
     private func profile(_ space: Space) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Picker("Profile", selection: Binding(
-                get: { namingProfile ? "\u{0}new" : (space.profile ?? "") },
-                set: { value in
-                    if value == "\u{0}new" { namingProfile = true; profileDraft = ""; focus = .profile }
-                    else { namingProfile = false; spaces.profile(id, named: value.isEmpty ? nil : value) }
+            // Fork (ui-flows): a 28 pt capsule, like the space's other
+            // choices, not the system's pop-up button.
+            Menu {
+                Button("Shared") { namingProfile = false; spaces.profile(id, named: nil) }
+                ForEach(spaces.profiles, id: \.self) { name in
+                    Button(name) { namingProfile = false; spaces.profile(id, named: name) }
                 }
-            )) {
-                Text("Shared").tag("")
-                ForEach(spaces.profiles, id: \.self) { Text($0).tag($0) }
                 Divider()
-                Text("New Profile…").tag("\u{0}new")
+                Button("New Profile…") { namingProfile = true; profileDraft = ""; focus = .profile }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(namingProfile ? "New Profile…" : (space.profile ?? "Shared"))
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Palette.ink)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Palette.muted)
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 28)
+                .background(Palette.wash, in: Capsule())
+                .contentShape(Capsule())
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .frame(maxWidth: 200, alignment: .leading)
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel("Profile")
             if namingProfile {
                 TextField("Profile name", text: $profileDraft)
                     .textFieldStyle(.plain)

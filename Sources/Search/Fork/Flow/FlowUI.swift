@@ -66,11 +66,15 @@ struct FlowSheet: View {
                 .help("Close")
                 .accessibilityLabel("Close")
             }
-            Text("Bring your tabs, bookmarks, history, passwords and sign-ins over from Chrome, Safari or Arc. Nothing in the other browser changes.")
-                .font(.system(size: 13.5))
-                .foregroundStyle(Palette.muted)
-                .lineSpacing(2)
-                .fixedSize(horizontal: false, vertical: true)
+            // Fork (ui-flows): the browsers this Mac has (`MoveFrom`), and
+            // only before the move: the done step is its result alone.
+            if flow.phase.name != "done" {
+                Text("Bring your tabs, bookmarks, history, passwords and sign-ins over from \(MoveFrom.names). Nothing in the other browser changes.")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(Palette.muted)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -183,10 +187,16 @@ struct FlowSheet: View {
 
     private func cardHead(_ source: FlowSource, _ line: String) -> some View {
         HStack(alignment: .top, spacing: 9) {
-            Image(systemName: source.glyph)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(Palette.ink)
-                .frame(width: 18)
+            // Fork (ui-flows): the browser's own app icon, as on the start card.
+            if let icon = MoveFrom.icon(source.name) {
+                Image(nsImage: icon).resizable().frame(width: 20, height: 20)
+                    .accessibilityHidden(true)
+            } else {
+                Image(systemName: source.glyph)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(Palette.ink)
+                    .frame(width: 20)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(source.name).font(.system(size: 13, weight: .medium)).foregroundStyle(Palette.ink)
                 Text(line)
@@ -353,9 +363,9 @@ struct FlowSheet: View {
             Rule()
             row("Passkeys", hint: count { $0.passkeyCount == 0 ? "none found" : FlowSummary.plural($0.passkeyCount, "passkey") }, binding: binding(\.passkeys), enabled: has { $0.passkeyCount })
             Rule()
-            row("Sign-ins", hint: "", binding: binding(\.cookies))
+            row("Sign-ins", hint: "stay signed in to your sites", binding: binding(\.cookies)) // Fork (ui-flows)
             Rule()
-            row("Site data", hint: "", binding: binding(\.localStorage))
+            row("Site data", hint: "what sites kept on this Mac, like settings and drafts", binding: binding(\.localStorage))
             Rule()
             row("Extensions", hint: count { $0.extensions.isEmpty ? "none found" : FlowSummary.plural($0.extensions.count, "extension") }, binding: binding(\.extensions), enabled: has { $0.extensions.count })
         }
@@ -550,7 +560,7 @@ struct FlowSheet: View {
             // and the one thing to do next under it.
             Image(systemName: report.summary.contains(where: \.ok) ? "checkmark.circle.fill" : "minus.circle")
                 .font(.system(size: 30, weight: .regular))
-                .foregroundStyle(Palette.ink)
+                .foregroundStyle(report.summary.contains(where: \.ok) ? Palette.accent : Palette.muted) // Fork (ui-flows): the copper check
                 .accessibilityHidden(true)
             Text(report.title)
                 .font(.system(size: 19, weight: .medium)).foregroundStyle(Palette.ink)

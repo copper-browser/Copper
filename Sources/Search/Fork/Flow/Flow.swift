@@ -322,7 +322,7 @@ final class Flow: ObservableObject {
     // MARK: - the sheet
 
     /// Every way in: ⌘K, the Settings row, the menu, the bench.
-    enum Door: String { case command, settings, menu, bench, start }
+    enum Door: String { case command, settings, menu, bench, start, welcome, passwords }
 
     /// The one way to bring the sheet up. Each time it opens it starts
     /// fresh — a finished move is behind it, the switches are back to all on
