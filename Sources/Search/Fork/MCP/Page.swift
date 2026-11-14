@@ -351,6 +351,8 @@ enum Page {
       }
       function find(spec) {
         if (!spec) return null;
+        // An element in hand (a field inside a label, the focused one): itself, shadow root or not.
+        if (typeof spec !== 'string') return spec instanceof Element && spec.isConnected ? spec : null;
         if (spec.indexOf('ref:') === 0) {
           var el = byRef.get(spec.slice(4));
           return el && el.isConnected ? el : null;
@@ -613,7 +615,7 @@ enum Page {
         }
         if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') {
           var inner = el.querySelector('input, textarea, [contenteditable]');
-          if (inner) return setValue('css:' + cssPath(inner), value);
+          if (inner) return setValue(inner, value);
           return 'not editable: ' + el.tagName;
         }
         var proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -621,17 +623,6 @@ enum Page {
         if (d && d.set) d.set.call(el, value); else el.value = value;
         fire(el, 'input'); fire(el, 'change');
         return 'ok';
-      }
-      function cssPath(el) {
-        if (el.id) return '#' + CSS.escape(el.id);
-        var path = [];
-        while (el && el.nodeType === 1 && el !== document.body) {
-          var i = 1, s = el.previousElementSibling;
-          while (s) { if (s.tagName === el.tagName) i++; s = s.previousElementSibling; }
-          path.unshift(el.tagName.toLowerCase() + ':nth-of-type(' + i + ')');
-          el = el.parentElement;
-        }
-        return 'body > ' + path.join(' > ');
       }
       function select(spec, values) {
         var el = find(spec);
@@ -683,6 +674,7 @@ enum Page {
       function key(k, mods) {
         mods = mods || {};
         var el = document.activeElement || document.body;
+        while (el.shadowRoot && el.shadowRoot.activeElement) el = el.shadowRoot.activeElement; // the box inside a widget, not its host
         var init = { key: k, code: k.length === 1 ? 'Key' + k.toUpperCase() : k, keyCode: k === 'Enter' ? 13 : k === 'Escape' ? 27 : k === 'Tab' ? 9 : k.length === 1 ? k.toUpperCase().charCodeAt(0) : 0,
                      metaKey: !!mods.meta, ctrlKey: !!mods.ctrl, altKey: !!mods.alt, shiftKey: !!mods.shift };
         var down = new KeyboardEvent('keydown', Object.assign({ bubbles: true, cancelable: true, composed: true }, init));
@@ -692,10 +684,10 @@ enum Page {
           var c = { a: 'selectAll', b: 'bold', i: 'italic', u: 'underline', c: 'copy', x: 'cut', z: mods.shift ? 'redo' : 'undo' }[k.toLowerCase()];
           if (c) document.execCommand(c);
         } else if (!used && k.length === 1 && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
-          setValue('css:' + cssPath(el), el.value + k);
+          setValue(el, el.value + k);
         }
         fire(el, 'keyup', init);
-        if (!used && !shortcut && k === 'Enter') submit('css:' + cssPath(el));
+        if (!used && !shortcut && k === 'Enter') submit(el);
         return 'ok';
       }
       // An HTML5 drag (a draggable="true" source) the way WebKit runs one,
