@@ -778,7 +778,7 @@ enum Page {
         }
         return out.length ? out.join('\n') : 'no visible text matches ' + JSON.stringify(needle);
       }
-      window.__copper = { doc: function () { return window.__officeForms ? window.__officeForms.doc : ''; }, where: where, frameBox: frameBox, mark: mark,
+      window.__copper = { doc: function () { return (window.__officeForms || window.__officeFormsStub || { doc: '' }).doc; }, where: where, frameBox: frameBox, mark: mark,
         snapshot: snapshot, find: find, rect: rect, setValue: setValue, select: select, fill: fill, click: click, hover: hover, focus: focus, submit: submit, key: key, drag: drag, draggable: draggable, hovered: hovered, watch: watch, changes: changes, scroll: scroll, text: text, findText: findText };
       return true;
     })();

@@ -41,6 +41,11 @@ enum Pace {
     private static var longest: CFTimeInterval = 0
     private static var passes = 0
     private static var slow: [(at: Double, ms: Double)] = []
+    /// Every pass of 1 ms or more in the window, and every page's milestones
+    /// in it (bench tabs' too): where in a load the main thread went (`bench
+    /// pace` → `log`, `steps`; perf/hillclimb A3 splits a load's busy by them).
+    private static var log: [(at: Double, ms: Double)] = []
+    private static var steps: [(String, Double)] = []
     /// Passes over 16 ms in the launch's first 20 s.
     private static var launch: [(at: Double, ms: Double)] = []
 
@@ -75,6 +80,7 @@ enum Pace {
             passes += 1
             longest = max(longest, length)
             if length > 0.016, slow.count < 200 { slow.append((((start - since) * 10000).rounded() / 10, (length * 10000).rounded() / 10)) }
+            if length >= 0.001, log.count < 4000 { log.append((((start - since) * 10000).rounded() / 10, (length * 10000).rounded() / 10)) }
         }
         if length > 0.016, end - born < 20, launch.count < 200 {
             launch.append((ms(start), (length * 10000).rounded() / 10))
@@ -89,6 +95,7 @@ enum Pace {
 
     /// The first page this process shows (never a bench tab's).
     static func page(_ step: String, bench: Bool) {
+        if steps.count < 200 { steps.append(("page." + step, ((CACurrentMediaTime() - since) * 10000).rounded() / 10)) }
         guard !bench else { return }
         mark("page." + step)
     }
@@ -100,6 +107,8 @@ enum Pace {
             longest = 0
             passes = 0
             slow = []
+            log = []
+            steps = []
             return ["reset": true]
         }
         let now = CACurrentMediaTime()
@@ -107,10 +116,14 @@ enum Pace {
             "marks": Dictionary(marks.map { ($0.0, $0.1) }, uniquingKeysWith: { a, _ in a }),
             "order": marks.map(\.0),
             "window": ((now - since) * 10000).rounded() / 10,
+            // The window's start on the wall clock (epoch ms), to place a page's own timings in it.
+            "epoch": ((Date().timeIntervalSince1970 - (now - since)) * 10000).rounded() / 10,
             "busy": (busy * 10000).rounded() / 10,
             "longest": (longest * 10000).rounded() / 10,
             "passes": passes,
             "slow": slow.map { [$0.at, $0.ms] },
+            "log": log.map { [$0.at, $0.ms] },
+            "steps": steps.map { [$0.0, $0.1] as [Any] },
             "launchSlow": launch.map { [$0.at, $0.ms] },
             "launchBusy": (launch.reduce(0) { $0 + $1.ms } * 10).rounded() / 10,
             "uptime": ms(now),

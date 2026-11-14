@@ -515,7 +515,11 @@ final class Tab: ObservableObject, Identifiable {
         controller.addUserScript(
             // Every frame: a sign-in can be served inside one (Fork: frame-autofill).
             // In Copper's own world, out of the page's reach (Fork: agent-world).
-            WKUserScript(source: FormRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: false, in: .copper)
+            WKUserScript(source: FormRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .copper)
+        )
+        controller.addUserScript(
+            // Fork (frame-stub): embedded frames get the whole script once they hold a field (Forms.swift).
+            WKUserScript(source: FormRelay.frameStub, injectionTime: .atDocumentEnd, forMainFrameOnly: false, in: .copper)
         )
         controller.addUserScript(
             WKUserScript(source: FormRelay.early, injectionTime: .atDocumentEnd, forMainFrameOnly: true)

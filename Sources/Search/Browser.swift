@@ -1031,6 +1031,7 @@ final class Browser: NSObject, ObservableObject {
         CanvasImport.prepare() // Fork (canvas-hooks): every easel has a canvas before the session names one
         let saved = Session.read()
         Spaces.shared.restore(saved, into: self)
+        Pace.mark("restored") // Fork (pace)
         guard !tabs.isEmpty else {
             // A blank tab costs nothing until it is asked for its page. Its
             // web view — and with it WebKit's helper processes — is built a
@@ -2666,7 +2667,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
     @objc(_webView:renderingProgressDidChange:)
     func webView(_ webView: WKWebView, renderingProgressDidChange events: UInt) {
         guard events & PageView.firstFrame != 0 else { return }
-        if let tab = tab(for: webView), !tab.bench { Pace.page("paint", bench: false); Launch.shared.pageShown() } // Fork (pace, launch)
+        if let tab = tab(for: webView) { Pace.page("paint", bench: tab.bench); if !tab.bench { Launch.shared.pageShown() } } // Fork (pace, launch)
         (webView as? PageView)?.showFirstFrame()
         // Fork (wake-cover): the page is painted, so the picture of its old
         // self can go — the moment Safari takes its own down. A beat after
@@ -2679,7 +2680,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
         // done, and it is shown.
         (webView as? PageView)?.showFirstFrame()
         guard let tab = tab(for: webView), let url = tab.address else { return }
-        if !tab.bench { Pace.page("finish", bench: false); Launch.shared.pageShown() } // Fork (pace, launch)
+        Pace.page("finish", bench: tab.bench); if !tab.bench { Launch.shared.pageShown() } // Fork (pace, launch)
         tab.uncover()
         tellStore(tab)
         // A page that arrived after a password went out: did the sign-in take?

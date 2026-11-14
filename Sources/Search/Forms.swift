@@ -49,6 +49,11 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
                 focus(body, from: frame)
             case "fullscreen":
                 tab?.immersed = body["on"] as? Bool ?? false
+            case "forms":
+                // Fork (frame-stub): an embedded frame with a field in it
+                // gets the whole script now (`frameStub`).
+                guard !frame.isMainFrame else { return }
+                message.webView?.evaluateJavaScript(FormRelay.script, in: frame, in: .copper)
             default:
                 break
             }
@@ -143,8 +148,10 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
       if (window.__officeForms) return;
 
       // Fork (agent-frames): this document's name, on everything it says —
-      // how Copper tells one frame's document from the next.
-      var doc = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      // how Copper tells one frame's document from the next. An embedded
+      // frame keeps the name its stub (`frameStub`) already gave it.
+      var doc = (window.__officeFormsStub && window.__officeFormsStub.doc) ||
+        Math.random().toString(36).slice(2) + Date.now().toString(36);
       function say(message) {
         message.doc = doc;
         window.webkit.messageHandlers.officeForms.postMessage(message);
@@ -1228,6 +1235,56 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
       document.addEventListener('focusout', function () { setTimeout(caret, 0); }, true);
       document.addEventListener('mouseup', function () { setTimeout(caret, 0); }, true);
       caret();
+    })();
+    """
+
+    /// Fork (frame-stub): what an embedded frame gets instead of `script`.
+    /// The full script, compiled and kept in Copper's world in every ad,
+    /// embed and widget frame of every page, was most of the memory loaded
+    /// pages gained with it; most frames never hold a field. This names
+    /// the document and says hello as the full script's first word does
+    /// (so agents still see the frame, Fork/MCP/Frames.swift), then asks
+    /// for the full script the moment the frame has a field to fill or the
+    /// caret goes into it — the full one reports the caret where it finds
+    /// it, so nothing typed or offered is lost on the way.
+    static let frameStub = """
+    (function () {
+      if (window === window.top || window.__officeForms || window.__officeFormsStub) return;
+      var doc = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      window.__officeFormsStub = { doc: doc };
+      function say(message) {
+        message.doc = doc;
+        window.webkit.messageHandlers.officeForms.postMessage(message);
+      }
+      function branch() {
+        try {
+          var w = window;
+          while (w.parent !== window.top) w = w.parent;
+          for (var i = 0; i < window.top.length; i++) if (window.top[i] === w) return i;
+        } catch (ignored) {}
+        return -1;
+      }
+      var fields = 'input:not([type=hidden]):not([type=button]):not([type=submit]):not([type=reset])' +
+        ':not([type=image]):not([type=checkbox]):not([type=radio]),select,textarea,[contenteditable]';
+      var asked = false, look = null, watch = null;
+      function want() {
+        if (asked) return;
+        asked = true;
+        if (watch) watch.disconnect();
+        document.removeEventListener('focusin', want, true);
+        say({ kind: 'forms' });
+      }
+      function check() {
+        look = null;
+        if (document.querySelector(fields)) want();
+      }
+      document.addEventListener('focusin', want, true);
+      say({ kind: 'focus', at: branch(), typing: false, rect: null, field: null, hint: '' });
+      check();
+      if (!asked) {
+        watch = new MutationObserver(function () { if (!look) look = setTimeout(check, 400); });
+        watch.observe(document.documentElement, { childList: true, subtree: true });
+      }
     })();
     """
 
