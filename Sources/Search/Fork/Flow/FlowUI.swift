@@ -53,10 +53,14 @@ struct FlowSheet: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Move in")
-                    .font(.system(size: 25, weight: .medium))
-                    .foregroundStyle(Palette.ink)
-                    .accessibilityAddTraits(.isHeader)
+                // Fork (uiflows r4): the done step is its result alone — no
+                // panel title over "Moved in from Arc".
+                if flow.phase.name != "done" {
+                    Text("Move in")
+                        .font(.system(size: 25, weight: .medium))
+                        .foregroundStyle(Palette.ink)
+                        .accessibilityAddTraits(.isHeader)
+                }
                 Spacer()
                 Button { flow.close() } label: {
                     Image(systemName: "xmark")
@@ -381,7 +385,7 @@ struct FlowSheet: View {
             .background(Palette.wash.opacity(0.38), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 1))
             if !none.isEmpty {
-                Text("None in \(flow.selected?.name ?? "this browser"): \(none.joined(separator: ", ").lowercased())")
+                Text(Self.keepsNone(flow.selected?.name, none))
                     .font(.system(size: 11.5)).foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 2)
@@ -389,6 +393,13 @@ struct FlowSheet: View {
         }
         .disabled(flow.selected == nil)
         .opacity(flow.selected == nil ? 0.5 : 1)
+    }
+
+    /// Fork (uiflows r4): "Arc keeps no bookmarks, history or passwords to bring."
+    static func keepsNone(_ source: String?, _ kinds: [String]) -> String {
+        let words = kinds.map { $0.lowercased() }
+        let list = words.count < 2 ? words.joined() : words.dropLast().joined(separator: ", ") + " or " + (words.last ?? "")
+        return "\(source ?? "This browser") keeps no \(list) to bring."
     }
 
     private var safariRows: some View {
@@ -592,11 +603,12 @@ struct FlowSheet: View {
             Text(report.title)
                 .font(.system(size: 19, weight: .medium)).foregroundStyle(Palette.ink)
                 .multilineTextAlignment(.center)
-            // Fork (ui-flows r3): every kind that was switched on, its value
-            // inline ("✓ Tabs: 3 tabs in 1 space") — one this browser had none
-            // of says so rather than vanishing from the list.
+            // Fork (ui-flows r3): every kind the move ran, its value inline
+            // ("✓ Tabs: 3 tabs in 1 space"). Fork (uiflows r4): exactly the
+            // switches that were on — the move's own lines, not the raw
+            // choice, which still held kinds the browser had none of.
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(FlowSummary.doneLines(report.summary, chosen: FlowStep.steps(for: flow.choice).map(\.category)), id: \.category) { line in
+                ForEach(report.summary, id: \.category) { line in
                     doneRow(line.category, ok: line.ok, line.detail)
                 }
             }
@@ -711,15 +723,20 @@ struct FlowSheet: View {
     }
 
     /// Fork (move-in-polish): a bordered button beside the primary, the same size.
+    /// Fork (uiflows r4): the capsule is the label's own (in the house Press
+    /// style); dressed outside a plain Button it showed stray 1 pt ticks at
+    /// both ends.
     private func secondary(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(title, action: action)
-            .buttonStyle(.plain)
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(Palette.ink)
-            .padding(.horizontal, 17).padding(.vertical, 10)
-            .background(Palette.ground, in: Capsule())
-            .overlay(Capsule().strokeBorder(Palette.hairline, lineWidth: 1))
-            .contentShape(Capsule())
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Palette.ink)
+                .padding(.horizontal, 17).padding(.vertical, 10)
+                .background(Capsule().fill(Palette.ground))
+                .overlay(Capsule().strokeBorder(Palette.hairline, lineWidth: 1))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(Press(radius: 99))
     }
 
     /// The one button Return presses, in every state.

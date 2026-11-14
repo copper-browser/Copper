@@ -174,16 +174,15 @@ struct HistoryPanel: View {
                 // drawn in the other one.
                 Mark(icon: Favicons.shared.cached(trace.url.host()?.lowercased() ?? "").map { IconInk.legible($0, dark: scheme == .dark) },
                      letter: trace.key.first.map { String($0).uppercased() } ?? "•", size: 16)
+                // Fork (uiflows r4): the title said once, as ⌘K says it, and
+                // both lines fade out at the end instead of ending in "…".
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(trace.title.isEmpty ? trace.key : trace.title)
+                    FadingTitle(text: Text(trace.title.isEmpty ? trace.key : CommandPalette.tidy(trace.title))
                         .font(.system(size: 13))
-                        .foregroundStyle(Palette.ink)
-                        .lineLimit(1)
-                    Text(trace.key)
+                        .foregroundStyle(Palette.ink))
+                    FadingTitle(text: Text(trace.key)
                         .font(.system(size: 11.5))
-                        .foregroundStyle(Palette.muted)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                        .foregroundStyle(Palette.muted))
                 }
                 Spacer(minLength: 8)
                 if hovering {

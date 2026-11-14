@@ -490,7 +490,7 @@ final class Bench {
                 "welcome": browser.welcoming,
                 "passwords": browser.managing,
                 "history": browser.recalling,
-                "downloads": browser.hoarding,
+                "downloads": browser.hoarding || Downloads.shared.showsDoor(in: browser), // Fork (uiflows r4): the popover too
                 "bookmarks": browser.bookmarking,
                 "field": browser.editing,
                 // Fork (new-tab-launcher): the ⌘T card, its question, and its rows.
@@ -678,7 +678,10 @@ final class Bench {
             if let on = request["passwords"] as? Bool { browser.managing = on }
             if let on = request["welcome"] as? Bool { Headless.benchWelcome = on; browser.welcoming = on } // Fork (bench-hooks)
             if let on = request["history"] as? Bool { browser.recalling = on }
-            if let on = request["downloads"] as? Bool { browser.hoarding = on }
+            // Fork (uiflows r4): as ⌘⇧J opens it — the popover from the glyph where there is one.
+            if let on = request["downloads"] as? Bool {
+                if on { browser.showDownloads() } else { browser.hoarding = false; Downloads.shared.popoverOpen = false }
+            }
             if let on = request["bookmarks"] as? Bool { browser.bookmarking = on }
             if let on = request["hidden"] as? Bool { browser.reviewing = on }
             if let look = (request["look"] as? String).flatMap(Look.init) { browser.prefs.look = look }

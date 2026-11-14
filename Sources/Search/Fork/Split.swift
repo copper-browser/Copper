@@ -33,6 +33,8 @@ final class Split: ObservableObject {
         landing = false
         still = nil
         picturing = false
+        covering = false
+        incoming = false
     }
 
     /// Which tabs are kept side by side, both ways round. Arc's split views
@@ -115,11 +117,18 @@ final class Split: ObservableObject {
     /// Fork (motion): the pane is still gliding in — its toolbar keeps its
     /// cross until it has landed, so a click mid-glide can't hit it.
     @Published var landing = false
+    /// Fork (uiflows r4): the cover over the pair while the new pane slides
+    /// in (`SplitStage.cover`): the old page as it was, and the new pane's
+    /// card sliding over it from the right. Both pages take their final
+    /// frames under it at once, so nothing on screen is cropped mid-move or
+    /// re-wraps in a jump; it fades off once the left page has drawn at its
+    /// new width (`landed`).
+    @Published var covering = false
+    /// The incoming card is still off to the right of the pair.
+    @Published var incoming = false
 
     /// Fork (motion): the page that was on screen, as it looked before the
-    /// split made it narrower. Drawn over it while the pane glides in (its
-    /// web view re-wraps well behind the glide: clipped, then one snap)
-    /// and taken off once it has (`landed`).
+    /// split made it narrower — the cover's picture.
     @Published private(set) var still: (id: Tab.ID, picture: NSImage)?
     /// The picture is asked for and not back yet: the glide waits for it
     /// (`SplitStage`), since the web view takes its new width the moment the
@@ -152,25 +161,29 @@ final class Split: ObservableObject {
         tab.touch()
     }
 
-    func close() { unpair(side); side = nil; swapped = false; holder = nil; landing = false; still = nil; picturing = false }
+    func close() { unpair(side); side = nil; swapped = false; holder = nil; landing = false; still = nil; picturing = false; covering = false; incoming = false }
 
-    /// Fork (motion): the pane has glided in. Its cross can show, and the
-    /// picture comes off once the page under it has drawn at its new width —
-    /// at once, never faded (two layouts of one text crossing is worse than
-    /// one swap). WebKit says when through a name outside the public
-    /// framework; one that doesn't answer gets a fixed beat.
+    /// Fork (motion): the pane has slid in. Its cross can show, and the
+    /// cover fades off (80 ms) once the page under it has drawn at its new
+    /// width — it took that width when the slide began, so by now it has.
+    /// WebKit says when through a name outside the public framework; one
+    /// that doesn't answer gets a fixed beat.
     func landed(in browser: Browser) {
         landing = false
         picturing = false
-        guard let shown = still, let web = browser.tabs.first(where: { $0.id == shown.id })?.built else { still = nil; return }
-        let id = shown.id
-        let off: @MainActor () -> Void = { [weak self] in if self?.still?.id == id { self?.still = nil } }
+        incoming = false
+        let id = still?.id
+        let off: @MainActor () -> Void = { [weak self] in
+            guard let self, self.covering, self.still?.id == id else { return }
+            withAnimation(.easeOut(duration: 0.08)) { self.covering = false; self.still = nil }
+        }
+        guard let id, let web = browser.tabs.first(where: { $0.id == id })?.built else { off(); return }
         let next = NSSelectorFromString("_doAfterNextPresentationUpdate:")
         if web.responds(to: next) {
             let block: @convention(block) () -> Void = { MainActor.assumeIsolated { off() } }
             web.perform(next, with: block)
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { MainActor.assumeIsolated { off() } }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { MainActor.assumeIsolated { off() } }
     }
 
     /// The cross on a pane's own toolbar. The tab goes, the split goes with
@@ -185,6 +198,8 @@ final class Split: ObservableObject {
         landing = false
         still = nil
         picturing = false
+        covering = false
+        incoming = false
         browser.close(tab)
         if let other, other.id != tab.id, browser.tabs.contains(where: { $0.id == other.id }) {
             browser.select(other)
@@ -404,14 +419,22 @@ struct SplitStage: View {
                 // hangs off the window have taken theirs.
                 let tall = max(geo.size.height - spill.top - spill.bottom - 2 * margin, 1)
                 let least = min(SplitMetrics.least, span / 2)
-                // Growing, the new card starts at no width (the clamp would
-                // start it at `least`) and glides out (Fork: ui-flows).
+                // Growing (the old page's picture not back yet), the old page
+                // keeps the whole width: a web view resized before its picture
+                // is taken is pictured at the new width (Fork: uiflows r4).
                 let leftWidth = split.growing ? span : min(span - least, max(least, span * split.fraction))
 
                 ZStack(alignment: .topLeading) {
                     HStack(spacing: SplitMetrics.gutter) {
                         card(left, CGSize(width: leftWidth, height: tall))
                         card(right, CGSize(width: span - leftWidth, height: tall))
+                    }
+                    // An overlay, not a sibling: only an overlay lands over the pages' AppKit layers.
+                    .overlay(alignment: .topLeading) {
+                        if split.covering {
+                            cover(left: leftWidth, span: span, tall: tall, incoming: right)
+                                .transition(.opacity)
+                        }
                     }
                     .padding(.horizontal, margin)
                     .padding(.top, margin + spill.top)
@@ -449,17 +472,56 @@ struct SplitStage: View {
         }
     }
 
-    /// The new pane slides out to its share. An ease-out, not glide's
-    /// spring: a spring's last few points of overshoot each re-lay the pages
-    /// out, and the split kept shuffling for 300 ms after it looked done.
+    /// Fork (uiflows r4): the split takes its final layout at once, under
+    /// the cover, and the new pane's card slides in over the old page (180
+    /// ms, an ease-out). Only the cover moves — a picture and a card drawn
+    /// by SwiftUI — so no web view is resized mid-move: a page resized
+    /// frame by frame was cropped for 330 ms, then re-wrapped in one jump.
+    /// Reduce Motion: no slide; the cover just fades off.
     private func glide() {
         guard split.growing else { return }
         let still = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        withAnimation(still ? nil : .easeOut(duration: 0.28), completionCriteria: .logicallyComplete) {
+        var now = Transaction()
+        now.disablesAnimations = true
+        withTransaction(now) {
             split.growing = false
-        } completion: {
-            split.landed(in: browser)
+            split.covering = true
+            split.incoming = !still
         }
+        // The next pass, once the cover is on screen with the card off to the right.
+        DispatchQueue.main.async {
+            withAnimation(still ? nil : .easeOut(duration: 0.18), completionCriteria: .logicallyComplete) {
+                split.incoming = false
+            } completion: {
+                split.landed(in: browser)
+            }
+        }
+    }
+
+    /// The cover: the page as it was, across the pair, and the new pane's
+    /// card (its ground, mark and title, as it looks before its page paints)
+    /// sliding from the right edge to its place. Never hit-tested.
+    private func cover(left: CGFloat, span: CGFloat, tall: CGFloat, incoming tab: Tab) -> some View {
+        let width = max(span - left, 1)
+        return ZStack(alignment: .topLeading) {
+            if let picture = split.still?.picture {
+                Image(nsImage: picture)
+                    .resizable()
+                    .frame(width: picture.size.width, height: picture.size.height)
+                    .frame(width: span + SplitMetrics.gutter, height: tall, alignment: .topLeading)
+                    .clipShape(RoundedRectangle(cornerRadius: SplitMetrics.corner, style: .continuous))
+            }
+            SplitGhost(tab: tab)
+                .background(PageCard.plate(lifted: false))
+                .overlay { PageCard.edge }
+                .frame(width: width, height: tall)
+                .offset(x: left + SplitMetrics.gutter + (split.incoming ? width : 0))
+        }
+        // The pair's own width: the card waits just past its right edge.
+        .frame(width: span + SplitMetrics.gutter, height: tall, alignment: .topLeading)
+        .clipped()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     /// The ground the cards sit on: the window's own, with the space's colour
@@ -484,11 +546,7 @@ struct SplitStage: View {
             live: tab.id == browser.activeID,
             tint: split.tint(dark: scheme == .dark).mark.opacity(0.85),
             size: CGSize(width: max(size.width, 1), height: max(size.height, 1)),
-            // Fork (motion): the toolbars grow in with the pane rather than
-            // popping in and pushing the page down a bar's height at once.
-            bar: split.growing ? 0 : SplitMetrics.bar,
-            landed: !split.landing,
-            still: split.still.flatMap { $0.id == tab.id ? $0.picture : nil }
+            landed: !split.landing
         )
     }
 }

@@ -48,9 +48,8 @@ struct Omnibox: View {
             }
 
             VStack(spacing: 8) {
-                field
-                if !browser.offers.isEmpty { list }
-                else if !over { StartCard(browser: browser).padding(.top, 8) } // Fork (first-run)
+                launcher
+                if browser.offers.isEmpty, !over { StartCard(browser: browser).padding(.top, 8) } // Fork (first-run)
             }
             .frame(width: Metrics.fieldWidth)
             // Lifted a little above centre: dead centre reads as low, because
@@ -63,43 +62,56 @@ struct Omnibox: View {
         }
     }
 
+    /// Fork (uiflows r4): the field and what it thinks you mean are one
+    /// launcher card — one ground, one edge, one shadow under the shape —
+    /// with a hairline between them, not two cards each with its own shadow.
+    private var launcher: some View {
+        VStack(spacing: 0) {
+            field
+            if !browser.offers.isEmpty {
+                Rectangle().fill(Palette.hairline).frame(height: 1)
+                list
+            }
+        }
+        .background {
+            ZStack {
+                // A slow, almost invisible breath under the field. It is
+                // the only thing on an empty tab, and a thing that never
+                // moves at all reads as a picture of an app rather than
+                // an app.
+                Breath().padding(-Breath.reach)
+
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Palette.ground)
+                    .shadow(color: .black.opacity(0.07), radius: 22, y: 7)
+            }
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(
+                    refused ? Color.red.opacity(0.35) : Palette.hairline,
+                    lineWidth: 1
+                )
+                .allowsHitTesting(false)
+        )
+        .modifier(Shake(travel: shake))
+        .onChange(of: browser.refusals) { _, _ in
+            shake = 0
+            refused = true
+            // Fork (ui-motion): under Reduce Motion the red edge says it alone.
+            guard !reduceMotion else { return }
+            withAnimation(.easeOut(duration: 0.5)) { shake = 1 }
+        }
+        .onChange(of: browser.typed) { _, _ in
+            withAnimation(Motion.quick) { refused = false }
+        }
+    }
+
     private var field: some View {
         AddressField(browser: browser)
             .frame(height: 22)
             .padding(.horizontal, 22)
             .padding(.vertical, 14)
-            .background {
-                ZStack {
-                    // A slow, almost invisible breath under the field. It is
-                    // the only thing on an empty tab, and a thing that never
-                    // moves at all reads as a picture of an app rather than
-                    // an app.
-                    Breath().padding(-Breath.reach)
-
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Palette.ground)
-                }
-            }
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(
-                        refused ? Color.red.opacity(0.35) : Palette.hairline,
-                        lineWidth: 1
-                    )
-                    .allowsHitTesting(false)
-            )
-            .shadow(color: .black.opacity(0.06), radius: 24, y: 8)
-            .modifier(Shake(travel: shake))
-            .onChange(of: browser.refusals) { _, _ in
-                shake = 0
-                refused = true
-                // Fork (ui-motion): under Reduce Motion the red edge says it alone.
-                guard !reduceMotion else { return }
-                withAnimation(.easeOut(duration: 0.5)) { shake = 1 }
-            }
-            .onChange(of: browser.typed) { _, _ in
-                withAnimation(Motion.quick) { refused = false }
-            }
     }
 
     /// What it thinks you mean. Places you have been come with their titles;
@@ -114,13 +126,7 @@ struct Omnibox: View {
             }
         }
         .padding(6)
-        .background(Palette.ground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Palette.hairline, lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.07), radius: 20, y: 6)
-        .transition(.scale(scale: 0.98, anchor: .top).combined(with: .opacity))
+        .transition(.opacity)
     }
 
     private struct Row: View {

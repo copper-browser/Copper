@@ -172,7 +172,7 @@ struct DownloadsPopover: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
         }
-        .frame(width: 340)
+        .frame(width: 320) // Fork (uiflows r4): Arc's ~320 pt
         .background(Palette.ground, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         .onAppear { downloads.seen() }
     }
@@ -404,9 +404,12 @@ extension Browser {
     /// Fork (ui-flows r3): Downloads as Arc has them — the list hanging from
     /// the column's download glyph (⌘⇧J, the menu, ⌘K), not a panel over the
     /// page. Without a column, or for "Show All…", the full panel.
+    /// Fork (uiflows r4): in the top-tab layout too, once the strip has its
+    /// glyph (a first download).
     func showDownloads(toggling: Bool = false) {
         let downloads = Downloads.shared
-        guard prefs.sidebar, !folded, active?.immersed != true else {
+        let door = prefs.sidebar ? !folded : downloads.doorShowing
+        guard door, active?.immersed != true else {
             if toggling { hoarding.toggle() } else { hoarding = true }
             return
         }
