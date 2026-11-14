@@ -37,6 +37,10 @@ struct CommandPalette: View {
     /// every view it has; see `Browser.Field`.
     @ObservedObject private var state: Browser.Field
     @Environment(\.colorScheme) private var scheme
+    /// Fork (ui-flows): false for the first frame, so the card arrives the
+    /// way Arc's does — solid at once, a hair small and high, settling in
+    /// under 120 ms while only the dim behind it fades.
+    @State private var shown = false
 
     init(browser: Browser, over: Bool) {
         self.browser = browser
@@ -58,9 +62,11 @@ struct CommandPalette: View {
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture { browser.dismiss() }
-                .transition(.opacity)
+                .opacity(shown ? 1 : 0)
 
             card
+                .scaleEffect(shown ? 1 : 0.98, anchor: .top)
+                .offset(y: shown ? 0 : -6)
                 .frame(width: CommandPalette.width)
                 // The card belongs to the window, not to the page area it
                 // happens to be drawn in, so it is shifted back over the
@@ -76,7 +82,10 @@ struct CommandPalette: View {
         .animation(browser.launching || !state.typed.isEmpty ? nil : Motion.settle, value: browser.offers)
         // Every row that names a site wants that site's mark, and most of
         // these rows have no page behind them to ask. See Fork/Marks.
-        .onAppear { Marks.want(browser.offers.map(\.url)) }
+        .onAppear {
+            Marks.want(browser.offers.map(\.url))
+            withAnimation(.easeOut(duration: 0.11)) { shown = true }
+        }
         .onChange(of: browser.offers) { _, offers in Marks.want(offers.map(\.url)) }
     }
 
@@ -116,7 +125,6 @@ struct CommandPalette: View {
         // shadow for the edge, one wide one for the lift.
         .shadow(color: .black.opacity(0.09), radius: 3, y: 1)
         .shadow(color: .black.opacity(0.26), radius: 48, y: 20)
-        .transition(.scale(scale: 0.985, anchor: .top).combined(with: .opacity))
     }
 
     private var field: some View {

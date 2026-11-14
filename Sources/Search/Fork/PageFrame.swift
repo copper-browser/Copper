@@ -93,13 +93,16 @@ struct PageCard: View {
         RoundedRectangle(cornerRadius: SplitMetrics.corner, style: .continuous)
             .fill(Palette.ground)
             .shadow(color: .black.opacity(lifted ? 0.14 : 0.09), radius: lifted ? 4 : 3, y: 1)
+            // Fork (ui-flows): and a soft wide one, so a card that is not the
+            // live one still sits on the ground rather than in it.
+            .shadow(color: .black.opacity(0.07), radius: 10, y: 3)
     }
 
     /// Half a point of edge, so a white page holds on a pale ground and a
     /// dark one on a dark ground.
     static var edge: some View {
         RoundedRectangle(cornerRadius: SplitMetrics.corner, style: .continuous)
-            .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+            .strokeBorder(Color.primary.opacity(0.14), lineWidth: 1) // Fork (ui-flows): a full pixel pair; half a point read as no edge
             .allowsHitTesting(false)
     }
 }

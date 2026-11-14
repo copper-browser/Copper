@@ -2701,12 +2701,16 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
         tab.failure = message(for: code)
     }
 
+    /// Fork (ui-flows): the one failure that is the Mac's connection, not
+    /// the site's — the only one the error page draws Wi-Fi for.
+    static let offline = "No connection."
+
     private func message(for code: Int) -> String {
         switch code {
         case NSURLErrorCannotFindHost, NSURLErrorDNSLookupFailed:
             return "No site at that address."
         case NSURLErrorNotConnectedToInternet, NSURLErrorNetworkConnectionLost:
-            return "No connection."
+            return Browser.offline
         case NSURLErrorTimedOut:
             return "The site took too long to answer."
         case NSURLErrorCannotConnectToHost:

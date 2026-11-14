@@ -228,7 +228,9 @@ private struct Trouble: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            Image(systemName: host == nil ? "exclamationmark.triangle" : "wifi.exclamationmark")
+            // Fork (ui-flows): Wi-Fi only when the Mac is offline; a site that
+            // refused or reset the connection is the site's trouble.
+            Image(systemName: message == Browser.offline ? "wifi.exclamationmark" : "exclamationmark.triangle")
                 .font(.system(size: 28, weight: .light))
                 .foregroundStyle(Palette.muted)
                 .padding(.bottom, 6)

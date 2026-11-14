@@ -38,6 +38,8 @@ struct AgentPane: View {
     /// Dragged by the pane's leading edge; kept between launches.
     @AppStorage("agent.paneWidth") private var stored: Double = Double(AgentPane.width)
     @State private var dragFrom: Double?
+    /// Fork (ui-flows): the notes whose Details are open.
+    @State private var noteDetails: Set<UUID> = []
 
     static let width: CGFloat = 400
     static let widths: ClosedRange<Double> = 340...620
@@ -404,11 +406,29 @@ struct AgentPane: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 11))
                     .foregroundStyle(Color.orange)
-                Text(item.text)
-                    .font(.system(size: 12)).foregroundStyle(Palette.ink)
-                    .lineSpacing(1.5)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.text)
+                        .font(.system(size: 12)).foregroundStyle(Palette.ink)
+                        .lineSpacing(1.5)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                    // Fork (ui-flows): the model's own numbers, for whoever wants them.
+                    if !item.detail.isEmpty {
+                        let shown = noteDetails.contains(item.id)
+                        Button(shown ? "Hide details" : "Details") {
+                            withAnimation(Motion.quick) { if shown { noteDetails.remove(item.id) } else { noteDetails.insert(item.id) } }
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(Palette.ink)
+                        if shown {
+                            Text(item.detail)
+                                .font(.system(size: 11.5)).foregroundStyle(Palette.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 12).padding(.vertical, 9)

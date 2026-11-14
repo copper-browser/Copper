@@ -88,10 +88,10 @@ struct AgentActivity: View {
         var line = Text("Worked for \(DriveStyle.span(group.ended.timeIntervalSince(group.started)))")
             + Text(" · \(steps) step\(steps == 1 ? "" : "s")")
         line = line.foregroundColor(Palette.muted)
-        if group.failures > 0 {
-            line = line + Text(" · \(group.failures) failed").foregroundColor(Color.red.opacity(0.8))
-        } else if group.warnings > 0 {
-            line = line + Text(" · \(group.warnings) with errors").foregroundColor(Color.red.opacity(0.8))
+        // Fork (ui-flows): what went wrong as a sentence, not "1 failed".
+        let troubled = group.failures > 0 ? group.failures : group.warnings
+        if troubled > 0 {
+            line = line + Text(troubled == 1 ? " · 1 step had a problem" : " · \(troubled) steps had problems").foregroundColor(Color.red.opacity(0.8))
         }
         return line.font(.system(size: 12))
     }
@@ -172,7 +172,7 @@ struct AgentActivity: View {
                 Spacer(minLength: 6)
                 if item.running {
                     Ring(size: 9)
-                } else if item.ms > 0 {
+                } else if item.ms > Double(DriveStyle.slow) { // Fork (ui-flows): only a slow step's time
                     Text(DriveStyle.ms(Int(item.ms)))
                         .font(.system(size: 11)).monospacedDigit()
                         .foregroundStyle(Palette.muted) // Fork (agent-ux): was faint

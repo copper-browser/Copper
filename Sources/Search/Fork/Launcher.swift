@@ -716,9 +716,8 @@ final class Launcher: ObservableObject {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         switch event.keyCode {
         case 53:
-            // One press, all the way out. ⌘K's first Escape lets go of the
-            // row; here nothing has happened yet, so there is nothing to undo
-            // step by step.
+            // One press, all the way out, as on ⌘K's card: nothing has
+            // happened yet, so there is nothing to undo step by step.
             browser.dismiss()
             return true
         case 36, 76:

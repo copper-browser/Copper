@@ -157,19 +157,59 @@ struct HandCard: View {
 /// pill, in the same small, quiet language.
 struct HandBar: View {
     let tabs: [UUID]
+    /// Fork (ui-flows): one under another, each as wide as the column (DriveSlot).
+    var stacked = false
     @ObservedObject private var drive = Drive.shared
 
     var body: some View {
         let here = Array(Dictionary(tabs.flatMap { drive.hands(on: $0) }.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
             .values.sorted { $0.last > $1.last }.prefix(3))
-        HStack(spacing: 6) {
-            ForEach(here) { hand in HandCapsule(hand: hand) }
+        if stacked {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(here) { hand in HandCapsule(hand: hand, fits: true) }
+            }
+        } else {
+            HStack(spacing: 6) {
+                ForEach(here) { hand in HandCapsule(hand: hand) }
+            }
         }
+    }
+}
+
+/// Fork (ui-flows): the driving pill's place in the sidebar layout — the
+/// column's foot, over the space chips — never the page's top right, where a
+/// site keeps its own Sign in. The top-tab layout and a folded column keep
+/// it on the page (SplitStage.driven).
+struct DriveSlot: View {
+    let browser: Browser
+    /// Passed in so the slot redraws when the tab in front changes.
+    let activeID: Tab.ID?
+    @ObservedObject private var drive = Drive.shared
+    @ObservedObject private var split = Split.shared
+    @ObservedObject private var agent = Agent.shared
+
+    var body: some View {
+        let shown = (activeID.map { [$0] } ?? []) + (split.side.map { [$0] } ?? [])
+        let here = shown.flatMap { drive.hands(on: $0) }
+        let onShown = drive.live && drive.run.map { shown.contains($0.tabID) } == true
+        VStack(spacing: 0) {
+            if agent.open || browser.folded {
+                EmptyView() // the pane's live band has the Stop; folded, the page has the pill
+            } else if !here.isEmpty {
+                HandBar(tabs: shown, stacked: true).padding(.horizontal, SideBar.inset).padding(.top, 6).transition(.opacity)
+            } else if drive.live {
+                DrivePill(browser: browser, elsewhere: !onShown, fits: true).padding(.horizontal, SideBar.inset).padding(.top, 6).transition(.opacity)
+            }
+        }
+        .animation(Motion.quick, value: drive.live)
+        .animation(Motion.quick, value: here.map(\.id))
     }
 }
 
 struct HandCapsule: View {
     let hand: Drive.Hand
+    /// Fork (ui-flows): as wide as the column it sits in, the words cut to fit.
+    var fits = false
     @ObservedObject private var drive = Drive.shared
     @State private var breathing = false
     @State private var hovering = false
@@ -189,8 +229,8 @@ struct HandCapsule: View {
                     .foregroundStyle(Palette.ink)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .frame(maxWidth: 320, alignment: .leading)
-                    .fixedSize(horizontal: true, vertical: false)
+                    .frame(maxWidth: fits ? .infinity : 320, alignment: .leading)
+                    .fixedSize(horizontal: !fits, vertical: false)
             }
             .buttonStyle(.plain)
             .help("Show what it is doing")
@@ -206,7 +246,7 @@ struct HandCapsule: View {
         .overlay(Capsule().strokeBorder(swatch.fill.opacity(0.75), lineWidth: 1.25))
         .shadow(color: swatch.fill.opacity(0.25), radius: 6, y: 1)
         .onHover { hovering = $0; settle() }
-        .popover(isPresented: $shown, arrowEdge: .bottom) {
+        .popover(isPresented: $shown, arrowEdge: fits ? .trailing : .bottom) {
             HandCards(hands: [hand]).onHover { inCard = $0; settle() }
         }
         .onAppear {

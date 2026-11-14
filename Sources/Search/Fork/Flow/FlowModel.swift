@@ -169,9 +169,11 @@ enum FlowModel {
             if history { parts.append("history") }
             if passkeys { parts.append(FlowSummary.plural(haul.passkeyCount, "passkey")) }
             if extensions { parts.append(FlowSummary.plural(haul.extensions.count, "extension")) }
-            if parts.isEmpty { return cookies || localStorage ? "Bring over sign-ins" : "Nothing to bring" }
-            if parts.count == 1 { return "Bring over \(parts[0])" }
-            if parts.count == 2 { return "Bring over \(parts[0]) and \(parts[1])" }
+            // Fork (ui-flows): sign-ins aren't counted, but they are named.
+            let signIns = cookies || localStorage ? " + sign-ins" : ""
+            if parts.isEmpty { return signIns.isEmpty ? "Nothing to bring" : "Bring over sign-ins" }
+            if parts.count == 1 { return "Bring over \(parts[0])" + signIns }
+            if parts.count == 2 { return "Bring over \(parts[0]) and \(parts[1])" + signIns }
             return "Bring over \(parts[0]), \(parts[1]) and more"
         }
     }

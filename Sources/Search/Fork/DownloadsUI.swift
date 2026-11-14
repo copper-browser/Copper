@@ -265,10 +265,10 @@ struct DownloadRow: View {
             }
             // Fork (ui-system): Show in Finder on every file that's there, not
             // only under the pointer; the row itself opens it.
-            if let file = item.file, exists { FinderDoor(icon: "magnifyingglass", help: "Show in Finder") { reveal(file) } }
+            if let file = item.file, exists { FinderDoor(icon: "folder", help: "Show in Finder") { reveal(file) } }
             if hovering { FinderDoor(icon: "xmark", help: "Remove from list") { downloads.remove(item) } }
         } else if let keep {
-            if exists { FinderDoor(icon: "magnifyingglass", help: "Show in Finder") { browser.loot.reveal(keep) } }
+            if exists { FinderDoor(icon: "folder", help: "Show in Finder") { browser.loot.reveal(keep) } }
             if hovering { FinderDoor(icon: "xmark", help: "Remove from list") { browser.loot.forget(keep) } }
         }
     }

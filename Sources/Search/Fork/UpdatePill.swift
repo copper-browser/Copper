@@ -372,6 +372,7 @@ struct UpdatePillSlot: View {
                 SlideInk(browser: browser) { tint in
                     UpdatePillView(browser: browser, cue: cue, tint: tint, style: .wide)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading) // Fork (ui-flows): as wide as its words
                 .padding(.horizontal, SideBar.inset)
                 .padding(.top, 6)
                 .padding(.bottom, 2)
@@ -473,13 +474,13 @@ struct UpdatePillView: View {
 
     private var height: CGFloat {
         switch style {
-        case .wide: return 34
+        case .wide: return 28 // Fork (ui-flows): a flat capsule, not a full-width slab
         case .compact: return 24
         case .corner: return 30
         }
     }
 
-    private var radius: CGFloat { style == .wide ? 10 : height / 2 }
+    private var radius: CGFloat { height / 2 }
     private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: radius, style: .continuous) }
     /// The badge says only its icon until the pointer is on it.
     private var spelled: Bool { style != .corner || lit }
@@ -490,7 +491,7 @@ struct UpdatePillView: View {
                 mark
                 if spelled {
                     Text(cue.title(compact: style != .wide))
-                        .font(.system(size: style == .wide ? 13 : 12, weight: .semibold))
+                        .font(.system(size: style == .wide ? 12.5 : 12, weight: .semibold))
                         .monospacedDigit()
                         .lineLimit(1)
                         .fixedSize()
@@ -499,10 +500,10 @@ struct UpdatePillView: View {
             }
             .foregroundStyle(label)
             .padding(.horizontal, style == .wide ? 12 : (spelled ? 10 : 0))
-            .frame(minWidth: height, maxWidth: style == .wide ? .infinity : nil)
+            .frame(minWidth: height)
             .frame(height: height)
             // A crowded toolbar must not squeeze the capsule under its words.
-            .fixedSize(horizontal: style != .wide, vertical: false)
+            .fixedSize(horizontal: true, vertical: false)
             .background { ground }
             .overlay { sheen }
             .contentShape(shape)
@@ -573,12 +574,13 @@ struct UpdatePillView: View {
             } else {
                 shape.fill(fill)
             }
-            shape.fill(LinearGradient(colors: [.white.opacity(quiet ? 0 : (lit ? 0.22 : 0.14)), .clear],
+            // Fork (ui-flows): the column's pill is flat — no top light, no glow.
+            shape.fill(LinearGradient(colors: [.white.opacity(quiet || style == .wide ? 0 : (lit ? 0.22 : 0.14)), .clear],
                                       startPoint: .top, endPoint: .bottom))
             shape.strokeBorder(quiet ? rim : Color.white.opacity(ink.light ? 0.35 : 0.18), lineWidth: 0.75)
         }
         .brightness(lit && !quiet ? (ink.light ? -0.03 : 0.04) : 0)
-        .shadow(color: quiet ? tint.lift : ink.fill.opacity(style == .corner ? 0.45 : 0.32),
+        .shadow(color: style == .wide ? .clear : quiet ? tint.lift : ink.fill.opacity(style == .corner ? 0.45 : 0.32),
                 radius: lit ? 7 : 5, y: 2)
         .shadow(color: .black.opacity(style == .corner ? 0.18 : 0), radius: 10, y: 3)
     }
@@ -599,7 +601,7 @@ struct UpdatePillView: View {
         }
         .clipShape(shape)
         .allowsHitTesting(false)
-        .opacity(quiet ? 0 : 1)
+        .opacity(quiet || style == .wide ? 0 : 1)
     }
 
     @ViewBuilder private var menu: some View {
