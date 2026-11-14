@@ -528,12 +528,11 @@ final class Tab: ObservableObject, Identifiable {
             WKUserScript(source: Swipe.calm, injectionTime: .atDocumentStart, forMainFrameOnly: true)
         )
         // Every frame: a swipe over an embedded map is the map's, and only the
-        // map's own document can say so.
+        // map's own document can say so; an image in an ad is still an image.
+        // Fork (loadmem): one script, after the document has been read — two
+        // listeners need nothing earlier, and every frame's start is the page's.
         controller.addUserScript(
-            WKUserScript(source: Swipe.watch, injectionTime: .atDocumentStart, forMainFrameOnly: false)
-        )
-        controller.addUserScript(
-            WKUserScript(source: ImageRelay.watch, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+            WKUserScript(source: Swipe.watch + ImageRelay.watch, injectionTime: .atDocumentEnd, forMainFrameOnly: false)
         )
         controller.addUserScript(
             WKUserScript(source: StoreRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
