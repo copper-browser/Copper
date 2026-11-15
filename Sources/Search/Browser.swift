@@ -2121,14 +2121,15 @@ final class Browser: NSObject {
         Launcher.shared.begin() // Fork (command-bar-hooks): ⌘K reads the open tabs, bookmarks and commands once, as ⌘T does
         launching = false
         summoning = true
-        // Fork (perf, r4): the rows are worked out in the key's own pass, so
-        // the card goes up at its full height; it lays them out in the next
-        // pass and fades them in (Fork/CommandPalette `filled`).
+        // Fork (perf, r4): the card goes up at its full height; it lays the
+        // rows out in the next pass and fades them in (Fork/CommandPalette
+        // `filled`). Fork (observe): the rows are worked out after the key's
+        // pass too (`fillSoon`).
         field.typed = ""
         offers = []
         ending = nil
         picked = nil
-        fillPending()
+        fillSoon()
         // Every space's open tabs, for the first letter to match against, read
         // once the card is up rather than in either keystroke.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
@@ -2148,6 +2149,16 @@ final class Browser: NSObject {
         withTransaction(still) { guess() }
     }
 
+    /// Fork (observe): the resting rows in the pass after the key's, once the
+    /// card is on screen, not in the key's own (worked out there, ⌘T's
+    /// handling went from 0.3 to 9 ms). The card holds the last resting
+    /// card's height meanwhile (CommandPalette.resting), so it doesn't grow
+    /// when they land; the first card of a run has none to hold, and fills now.
+    private func fillSoon() {
+        guard CommandPalette.resting[launching] != nil else { return fillPending() }
+        Launcher.afterCommit { [weak self] in self?.fillPending() }
+    }
+
     /// Fork (new-tab-launcher): ⌘T, the way Arc has it — the card, asking
     /// where to, and no tab until there is an answer. An extension's new tab
     /// page, when one was allowed to take over, still gets the new tab.
@@ -2161,13 +2172,12 @@ final class Browser: NSObject {
         Launcher.shared.begin()
         launching = true
         summoning = true
-        // Fork (perf, r4): as ⌘K's (summon()): rows worked out now, laid
-        // out by the card in the pass after its own.
+        // Fork (perf, r4): as ⌘K's (summon()).
         field.typed = ""
         offers = []
         ending = nil
         picked = nil
-        fillPending()
+        fillSoon()
         editing = true
         focusRequest += 1
     }

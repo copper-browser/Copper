@@ -399,10 +399,19 @@ struct CommandPalette: View {
 
     /// As tall as the rows.
     private var natural: CGFloat {
-        let rows = browser.offers.reduce(CGFloat(0)) { $0 + (CommandPalette.twoLine($1) ? CommandPalette.pageRowHeight : CommandPalette.rowHeight) + 1 }
-        let headings = CGFloat(sections.headings.keys.filter { $0 < browser.offers.count }.count)
-        return rows + headings * (CommandPalette.headingHeight + 3) + 16
+        let offers = browser.offers, resting = state.typed.isEmpty
+        // Fork (observe): the resting rows come a pass after the card
+        // (Browser.fillSoon); until then it is as tall as the last one was.
+        if offers.isEmpty, resting, let held = CommandPalette.resting[bar.launching] { return held }
+        let rows = offers.reduce(CGFloat(0)) { $0 + (CommandPalette.twoLine($1) ? CommandPalette.pageRowHeight : CommandPalette.rowHeight) + 1 }
+        let headings = CGFloat(sections.headings.keys.filter { $0 < offers.count }.count)
+        let height = rows + headings * (CommandPalette.headingHeight + 3) + 16
+        if resting, !offers.isEmpty { CommandPalette.resting[bar.launching] = height }
+        return height
     }
+
+    /// Fork (observe): the resting card's height, ⌘T's (true) and ⌘K's apart.
+    static var resting: [Bool: CGFloat] = [:]
 
     /// No taller than the window below the card, less a margin that keeps
     /// the card's foot well clear of the window's (window − 160 at most).

@@ -6,7 +6,9 @@ import AppKit
 
 @main
 struct SearchApp: App {
-    @StateObject private var browser = Windows.main // Fork: windows — the first of however many
+    // Fork: windows — the first of however many. Fork (observe): read in
+    // `body`, after init has started the clock and taken the world.
+    private var browser: Browser { Windows.main }
     /// Links from other apps, and the Dock icon.
     @NSApplicationDelegateAdaptor(Links.self) private var links
 
