@@ -318,6 +318,9 @@ try:
     proc = None
     kept = len([f for f in os.listdir(os.path.join(folder, "covers")) if f.endswith(".jpg")])
     print(f"  {kept} picture(s) on disk after the quit")
+    # Loose B and the two pins left theirs when they slept; Loose A, awake, leaves its own at the quit.
+    if kept < 4:
+        fail(f"the quit did not keep the awake page's picture ({kept} on disk)")
     launch()
     until("pins loaded", lambda: (lambda p: p if len(p) == 2 and all(loaded(x) for x in p.values()) else None)(pins(settled=True)))
     loose = {t["title"]: t for t in tabs() if not t["pin"]}
