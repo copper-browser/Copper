@@ -277,6 +277,16 @@ struct SpaceStrip<Tools: View>: View {
 
     /// The row runs out under a soft edge at both ends, the way the column's
     /// two blocks of rows do.
+    /// Fork (polish r5): the same soft edge for a run that scrolls (the top
+    /// tab strip), only on the sides where something is out of view.
+    static func fade(leading: Bool, trailing: Bool, width: CGFloat = 20) -> some View {
+        HStack(spacing: 0) {
+            LinearGradient(colors: [leading ? .clear : .black, .black], startPoint: .leading, endPoint: .trailing).frame(width: width)
+            Color.black
+            LinearGradient(colors: [.black, trailing ? .clear : .black], startPoint: .leading, endPoint: .trailing).frame(width: width)
+        }
+    }
+
     private static var fade: some View {
         LinearGradient(
             stops: [

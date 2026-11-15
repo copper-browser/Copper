@@ -591,7 +591,9 @@ private struct PinSquare: View {
     private var radius: CGFloat { min(12, min(width, height) * 0.28) }
     /// A mark big enough to recognise at a glance, and no bigger than the
     /// cell can hold with air around it.
-    private var mark: CGFloat { max(14, min(20, height * 0.46)) }
+    /// Fork (polish r5): 16 pt like every other favicon in the chrome (was
+    /// up to 20, so two pins' marks read as two sizes).
+    private var mark: CGFloat { min(16, max(14, height * 0.46)) }
 
     var body: some View {
         Group {

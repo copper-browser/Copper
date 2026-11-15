@@ -20,6 +20,8 @@ struct TabBar: View {
     @State private var plussed = false
     /// How wide the doors at the far end are, extension buttons included.
     @State private var doors: CGFloat = 0
+    /// Fork (polish r5): which ends of a scrolling run have tabs out of view.
+    @State private var hidden = StripEdges()
 
     var body: some View {
         // A GeometryReader is only here to measure the width. Its content is
@@ -76,6 +78,12 @@ struct TabBar: View {
                             .frame(height: Metrics.strip)
                         }
                         .scrollDisabled(!overflowing(in: geo.size.width))
+                        .stripEdges($hidden)
+                        // Fork (polish r5): a run that scrolls fades out at the
+                        // ends that hide tabs, the way the spaces strip does —
+                        // it used to stop dead at a cut tab.
+                        .mask(SpaceStrip.fade(leading: overflowing(in: geo.size.width) && hidden.leading,
+                                              trailing: overflowing(in: geo.size.width) && hidden.trailing))
                         .frame(width: run(in: geo.size.width))
                         .onAppear { reveal(reader, in: geo.size.width) }
                         .onChange(of: overflowing(in: geo.size.width)) { _, _ in reveal(reader, in: geo.size.width) }
@@ -472,7 +480,7 @@ private struct TabPill: View {
                         .font(.system(size: 10))
                         .foregroundStyle(colour.opacity(0.7))
                 }
-                FadingTitle(text: Text(tab.label) // Fork (motion): a long title fades out, no "…"
+                FadingTitle(text: Text(shownTitle) // Fork (motion): a long title fades out, no "…"
                     .font(.system(size: 12.5, weight: live ? .semibold : .regular))
                     .foregroundStyle(colour))
                     .layoutPriority(1)
@@ -507,6 +515,16 @@ private struct TabPill: View {
     }
 
     private var slotShown: Bool { hovering || tab.loading || tab.noisy }
+
+    /// Fork (polish r5): the title, tidied; in a pill too narrow for all of
+    /// it, only the part before its first separator — "Copper — Wikipedia"
+    /// read "Copper -" with the dash fading out.
+    private var shownTitle: String {
+        let title = CommandPalette.tidy(tab.label)
+        let room = span - 11 - 7 - 15 - 6 - 2
+        guard TabPill.measure(title, size: 12.5, weight: live ? .semibold : .regular) > room else { return title }
+        return CommandPalette.head(title)
+    }
 
     /// Fork (uichrome): the width the live tab's words take: its title, 8 pt,
     /// its host — and the mark, the padding and the cross's slot around them.
@@ -941,6 +959,30 @@ struct PinField: NSViewRepresentable {
         func controlTextDidEndEditing(_ note: Notification) {
             let browser = browser
             DispatchQueue.main.async { browser.endPinEdit() }
+        }
+    }
+}
+
+/// Fork (polish r5): whether a horizontal run has content past either end.
+struct StripEdges: Equatable {
+    var leading = false
+    var trailing = true
+}
+
+private extension View {
+    /// macOS 15 reads the run's offset; before it, both ends of an
+    /// overflowing run fade (the tab in view is kept centred-ish anyway).
+    @ViewBuilder
+    func stripEdges(_ edges: Binding<StripEdges>) -> some View {
+        if #available(macOS 15, *) {
+            onScrollGeometryChange(for: StripEdges.self) { geometry in
+                StripEdges(leading: geometry.contentOffset.x > 1,
+                           trailing: geometry.contentOffset.x + geometry.containerSize.width < geometry.contentSize.width - 1)
+            } action: { _, now in
+                edges.wrappedValue = now
+            }
+        } else {
+            onAppear { edges.wrappedValue = StripEdges(leading: true, trailing: true) }
         }
     }
 }

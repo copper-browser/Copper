@@ -558,7 +558,10 @@ final class Launcher: ObservableObject {
                     if Needle.starts(key, with: bytes, at: start, before: host) { return 85 }
                 }
             }
-            if Needle.starts(title, with: bytes) { return 75 }
+            // Fork (polish r5): a title that starts with what was typed is
+            // the page meant — level with an address that does, ahead of a
+            // host label or a later word.
+            if Needle.starts(title, with: bytes) { return 100 }
             var from = 0
             while let at = Needle.find(bytes, in: title, from: from) {
                 if at > 0, title[at - 1] == Needle.space { return 75 }

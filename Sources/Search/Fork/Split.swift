@@ -139,12 +139,14 @@ final class Split: ObservableObject {
         guard tab.id != browser.activeID else { return }
         growing = !on(in: browser)
         landing = growing || landing
-        if growing, let left = browser.active, let web = left.built, !web.unpainted, web.bounds.width > 1 {
+        // Fork (polish r5): Reduce Motion takes no picture — the split cuts
+        // straight to its final layout (`SplitStage.slide`).
+        if growing, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, let left = browser.active, let web = left.built, !web.unpainted, web.bounds.width > 1 {
             let id = left.id
             picturing = true
             web.takeSnapshot(with: nil) { [weak self] image, _ in
                 MainActor.assumeIsolated {
-                    guard let self, self.picturing else { return }
+                    guard let self, self.picturing, self.growing else { return } // Fork (polish r5): late, the pages have re-wrapped
                     self.picturing = false
                     if let image, self.landing { self.still = (id, image) }
                 }
@@ -172,9 +174,13 @@ final class Split: ObservableObject {
         landing = false
         picturing = false
         incoming = false
+        // Fork (polish r5): the pages still at their old widths (the picture
+        // is late) — they take the new ones when it is back, and the cover
+        // comes off once the left page has re-wrapped (`watchRewrap`).
+        if growing { return }
         if rewrapped || still == nil { uncover(); return }
         let id = still?.id
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
             MainActor.assumeIsolated { if self?.still?.id == id { self?.uncover() } }
         }
     }
@@ -205,11 +211,14 @@ final class Split: ObservableObject {
 
     /// At once once the card has landed — one swap of the left page's wrap
     /// reads better than two wraps of one text crossing (and keeps the whole
-    /// move under 300 ms). Reduce Motion, where nothing slid, fades it.
+    /// move under 300 ms). Fork (polish r5): the cover and its card's label
+    /// go in one transaction with animations off — an inherited fade left
+    /// the label ghosting over the painted page for two frames.
     private func uncover() {
         guard covering else { return }
-        let fade = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        withAnimation(fade ? .easeOut(duration: 0.12) : nil) { covering = false; still = nil }
+        var now = Transaction()
+        now.disablesAnimations = true
+        withTransaction(now) { covering = false; still = nil }
     }
 
     /// The cross on a pane's own toolbar. The tab goes, the split goes with
@@ -459,7 +468,6 @@ struct SplitStage: View {
                     .overlay(alignment: .topLeading) {
                         if split.covering {
                             cover(left: leftWidth, span: span, tall: tall, incoming: right)
-                                .transition(.opacity)
                         }
                     }
                     .padding(.horizontal, margin)
@@ -478,17 +486,8 @@ struct SplitStage: View {
             }
             .background { if !inset { backdrop } }
             .coordinateSpace(name: Split.space)
-            .onAppear {
-                guard split.growing else { return }
-                // Fork (motion): once the picture of the page is back (a frame
-                // or two), or after 120 ms without it.
-                if split.picturing {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { glide() }
-                } else {
-                    glide()
-                }
-            }
-            .onChange(of: split.still?.id) { _, id in if id != nil { glide() } }
+            .onAppear(perform: slide)
+            .onChange(of: split.still?.id) { _, id in if id != nil { settle() } }
             .onChange(of: browser.activeID) { was, _ in split.reconcile(browser, was: was) }
             .onChange(of: browser.tabs.map(\.id)) { _, _ in split.reconcile(browser) }
         } else if card {
@@ -498,31 +497,53 @@ struct SplitStage: View {
         }
     }
 
-    /// Fork (uiflows r4): the split takes its final layout at once, under
-    /// the cover, and the new pane's card slides in over the old page (160
-    /// ms, an ease-out). Only the cover moves — a picture and a card drawn
-    /// by SwiftUI — so no web view is resized mid-move: a page resized
-    /// frame by frame was cropped for 330 ms, then re-wrapped in one jump.
-    /// Reduce Motion: no slide; the cover just fades off.
-    private func glide() {
+    /// Fork (uiflows r4, polish r5): the new pane's card slides in over the
+    /// old page the moment the split is made (160 ms, an ease-out) while the
+    /// old page's picture is taken alongside — it used to wait for the
+    /// picture, and nothing moved for 135 ms. Only the cover moves, a card
+    /// drawn by SwiftUI, so no web view is resized mid-move; the pages take
+    /// their final frames under it once the picture is back (`settle`).
+    /// Reduce Motion: no slide and no cover, a cut to the final layout.
+    private func slide() {
         guard split.growing else { return }
-        let still = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         var now = Transaction()
         now.disablesAnimations = true
-        withTransaction(now) {
-            split.growing = false
-            split.covering = true
-            split.incoming = !still
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            withTransaction(now) { split.growing = false }
+            split.landed(in: browser)
+            return
         }
-        // The next pass, once the cover is on screen with the card off to the
-        // right and the pages have their final frames.
+        withTransaction(now) {
+            split.covering = true
+            split.incoming = true
+        }
+        if split.picturing {
+            // The picture usually lands mid-slide; a page that doesn't answer
+            // gets 120 ms, then re-wraps under the card as before.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { settle() }
+        } else {
+            settle()
+        }
+        // The next pass, once the cover is on screen with the card off to the right.
         DispatchQueue.main.async {
-            split.watchRewrap(in: browser)
-            withAnimation(still ? nil : .easeOut(duration: 0.16), completionCriteria: .logicallyComplete) {
+            withAnimation(.easeOut(duration: 0.16), completionCriteria: .logicallyComplete) {
                 split.incoming = false
             } completion: {
                 split.landed(in: browser)
             }
+        }
+    }
+
+    /// The picture is back (or late): both pages take their final frames
+    /// under the cover, and it comes off once the left one has re-wrapped.
+    private func settle() {
+        guard split.growing else { return }
+        var now = Transaction()
+        now.disablesAnimations = true
+        withTransaction(now) { split.growing = false }
+        DispatchQueue.main.async {
+            split.watchRewrap(in: browser)
+            if !split.landing { split.landed(in: browser) }
         }
     }
 
@@ -572,7 +593,7 @@ struct SplitStage: View {
             browser: browser,
             tab: tab,
             live: tab.id == browser.activeID,
-            tint: split.tint(dark: scheme == .dark).mark.opacity(0.85),
+            tint: split.tint(dark: scheme == .dark).mark.opacity(0.6), // Fork (polish r5): was 0.85 at 1.5 pt
             size: CGSize(width: max(size.width, 1), height: max(size.height, 1)),
             landed: !split.landing
         )

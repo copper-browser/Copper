@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Fork (ui-flows r3): the one ground every modal stands on — the panels,
 /// Settings and Move in (⌘K keeps its own dim). The page card steps back,
-/// blurred and a little darker; the column beside it stays crisp, as Arc
+/// a little darker; the column beside it stays crisp, as Arc
 /// leaves its sidebar. The whole window still takes the click, so nothing
 /// under a panel is pressed by accident.
 struct ModalBackdrop: View {
@@ -11,19 +11,18 @@ struct ModalBackdrop: View {
     let tap: () -> Void
     @Environment(\.colorScheme) private var scheme
 
-    /// The dim over the blur: light 12%, dark 30%.
-    static func dim(dark: Bool) -> Double { dark ? 0.30 : 0.12 }
+    /// The dim: light 14%, dark 30%.
+    static func dim(dark: Bool) -> Double { dark ? 0.30 : 0.14 }
 
     var body: some View {
         ZStack {
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture(perform: tap)
-            // shortcut: the system material's blur radius (~20 pt) is fixed; a
-            // CABackdropLayer filter would set it exactly, if it ever matters.
+            // Fork (polish r5): a flat dim, no blur — the material picked up a
+            // page's hero colour and glowed it round the panel.
             let shape = RoundedRectangle(cornerRadius: column > 0 ? SplitMetrics.corner : 0, style: .continuous)
-            shape.fill(.ultraThinMaterial)
-                .overlay(Color.black.opacity(Self.dim(dark: scheme == .dark)).clipShape(shape))
+            shape.fill(Color.black.opacity(Self.dim(dark: scheme == .dark)))
                 .padding(column > 0
                          ? EdgeInsets(top: SplitMetrics.margin, leading: column, bottom: SplitMetrics.margin, trailing: SplitMetrics.margin)
                          : EdgeInsets())

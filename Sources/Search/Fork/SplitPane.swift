@@ -95,7 +95,7 @@ struct SplitCard: View {
     @ViewBuilder private var edge: some View {
         if live {
             RoundedRectangle(cornerRadius: SplitMetrics.corner, style: .continuous)
-                .strokeBorder(tint, lineWidth: 1.5)
+                .strokeBorder(tint, lineWidth: 1) // Fork (polish r5): 1 pt (the stage passes ~60%), Arc's weight
                 .allowsHitTesting(false)
         } else {
             PageCard.edge
@@ -108,8 +108,10 @@ struct SplitCard: View {
 /// page covers it the moment WebKit has a frame (`PageView.showFirstFrame`).
 private struct SplitWaiting: View {
     @ObservedObject var tab: Tab
-    /// Fork (motion): the page has painted. Gone then (in 80 ms), so it can't
-    /// show through wherever a page mid-resize hasn't drawn yet.
+    /// Fork (motion): the page has painted. Gone then, so it can't show
+    /// through wherever a page mid-resize hasn't drawn yet. Fork (polish r5):
+    /// at once — the page fades in over 120 ms (`showFirstFrame`), and an
+    /// 80 ms fade of this under it read as the label ghosting over the page.
     @State private var painted: Bool
 
     init(tab: Tab) {
@@ -126,7 +128,11 @@ private struct SplitWaiting: View {
 
     private func watch() {
         guard !painted, let web = tab.built else { return }
-        web.whenPainted { withAnimation(.easeOut(duration: 0.08)) { painted = true } }
+        web.whenPainted {
+            var now = Transaction()
+            now.disablesAnimations = true
+            withTransaction(now) { painted = true }
+        }
     }
 }
 

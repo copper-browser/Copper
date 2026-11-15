@@ -29,10 +29,6 @@ struct CommandPalette: View {
     private static let drop: CGFloat = 0.3
 
     @State private var place = CommandPalette.lastPlace
-    /// Fork (perf, r4): the card opens at its full height on an empty ground
-    /// in the key's own pass, and its rows are laid out in the next one and
-    /// fade in — one step, not a field that then grows into a card.
-    @State private var filled = false
     /// Fork (perf, r4): the rows laid out so far, by id. A keystroke that
     /// brings a list of new rows lays out the first `slice` of them in its own
     /// pass and the rest in the next, each pass under a frame; a row already
@@ -80,6 +76,14 @@ struct CommandPalette: View {
         }
     }
     private static let headingHeight: CGFloat = 28
+    /// Fork (polish r5): a command is one short line — 36 pt, as Arc's
+    /// command rows, not a page row's 40.
+    private static let commandRowHeight: CGFloat = 36
+
+    static func height(_ offer: Suggestion) -> CGFloat {
+        if twoLine(offer) { return pageRowHeight }
+        return offer.kind == .command ? commandRowHeight : rowHeight
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -118,12 +122,7 @@ struct CommandPalette: View {
         // these rows have no page behind them to ask. See Fork/Marks.
         .onAppear {
             Marks.want(browser.offers.map(\.url))
-            Launcher.afterCommit {
-                withAnimation(.easeOut(duration: 0.08)) {
-                    filled = true
-                    laid = Set(CommandPalette.keyed(browser.offers).map(\.id))
-                }
-            }
+            Launcher.afterCommit { laid = Set(CommandPalette.keyed(browser.offers).map(\.id)) }
         }
         .onChange(of: browser.offers) { _, offers in
             Marks.want(offers.map(\.url))
@@ -173,11 +172,11 @@ struct CommandPalette: View {
                 Rectangle()
                     .fill(Palette.hairline.opacity(0.55))
                     .frame(height: 1)
-                if filled {
-                    rows.transition(.opacity)
-                } else {
-                    Color.clear.frame(height: min(natural, room))
-                }
+                // Fork (polish r5): the first `slice` rows are drawn in the
+                // card's first frame (they were held a pass and faded in, so
+                // the card showed empty for two or three frames); the rest
+                // follow a pass later (`laid`).
+                rows
             }
             if let nudge {
                 Rectangle()
@@ -367,7 +366,7 @@ struct CommandPalette: View {
                         .onTapGesture { browser.take(offer) }
                 } else {
                     // Its place, until the next pass lays it out.
-                    Color.clear.frame(height: CommandPalette.twoLine(offer) ? CommandPalette.pageRowHeight : CommandPalette.rowHeight)
+                    Color.clear.frame(height: CommandPalette.height(offer))
                 }
             }
         }
@@ -389,17 +388,38 @@ struct CommandPalette: View {
     /// Fork (ux): a title that says its site twice or more — "GitHub · …
     /// · GitHub · GitHub" — says it once: a " · " part already said earlier
     /// in the title is dropped.
+    /// Fork (polish r5): and a title ending in a bare separator ("Copper -")
+    /// loses it.
     static func tidy(_ title: String) -> String {
-        let parts = title.components(separatedBy: " · ")
-        guard parts.count > 1 else { return title }
+        let bare = trimSeparators(title)
+        let parts = bare.components(separatedBy: " · ")
+        guard parts.count > 1 else { return bare }
         var seen: Set<String> = []
         let kept = parts.filter { seen.insert($0.trimmingCharacters(in: .whitespaces).lowercased()).inserted }
-        return kept.count == parts.count ? title : kept.joined(separator: " · ")
+        return kept.count == parts.count ? bare : kept.joined(separator: " · ")
+    }
+
+    private static let separators: [String] = [" - ", " — ", " – ", " | ", " · "]
+
+    private static func trimSeparators(_ title: String) -> String {
+        var text = title.trimmingCharacters(in: .whitespaces)
+        while let last = text.last, "-—–|·".contains(last), text.count > 1 {
+            text = String(text.dropLast()).trimmingCharacters(in: .whitespaces)
+        }
+        return text
+    }
+
+    /// Fork (polish r5): a title's first part, before its first separator —
+    /// what a narrow tab shows ("Copper — Wikipedia" → "Copper").
+    static func head(_ title: String) -> String {
+        let cut = separators.compactMap { title.range(of: $0)?.lowerBound }.min()
+        guard let cut, cut > title.startIndex else { return title }
+        return String(title[..<cut])
     }
 
     /// As tall as the rows.
     private var natural: CGFloat {
-        let rows = browser.offers.reduce(CGFloat(0)) { $0 + (CommandPalette.twoLine($1) ? CommandPalette.pageRowHeight : CommandPalette.rowHeight) + 1 }
+        let rows = browser.offers.reduce(CGFloat(0)) { $0 + CommandPalette.height($1) + 1 }
         let headings = CGFloat(sections.headings.keys.filter { $0 < browser.offers.count }.count)
         return rows + headings * (CommandPalette.headingHeight + 3) + 16
     }
@@ -527,7 +547,7 @@ struct CommandPalette: View {
                 }
             }
             .padding(.horizontal, 12)
-            .frame(height: twoLine ? CommandPalette.pageRowHeight : CommandPalette.rowHeight)
+            .frame(height: CommandPalette.height(offer))
             .background {
                 if picked {
                     // The space's colour, not a grey: a pale grey on a white
