@@ -623,8 +623,8 @@ def summarize(results, meta):
          "only the steps taken). Stale % = stale decisions / decisions. Capped = settles that ran into their 400 ms cap "
          "(builds from hc2/jev say; — otherwise). Settle % = settle ms / wall.", ""]
     L += ["## By group × arm", "",
-          "| Group | Arm | Pass | False DONE | Wall p50 | Wall p90 | IQR | Decisions p50 | Actions p50 | Stale % | observe | decide | text | act | settle | Settle % | Capped | Jev ms/dec | Tokens/run | Text calls/run | $/run |",
-          "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
+          "| Group | Arm | Pass | False DONE | Wall p50 | Wall p90 | IQR | Decisions p50 | Actions p50 | Stale % | observe | decide | text | act | settle | Settle % | Capped | Jev ms/dec | Tokens/run | Text calls/run | $/run | $/pass |",
+          "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
     for g in groups:
         for a in arms:
             rs = [r for r in results if r["group"] == g and r["arm"] == a]
@@ -638,7 +638,7 @@ def summarize(results, meta):
             capped = f"{100 * sum(r.get('settles_capped') or 0 for r in rs) / settles:.0f}%" if settles else "—"
             share = [100 * r["settle_ms"] / r["wall_ms"] for r in rs if r.get("settle_ms") is not None and r.get("wall_ms")]
             costs = [r["cost_usd"] for r in rs if r.get("cost_usd") is not None]
-            L.append("| {} | {} | {}/{} ({:.0f}%) | {}/{} | {} | {} | {}–{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
+            L.append("| {} | {} | {}/{} ({:.0f}%) | {}/{} | {} | {} | {}–{} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
                 g, a, len(ok), len(rs), 100 * len(ok) / len(rs), false_done, len(rs), f(med(w)), f(pct(w, .9)), f(pct(w, .25)), f(pct(w, .75)),
                 f(med([r["decisions"] for r in ok])), f(med([r["actions"] for r in ok])),
                 f"{100 * sum(r.get('stale') or 0 for r in rs) / dec:.1f}%" if dec else "—",
@@ -646,7 +646,9 @@ def summarize(results, meta):
                 f"{med(share):.0f}%" if share else "—", capped,
                 f(med([r["jev_ms"] / r["decisions"] for r in rs if r.get("jev_ms") and r.get("decisions")])),
                 f(med([r.get("input_tokens") for r in rs])), f(statistics.mean([text_calls(r) for r in rs])),
-                f"{statistics.mean(costs):.3f}" if costs else "—"))
+                f"{statistics.mean(costs):.3f}" if costs else "—",
+                # what all the runs cost per verified pass (failed runs are paid for too)
+                (f"{sum(costs) / len(ok):.3f}" if ok else "∞") if costs else "—"))
     L += ["", "## By task × arm (pass · wall p50 / p90 · decisions p50 over passes · values typed from the goal / by the text model, per run)", "",
           "| Task | " + " | ".join(arms) + " |", "|---|" + "---:|" * len(arms)]
     T = tasks("")
