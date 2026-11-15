@@ -148,6 +148,12 @@ struct JevHybridTests {
         // The picture comes when the chosen one has a namesake (none is a name too).
         #expect(!U.sharesName(article, choice: "e1"))
         #expect(U.sharesName(article, choice: "e2") && U.sharesName(article, choice: "e4") && U.sharesName(article, choice: "e6"))
+        // Wikipedia links one article twice (text and infobox): one place, one choice, no picture.
+        var twice = click(8, "link", "Austria"), again = click(9, "link", "Austria")
+        twice["href"] = "https://en.wikipedia.org/wiki/Austria"; again["href"] = "https://en.wikipedia.org/wiki/Austria"
+        var other = click(10, "link", "Austria"); other["href"] = "https://en.wikipedia.org/wiki/Austria_(disambiguation)"
+        #expect(!U.sharesName(obs([twice, again]), choice: "e8"))
+        #expect(U.sharesName(obs([twice, again, other]), choice: "e8"))
         let invoices = obs([click(1, "button", "Approve"), click(2, "button", "approve"), click(3, "button", "Reject")])
         #expect(!U.needsPicture(invoices, after: nil))
         #expect(U.sharesName(invoices, choice: "e1") && !U.sharesName(invoices, choice: "e3"))
@@ -165,6 +171,81 @@ struct JevHybridTests {
         step.pageChanged = false
         step.inFlight = true
         #expect(!U.needsPicture(page, after: step))
+        // Nor is a form that went in: the page took it, it may just not say so.
+        step.inFlight = false
+        step.sent = true
+        step.formSent = true
+        #expect(!U.needsPicture(page, after: step))
+        #expect(step.quietSend && (step.recent["page_changed"] as? Bool) == true)
+        #expect((step.recent["action"] as? String ?? "").contains("no confirmation"))
+    }
+}
+
+@MainActor
+@Suite("Jev's claims and waits")
+struct JevClaimTests {
+    private typealias E = NetLog.Entry
+
+    @Test func floors() {
+        #expect(U.floor("BLOCKED") == 0.8 && U.floor("DONE") == U.claimFloor)
+        // far-link's BLOCKED at 76% on the page it was sent to (r3) is doubted now.
+        #expect(0.76 < U.floor("BLOCKED"))
+    }
+
+    @Test func waitsOnlyOnWhatIsLive() {
+        let now = Date()
+        var open = E(id: 1, method: "POST", url: "https://www.google.com/_/FlightsFrontendUi/data/batchexecute", kind: "xhr")
+        open.at = now.addingTimeInterval(-0.5)
+        #expect(NetLog.pending(open, now: now))
+        // An aborted call WebKit never ends stops counting after 1.5 s.
+        open.at = now.addingTimeInterval(-2)
+        #expect(!NetLog.pending(open, now: now))
+        // A call with a status is answered, open stream or not.
+        var streaming = E(id: 2, method: "GET", url: "https://x.test/stream", kind: "fetch", status: 200)
+        streaming.at = now
+        #expect(!NetLog.pending(streaming, now: now))
+        // Quiet: nothing pending and the last answer 150 ms ago.
+        streaming.answeredAt = now.addingTimeInterval(-0.05)
+        #expect(!NetLog.quiet([streaming], now: now))
+        streaming.answeredAt = now.addingTimeInterval(-0.2)
+        #expect(NetLog.quiet([streaming], now: now) && NetLog.quiet([], now: now))
+    }
+
+    @Test func bookkeepingIsNotAnAnswer() {
+        #expect(NetLog.noise(E(id: 1, method: "POST", url: "https://www.google.com/log?format=json&hasfast=true", kind: "xhr")))
+        #expect(NetLog.noise(E(id: 2, method: "POST", url: "https://www.google-analytics.com/g/collect?v=2", kind: "fetch")))
+        #expect(NetLog.noise(E(id: 3, method: "POST", url: "https://x.test/anything", kind: "beacon")))
+        #expect(!NetLog.noise(E(id: 4, method: "POST", url: "https://www.google.com/_/FlightsFrontendUi/data/travel.frontend.flights.FlightsFrontendService/GetShoppingResults", kind: "xhr")))
+        #expect(!NetLog.noise(E(id: 5, method: "POST", url: "http://127.0.0.1:4171/api/review", kind: "fetch")))
+    }
+
+    private func typed(_ value: String) -> U.Step {
+        U.Step(number: 1, operation: "TYPE_TEXT", kind: "fill", label: "Where from?", text: value, confidence: 1,
+               probability: 1, latencyMs: 0, textLatencyMs: 0, pageChanged: true, url: "")
+    }
+
+    @Test func typedCodesMustShow() {
+        let goal = "One-way flights ZRH → LHR on 2027-01-20, 1 adult, economy."
+        let history = [typed("ZRH"), typed("LHR")]
+        // r3's results address carries both airports, base64'd.
+        let carried = U.Observation(raw: ["text": "Flights", "actions": [] as [Any],
+            "url": "https://www.google.com/travel/flights/search?tfs=CBwQAhoeEgoyMDI3LTAxLTIwagcIARIDWlJIcgcIARIDTEhSQAFIAXABggELCP___________wGYAQI&hl=en"])
+        #expect(U.unshownTyped(history, goal: goal, obs: carried).isEmpty)
+        // London City picked instead of Heathrow: LHR shows nowhere.
+        let city = U.Observation(raw: ["text": "Zurich ZRH to London LCY", "actions": [] as [Any], "url": "https://www.google.com/travel/flights/search?tfs=CBwQAhoeEgoyMDI3LTAxLTIwagcIARIDWlJIcgcIARIDTENZQAFIAXABggELCP___________wGYAQI"])
+        #expect(U.unshownTyped(history, goal: goal, obs: city) == ["LHR"])
+        // Codes the goal names but nothing typed, or typed words that aren't codes: not checked.
+        #expect(U.unshownTyped([], goal: goal, obs: city).isEmpty)
+        #expect(U.unshownTyped([typed("Zurich")], goal: "Flights from Zurich to London", obs: city).isEmpty)
+    }
+
+    @Test func llmAnswersSayHowSure() throws {
+        let targets: [String: [String: [String: Any]]] = ["CLICK": ["7": ["id": "e7"]]]
+        let sure = try U.llmDecision(["operation": "CLICK", "target": 7, "confidence": 0.42], targets: targets, controls: [:], latencyMs: 1)
+        #expect(sure.choice == "e7" && sure.probability == 0.42)
+        #expect(try U.llmDecision(["operation": "DONE"], targets: targets, controls: [:], latencyMs: 1).probability == 1)
+        #expect(try U.llmDecision(["operation": "DONE", "confidence": "85"], targets: targets, controls: [:], latencyMs: 1).probability == 0.85)
+        #expect(throws: Tools.Failure.self) { try U.llmDecision([:], targets: targets, controls: [:], latencyMs: 1) }
     }
 }
 

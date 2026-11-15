@@ -111,7 +111,7 @@ final class Drive: ObservableObject {
         var thoughtAt: Date?
     }
 
-    enum Status: String { case running, done, blocked, budget, error, stopped, ended }
+    enum Status: String { case running, done, blocked, budget, error, stopped, ended, unsure }
 
     struct Cycle: Identifiable {
         let id: UUID
@@ -130,7 +130,7 @@ final class Drive: ObservableObject {
         let started: Date
         var ended: Date?
         var ms: Int? { ended.map { Int($0.timeIntervalSince(started) * 1000) } }
-        enum Kind: String { case observe, ask, write, act, settle }
+        enum Kind: String { case observe, ask, write, act, settle, wait }
     }
 
     struct Outcome {

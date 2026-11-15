@@ -751,6 +751,11 @@ enum Router {
         let text: String
         let latencyMs: Double
         let model: String
+        /// What the gateway billed, when it says (`usage`).
+        var inputTokens = 0
+        var outputTokens = 0
+        /// What the gateway says the call cost, US$ (LiteLLM's x-litellm-response-cost).
+        var costUsd: Double? = nil
     }
 
     /// `json`: ask the gateway for JSON mode (`response_format`), which small
@@ -818,7 +823,11 @@ enum Router {
         let model = (payload["model"] as? String) ?? chosen
         let answered = payload["model"] as? String
         await MainActor.run { Intelligence.shared.noteAnswer(sent: chosen, answered: answered) }
-        return Reply(json: Router.json(in: text), text: text, latencyMs: latency, model: model)
+        let usage = payload["usage"] as? [String: Any] ?? [:]
+        return Reply(json: Router.json(in: text), text: text, latencyMs: latency, model: model,
+                     inputTokens: (usage["prompt_tokens"] as? NSNumber)?.intValue ?? 0,
+                     outputTokens: (usage["completion_tokens"] as? NSNumber)?.intValue ?? 0,
+                     costUsd: http.value(forHTTPHeaderField: "x-litellm-response-cost").flatMap(Double.init))
     }
 
     /// One chat-completions body. No `temperature`, no thinking switch and
