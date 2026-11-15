@@ -377,9 +377,14 @@ class Backdrop {
   }
 
   setMode(mode) {
+    // Back from standing still (idle, behind another window): glide from the
+    // frame on screen to where the wall clock is now, rather than jump to it.
+    const resume = mode === 'run' && this.mode !== 'run' && this.to && this.frames > 0;
+    const held = resume ? { ...this.current(wall()), clock: (t => () => t)(this.time) } : null;
     this.mode = mode;
     // A fade is motion: with Reduce Motion (or nothing to see) it lands at once.
     if (mode !== 'run') this.from = null;
+    if (held) { this.from = held; this.fadeAt = performance.now(); this.fadeFor = 900; }
     this.reconsider();
     if (mode === 'still') this.poke();
   }
