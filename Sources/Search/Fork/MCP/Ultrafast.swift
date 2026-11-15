@@ -529,6 +529,30 @@ enum Ultrafast {
         const id=cache.ids.get(e); cache.nodes.set(id,e); return id;
       };
       const safe = e => !['password','file','hidden'].includes(e.type);
+      // deep (cache.deep, set by each read): the page's open shadow roots and
+      // same-origin frames are read too, as browser-use's ax.py does: every
+      // root a control can live in, the top document first, 40 at most.
+      cache.roots=()=>{
+        const out=[document];
+        if (!cache.deep) return out;
+        for (let i=0;i<out.length && out.length<40;i++) for (const e of out[i].querySelectorAll('*')) {
+          if (e.shadowRoot) out.push(e.shadowRoot);
+          else if (e.tagName==='IFRAME' || e.tagName==='FRAME') { try { const d=e.contentDocument; if (d?.body) out.push(d); } catch (_) {} }
+          if (out.length>=40) break;
+        }
+        return out;
+      };
+      // Where a frame's content sits on the top page: each frame's content box, added up.
+      const shift=e=>{ let x=0,y=0;
+        for (let w=e.ownerDocument.defaultView; w && w!==window && w.frameElement; w=w.parent) {
+          const f=w.frameElement, fr=f.getBoundingClientRect(), cs=getComputedStyle(f);
+          x+=fr.x+f.clientLeft+parseFloat(cs.paddingLeft); y+=fr.y+f.clientTop+parseFloat(cs.paddingTop);
+        }
+        return {x,y}; };
+      // The field a person is typing in, through shadow roots and frames.
+      const active=()=>{ let a=document.activeElement;
+        for (;;) { const n=a?.shadowRoot?.activeElement || (a?.tagName==='IFRAME' ? (()=>{ try { return a.contentDocument?.activeElement; } catch (_) { return null; } })() : null);
+          if (!n || n===a) return a; a=n; } };
       const drawn = e => e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true});
       const visible = e => !e.closest('[aria-hidden="true"],[inert]') && drawn(e);
       // A checkbox or radio drawn by its label (the input itself transparent,
@@ -552,7 +576,7 @@ enum Ultrafast {
         if (!e || seen.has(e)) return '';
         seen.add(e);
         const referenced=(e.getAttribute('aria-labelledby')||'').split(/\s+/)
-          .map(id=>name(document.getElementById(id),seen)).filter(Boolean).join(' ');
+          .map(id=>name(e.getRootNode().getElementById?.(id),seen)).filter(Boolean).join(' ');
         return referenced || e.getAttribute('aria-label') ||
           [...(e.labels||[])].map(l=>name(l,seen)).filter(Boolean).join(' ') ||
           (['button','submit','reset'].includes(e.type) ? e.value : '') || e.getAttribute('alt') ||
@@ -633,16 +657,26 @@ enum Ultrafast {
       // game clicked Category: links three runs of three (r4).
       const furniture=e=>!!e.closest('footer,[role="contentinfo"],.catlinks,.navbox,.mw-footer,.printfooter');
       const namespaced=e=>/\/[A-Za-z]+(?:_talk)?:[^\/_\s]/.test(decoded(e.pathname||''));
-      cache.observe=goal=>{
+      cache.observe=(goal,opts)=>{
         if (!document.body) return null;
+        if (opts) cache.deep=!!opts.deep;
         for (const [id,e] of cache.nodes) if (!e.isConnected) cache.nodes.delete(id);
-        const actions=[], away=[];
-        for (const e of document.querySelectorAll(selector)) {
+        const actions=[], away=[], roots=cache.roots();
+        for (const root of roots) for (const e of root.querySelectorAll(selector)) {
           const f=face(e);
           if (!safe(e) || !shown(e,f) || e.matches(':disabled') || e.closest('[aria-disabled="true"],[inert]')) continue;
-          const r=f.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2, rname=role(e);
+          let r=f.getBoundingClientRect(); const rname=role(e);
           if (!rname || r.width<=0 || r.height<=0) continue;
+          // In a frame: on that frame's screen, then where that is on the top page.
+          const view=e.ownerDocument.defaultView;
+          if (view!==window) {
+            const lx=r.x+r.width/2, ly=r.y+r.height/2;
+            if (lx<0 || ly<0 || lx>=view.innerWidth || ly>=view.innerHeight) continue;
+            const o=shift(e); r=new DOMRect(r.x+o.x,r.y+o.y,r.width,r.height);
+          }
+          const x=r.x+r.width/2, y=r.y+r.height/2;
           if (x<0 || y<0 || x>=innerWidth || y>=innerHeight) {
+            if (view!==window) continue;
             const href=e.getAttribute('href')||'';
             if (goal && goal.words && rname==='link' && e.tagName==='A' && x>=0 && x<innerWidth && href && !href.startsWith('#') && !/^javascript:/i.test(href) &&
                 !furniture(e) && !namespaced(e)) away.push({e,r});
@@ -680,14 +714,17 @@ enum Ultrafast {
             if (editable) actions.push({...base,kind:'click',value,label:'Open '+base.label});
           }
         }
-        const words=[], walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
-        const range=document.createRange(); let node,length=0;
-        while ((node=walker.nextNode()) && length<6000) {
-          const value=node.textContent.trim(), parent=node.parentElement;
-          if (!value || !parent || parent.closest('script,style,noscript,template') || !visible(parent)) continue;
-          range.selectNodeContents(node); const r=range.getBoundingClientRect();
-          if (r.width>0 && r.height>0 && r.bottom>0 && r.top<innerHeight && r.right>0 && r.left<innerWidth) {
-            words.push(value); length+=value.length;
+        const words=[]; let length=0;
+        for (const root of roots) {
+          const doc=root.ownerDocument || root, o=root===document ? {x:0,y:0} : shift(root.host || root.documentElement);
+          const walker=doc.createTreeWalker(root.body || root,NodeFilter.SHOW_TEXT), range=doc.createRange(); let node;
+          while ((node=walker.nextNode()) && length<6000) {
+            const value=node.textContent.trim(), parent=node.parentElement;
+            if (!value || !parent || parent.closest('script,style,noscript,template') || !visible(parent)) continue;
+            range.selectNodeContents(node); const b=range.getBoundingClientRect(), r={top:b.top+o.y,bottom:b.bottom+o.y,left:b.left+o.x,right:b.right+o.x};
+            if (b.width>0 && b.height>0 && r.bottom>0 && r.top<innerHeight && r.right>0 && r.left<innerWidth) {
+              words.push(value); length+=value.length;
+            }
           }
         }
         const text=words.join('\n').slice(0,6000), height=document.documentElement.scrollHeight;
@@ -777,11 +814,20 @@ enum Ultrafast {
         if (!e?.isConnected || e.matches(':disabled') || e.closest('[aria-disabled="true"],[inert]') ||
             !f.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})) return null;
         if (action.kind==='fill' && (e.readOnly || e.getAttribute('aria-readonly')==='true')) return null;
+        const view=e.ownerDocument.defaultView;
         const r=f.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2;
-        if (!r.width || !r.height || x<0 || y<0 || x>=innerWidth || y>=innerHeight) return null;
-        // The face, or the control drawn over it (a transparent checkbox laid on its label).
-        const hit=document.elementFromPoint(x,y);
+        if (!r.width || !r.height || x<0 || y<0 || x>=view.innerWidth || y>=view.innerHeight) return null;
+        // The face, or the control drawn over it (a transparent checkbox laid
+        // on its label), asked in its own tree: a shadow root or a frame.
+        const hit=f.getRootNode().elementFromPoint(x,y);
         if (!f.contains(hit) && !e.contains(hit)) return null;
+        // In a frame: that frame on screen at that spot of the top page, and the point there.
+        let o={x:0,y:0};
+        if (view!==window) {
+          o=shift(e); let w=view; while (w.parent!==window) w=w.parent;
+          const outer=w.frameElement;
+          if (x+o.x<0 || y+o.y<0 || x+o.x>=innerWidth || y+o.y>=innerHeight || outer.getRootNode().elementFromPoint(x+o.x,y+o.y)!==outer) return null;
+        }
         if (action.kind==='select') {
           if (e.tagName!=='SELECT' || ![...e.options].some(o=>o.value===action.value &&
               !o.disabled && !o.closest('optgroup[disabled]'))) return null;
@@ -789,15 +835,15 @@ enum Ultrafast {
           e.dispatchEvent(new Event('input',{bubbles:true}));
           e.dispatchEvent(new Event('change',{bubbles:true}));
         }
-        return {x,y};
+        return {x:x+o.x,y:y+o.y};
       };
       cache.selectAll=node=>{
         const e=cache.nodes.get(node); if (!e) return false;
         e.focus();
         if (typeof e.select==='function') { e.select(); return true; }
         if (e.isContentEditable) {
-          const r=document.createRange(); r.selectNodeContents(e);
-          const s=getSelection(); s.removeAllRanges(); s.addRange(r); return true;
+          const d=e.ownerDocument, r=d.createRange(); r.selectNodeContents(e);
+          const s=d.getSelection(); s.removeAllRanges(); s.addRange(r); return true;
         }
         return false;
       };
@@ -831,15 +877,15 @@ enum Ultrafast {
         const takes=x=>!!x && x.isConnected && (x.isContentEditable ||
           (['INPUT','TEXTAREA'].includes(x.tagName) && safe(x) && !x.readOnly && !x.disabled &&
             !['checkbox','radio','button','submit','reset','image','range','color'].includes(x.type)));
-        let e=document.activeElement;
+        let e=active();
         if (!takes(e)) { e=cache.nodes.get(node); if (!e?.isConnected) return null; e.focus(); }
         const read=()=>'value' in e ? String(e.value) : (e.innerText||'');
-        const before=read();
+        const before=read(), d=e.ownerDocument;
         let done=false;
         try {
           if (typeof e.select==='function') e.select();
-          else { const r=document.createRange(); r.selectNodeContents(e); const s=getSelection(); s.removeAllRanges(); s.addRange(r); }
-          done=document.execCommand('insertText',false,text) && (read()!==before || before===text);
+          else { const r=d.createRange(); r.selectNodeContents(e); const s=d.getSelection(); s.removeAllRanges(); s.addRange(r); }
+          done=d.execCommand('insertText',false,text) && (read()!==before || before===text);
         } catch (_) {}
         if (!done) {
           if (e.isContentEditable) e.textContent=text;
@@ -854,7 +900,7 @@ enum Ultrafast {
       // person does there is press Return.
       cache.loneSearch=node=>{
         const e=cache.nodes.get(node);
-        if (!e?.isConnected || !e.form || !e.value || document.activeElement!==e) return false;
+        if (!e?.isConnected || !e.form || !e.value || active()!==e) return false;
         if (e.type!=='search' && e.getAttribute('role')!=='searchbox') return false;
         if ([...e.form.elements].some(x=>x!==e && ['INPUT','TEXTAREA','SELECT'].includes(x.tagName) &&
             !['hidden','submit','button','reset','image'].includes(x.type))) return false;
@@ -872,6 +918,9 @@ enum Ultrafast {
       // no link and submits no form is false at once.
       cache.arm=node=>{
         const t=cache.nodes.get(node), link=t?.closest?.('a[href]');
+        // A frame's own navigation is not the tab's: nothing to wait for.
+        if (t && t.ownerDocument!==document) { cache.fired=false; cache.leaving=false;
+          t.ownerDocument.defaultView.addEventListener('submit',()=>{ cache.fired=true; },{capture:true,once:true}); return true; }
         const submits=!!t && !!(t.form || t.closest?.('form')) &&
           (t.matches('button:not([type]),button[type="submit"],input[type="submit"],input[type="image"]') || ['INPUT','TEXTAREA'].includes(t.tagName));
         cache.fired=false;
@@ -921,15 +970,29 @@ enum Ultrafast {
         const steady=near && action?.kind==='click' && action?.role==='option';
         let frames=0, dirty=false, stopped=false, last=[], seen=null, reads=0, key=null, same=0;
         const ours=n=>{ const e=n && (n.nodeType===1 ? n : n.parentElement); return !!(e && e.closest && e.closest('#__jev-trail')); };
+        // calm (browser-use's ax.py filter): writing an attribute's own value
+        // again is no change (Google rewrites a class every frame), and a
+        // style or class write counts only when its element had none for
+        // 200 ms: a menu shown once is a change, a loop that restyles every
+        // frame goes quiet. (Off-screen churn: `near` already skips it.)
+        const calm=!!action?.calm, styled=new WeakMap();
+        const real=m=>{ if (!calm || m.type!=='attributes') return true;
+          if (m.oldValue===m.target.getAttributeNS(m.attributeNamespace,m.attributeName)) return false;
+          if (m.attributeName!=='style' && m.attributeName!=='class') return true;
+          const now=performance.now(), was=styled.get(m.target); styled.set(m.target,now);
+          return was===undefined || now-was>200; };
+        if (action && 'deep' in action) cache.deep=!!action.deep;
         const desc=e=>!e || !e.tagName ? '?' : e.tagName.toLowerCase()+(e.id ? '#'+e.id : '')+(e.classList && e.classList[0] ? '.'+e.classList[0] : '');
         const onScreen=n=>{ const e=n && (n.nodeType===1 ? n : n.parentElement); if (!e || !e.isConnected) return false;
           const r=e.getBoundingClientRect(); return r.width>0 && r.height>0 && r.bottom>0 && r.right>0 && r.top<innerHeight && r.left<innerWidth; };
         const counts=m=>!ours(m.target) && (onScreen(m.target) || [...m.addedNodes].some(n=>n.nodeType===1 && onScreen(n)));
         const watcher=new MutationObserver(list=>{
-          const seen=near ? list.slice(0,40).filter(counts) : list.filter(m=>!ours(m.target));
+          // real() first and once per record: it keeps time per element.
+          const seen=near ? list.filter(real).slice(0,40).filter(counts) : list.filter(m=>real(m) && !ours(m.target));
           if (seen.length) { dirty=true; last=seen.slice(0,2).map(m=>'mut '+desc(m.target.nodeType===1 ? m.target : m.target.parentElement)+' '+(m.attributeName||m.type)); }
         });
-        watcher.observe(document.documentElement,{subtree:true,childList:true,attributes:true,characterData:true});
+        for (const root of cache.roots()) watcher.observe(root===document ? document.documentElement : root,
+          {subtree:true,childList:true,attributes:true,characterData:true,attributeOldValue:calm});
         // Only colours and shadows easing: nothing a read or a click sees.
         const looks=a=>{ const p=a.transitionProperty; if (p) return /color|shadow/i.test(p);
           try { const keys=a.effect.getKeyframes().flatMap(k=>Object.keys(k)).filter(k=>!['offset','easing','composite','computedOffset'].includes(k));
@@ -953,7 +1016,7 @@ enum Ultrafast {
           const clean=!dirty; dirty=false;
           const ids=(field?.getAttribute('aria-controls')||field?.getAttribute('aria-owns')||'')
             .split(/\s+/).filter(Boolean);
-          const roots=ids.length ? ids.map(id=>document.getElementById(id)).filter(Boolean) : [document];
+          const roots=ids.length ? ids.map(id=>field.getRootNode().getElementById?.(id)).filter(Boolean) : [document];
           const options=roots.flatMap(root=>[...root.querySelectorAll('[role="option"]')]);
           let still;
           // Never the first frame: a click's handlers start their work (a
@@ -1002,9 +1065,10 @@ enum Ultrafast {
     /// screen; `near` is the settle Fast mode waits for after `action`. The
     /// read after an action carries how the settle went (`settle`).
     @MainActor
-    static func observe(_ tab: Tab, after action: [String: Any]? = nil, terms: [String: Any]? = nil, near: Bool = false) async throws -> Observation {
+    static func observe(_ tab: Tab, after action: [String: Any]? = nil, terms: [String: Any]? = nil, near: Bool = false,
+                        calm: Bool = false, deep: Bool = false) async throws -> Observation {
         let web = tab.web
-        let read = "window.__jevFast.observe(" + (terms.map { encode($0) } ?? "") + ")"
+        let read = "window.__jevFast.observe(" + (terms.map { encode($0) } ?? "undefined") + ", {deep: \(deep)})"
         var settled: [String: Any]? = nil
         // A navigation already under way: the leaving document's settle may never answer.
         // A WAIT settles too: what it waited for (Flights' results) is drawn in after.
@@ -1012,6 +1076,8 @@ enum Ultrafast {
             var plain = action
             plain["rect"] = nil
             plain["near"] = near
+            plain["calm"] = calm
+            plain["deep"] = deep
             // A document's first read: put the helpers in, so its settle can run.
             if (action["kind"] as? String) == "read" { _ = try? await js(web, "true") }
             let started = Date()
@@ -1030,7 +1096,7 @@ enum Ultrafast {
                         c.resume()
                     }
                 }
-                web.callAsyncJavaScript("const c = window.__jevFast; if (!c || !c.ready) return null; const s = await c.settle(action); const o = c.observe(terms || undefined); if (o) o.settle = s; return o;",
+                web.callAsyncJavaScript("const c = window.__jevFast; if (!c || !c.ready) return null; const s = await c.settle(action); const o = c.observe(terms || undefined, {deep: action.deep}); if (o) o.settle = s; return o;",
                                         arguments: ["action": plain, "terms": terms ?? [:]], in: nil, in: .copper) { result in
                     if !once.done, case .success(let value) = result { once.raw = value as? [String: Any] }
                     finish()
@@ -1068,7 +1134,7 @@ enum Ultrafast {
         // enhanced, menus filled in): with `near`, it stands still before the
         // read, or the first decision on it is thrown away as stale.
         if near, navigated, (action?["kind"] as? String) != "read" {
-            let again = try await observe(tab, after: ["kind": "read"], terms: terms, near: true)
+            let again = try await observe(tab, after: ["kind": "read"], terms: terms, near: true, calm: calm, deep: deep)
             guard let settled else { return again }
             var raw = again.raw
             raw["settle"] = settled
@@ -1899,7 +1965,7 @@ enum Ultrafast {
             } else {
                 // The run's first read (the page just loaded) and the read after a
                 // stale decision (the page is moving) wait for it to stand still.
-                obs = try await Ultrafast.observe(tab, after: settleBeforeRead && strategy.near ? ["kind": "read"] : nil, terms: terms, near: strategy.near)
+                obs = try await Ultrafast.observe(tab, after: settleBeforeRead && strategy.near ? ["kind": "read"] : nil, terms: terms, near: strategy.near, calm: strategy.calm, deep: strategy.deep)
                 settleBeforeRead = false
                 observation = obs
                 shot = nil
@@ -2297,7 +2363,7 @@ enum Ultrafast {
                 step.inFlight = calls.contains { NetLog.pending($0) }
             }
             // A burst's fields were typed on purpose: read at once (no settle).
-            var next = try await Ultrafast.observe(tab, after: burstSteps.isEmpty ? action : nil, terms: terms, near: strategy.near)
+            var next = try await Ultrafast.observe(tab, after: burstSteps.isEmpty ? action : nil, terms: terms, near: strategy.near, calm: strategy.calm, deep: strategy.deep)
             let settle = next.settle
             // The address is another page's now, drawn in place (Google Flights'
             // results): that page asks for its results a moment later, so the read
@@ -2310,7 +2376,7 @@ enum Ultrafast {
                 let calls = await NetLog.answered(web, after: netMark, linger: Ultrafast.waitLinger, start: Ultrafast.startWait)
                 step.net = calls.suffix(6).map(NetLog.brief)
                 step.inFlight = calls.contains { NetLog.pending($0) }
-                if Date().timeIntervalSince(waited) > 0.02 { next = try await Ultrafast.observe(tab, terms: terms, near: strategy.near) }
+                if Date().timeIntervalSince(waited) > 0.02 { next = try await Ultrafast.observe(tab, terms: terms, near: strategy.near, calm: strategy.calm, deep: strategy.deep) }
             }
             // A click the page has not answered yet (its request is still out)
             // gets a second to show something before it is called "no change".
@@ -2321,7 +2387,7 @@ enum Ultrafast {
                 let patience = Date().addingTimeInterval(Ultrafast.clickPatience)
                 while next.marker == obs.marker, Date() < patience {
                     try await Task.sleep(nanoseconds: 100_000_000)
-                    next = try await Ultrafast.observe(tab, terms: terms, near: strategy.near)
+                    next = try await Ultrafast.observe(tab, terms: terms, near: strategy.near, calm: strategy.calm, deep: strategy.deep)
                 }
             }
             observation = next

@@ -39,6 +39,14 @@ import WebKit
 //            scrolls in a row that showed nothing new the goal names,
 //            scrolling is not offered until something else is done (the
 //            Wikipedia game lost runs to 20 scrolls in a row).
+//   calm     the settle's change filter from browser-use (ax.py): writing
+//            an attribute's own value again is no change, and a style or
+//            class write counts only when its element had none for 200 ms
+//            (pages that restyle every frame kept settles at the cap).
+//   deep     the read covers open shadow roots and same-origin frames too
+//            (40 roots at most, the table still 250 rows): their controls
+//            are offered, and a click or typing lands in them (a frame's
+//            point is moved to where it is on the top page).
 //   turbo    fast + burst + lean + paste + watch + near + reach.
 //   verify   (not in Fast mode: at the 0.5 floor it refused 2 right DONEs in
 //            96 hill-climb runs and caught no wrong one; the run then ends
@@ -82,6 +90,10 @@ extension Tools.Ultrafast {
         var near = false
         /// Off-screen links the goal names are offered; barren scrolling stops.
         var reach = false
+        /// The settle ignores same-value attribute writes and style/class churn.
+        var calm = false
+        /// Shadow roots and same-origin frames are read and acted in.
+        var deep = false
 
         /// `fast,burst`, `turbo`, `llm=haiku` … nil for a word it doesn't know.
         static func parse(_ raw: String?) -> Strategy? {
@@ -100,6 +112,8 @@ extension Tools.Ultrafast {
                 case "watch": s.watch = true
                 case "near": s.near = true
                 case "reach": s.reach = true
+                case "calm": s.calm = true
+                case "deep": s.deep = true
                 case "verify": s.verify = true
                 case "submit": s.submit = true
                 case "turbo": s.glide = false; s.literals = true; s.burst = true; s.lean = true; s.paste = true; s.watch = true
@@ -120,6 +134,9 @@ extension Tools.Ultrafast {
             var s = Strategy.parse("turbo")!
             s.glideWatched = true
             s.submit = true
+            // From browser-use (2026-11-15 A/B vs r5): the settle's change filter and the whole-page read.
+            s.calm = true
+            s.deep = true
             return s
         }
 
@@ -132,6 +149,8 @@ extension Tools.Ultrafast {
             if watch { parts.append("watch") }
             if near { parts.append("near") }
             if reach { parts.append("reach") }
+            if calm { parts.append("calm") }
+            if deep { parts.append("deep") }
             if verify { parts.append("verify") }
             if submit { parts.append("submit") }
             if llm { parts.append(llmModel.map { "llm=\($0)" } ?? "llm") }

@@ -25,12 +25,16 @@ struct JevStrategyTests {
         #expect(llm.llm && llm.llmModel == "Haiku" && !llm.glide)
         #expect(U.Strategy.parse("warp") == nil)
         #expect(U.Strategy.parse("burst")!.literals)
+        let words = U.Strategy.parse("turbo,calm,deep")!
+        #expect(words.calm && words.deep && !turbo.calm && !turbo.deep)
+        #expect(words.name.hasSuffix("reach,calm,deep"))
     }
 
     @Test func shippedGlidesOnlyWhenWatched() {
         let shipped = U.Strategy.shipped
         #expect(!shipped.glide && shipped.glideWatched && shipped.burst && shipped.paste)
         #expect(shipped.name.hasPrefix("watched"))
+        #expect(shipped.calm && shipped.deep)
     }
 
     @Test func quotedValues() {

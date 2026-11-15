@@ -257,7 +257,7 @@ enum CLI {
                     arguments["model"] = value
                 case "--json-run": arguments["json"] = true
                 case "--strategy":
-                    guard let value = next(&args, &i), Tools.Ultrafast.Strategy.parse(value) != nil else { return bad("run --strategy takes classic, fast, literal, burst, lean, paste, watch, turbo, llm or llm=<model>, comma-separated") }
+                    guard let value = next(&args, &i), Tools.Ultrafast.Strategy.parse(value) != nil else { return bad("run --strategy takes classic, fast, literal, burst, lean, paste, watch, near, reach, calm, deep, turbo, llm or llm=<model>, comma-separated") }
                     arguments["strategy"] = value
                 default:
                     if args[i].hasPrefix("-") { return bad("unknown run option: \(args[i])") }
