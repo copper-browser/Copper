@@ -357,4 +357,12 @@ extension Tab {
               let own = Favicons.shared.cached(host) else { return icon }
         return own
     }
+
+    /// Fork (hc6): a pin sent away from its site (Calendar to a Google sign-in
+    /// page) is called by its own site in ⌘K, as its square shows that site's mark.
+    var pinName: String? {
+        guard pin != nil, let home, let host = home.host()?.lowercased(), host != address?.host()?.lowercased() else { return nil }
+        let bare = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+        return History.known.first { $0.0 == bare }?.1 ?? Address.pretty(home)
+    }
 }

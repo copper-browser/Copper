@@ -233,7 +233,7 @@ enum CommandBar {
 
     @MainActor private static func row(for tab: Tab) -> Suggestion? {
         guard let url = tab.address else { return nil }
-        return Suggestion(key: tab.label, title: Address.pretty(url), url: url, kind: .open, tab: tab.id)
+        return Suggestion(key: tab.pinName ?? tab.label, title: Address.pretty(url), url: url, kind: .open, tab: tab.id) // Fork (hc6): pinName
     }
 
     /// The rows cut into the card's sections, their headings handed to the
