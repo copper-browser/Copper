@@ -310,6 +310,9 @@ try:
 
     # 4 ---------------------------------------------------------------------------
     print("4. ⌘Q and relaunch: a restored tab wakes under the picture it left")
+    # The quit's pass (a headless run skips it at ⌘Q: nobody looks at its window).
+    flushed = ask({"do": "covers", "op": "flush"})
+    print(f"  covers flush → {flushed}")
     ask({"do": "windows", "op": "quit", "arg": ""})
     try:
         proc.wait(20)

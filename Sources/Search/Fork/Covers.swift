@@ -225,9 +225,11 @@ enum Covers {
 
     private static var watching: NSObjectProtocol?
 
-    /// Once, at launch (SpaceWarm.start).
+    /// Once, at launch (SpaceWarm.start). Not headless: nobody looks at a
+    /// headless window, and the probes that run one take a SIGTERM as ⌘Q and
+    /// wipe the world's folder straight after (the pass raced their `rm`).
     static func start() {
-        guard watching == nil else { return }
+        guard watching == nil, !Headless.on else { return }
         watching = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { flush() }
         }
