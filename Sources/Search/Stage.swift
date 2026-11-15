@@ -218,6 +218,7 @@ final class StageView: NSView {
         if wanted.superview !== self {
             // A web view can have only one superview, so taking it back is how
             // it is taken back.
+            Pace.step("page.attach") // Fork (switch)
             wanted.removeFromSuperview()
             // Seen — unless it has yet to draw, and would be seen white.
             wanted.alphaValue = (wanted as? PageView)?.unpainted == true ? 0 : 1

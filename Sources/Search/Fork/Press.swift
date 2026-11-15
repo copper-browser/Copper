@@ -53,23 +53,60 @@ struct Pressable: ViewModifier {
 /// plain text; one that doesn't runs out under a 24 pt fade instead of an
 /// ellipsis, as Arc's do. Only the overflowing ones pay for the mask (an
 /// offscreen pass — see RowEndFade).
+///
+/// Fork (switch, hill-climb r4): one Text, measured once. It was a
+/// ViewThatFits of two copies of the title, which built both — the faded
+/// one's mask and gradient too — for every row a space switch brought in,
+/// and measured the title twice. Now the line takes what its words need, up
+/// to what it is offered (`TitleLine`, which keeps the words' width), and a
+/// geometry reading that changes only when that flips puts the fade on.
 struct FadingTitle: View {
     let text: Text
+    @State private var line = TitleLine.Width()
+    @State private var over = false
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            text.lineLimit(1)
-            text.lineLimit(1)
-                .fixedSize()
-                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                .clipped()
-                .mask {
-                    HStack(spacing: 0) {
-                        Rectangle()
-                        LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
-                            .frame(width: 24)
-                    }
+        TitleLine(width: line) { text.lineLimit(1) }
+            .clipped()
+            .modifier(TitleFade(on: over))
+            .onGeometryChange(for: Bool.self) { $0.size.width + 0.5 < line.natural } action: { over = $0 }
+    }
+}
+
+/// One line of text at its own width, or at what it is offered when that is
+/// less — drawn whole from its leading edge either way, for a clip to cut.
+/// Its words' width is kept in `width` for the title to read after layout.
+struct TitleLine: Layout {
+    final class Width { var natural: CGFloat = 0 }
+    let width: Width
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let line = subviews.first else { return .zero }
+        let ideal = line.sizeThatFits(.unspecified)
+        width.natural = ideal.width
+        return CGSize(width: min(ideal.width, proposal.width ?? ideal.width), height: ideal.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: CGPoint(x: bounds.minX, y: bounds.midY), anchor: .leading, proposal: .unspecified)
+    }
+}
+
+/// The title's last 24 pt fading out, only while it overflows.
+private struct TitleFade: ViewModifier {
+    let on: Bool
+
+    func body(content: Content) -> some View {
+        if on {
+            content.mask {
+                HStack(spacing: 0) {
+                    Rectangle()
+                    LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: 24)
                 }
+            }
+        } else {
+            content
         }
     }
 }

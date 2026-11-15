@@ -467,6 +467,7 @@ final class Spaces: ObservableObject {
     }
 
     private func swap(to id: UUID, in browser: Browser, landing: Tab.ID? = nil) {
+        Pace.step("swap") // Fork (switch): where a switch's pass goes (`bench pace` steps)
         let key = ObjectIdentifier(browser)
         let old = current(in: browser)
         if let active = browser.activeID { activeByBrowserSpace[key, default: [:]][old] = active }
@@ -482,6 +483,7 @@ final class Spaces: ObservableObject {
         browser.taken = nil
         let next = projection(id)
         setProjection(next, in: browser)
+        Pace.step("swap.projection")
         // The tab asked for; else the one this window last looked at here,
         // unless another window is showing it now — then the most recent one
         // that is free; with none free (or none at all), a new tab, as Arc
@@ -500,10 +502,14 @@ final class Spaces: ObservableObject {
             browser.activeID = nil
             browser.newTab()
         }
+        Pace.step("swap.selected")
         Recent.shared.rebuild(from: browser.tabs)
         Sections.shared.sweep(in: browser)
         Windows.keep(browser)
         keep()
+        Pace.step("swap.done")
+        // The pass ends with SwiftUI's update of the rows; the next one starts after that frame's commit.
+        DispatchQueue.main.async { Pace.step("swap.committed") }
     }
 
     /// The tab some window will land on when it comes back to one of its
@@ -1286,6 +1292,10 @@ extension Spaces {
         let key = words.dropLast().joined(separator: " ")
         switch request["op"] as? String ?? "" {
         case "new": add(named: arg, in: browser)
+        case "warm": // Fork (switch): `spaces warm N|NAME` as the pointer resting on its chip, `spaces warm sides` as ⌃ held
+            if arg == "sides" { SpaceWarm.sides(of: browser); return ["warming": "sides"] }
+            guard let id = find(arg) else { return ["error": "no space \(arg)"] }
+            return ["warming": SpaceWarm.warm(space: id, in: browser)]
         case "next": step(1, in: browser)
         case "prev": step(-1, in: browser)
         case "select": guard let id = find(arg) else { return ["error": "no space \(arg)"] }; select(id, in: browser)

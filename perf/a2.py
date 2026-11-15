@@ -2,9 +2,11 @@
 """A2 on the Mac: space and tab switches, builds paired (ABBA), Reduce Motion off and on.
 
     python3 perf/a2.py OUT ROUNDS label=APP [label=APP …] [--rm off,on] [--open] [--settle 40]
-                       [--seed ~/hc/seed] [--world hcspace] [--port 4200] [--site 4201] [--record]
+                       [--seed ~/hc/seed] [--world hcspace] [--port 4200] [--site 4201] [--record] [--no-tabs]
 
-One session per arm per round per Reduce Motion setting, each under `~/hc/mini.lock`: the world is
+APP may end in `+K=V,K2=V2`: launch environment for that arm (one build, switches A/B'd).
+
+One session per arm per round per Reduce Motion setting, each round under one `~/hc/mini.lock` hold: the world is
 re-seeded from SEED (with --open every folder in it open, so the big space shows all its rows),
 the build launched in front, left SETTLE s (the background warming happens there), then every
 space and back twice (first visit after launch, then again), then the first 12 tabs of the home
@@ -45,6 +47,7 @@ def ask(req, timeout=30):
 
 
 def start(app, open_folders):
+    app, _, extra = app.partition("+")
     perf.quit_world(WORLD)
     folder = perf.folder(WORLD)
     for junk in ("bench.sock", "crashes"):
@@ -65,7 +68,7 @@ def start(app, open_folders):
         json.dump(g, open(path, "w"))
     time.sleep(1)
     subprocess.run(["open", "-n", "-a", app, "--env", f"SEARCH_PROBE={WORLD}", "--env", "SEARCH_MEASURE=1",
-                    "--env", f"SEARCH_MCP_PORT={PORT}"], check=True)
+                    "--env", f"SEARCH_MCP_PORT={PORT}"] + [x for kv in extra.split(",") if kv for x in ("--env", kv)], check=True)
     end = time.time() + 60
     while time.time() < end and not perf.connectable(WORLD):
         time.sleep(0.05)
@@ -96,6 +99,7 @@ def spaces(rec):
             time.sleep(0.85)
             pace = ask({"do": "pace"})
             rows.append({"to": n, "visit": visit, "busy": pace.get("busy"), "longest": pace.get("longest"),
+                         "steps": pace.get("steps"), "log": pace.get("log"),
                          "tabs": counts.get(n), "big": n == big, "tab": (first.get("id") or "")[:8],
                          "landing": "blank" if first.get("blank") or not first.get("url") else
                                     "sleeping" if first.get("loading") or not first.get("view") else "warm"})
@@ -161,10 +165,10 @@ def run(out, rounds, arms_, rms, open_folders, settle, rec):
                               os.path.expanduser("~/hc/tools/perf/site")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         for r in range(rounds):
-            for rm in rms:
-                for label, app in (arms_ if r % 2 == 0 else arms_[::-1]):
-                    with open(LOCK, "a") as lk:
-                        fcntl.flock(lk, fcntl.LOCK_EX)
+            with open(LOCK, "a") as lk:  # one ABBA round under one hold: the arms back to back, same conditions
+                fcntl.flock(lk, fcntl.LOCK_EX)
+                for rm in rms:
+                    for label, app in (arms_ if r % 2 == 0 else arms_[::-1]):
                         was = reduce_motion()
                         try:
                             got = reduce_motion(rm == "on")
@@ -172,15 +176,14 @@ def run(out, rounds, arms_, rms, open_folders, settle, rec):
                             time.sleep(settle)
                             row = {"arm": label, "round": r, "rm": rm, "rm_seen": got, "load": os.getloadavg()[0], "settled_mb": weigh(),
                                    "spaces": spaces(os.path.join(out, "motion", f"{label}-rm{rm}-r{r}") if rec else None),
-                                   "tabs": tabs()}
+                                   "tabs": [] if "--no-tabs" in sys.argv else tabs()}
                         finally:
                             perf.quit_world(WORLD)
                             reduce_motion(was)
-                            fcntl.flock(lk, fcntl.LOCK_UN)
-                    with open(os.path.join(out, "a2.jsonl"), "a") as f:
-                        f.write(json.dumps(row) + "\n")
-                    sp = [s for s in row["spaces"] if "busy" in s]
-                    print(label, "r", r, "rm", rm, "spaces busy", [s["busy"] for s in sp], "landing", [s["landing"][0] for s in sp], flush=True)
+                        with open(os.path.join(out, "a2.jsonl"), "a") as f:
+                            f.write(json.dumps(row) + "\n")
+                        sp = [s for s in row["spaces"] if "busy" in s]
+                        print(label, "r", r, "rm", rm, "spaces busy", [s["busy"] for s in sp], "landing", [s["landing"][0] for s in sp], flush=True)
     finally:
         serve.terminate()
 
