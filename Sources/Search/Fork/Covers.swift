@@ -167,7 +167,7 @@ struct CoverStore {
 /// The world's store, written on a queue of its own.
 @MainActor
 enum Covers {
-    static let store = CoverStore(folder: Store.file("covers"))
+    nonisolated static let store = CoverStore(folder: Store.file("covers"))
     private static let queue = DispatchQueue(label: "copper.covers", qos: .utility)
 
     /// Off for `defaults write <domain> covers -bool false`.
