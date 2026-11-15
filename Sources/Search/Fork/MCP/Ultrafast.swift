@@ -2287,18 +2287,26 @@ enum Ultrafast {
             // out — and doesn't click again, which asks again. (A WAIT has
             // waited for it already.)
             if strategy.watch, submitted || kind == "click" {
-                // A search that went in (Return, or the address is another page's
-                // now, drawn in place): its page asks for its results a moment
-                // later, so a call gets `startWait` to begin and its answer
-                // `waitLinger` to settle. A real load is waited for by the read.
-                let moved = (submitted || Ultrafast.place(web.url?.absoluteString ?? "") != Ultrafast.place(obs.url)) && !tab.loading
-                let calls = await NetLog.answered(web, after: netMark, linger: moved ? Ultrafast.waitLinger : 0, start: moved ? Ultrafast.startWait : 0)
+                let calls = await NetLog.answered(web, after: netMark)
                 step.net = calls.suffix(6).map(NetLog.brief)
                 step.inFlight = calls.contains { NetLog.pending($0) }
             }
             // A burst's fields were typed on purpose: read at once (no settle).
             var next = try await Ultrafast.observe(tab, after: burstSteps.isEmpty ? action : nil, terms: terms, near: strategy.near)
             let settle = next.settle
+            // The address is another page's now, drawn in place (Google Flights'
+            // results): that page asks for its results a moment later, so the read
+            // above was of a page with nothing asked yet (Search → WAIT in 34–78 ms
+            // → Reload, r4). A call gets `startWait` to begin and its answer
+            // `waitLinger` to settle, then the page is read again.
+            if strategy.watch, burstSteps.isEmpty, kind == "click" || submitted, !tab.loading,
+               Ultrafast.place(next.url) != Ultrafast.place(obs.url) {
+                let waited = Date()
+                let calls = await NetLog.answered(web, after: netMark, linger: Ultrafast.waitLinger, start: Ultrafast.startWait)
+                step.net = calls.suffix(6).map(NetLog.brief)
+                step.inFlight = calls.contains { NetLog.pending($0) }
+                if Date().timeIntervalSince(waited) > 0.02 { next = try await Ultrafast.observe(tab, terms: terms, near: strategy.near) }
+            }
             // A click the page has not answered yet (its request is still out)
             // gets a second to show something before it is called "no change".
             // Asked at once, Jev clicks the same thing again, which starts the
