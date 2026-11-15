@@ -525,7 +525,9 @@ def play_mcp(copper, world, task, sid):
                 state["last_result"] = last
             act, i, o, ms = router_ask(keys, system, json.dumps(state, ensure_ascii=False), MCP_MODEL, image)
             tin, tout, llm_ms, image, last = tin + i, tout + o, llm_ms + ms, None, ""
-            tool, args = act.get("tool") or "", act.get("args") if isinstance(act.get("args"), dict) else {}
+            # params under "args", or (as models often answer) beside "tool"
+            tool = act.get("tool") or ""
+            args = act["args"] if isinstance(act.get("args"), dict) else {k: v for k, v in act.items() if k not in ("tool", "why", "args")}
             if tool in ("done", "blocked"):
                 status, note = tool, act.get("why") or f"the agent said {tool}"
                 break
