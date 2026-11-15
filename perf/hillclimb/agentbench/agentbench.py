@@ -438,6 +438,7 @@ def play_mcp(copper, world, task, sid):
     time.sleep(1.5)
     begun = time.time()
     steps, recent, tin, tout, llm_ms = [], [], 0, 0, 0.0
+    ROUTER_USD.clear()  # per run: r4-phi's cost_usd summed every earlier run of the process
     status, note, decisions = "budget", f"Reached the {task['max_steps']}-action budget", 0
     try:
         while len(steps) < task["max_steps"] and decisions < 2 * task["max_steps"]:
