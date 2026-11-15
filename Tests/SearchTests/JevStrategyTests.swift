@@ -214,6 +214,9 @@ struct JevHybridTests {
         step.sent = true
         step.formSent = true
         #expect(!U.needsPicture(page, after: step))
+        // A search or a retry that sent is not a commit: never "quiet", the guard stays off.
+        #expect(!step.quietSend)
+        step.commit = true
         // Said as it was: sent, and the page didn't change (r4 said page_changed: true for any POST).
         #expect(step.quietSend && (step.recent["page_changed"] as? Bool) == false && (step.recent["sent"] as? Bool) == true)
         #expect((step.recent["action"] as? String ?? "").contains("no confirmation"))

@@ -379,7 +379,7 @@ extension Tools.Ultrafast {
 
     /// A control's name that says it changes something.
     static func changes(_ label: String) -> Bool {
-        label.range(of: #"(?i)\b(?:pay|buy|order|purchase|check ?out|book|reserve|post|submit|send|publish|reply|comment|review|confirm|place|delete|remove|save|sign|subscribe|donate|transfer|apply|register|add to|upload|share|vote|follow|like)\b"#, options: .regularExpression) != nil
+        label.range(of: #"(?i)\b(?:pay(?:ment)?|buy|order|purchase|check ?out|book|reserve|post|submit|send|publish|reply|comment|review|confirm|place|delete|remove|save|sign|subscribe|donate|transfer|apply|register|add to|upload|share|vote|follow|like)\b"#, options: .regularExpression) != nil
     }
 
     /// What a send posted went to a search: every POST's address names one,
