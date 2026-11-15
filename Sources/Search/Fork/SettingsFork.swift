@@ -50,7 +50,7 @@ struct IntelligencePage: View {
                     }
                 }
                 .settingsAnchor("intelligence.check")
-                SettingsAdvanced("intelligence.more", holds: ["intelligence.names"]) { // Fork (settings-merge)
+                SettingsAdvanced("intelligence.more", holds: ["intelligence.names"], folds: true) { // Fork (settings-merge)
                 Rule()
                 Line("Model names", brain.lane == .claude
                      ? "What Haiku, Sonnet and Opus are called for your Claude account. Leave one empty for Copper's own."

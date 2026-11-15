@@ -62,17 +62,13 @@ struct FlowSheet: View {
                         .accessibilityAddTraits(.isHeader)
                 }
                 Spacer()
-                Button { flow.close() } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Palette.muted)
-                        .frame(width: 24, height: 24)
-                        .background(Palette.wash, in: Circle())
+                // Fork (polish r5): the panels' own close door (Plate), and
+                // none on the done step — Done is the way out there.
+                if flow.phase.name != "done" {
+                    Door(icon: "xmark", help: "Close   esc") { flow.close() }
+                        .keyboardShortcut(.cancelAction)
+                        .accessibilityLabel("Close")
                 }
-                .buttonStyle(.plain)
-                .keyboardShortcut(.cancelAction)
-                .help("Close")
-                .accessibilityLabel("Close")
             }
             // Fork (ui-flows): the browsers this Mac has (`MoveFrom`), and
             // only before the move: the done step is its result alone.
@@ -395,11 +391,14 @@ struct FlowSheet: View {
         .opacity(flow.selected == nil ? 0.5 : 1)
     }
 
-    /// Fork (uiflows r4): "Arc keeps no bookmarks, history or passwords to bring."
+    /// Fork (uiflows r4, polish r5): "Nothing else to bring from this Arc
+    /// profile: no bookmarks, history or passwords." — it is this profile
+    /// that has none, not Arc.
     static func keepsNone(_ source: String?, _ kinds: [String]) -> String {
         let words = kinds.map { $0.lowercased() }
         let list = words.count < 2 ? words.joined() : words.dropLast().joined(separator: ", ") + " or " + (words.last ?? "")
-        return "\(source ?? "This browser") keeps no \(list) to bring."
+        let from = source.map { "this \($0) profile" } ?? "this browser"
+        return "Nothing else to bring from \(from): no \(list)."
     }
 
     private var safariRows: some View {
@@ -646,7 +645,11 @@ struct FlowSheet: View {
     /// The one next step after a move, by what came.
     static func next(_ report: Flow.Report) -> String? {
         let came = Set(report.summary.filter(\.ok).map(\.category))
-        if came.contains(.tabs) { return "Your tabs came over as spaces. ⌃1–9 switches between them." }
+        if came.contains(.tabs) {
+            // Fork (polish r5): one space is "a space", and needs no ⌃1–9.
+            return report.spaces == 1 ? "Your tabs came over as a space of their own."
+                : "Your tabs came over as \(report.spaces) spaces. ⌃1–9 switches between them."
+        }
         if came.contains(.bookmarks) { return "Your bookmarks are behind the bookmark button. ⌘K finds them too." }
         if came.contains(.history) { return "Start typing an address: Copper already knows where you go." }
         if came.contains(.passwords) { return "Sign in anywhere: Copper offers your saved passwords." }
@@ -670,6 +673,7 @@ struct FlowSheet: View {
                 }
                 Spacer()
                 primary("Done") { flow.finish() }
+                    .background { Button("") { flow.finish() }.keyboardShortcut(.cancelAction).hidden() } // esc too, with no cross on this step
             }
         case .moving:
             Text("You can close this; the move keeps going.")

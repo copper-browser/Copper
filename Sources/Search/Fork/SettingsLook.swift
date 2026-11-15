@@ -85,25 +85,29 @@ extension EnvironmentValues {
 struct SettingsAdvanced<Content: View>: View {
     let anchor: String
     let holds: Set<String>
+    /// Fork (polish r5): folded even when it holds one setting — model
+    /// identifiers and an endpoint are not for the first look.
+    var folds = false
     @ViewBuilder let content: () -> Content
     @State private var open = false
     @Environment(\.settingsPending) private var pending
 
-    init(_ anchor: String, holds: Set<String>, @ViewBuilder content: @escaping () -> Content) {
+    init(_ anchor: String, holds: Set<String>, folds: Bool = false, @ViewBuilder content: @escaping () -> Content) {
         self.anchor = anchor
         self.holds = holds
+        self.folds = folds
         self.content = content
     }
 
     var body: some View {
         // Fork (ui-flows): one setting is shown, not folded behind a row that
         // costs as much room as it does.
-        if holds.count == 1 { content() } else { fold }
+        if holds.count == 1 && !folds { content() } else { fold }
     }
 
     @ViewBuilder private var fold: some View {
         Rule()
-        Line("Advanced", open ? "" : "\(holds.count) more settings") {
+        Line("Advanced", open ? "" : holds.count == 1 ? "1 more setting" : "\(holds.count) more settings") {
             Pill(open ? "Hide" : "Show") { withAnimation(Motion.settle) { open.toggle() } }
                 .accessibilityLabel(open ? "Hide advanced settings" : "Show advanced settings")
         }

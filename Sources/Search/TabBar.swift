@@ -82,8 +82,7 @@ struct TabBar: View {
                         // Fork (polish r5): a run that scrolls fades out at the
                         // ends that hide tabs, the way the spaces strip does —
                         // it used to stop dead at a cut tab.
-                        .mask(SpaceStrip.fade(leading: overflowing(in: geo.size.width) && hidden.leading,
-                                              trailing: overflowing(in: geo.size.width) && hidden.trailing))
+                        .mask(edgeFade(in: geo.size.width))
                         .frame(width: run(in: geo.size.width))
                         .onAppear { reveal(reader, in: geo.size.width) }
                         .onChange(of: overflowing(in: geo.size.width)) { _, _ in reveal(reader, in: geo.size.width) }
@@ -165,6 +164,11 @@ struct TabBar: View {
         .animation(Motion.glide, value: browser.editingTab)
         .animation(Motion.settle, value: browser.tabs.map(\.id))
         .animation(Motion.settle, value: downloads.doorShowing)
+    }
+
+    private func edgeFade(in strip: CGFloat) -> some View {
+        let over = overflowing(in: strip)
+        return SpaceStrip.fade(leading: over && hidden.leading, trailing: over && hidden.trailing)
     }
 
     /// Pick a tab up and the others get out of its way as it passes them.
