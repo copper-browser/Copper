@@ -28,3 +28,19 @@ private func group(_ oks: [Bool], warning: Int? = nil) -> AgentActivityGroup {
     #expect(group([true, true], warning: 0).trouble == " · 1 step had a problem")
     #expect(group([true, true]).trouble.isEmpty)
 }
+
+// Fork (hc6): a turn Copper split (Agent.tooLong) and finished is one quiet
+// activity — the cut step is the split, not a failure; red only if it ends failed.
+@Test @MainActor func aSplitTurnIsOneQuietActivity() {
+    let items = [Agent.Item(kind: .user, text: "make 100 notes"),
+                 Agent.Item(kind: .tool, text: "", ok: false),
+                 Agent.Item(kind: .note, text: Agent.tooLong, ok: false),
+                 Agent.Item(kind: .tool, text: "")]
+    let blocks = AgentPane.blocks(items, busy: false)
+    #expect(blocks.count == 2, "the note folds into the activity instead of splitting the turn")
+    guard case .activity(let g) = blocks.last else { Issue.record("no activity"); return }
+    #expect(g.split && !g.failed)
+    #expect(g.trouble == " · split into smaller pieces")
+    var broken = g; broken.items.append(Agent.Item(kind: .tool, text: "", ok: false))
+    #expect(broken.failed && broken.trouble == " · 2 steps had problems")
+}

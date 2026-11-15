@@ -256,6 +256,8 @@ struct AgentPane: View {
             case .assistant:
                 current = nil
                 out.append(.answer(item))
+            case .note where item.text == Agent.tooLong && current != nil:
+                fold(item) // Fork (hc6): the turn goes on after a split; one activity, red only if it ends failed
             case .note:
                 current = nil
                 out.append(.note(item))
