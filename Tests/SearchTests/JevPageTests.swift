@@ -15,7 +15,6 @@ private final class Loaded: NSObject, WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { done?.resume(); done = nil }
 }
 
-@MainActor
 @MainActor private var kept: [AnyObject] = []
 
 @MainActor
