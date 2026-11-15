@@ -249,18 +249,18 @@ struct WelcomePanel: View {
     /// Drawn, not a screenshot: it wears this space's own colours.
     private struct SpacesThumb: View {
         let tint: SpaceTint
-        static let widths: [CGFloat] = [52, 64, 44, 58, 38]
+        static let widths: [CGFloat] = [52, 64, 44, 58]
         static let hues: [Double] = [0.12, 0.42, 0.62]
 
         var body: some View {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 3) { ForEach(0..<3, id: \.self) { _ in Circle().fill(tint.faint).frame(width: 5, height: 5) } }
                     .padding(.bottom, 2)
                 RoundedRectangle(cornerRadius: 4, style: .continuous).fill(tint.square).frame(height: 14)
                 HStack(spacing: 4) {
                     ForEach(0..<3, id: \.self) { _ in RoundedRectangle(cornerRadius: 4, style: .continuous).fill(tint.square).frame(height: 18) }
                 }
-                ForEach(0..<5, id: \.self) { i in
+                ForEach(0..<4, id: \.self) { i in // four rows: five overflowed the 176 pt card at its top
                     HStack(spacing: 5) {
                         RoundedRectangle(cornerRadius: 2).fill(i == 1 ? tint.dot : tint.faint).frame(width: 7, height: 7)
                         RoundedRectangle(cornerRadius: 2).fill(tint.faint.opacity(0.7)).frame(width: SpacesThumb.widths[i], height: 5)
