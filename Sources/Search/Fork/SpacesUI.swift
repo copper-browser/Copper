@@ -277,16 +277,6 @@ struct SpaceStrip<Tools: View>: View {
 
     /// The row runs out under a soft edge at both ends, the way the column's
     /// two blocks of rows do.
-    /// Fork (polish r5): the same soft edge for a run that scrolls (the top
-    /// tab strip), only on the sides where something is out of view.
-    static func fade(leading: Bool, trailing: Bool, width: CGFloat = 20) -> some View {
-        HStack(spacing: 0) {
-            LinearGradient(colors: [leading ? .clear : .black, .black], startPoint: .leading, endPoint: .trailing).frame(width: width)
-            Color.black
-            LinearGradient(colors: [.black, trailing ? .clear : .black], startPoint: .leading, endPoint: .trailing).frame(width: width)
-        }
-    }
-
     private static var fade: some View {
         LinearGradient(
             stops: [
@@ -625,5 +615,21 @@ enum SpaceDelete {
         // A sheet on the window — or, in a test run, a question the bench
         // can answer too (X-13).
         TestConfirm.present(alert, kind: "spaces.delete", window: Links.window, decide: decide)
+    }
+}
+
+/// Fork (polish r5): the spaces strip's soft edge for a run that scrolls
+/// (the top tab strip), only on the sides where something is out of view.
+struct StripFade: View {
+    let leading: Bool
+    let trailing: Bool
+    var width: CGFloat = 20
+
+    var body: some View {
+        HStack(spacing: 0) {
+            LinearGradient(colors: [leading ? .clear : .black, .black], startPoint: .leading, endPoint: .trailing).frame(width: width)
+            Color.black
+            LinearGradient(colors: [.black, trailing ? .clear : .black], startPoint: .leading, endPoint: .trailing).frame(width: width)
+        }
     }
 }

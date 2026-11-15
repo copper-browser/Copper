@@ -145,7 +145,8 @@ struct OnePasswordCard: View {
             .settingsAnchor("onepassword.account")
             Rule()
             Line("Email") {
-                TextField("you@example.com", text: $email)
+                TextField("", text: $email).fieldExample("you@example.com", when: email.isEmpty)
+                    .accessibilityLabel("Email") // Fork (polish r5): our own example; the system prompt was 1.7:1
                     .houseField() // Fork (ui-flows r3): the Intelligence field style, not the bezel
                     .frame(width: 240)
             }

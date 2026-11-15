@@ -176,14 +176,16 @@ struct BitwardenCard: View {
         switch step {
         case .credentials:
             Line("Bitwarden server", "Use bitwarden.com, EU, or a self-hosted Vaultwarden server") {
-                TextField("https://vault.bitwarden.com", text: $server)
+                TextField("", text: $server).fieldExample("https://vault.bitwarden.com", when: server.isEmpty)
+                    .accessibilityLabel("Bitwarden server") // Fork (polish r5): our own example; the system prompt was 1.7:1
                     .houseField() // Fork (ui-flows r3): the Intelligence field style, not the bezel
                     .frame(width: 260)
             }
             .settingsAnchor("bitwarden.server") // Fork (settings-revamp): search anchors
             Rule()
             Line("Email") {
-                TextField("Email", text: $email)
+                TextField("", text: $email).fieldExample("Email", when: email.isEmpty)
+                    .accessibilityLabel("Email") // Fork (polish r5): our own example; the system prompt was 1.7:1
                     .houseField() // Fork (ui-flows r3): the Intelligence field style, not the bezel
                     .frame(width: 260)
             }
@@ -214,7 +216,8 @@ struct BitwardenCard: View {
         case .code(let prompt):
             Line(codeTitle(prompt), codeDetail(prompt)) {
                 HStack(spacing: 8) {
-                    TextField("Code", text: $otp)
+                    TextField("", text: $otp).fieldExample("Code", when: otp.isEmpty)
+                        .accessibilityLabel("Code") // Fork (polish r5): our own example; the system prompt was 1.7:1
                         .houseField() // Fork (ui-flows r3): the Intelligence field style, not the bezel
                         .frame(width: 120)
                         .focused($codeFocused)

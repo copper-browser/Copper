@@ -195,7 +195,7 @@ struct IntelligencePage: View {
             case .waiting:
                 HStack(spacing: 6) {
                     Ring(size: 12)
-                    TextField("Paste the code", text: $pasted)
+                    TextField("", text: $pasted).fieldExample("Paste the code", when: pasted.isEmpty)
                         .textFieldStyle(.plain)
                         .font(.system(size: 11.5, design: .monospaced))
                         .frame(width: 150)
@@ -1011,7 +1011,7 @@ struct LinkCard: View {
             }
             Rule()
             Line("App name", "Optional nickname used in announcements") {
-                TextField("optional", text: $link.config.label)
+                TextField("", text: $link.config.label).fieldExample("optional", when: link.config.label.isEmpty)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
                     .frame(width: 140)

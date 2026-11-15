@@ -201,7 +201,7 @@ struct Hunt: View {
                 .accessibilityHidden(true) // Fork (settings-a11y)
             ZStack(alignment: .leading) {
                 if text.isEmpty {
-                    Text(prompt).foregroundStyle(Palette.muted) // Fork (ui-system): a prompt is words, ≥4.5:1
+                    Text(prompt).foregroundStyle(Palette.placeholder) // Fork (ui-system, polish r5): a prompt is words, ≥4.5:1, lighter than a value
                         .accessibilityHidden(true) // Fork (settings-a11y): the field says it
                 }
                 TextField("", text: $text)

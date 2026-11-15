@@ -80,7 +80,7 @@ struct TabBar: View {
                         .scrollDisabled(!overflowing(in: geo.size.width))
                         .stripEdges($hidden)
                         // Fork (polish r5): a run that scrolls fades out at the
-                        // ends that hide tabs, the way the spaces strip does —
+                        // ends that hide tabs, the way the spaces strip does (SpaceStrip.fade) —
                         // it used to stop dead at a cut tab.
                         .mask(edgeFade(in: geo.size.width))
                         .frame(width: run(in: geo.size.width))
@@ -168,7 +168,7 @@ struct TabBar: View {
 
     private func edgeFade(in strip: CGFloat) -> some View {
         let over = overflowing(in: strip)
-        return SpaceStrip.fade(leading: over && hidden.leading, trailing: over && hidden.trailing)
+        return StripFade(leading: over && hidden.leading, trailing: over && hidden.trailing)
     }
 
     /// Pick a tab up and the others get out of its way as it passes them.
