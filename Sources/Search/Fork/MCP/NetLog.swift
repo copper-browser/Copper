@@ -142,6 +142,12 @@ final class NetLog: NSObject {
             .contains(url.lastPathComponent.lowercased())
     }
 
+    /// A data call asked for after `mark` and still out (Tools.settle),
+    /// bookkeeping left out, by the same `pending` rule as Jev's WAIT.
+    static func out(_ web: WKWebView, after mark: UInt64) -> Bool {
+        log(for: web)?.entries.contains { $0.seq > mark && calls.contains($0.kind) && !noise($0) && pending($0) } ?? false
+    }
+
     /// Still waited for: not back, no status yet, and asked less than
     /// `expire` ago. A call with a status is answered (a stream that stays
     /// open, a long poll); a call that never said anything is given up on

@@ -128,18 +128,22 @@ enum CommandBar {
     /// ⌘T's queue and lands a moment later through `Browser.relaunch`.
     @MainActor static func offers(for typed: String, in browser: Browser) -> [Suggestion] {
         let launcher = Launcher.shared
-        let open = launcher.openTabs(browser)
         let needle = typed.trimmingCharacters(in: .whitespaces).lowercased()
         let hits = launcher.history(for: typed, in: browser)
         guard !needle.isEmpty else {
             // This space's pages, kept ones first, then the most recent.
             // Fork (ux): five, so the doors under them stay in view.
-            let recent = open.filter(\.current)
-                .sorted { $0.kept == $1.kept ? $0.touched > $1.touched : $0.kept }
+            // Fork (perf, r4): read from this space's tabs alone, in ⌘K's own
+            // keystroke; every space's (`openTabs`, for matching) waits for a letter.
+            let recent = browser.tabs
+                .filter { $0.id != browser.activeID && !$0.isBlank && $0.address != nil }
+                .map { (tab: $0, kept: $0.pin != nil || Sections.shared.isSaved($0)) }
+                .sorted { $0.kept == $1.kept ? $0.tab.touched > $1.tab.touched : $0.kept }
                 .prefix(5)
-                .compactMap(row(for:))
+                .compactMap { row(for: $0.tab) }
             return sectioned(dressed(recent + resting(browser)))
         }
+        let open = launcher.openTabs(browser)
         let commandNeedle = needle.hasPrefix("/") ? String(needle.dropFirst()) : needle
         var ranked: [(row: Suggestion, score: Double)] = []
 
@@ -225,9 +229,11 @@ enum CommandBar {
     }
 
     /// An open tab as a row: called by its title, its address beside it.
-    @MainActor private static func row(for open: Launcher.Open) -> Suggestion? {
-        guard let url = open.tab.address else { return nil }
-        return Suggestion(key: open.tab.label, title: Address.pretty(url), url: url, kind: .open, tab: open.tab.id)
+    @MainActor private static func row(for open: Launcher.Open) -> Suggestion? { row(for: open.tab) }
+
+    @MainActor private static func row(for tab: Tab) -> Suggestion? {
+        guard let url = tab.address else { return nil }
+        return Suggestion(key: tab.label, title: Address.pretty(url), url: url, kind: .open, tab: tab.id)
     }
 
     /// The rows cut into the card's sections, their headings handed to the
@@ -274,7 +280,8 @@ enum CommandBar {
 
     /// The empty field: what is open, and a few doors.
     @MainActor private static func resting(_ browser: Browser) -> [Suggestion] {
-        let wanted = ["new-tab", "split", "new-space", "history"]
+        // Fork (ux, r4): two doors before anything is typed, so the card stays short; the rest answer a word.
+        let wanted = ["split", "history"]
         let all = Launcher.shared.commands(browser)
         var rows = wanted.compactMap { id -> Suggestion? in
             guard let command = all.first(where: { $0.id == id }) else { return nil }

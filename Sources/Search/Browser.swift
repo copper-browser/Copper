@@ -2089,21 +2089,26 @@ final class Browser: NSObject, ObservableObject {
         Launcher.shared.begin() // Fork (command-bar-hooks): ⌘K reads the open tabs, bookmarks and commands once, as ⌘T does
         launching = false
         summoning = true
-        // Fork (perf): the bar goes up empty in the key's own pass and its
-        // rows follow in the next, as ⌘T's card does (launch()). A Return or
-        // a second ⌘K before then fills it first (`fillPending`).
+        // Fork (perf, r4): the rows are worked out in the key's own pass, so
+        // the card goes up at its full height; it lays them out in the next
+        // pass and fades them in (Fork/CommandPalette `filled`).
         field.typed = ""
         offers = []
         ending = nil
         picked = nil
-        Launcher.afterCommit { [weak self] in self?.fillPending() }
+        fillPending()
+        // Every space's open tabs, for the first letter to match against, read
+        // once the card is up rather than in either keystroke.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            if let self, self.summoning, !self.launching { _ = Launcher.shared.openTabs(self) }
+        }
         editing = true
         focusRequest += 1
     }
 
     /// Fork (perf): ⌘K's and ⌘T's resting rows, if the card is up, nothing
-    /// is typed and they have not been laid out yet. The first fill does not
-    /// animate: the card has only just arrived.
+    /// is typed and there are none yet. The first fill does not animate: the
+    /// card has only just arrived.
     private func fillPending() {
         guard summoning, typed.isEmpty, offers.isEmpty else { return }
         var still = Transaction()
@@ -2124,18 +2129,13 @@ final class Browser: NSObject, ObservableObject {
         Launcher.shared.begin()
         launching = true
         summoning = true
-        // Fork (perf): the card goes up empty in the key's own pass and its
-        // rows follow in the next one: laying out a dozen rows doubled the
-        // time from ⌘T to the card on screen. Anything typed by then lays
-        // out its own rows (`typed`), and these are not wanted.
+        // Fork (perf, r4): as ⌘K's (summon()): rows worked out now, laid
+        // out by the card in the pass after its own.
         field.typed = ""
         offers = []
         ending = nil
         picked = nil
-        Launcher.afterCommit { [weak self] in
-            guard let self, self.launching else { return }
-            self.fillPending()
-        }
+        fillPending()
         editing = true
         focusRequest += 1
     }

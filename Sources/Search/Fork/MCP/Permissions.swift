@@ -36,8 +36,8 @@ enum Permissions {
         "inputSchema": [
             "type": "object",
             "properties": [
-                "grant": ["type": "array", "items": ["type": "string", "enum": kindsList], "description": "Permissions to grant"] as [String: Any],
-                "revoke": ["type": "array", "items": ["type": "string", "enum": kindsList], "description": "Permissions to revoke"] as [String: Any],
+                "grant": ["type": "array", "items": ["type": "string", "enum": kindsList]] as [String: Any],
+                "revoke": ["type": "array", "items": ["type": "string", "enum": kindsList]] as [String: Any],
                 "site": ["type": "string", "description": "host or host:port; default your tab's"],
                 "latitude": ["type": "number", "description": "Required with a geolocation grant: the position pages get"],
                 "longitude": ["type": "number"],

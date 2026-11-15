@@ -16,6 +16,8 @@ November 2026 hill-climb (C4 page + JS, C8 ergonomics, C6 covered clicks):
   6. A full-page screenshot walks the page, so scroll-lazy content is drawn.
   7. Failures are errors: browser_groups without a name, fill_form with a
      field it can't fill, select_option with no match, back with no history.
+  8. (r4, C8) A click whose page navigates a moment later — a 300 ms timer,
+     or when a fetch it made comes back — answers on the new page.
 
 Then per-call latency on a fixture page (snapshot, click, type, navigate;
 p50 and p90 over --rounds calls each), for comparing builds.
@@ -147,6 +149,10 @@ vp.addEventListener('scroll', draw); draw();
 <div class=band style="background:#777"></div><div class=band style="background:#999"></div>
 <div id=lazy></div><div class=band style="background:#222"></div>
 <script>new IntersectionObserver(function(es){ es.forEach(function(e){ if (e.isIntersecting) e.target.classList.add('seen'); }); }).observe(document.getElementById('lazy'));</script>""",
+    "late.html": """<!doctype html><title>Late</title>
+<button id=timer onclick="setTimeout(function(){ location.href='b.html'; }, 300)">Later</button>
+<button id=fetch onclick="fetch('/api/slow').then(function(){ location.href='a.html'; })">After fetch</button>
+<button id=stay onclick="setTimeout(function(){ document.title='Late (stayed)'; }, 300)">Stay</button>""",
     "a.html": "<!doctype html><title>Page A</title><h1>A</h1><a href=b.html>to B</a>",
     "b.html": "<!doctype html><title>Page B</title><h1>B</h1><a href=a.html>to A</a>",
 }
@@ -163,6 +169,9 @@ class Pages(http.server.SimpleHTTPRequestHandler):
         pass
 
     def do_GET(self):
+        if self.path.startswith("/api/slow"):
+            time.sleep(0.3)
+            self.path = "/api/json"
         if self.path.startswith("/api/json"):
             data = b'{"answer": 42}'
             self.send_response(200)
@@ -319,6 +328,17 @@ try:
     err, text, _, _ = agent.call("browser_click", {"tab": wall, "selector": "#buy"})
     state = agent.ev(wall, "() => JSON.stringify([window.bought || 0, window.walled || 0])")
     check(err and "covered by div#wall" in text and state == "[0,0]", "a click under a cookie wall says what covers it", f"{text[:160]} {state}")
+
+    # 8. a click whose page leaves a moment later (a timer, a data call) comes back on the new page
+    late = agent.open("late.html")
+    err, text, _, ms = agent.call("browser_click", {"tab": late, "selector": "#timer"})
+    check(not err and "Page B" in text, "a click whose timer navigates 300 ms later answers on the new page", f"{text[:160]} ({ms:.0f} ms)")
+    late = agent.open("late.html")
+    err, text, _, ms = agent.call("browser_click", {"tab": late, "selector": "#fetch"})
+    check(not err and "Page A" in text, "a click whose fetch navigates when it returns answers on the new page", f"{text[:160]} ({ms:.0f} ms)")
+    late = agent.open("late.html")
+    err, text, _, ms = agent.call("browser_click", {"tab": late, "selector": "#stay"})
+    check(not err and "Late" in text and ms < 1500, "a click whose timer doesn't navigate waits for the timer at most", f"{text[:160]} ({ms:.0f} ms)")
 
     # 3. wait_for
     err, text, _, _ = agent.call("browser_wait_for", {"tab": tab, "text": "Report ready"})

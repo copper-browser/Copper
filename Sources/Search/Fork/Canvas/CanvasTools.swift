@@ -30,6 +30,29 @@ enum CanvasTools {
                                      "canvas_focus", "canvas_create", "canvas_invite", "canvas_share_link", "canvas_join", "canvas_screenshot",
                                      CanvasChat.toolName]
 
+    /// Fork (C8, r4): what tools/list offers while no canvas is in use —
+    /// the two ways to get one. Every canvas_* tool still answers by name.
+    static let doors: Set<String> = ["canvas_create", "canvas_join"]
+
+    /// A canvas in use: one made by or shared with the user, or a board kept
+    /// on this Mac (opening a canvas, Personal too, gives it a folder).
+    @MainActor static var inUse: Bool {
+        if Canvases.shared.all.contains(where: { !$0.isPersonal }) { return true }
+        let kept = (try? FileManager.default.contentsOfDirectory(at: Canvases.folder, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+        return kept.contains { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+    }
+
+    /// The catalogue as tools/list sends it: all of it with a canvas in use,
+    /// otherwise only `doors` (14 tools' schemas, paid by every session).
+    static func listed(inUse: Bool) -> [[String: Any]] {
+        inUse ? catalogue : catalogue.filter { doors.contains($0["name"] as? String ?? "") }
+    }
+
+    /// The canvas sentence of the agent instructions, to match `listed`.
+    @MainActor static var briefing: String {
+        inUse ? instructions : "No canvas in use yet: canvas_create makes one and canvas_join opens an invite; the other canvas_* tools (read, apply, …) are listed once one exists."
+    }
+
     static var catalogue: [[String: Any]] {
         [
             tool("canvas_list", "The user's canvases (whiteboards): id, name, kind, open tab, people live in it"),
@@ -64,7 +87,7 @@ enum CanvasTools {
 
     // The canvas_read schema is the same as Copper for Linux's
     // (crates/copper-app/src/canvas/mcp.rs); the words are cut to a line here — docs/canvas.md.
-    static let readDescription = "Read a canvas: shapes, comments, agents, selection, a page at a time (call again with cursor while there is next). On a big canvas start with overview:true, then a frame or region. Read before you write."
+    static let readDescription = "Read a canvas (shapes, comments, agents, selection), a page at a time: call again with cursor while there is next. Big canvas: overview:true first, then a frame or region."
 
     /// canvas_apply's op shapes, handed over with a caller's first canvas_read
     /// (and to canvas_apply with no ops) rather than paid in every tools/list.
@@ -72,18 +95,18 @@ enum CanvasTools {
 
     static let readProperties: [String: Any] = [
         "id": which,
-        "full": bool("Whole texts instead of the first 500 characters"),
-        "overview": bool("Counts, bounds, frames and comments, no shapes; first on a big canvas"),
-        "frame": string("A frame's shape id (from overview): the frame and the shapes inside it"),
-        "region": ["type": "object", "description": "Board-unit rectangle: the shapes that intersect it",
+        "full": bool("Whole texts, not the first 500 characters"),
+        "overview": bool("Counts, bounds, frames, comments; no shapes"),
+        "frame": string("A frame's id: it and the shapes in it"),
+        "region": ["type": "object", "description": "Board-unit rectangle",
                    "properties": ["x": ["type": "number"], "y": ["type": "number"], "w": ["type": "number"], "h": ["type": "number"]] as [String: Any],
                    "required": ["x", "y", "w", "h"]] as [String: Any],
         "ids": ids("Exactly these shapes"),
-        "types": ["type": "array", "description": "Only shapes of these types, as read reports them",
+        "types": ["type": "array",
                   "items": ["type": "string", "enum": ["sticky", "text", "frame", "arrow", "image", "link", "web", "checklist", "timeline"]] as [String: Any]] as [String: Any],
-        "query": string("Case-insensitive text to find in text, titles, labels and urls"),
-        "limit": ["type": "integer", "minimum": 1, "maximum": 500, "description": "Shapes per answer; default 200, at most 500"] as [String: Any],
-        "cursor": string("The last answer's next, for the page after it"),
+        "query": string("Text to find"),
+        "limit": ["type": "integer", "minimum": 1, "maximum": 500, "description": "Default 200"] as [String: Any],
+        "cursor": string("The last answer's next"),
     ]
 
     /// What canvas_read hands the page: the options it knows, as given.

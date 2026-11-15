@@ -29,6 +29,16 @@ struct CommandPalette: View {
     private static let drop: CGFloat = 0.3
 
     @State private var place = CommandPalette.lastPlace
+    /// Fork (perf, r4): the card opens at its full height on an empty ground
+    /// in the key's own pass, and its rows are laid out in the next one and
+    /// fade in — one step, not a field that then grows into a card.
+    @State private var filled = false
+    /// Fork (perf, r4): the rows laid out so far, by id. A keystroke that
+    /// brings a list of new rows lays out the first `slice` of them in its own
+    /// pass and the rest in the next, each pass under a frame; a row already
+    /// on the card stays drawn. The card's height counts them all from the start.
+    @State private var laid: Set<String> = []
+    static let slice = 4
     /// Fork (perf): where the last card stood. A card measures its window a
     /// moment after it is drawn; starting from the last answer, it opens in
     /// its place instead of at a guess for one frame and moving in a second.
@@ -74,8 +84,9 @@ struct CommandPalette: View {
     var body: some View {
         ZStack(alignment: .top) {
             // The page, still there, just told to be quiet.
+            // Fork (ux, r4): a lighter hush in the light, a deeper one in the dark.
             Rectangle()
-                .fill(Color.black.opacity(over ? 0.16 : 0.05))
+                .fill(Color.black.opacity(over ? (scheme == .dark ? 0.30 : 0.13) : 0.05))
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture { browser.dismiss() }
@@ -87,6 +98,10 @@ struct CommandPalette: View {
                 // Fork (ui-motion): no travel under Reduce Motion.
                 .modifier(Arrive(travel: reduceMotion ? 0 : 6))
                 .frame(width: CommandPalette.width)
+                // Fork (r4): the first card after launch waits the one frame
+                // its window takes to be measured, rather than open at a guess
+                // and move.
+                .opacity(place.height > 0 ? 1 : 0)
                 // The card belongs to the window, not to the page area it
                 // happens to be drawn in, so it is shifted back over the
                 // column of tabs by half that column's width.
@@ -101,8 +116,19 @@ struct CommandPalette: View {
         .animation(bar.launching || !state.typed.isEmpty ? nil : Motion.settle, value: browser.offers)
         // Every row that names a site wants that site's mark, and most of
         // these rows have no page behind them to ask. See Fork/Marks.
-        .onAppear { Marks.want(browser.offers.map(\.url)) }
-        .onChange(of: browser.offers) { _, offers in Marks.want(offers.map(\.url)) }
+        .onAppear {
+            Marks.want(browser.offers.map(\.url))
+            Launcher.afterCommit {
+                withAnimation(.easeOut(duration: 0.08)) {
+                    filled = true
+                    laid = Set(CommandPalette.keyed(browser.offers).map(\.id))
+                }
+            }
+        }
+        .onChange(of: browser.offers) { _, offers in
+            Marks.want(offers.map(\.url))
+            Launcher.afterCommit { laid = Set(CommandPalette.keyed(browser.offers).map(\.id)) }
+        }
     }
 
     /// Fork (ui-flows): the card arrives the way Arc's does — solid at once,
@@ -147,7 +173,11 @@ struct CommandPalette: View {
                 Rectangle()
                     .fill(Palette.hairline.opacity(0.55))
                     .frame(height: 1)
-                rows
+                if filled {
+                    rows.transition(.opacity)
+                } else {
+                    Color.clear.frame(height: min(natural, room))
+                }
             }
             if let nudge {
                 Rectangle()
@@ -192,8 +222,61 @@ struct CommandPalette: View {
                     .allowsHitTesting(false)
             }
         }
-        .shadow(color: .black.opacity(scheme == .dark ? 0.32 : 0.09), radius: 3, y: 1)
-        .shadow(color: .black.opacity(scheme == .dark ? 0.5 : 0.26), radius: 48, y: 20)
+        // Fork (perf, r4): Core Animation shadows with their path given, not
+        // SwiftUI's: a 48 pt shadow of the card's whole content was drawn
+        // off-screen on every frame the card moved or changed.
+        .background(CardShadow(dark: scheme == .dark, radius: 13))
+    }
+
+    /// The card's two shadows — one tight for the edge, one wide for the
+    /// lift — as layers whose shape is said up front (`shadowPath`), so the
+    /// render server blurs a rounded rectangle instead of the card's pixels.
+    struct CardShadow: NSViewRepresentable {
+        let dark: Bool
+        let radius: CGFloat
+
+        func makeNSView(context: Context) -> NSView { Lift() }
+        func updateNSView(_ view: NSView, context: Context) {
+            guard let lift = view as? Lift else { return }
+            lift.corner = radius
+            lift.dark = dark
+        }
+
+        final class Lift: NSView {
+            var corner: CGFloat = 13 { didSet { needsLayout = true } }
+            var dark = false { didSet { if dark != oldValue { needsLayout = true } } }
+            private let edge = CALayer(), wide = CALayer()
+
+            init() {
+                super.init(frame: .zero)
+                wantsLayer = true
+                layer?.masksToBounds = false
+                for shadow in [wide, edge] {
+                    shadow.shadowColor = NSColor.black.cgColor
+                    layer?.addSublayer(shadow)
+                }
+            }
+
+            required init?(coder: NSCoder) { fatalError("no coder") }
+
+            override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+            override func layout() {
+                super.layout()
+                let path = CGPath(roundedRect: bounds, cornerWidth: corner, cornerHeight: corner, transform: nil)
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                // Unflipped: a negative height is down the screen.
+                for (shadow, opacity, blur, drop) in [(edge, dark ? 0.32 : 0.09, 3.0, 1.0), (wide, dark ? 0.5 : 0.26, 48.0, 20.0)] {
+                    shadow.frame = bounds
+                    shadow.shadowPath = path
+                    shadow.shadowOpacity = Swift.Float(opacity)
+                    shadow.shadowRadius = blur // SwiftUI's .shadow radius, 1:1
+                    shadow.shadowOffset = CGSize(width: 0, height: -drop)
+                }
+                CATransaction.commit()
+            }
+        }
     }
 
     private var field: some View {
@@ -221,32 +304,17 @@ struct CommandPalette: View {
         let tint = self.tint
         return ScrollViewReader { reader in
             ScrollView(.vertical, showsIndicators: false) {
-                // Fork (perf): lazy, and each row keyed by what it is rather
-                // than where it is, and drawn again only when it changed
-                // (Row is Equatable): a letter typed lays out the rows that
-                // are new, not the dozen under the field.
-                LazyVStack(alignment: .leading, spacing: 1) {
-                    ForEach(keyed, id: \.id) { item in
-                        let index = item.index, offer = item.offer
-                        // A section's heading and its first row scroll as
-                        // one, so Tab back round to the top shows the label
-                        // too, not just the row under it.
-                        VStack(alignment: .leading, spacing: 1) {
-                            if let heading = sections.headings[index] {
-                                Text(heading)
-                                    .font(.system(size: 11.5, weight: .medium))
-                                    .foregroundStyle(Palette.muted)
-                                    .padding(.horizontal, 12)
-                                    .frame(height: CommandPalette.headingHeight, alignment: .bottomLeading)
-                                    .padding(.bottom, 2)
-                                    .accessibilityAddTraits(.isHeader)
-                            }
-                            Row(offer: offer, picked: browser.picked == index, tint: tint.mark, fill: tint.dot, stamp: marks.landed,
-                                aside: bar.launching && browser.picked == index ? Launcher.aside(for: offer, in: browser) : "")
-                                .equatable()
-                                .contentShape(Rectangle())
-                                .onTapGesture { browser.take(offer) }
-                        }
+                // Fork (perf): each row keyed by what it is rather than where
+                // it is, and drawn again only when it changed (Row is
+                // Equatable): a letter typed lays out the rows that are new,
+                // not the dozen under the field. Fork (perf, r4): a plain
+                // stack for a short list (the resting card's seven rows), laid
+                // out in one go; lazy past it.
+                Group {
+                    if keyed.count <= CommandPalette.plainRows {
+                        VStack(alignment: .leading, spacing: 1) { list(keyed, tint: tint) }
+                    } else {
+                        LazyVStack(alignment: .leading, spacing: 1) { list(keyed, tint: tint) }
                     }
                 }
                 .padding(.horizontal, 8)
@@ -267,6 +335,40 @@ struct CommandPalette: View {
             .onChange(of: browser.picked) { _, picked in
                 guard let picked, keyed.indices.contains(picked) else { return }
                 withAnimation(Motion.quick) { reader.scrollTo(keyed[picked].id) }
+            }
+        }
+    }
+
+    /// At most this many rows are laid out at once rather than lazily.
+    static let plainRows = 8
+
+    @ViewBuilder
+    private func list(_ keyed: [(id: String, index: Int, offer: Suggestion)], tint: SpaceTint) -> some View {
+        ForEach(keyed, id: \.id) { item in
+            let index = item.index, offer = item.offer
+            // A section's heading and its first row scroll as
+            // one, so Tab back round to the top shows the label
+            // too, not just the row under it.
+            VStack(alignment: .leading, spacing: 1) {
+                if let heading = sections.headings[index] {
+                    Text(heading)
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(Palette.muted)
+                        .padding(.horizontal, 12)
+                        .frame(height: CommandPalette.headingHeight, alignment: .bottomLeading)
+                        .padding(.bottom, 2)
+                        .accessibilityAddTraits(.isHeader)
+                }
+                if index < CommandPalette.slice || laid.contains(item.id) {
+                    Row(offer: offer, picked: browser.picked == index, tint: tint.mark, fill: tint.dot, stamp: marks.landed,
+                        aside: bar.launching && browser.picked == index ? Launcher.aside(for: offer, in: browser) : "")
+                        .equatable()
+                        .contentShape(Rectangle())
+                        .onTapGesture { browser.take(offer) }
+                } else {
+                    // Its place, until the next pass lays it out.
+                    Color.clear.frame(height: CommandPalette.twoLine(offer) ? CommandPalette.pageRowHeight : CommandPalette.rowHeight)
+                }
             }
         }
     }
