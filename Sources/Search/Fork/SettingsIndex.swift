@@ -160,9 +160,9 @@ enum SettingsIndex {
         e(.tabs, "Tabs you leave", "Sleep tabs you aren't using", "Only when more pages are open than this Mac keeps easily, or memory runs short",
           ["memory", "suspend", "discard", "energy", "battery", "idle", "performance", "hibernate"], "tabs.sleep",
           toggle: pref(\.sleepsTabs)),
-        e(.tabs, "Tabs you leave", "Let big pins sleep", "A pinned page over 300 MB left two hours sleeps under its last picture; off, pins never sleep",
+        e(.tabs, "Tabs you leave", "Let big pins sleep", "A pinned page over 300 MB left two hours sleeps under its last picture (on by default); off, pins never sleep",
           ["pins", "pinned", "favourites", "memory", "sleep pins", "keep pins loaded"], "tabs.pins",
-          toggle: { _ in Binding(get: { Store.settings.bool(forKey: "pins.sleep") }, set: { Store.settings.set($0, forKey: "pins.sleep") }) }),
+          toggle: { _ in Binding(get: { PinsAwake.bigPinsSleep }, set: { Store.settings.set($0, forKey: "pins.sleep") }) }),
         e(.tabs, "Tabs you leave", "Archive Today after", "Untouched rows below the New Tab line close themselves",
           ["auto archive", "archive", "close old tabs", "today", "clean up", "12 hours", "24 hours", "cleanup"], "tabs.archive"),
     ]

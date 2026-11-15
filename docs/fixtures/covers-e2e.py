@@ -5,7 +5,7 @@ to a space after a launch landed on a white card, because a sleeping tab's pictu
 lived in memory only.
 
   1. A tab put to sleep by the idle sweep leaves its picture in covers/ (≤150 KB).
-  2. Pins never sleep by default (`sleep PIN` → "pinned", `copper pins` says off).
+  2. `copper pins sleep off`: pins never sleep (`sleep PIN` → "pinned", `copper pins` says off).
   3. `copper pins sleep on` (+ the bench's 1 s / 1 MB thresholds): the sweep puts
      both pins to sleep, they stay asleep (the background loader leaves a dozed pin
      alone), and their pages' memory is given back. Going to one wakes it under its
@@ -270,7 +270,10 @@ try:
     print("ok the sleeping tab's picture is on disk")
 
     # 2 ---------------------------------------------------------------------------
-    print("2. pins never sleep by default")
+    print("2. copper pins sleep off: pins never sleep")
+    if not cli("pins")["bigPinsSleep"]:
+        fail("Let big pins sleep is not on by default")
+    cli("pins", "sleep", "off")
     said = ask({"do": "sleep", "id": M})
     state = cli("pins")
     print(f"  sleep {M} → {said.get('said')}; copper pins → {state}")

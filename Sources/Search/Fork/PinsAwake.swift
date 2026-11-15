@@ -57,8 +57,8 @@ enum PinRule {
         }
     }
 
-    /// Fork (covers): Settings › Tabs › "Let big pins sleep". Off by
-    /// default — pins never sleep. On, a pin whose page holds at least
+    /// Fork (covers): Settings › Tabs › "Let big pins sleep". On by
+    /// default; off, pins never sleep. On, a pin whose page holds at least
     /// `least` bytes and that nobody has looked at for `after` seconds
     /// sleeps like any tab, and wakes under its last picture.
     static func mayDoze(on: Bool, hidden: TimeInterval, bytes: UInt64, after: TimeInterval, least: UInt64) -> Bool {
@@ -157,9 +157,12 @@ final class PinsAwake {
 
     // MARK: - big pins may sleep (Fork: covers)
 
-    /// "Let big pins sleep" (`defaults write <domain> pins.sleep -bool true`,
-    /// `copper pins sleep on`). Off: pins never sleep.
-    nonisolated static var bigPinsSleep: Bool { Store.settings.bool(forKey: "pins.sleep") }
+    /// "Let big pins sleep" (`copper pins sleep on|off`). On unless you
+    /// turn it off (owner, r5); off: pins never sleep.
+    nonisolated static var bigPinsSleep: Bool { bigPinsSleep(stored: Store.settings.object(forKey: "pins.sleep")) }
+
+    /// What the stored setting means: nothing stored is on.
+    nonisolated static func bigPinsSleep(stored: Any?) -> Bool { stored as? Bool ?? true }
 
     /// Two hours unlooked-at, or `pins.sleep.after` seconds (the bench).
     nonisolated static var dozeAfter: TimeInterval {
@@ -333,13 +336,13 @@ final class PinsAwake {
     }
 }
 
-/// Fork (covers): Settings › Tabs › "Let big pins sleep" — off unless you
-/// turn it on (`copper pins sleep on|off` says the same).
+/// Fork (covers): Settings › Tabs › "Let big pins sleep" — on unless you
+/// turn it off (`copper pins sleep on|off` says the same).
 struct BigPinsLine: View {
-    @AppStorage("pins.sleep", store: Store.settings) private var on = false
+    @AppStorage("pins.sleep", store: Store.settings) private var on = true
 
     var body: some View {
-        Line("Let big pins sleep", "A pinned page over 300 MB that you haven't looked at for two hours sleeps, and comes back under its last picture. Off, pins never sleep.") {
+        Line("Let big pins sleep", "A pinned page over 300 MB that you haven't looked at for two hours sleeps, and comes back under its last picture. Turn it off and pins never sleep.") {
             Switch(on: $on)
         }
     }

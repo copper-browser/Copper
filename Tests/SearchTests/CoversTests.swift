@@ -127,11 +127,18 @@ struct ControlIntentTests {
     }
 }
 
-@Suite("Big pins may sleep — only when you let them")
+@Suite("Big pins may sleep — on unless you turn it off")
 struct BigPinsTests {
     private let mb: UInt64 = 1_048_576
 
-    @Test("Off (the default): a pin never dozes, however big or long left")
+    @Test("On by default: nothing stored is on; a stored off stays off")
+    func defaultOn() {
+        #expect(PinsAwake.bigPinsSleep(stored: nil))
+        #expect(!PinsAwake.bigPinsSleep(stored: false))
+        #expect(PinsAwake.bigPinsSleep(stored: true))
+    }
+
+    @Test("Off: a pin never dozes, however big or long left")
     func offNever() {
         #expect(!PinRule.mayDoze(on: false, hidden: 99 * 3600, bytes: 4000 * mb, after: 7200, least: 300 * mb))
         #expect(!PinRule.mayUnload(pinned: true, .sleep))

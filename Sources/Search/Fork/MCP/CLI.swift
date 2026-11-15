@@ -1729,7 +1729,7 @@ enum CLI {
                                                 the Bitwarden vault; JSON only, login/save/note read stdin
                                                 (copper bitwarden --help)
       pins [status] | pins sleep on|off      whether big pins may sleep (Settings › Tabs › Let big pins
-                                                sleep; off by default: pins never sleep)
+                                                sleep; on by default, off: pins never sleep)
       crashes [list|show [N] [--symbolicate]|path]
                                                 Copper's crash history on this Mac; works with Copper down
                                                 (copper crashes help)
