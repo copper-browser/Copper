@@ -323,7 +323,7 @@ def main():
         if not locked and env["AppleKeyboardUIMode"] not in ("2", "3"):
             subprocess.run(["defaults", "write", "-g", "AppleKeyboardUIMode", "-int", "2"], check=True); fka_set = True
         w.reset([("bench", "-bool", "true"), ("welcomed", "-bool", "true"), ("probe.keychain", "-string", "file"),
-                 ("sidebar", "-bool", "true"), ("glyph", "-string", "icons"), ("look", "-string", "light")])
+                 ("sidebar", "-bool", "true"), ("look", "-string", "light")])
         seed_lived_in(w.folder)
         w.launch()
         run = Run(w, out)

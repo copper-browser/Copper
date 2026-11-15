@@ -695,7 +695,7 @@ def main():
     w = World(f"ux-{tag}", app, port, os.path.join(out, "logs", "lived.log"))
     keys = []
     try:
-        w.reset(common + [("sidebar", "-bool", "true"), ("glyph", "-string", "icons"), ("look", "-string", "light")])
+        w.reset(common + [("sidebar", "-bool", "true"), ("look", "-string", "light")])
         order = seed_lived_in(w.folder)
         w.launch()
         keys = checks(w, order) if not ONLY else []  # first, so the column is still the seeded one
@@ -707,7 +707,7 @@ def main():
     if not ONLY or any(o.startswith("narrow-") for o in ONLY):
         n = World(f"uxnarrow-{tag}", app, port, os.path.join(out, "logs", "narrow.log"))
         try:
-            n.reset(common + [("sidebar", "-bool", "true"), ("glyph", "-string", "icons"), ("look", "-string", "light")])
+            n.reset(common + [("sidebar", "-bool", "true"), ("look", "-string", "light")])
             seed_narrow(n.folder)
             n.launch()
             narrow(n, shoot)
