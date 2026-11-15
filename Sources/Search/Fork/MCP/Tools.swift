@@ -408,7 +408,7 @@ enum Tools {
             let selector = args["selector"] as? String
             let text = try await Page.snapshot(web, selector: selector, interactive: interactive, limit: limit,
                                                frame: try (args["frame"] as? String).map(Frames.number))
-            return [.text("\(pageLine(tab))\n\n\(fence(text))")]
+            return [.text("\(pageLine(tab))\n\n\(fence(text))" + snapshotHints(text))]
         case "browser_click":
             let target = try locator(args)
             let rect = try await Page.prepare(web, target)
@@ -876,6 +876,22 @@ enum Tools {
     private static func frameNamed(_ args: [String: Any], in web: WKWebView) throws -> WKFrameInfo? {
         guard let raw = args["frame"] as? String, !raw.isEmpty else { return nil }
         return try Frames.frame(Frames.number(raw), in: web).info
+    }
+
+    /// Copper's own word under a snapshot, outside the fence: controls a
+    /// snapshot can't tell apart (no name: icon buttons, colour swatches) and
+    /// a human check, which is the user's to answer. phi-mcp gave up on nine
+    /// unnamed swatches and clicked toward Amazon's "I am human" (r4).
+    static func snapshotHints(_ snapshot: String) -> String {
+        var out: [String] = []
+        let unnamed = snapshot.split(separator: "\n").filter {
+            $0.range(of: #"^\s*- (button|generic|menuitem|tab|switch|checkbox|radio|option) \[ref="#, options: .regularExpression) != nil
+        }.count
+        if unnamed >= 2 { out.append("\(unnamed) controls have no name — take a screenshot (browser_take_screenshot) to tell them apart.") }
+        if let check = Ultrafast.humanCheck(snapshot) {
+            out.append("A human check is on this page (\(check)) — hand it to the user with browser_handoff; agents don't answer these.")
+        }
+        return out.isEmpty ? "" : "\n\n" + out.joined(separator: "\n")
     }
 
     /// Text that came from the web page — its words, its console, its

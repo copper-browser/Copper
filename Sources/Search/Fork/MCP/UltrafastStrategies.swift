@@ -317,10 +317,36 @@ extension Tools.Ultrafast {
     never anything something useful fold time look see
     """.split(whereSeparator: \.isWhitespace).map(String.init).filter { $0 != "\\" })
 
+    /// The page's visible text as a set of lines, for `repeats`.
+    static func textLines(_ text: String) -> Set<String> {
+        Set(text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty })
+    }
+
+    /// Times in a row (WAITs between don't count) this control was used with
+    /// no line on the page that wasn't there when it was chosen the time
+    /// before: a loop, whether the clicks sent something or not (Flights'
+    /// Reload posts each time). A new line (a prompt naming the next colour)
+    /// breaks the chain, so a task of clicking one control again and again is not one.
+    static func repeats(_ kind: String, _ label: String, in history: [Step], lines: [Int: Set<String>], now: Set<String>) -> Int {
+        var count = 0, after = now
+        for step in history.reversed() where step.kind != "wait" {
+            guard step.kind == kind, step.label == label, let before = lines[step.number], after.isSubset(of: before) else { break }
+            count += 1
+            after = before
+        }
+        return count
+    }
+
+    /// Host and path: a search's results are another place, its filters in the query are not.
+    static func place(_ url: String) -> String {
+        let c = URLComponents(string: url)
+        return (c?.host ?? "") + (c?.path ?? "")
+    }
+
     /// A human check the agent must not answer: "I am human", "I'm not a
     /// robot", a CAPTCHA, "press and hold". The matched words, or nil.
     static func humanCheck(_ text: String) -> String? {
-        let pattern = #"(?i)\b(?:i am|i'm|i’m) (?:a )?human\b|\bnot a robot\b|\bare you (?:a )?(?:human|robot)\b|\bcaptcha\b|\bverify (?:that )?you(?:'re| are) (?:a )?human\b|\bhuman verification\b|\bpress (?:and|&) hold\b|\bprove you(?:'re| are) (?:a )?human\b|\btype the characters\b|\benter the characters you see\b"#
+        let pattern = #"(?i)\b(?:i am|i'm|i’m) (?:a )?human\b|\bnot a robot\b|\bare you (?:a )?(?:human|robot)\b|\bcaptcha\b|\bverify (?:that )?you(?:'re| are) (?:a )?human\b|\bhuman verification\b|\bpress (?:and|&) hold\b|\bprove you(?:'re| are) (?:a )?human\b|\btype the characters\b|\benter the characters you see\b|\bunusual (?:browser |network )?(?:activity|traffic)\b"#
         guard let re = try? NSRegularExpression(pattern: pattern),
               let m = re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
               let r = Range(m.range, in: text) else { return nil }
@@ -519,20 +545,23 @@ extension Tools.Ultrafast {
             "scroll": controls.keys.filter { $0.hasPrefix("SCROLL") }.sorted(),
             "recent_actions": history.suffix(strategy.lean ? 5 : 10).map(\.recent),
         ]
-        guard let data = try? JSONSerialization.data(withJSONObject: user, options: [.sortedKeys]) else { throw Tools.Failure(text: "couldn't encode the page") }
+        var asked = user
         let model = strategy.llmModel ?? (keys.textModel.isEmpty ? "haiku" : keys.textModel)
         // An answer that names nothing on offer (cut short, or prose around no
         // object: "operation not on offer ()") is asked once more before the
         // run errors: 34 of 100 llm-haiku runs in r3 ended on that.
-        var spentMs = 0.0, tokensIn = 0, tokensOut = 0, cost = 0.0
+        var spentMs = 0.0, tokensIn = 0, tokensOut = 0, cost = 0.0, answeredBy = model
         var trouble = ""
         for _ in 0..<2 {
+            guard let data = try? JSONSerialization.data(withJSONObject: asked, options: [.sortedKeys]) else { throw Tools.Failure(text: "couldn't encode the page") }
             // 200 tokens cut a reply short mid-object (it then parsed as nothing: "operation not on offer ()").
             let reply = try await Router.ask(system: llmRule, user: String(decoding: data, as: UTF8.self), keys: keys, timeout: 30, maxTokens: 500, model: model, json: true)
+            // Billed whether or not the reply is usable: counted before it is read.
             spentMs += reply.latencyMs
             tokensIn += reply.inputTokens
             tokensOut += reply.outputTokens
             cost += reply.costUsd ?? 0
+            answeredBy = reply.model
             do {
                 var decision = try llmDecision(reply.json, targets: targets, controls: controls, latencyMs: spentMs)
                 decision.model = reply.model
@@ -542,9 +571,35 @@ extension Tools.Ultrafast {
                 return decision
             } catch let failure as Tools.Failure {
                 trouble = failure.text
+                // Asked again with what was wrong and what is on offer (r4: the
+                // same prompt twice, Flights 0/10).
+                asked["your_last_reply"] = String(reply.text.prefix(300))
+                asked["what_was_wrong"] = failure.text + " Answer again with one JSON object using only the operations and indices on offer."
+                asked["on_offer"] = offeredOps(targets: targets, controls: controls)
             }
         }
-        throw Tools.Failure(text: trouble)
+        throw LLMMiss(text: trouble, latencyMs: spentMs, inputTokens: tokensIn, outputTokens: tokensOut, costUsd: cost, model: answeredBy)
+    }
+
+    /// A decider whose replies named nothing on offer, with what they cost.
+    struct LLMMiss: Error {
+        let text: String
+        let latencyMs: Double
+        let inputTokens: Int
+        let outputTokens: Int
+        let costUsd: Double
+        let model: String
+    }
+
+    /// "CLICK: 1, 2, 5 · TYPE_TEXT: 3 · SCROLL_DOWN · WAIT · DONE · BLOCKED": what a retry may answer.
+    static func offeredOps(targets: [String: [String: [String: Any]]], controls: [String: [String: Any]]) -> String {
+        func order(_ a: String, _ b: String) -> Bool {
+            let x = a.split(separator: ":").compactMap { Int($0) }, y = b.split(separator: ":").compactMap { Int($0) }
+            return x.lexicographicallyPrecedes(y)
+        }
+        var parts = targets.keys.sorted().map { op in op + ": " + (targets[op] ?? [:]).keys.sorted(by: order).prefix(60).joined(separator: ", ") }
+        parts += controls.keys.sorted()
+        return (parts + ["DONE", "BLOCKED"]).joined(separator: " · ")
     }
 
     /// The LLM's JSON as a decision: an operation on offer, its target, its
@@ -579,19 +634,28 @@ extension Tools.Ultrafast {
     /// `waitLinger`; `waitCap` at most. With no call out it waits for the
     /// change alone. A page that leaves ends it (its load is waited for).
     @MainActor
+    /// Never under `waitFloor`, and a page that changed still has its calls'
+    /// answers waited for (Google's results call starts after the page does).
     static func waitForAnswer(_ web: WKWebView, _ obs: Observation, since mark: UInt64?) async {
         let started = Date(), from = NetLog.current(web, mark)
-        var awaited = false, looked = Date()
+        var awaited = false, changed = false, looked = Date()
         while Date().timeIntervalSince(started) < waitCap {
             guard let calls = NetLog.dataCalls(web, after: from) else { return }
-            if calls.contains(where: { NetLog.pending($0) }) { awaited = true }
-            else if awaited, NetLog.quiet(calls, linger: waitLinger) { return }
-            if Date().timeIntervalSince(looked) >= 0.2 {
+            let pending = calls.contains(where: { NetLog.pending($0) })
+            if pending { awaited = true }
+            if Date().timeIntervalSince(started) >= waitFloor, !pending, awaited || changed, NetLog.quiet(calls, linger: waitLinger) { return }
+            if !changed, Date().timeIntervalSince(looked) >= 0.1 {
                 looked = Date()
-                if !(await fresh(web, obs)) { return }
+                changed = !(await fresh(web, obs))
             }
             try? await Task.sleep(nanoseconds: 25_000_000)
         }
+    }
+
+    /// The rest of `waitFloor` since `started`.
+    static func padWait(_ started: Date) async {
+        let left = waitFloor - Date().timeIntervalSince(started)
+        if left > 0 { try? await Task.sleep(nanoseconds: UInt64(left * 1_000_000_000)) }
     }
 
     // MARK: - acting at a point

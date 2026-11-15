@@ -93,6 +93,8 @@ struct JevStrategyTests {
         #expect(U.humanCheck("I'm not a robot") != nil)
         #expect(U.humanCheck("Press & Hold to confirm you are a human") != nil)
         #expect(U.humanCheck("Type the characters you see in this image") != nil)
+        // Amazon's bot check (phi-mcp, r4).
+        #expect(U.humanCheck("We're noticing unusual browser activity from your device") != nil)
         #expect(U.humanCheck("Continue shopping") == nil)
         #expect(U.humanCheck("reCAPTCHA documentation") == nil)
         #expect(U.humanCheck("Human resources") == nil)
@@ -176,8 +178,17 @@ struct JevHybridTests {
         step.sent = true
         step.formSent = true
         #expect(!U.needsPicture(page, after: step))
-        #expect(step.quietSend && (step.recent["page_changed"] as? Bool) == true)
+        // Said as it was: sent, and the page didn't change (r4 said page_changed: true for any POST).
+        #expect(step.quietSend && (step.recent["page_changed"] as? Bool) == false && (step.recent["sent"] as? Bool) == true)
         #expect((step.recent["action"] as? String ?? "").contains("no confirmation"))
+        // A fetch POST with no form is the same send (a Pay button): the guard arms on it.
+        step.formSent = false
+        #expect(step.quietSend)
+        step.pageChanged = true
+        #expect(!step.quietSend && step.recent["sent"] as? Bool == true)
+        // The read moved (the viewport's size) but showed nothing new: still quiet.
+        step.nothingNew = true
+        #expect(step.quietSend)
     }
 }
 
@@ -188,6 +199,10 @@ struct JevClaimTests {
 
     @Test func floors() {
         #expect(U.floor("BLOCKED") == 0.8 && U.floor("DONE") == U.claimFloor)
+        // r4: every DONE at 80% or more passed; Amazon's false DONE was 67%.
+        #expect(U.claimFloor == 0.8 && 0.67 < U.floor("DONE"))
+        // A WAIT is never shorter than the 238 ms that ended in DONE on Flights.
+        #expect(U.waitFloor >= 0.24 && U.waitLinger >= 0.4)
         // far-link's BLOCKED at 76% on the page it was sent to (r3) is doubted now.
         #expect(0.76 < U.floor("BLOCKED"))
     }
@@ -217,6 +232,48 @@ struct JevClaimTests {
         #expect(NetLog.noise(E(id: 3, method: "POST", url: "https://x.test/anything", kind: "beacon")))
         #expect(!NetLog.noise(E(id: 4, method: "POST", url: "https://www.google.com/_/FlightsFrontendUi/data/travel.frontend.flights.FlightsFrontendService/GetShoppingResults", kind: "xhr")))
         #expect(!NetLog.noise(E(id: 5, method: "POST", url: "http://127.0.0.1:4171/api/review", kind: "fetch")))
+        // Path words and stats. hosts are not bookkeeping: these POSTs change things (council R5).
+        #expect(!NetLog.noise(E(id: 6, method: "POST", url: "https://shop.test/payments/collect", kind: "fetch")))
+        #expect(!NetLog.noise(E(id: 7, method: "POST", url: "https://stats.shop.test/api/orders", kind: "xhr")))
+        #expect(!NetLog.noise(E(id: 8, method: "POST", url: "https://shop.test/track", kind: "fetch")))
+        #expect(NetLog.noise(E(id: 9, method: "POST", url: "https://o1.ingest.sentry.io/api/1/envelope/", kind: "fetch")))
+        #expect(NetLog.noise(E(id: 10, method: "GET", url: "https://www.google.com/gen_204?atyp=i", kind: "xhr")))
+    }
+
+    private func clicked(_ n: Int, _ label: String, kind: String = "click") -> U.Step {
+        U.Step(number: n, operation: kind == "wait" ? "WAIT" : "CLICK", kind: kind, label: label, text: nil, confidence: 1,
+               probability: 1, latencyMs: 0, textLatencyMs: 0, pageChanged: true, url: "")
+    }
+
+    @Test func aControlUsedAgainOnAnUnchangedPageIsALoop() {
+        let oops: Set<String> = ["Oops, something went wrong.", "Reload"]
+        // Flights' Reload twice, a WAIT between, the page reading the same each time.
+        let history = [clicked(1, "Search"), clicked(2, "Reload"), clicked(3, "Wait", kind: "wait"), clicked(4, "Reload")]
+        let lines: [Int: Set<String>] = [1: ["Search"], 2: oops, 3: oops, 4: oops]
+        #expect(U.repeats("click", "Reload", in: history, lines: lines, now: oops) == 2)
+        // Something new since (results came in): not a loop.
+        #expect(U.repeats("click", "Reload", in: history, lines: lines, now: oops.union(["Zurich to London · 2 h"])) == 0)
+        // A prompt naming the next colour each time (uibench swatches): never a loop.
+        let swatches = [clicked(1, "button"), clicked(2, "button")]
+        #expect(U.repeats("click", "button", in: swatches, lines: [1: ["Click Teal"], 2: ["Click Red"]], now: ["Click Plum"]) == 0)
+        #expect(U.repeats("click", "Other", in: history, lines: lines, now: oops) == 0)
+    }
+
+    @Test func aSearchsResultsAreAnotherPlace() {
+        #expect(U.place("https://www.google.com/travel/flights?tfs=A") == U.place("https://www.google.com/travel/flights?tfs=B"))
+        #expect(U.place("https://www.google.com/travel/flights?tfs=A") != U.place("https://www.google.com/travel/flights/search?tfs=A"))
+    }
+
+    @Test func aRetrySaysWhatIsOnOffer() {
+        let offered = U.offeredOps(targets: ["CLICK": ["10": [:], "2": [:]], "SELECT": ["7:2": [:], "7:1": [:]]], controls: ["WAIT": [:], "SCROLL_DOWN": [:]])
+        #expect(offered == "CLICK: 2, 10 · SELECT: 7:1, 7:2 · SCROLL_DOWN · WAIT · DONE · BLOCKED")
+    }
+
+    @Test func snapshotSaysWhatItCantTellApart() {
+        let swatches = (1...9).map { "  - button [ref=e\($0)]" }.joined(separator: "\n")
+        #expect(Tools.snapshotHints(swatches).contains("9 controls have no name"))
+        #expect(Tools.snapshotHints("- button \"Approve\" [ref=e1]\n- button \"Reject\" [ref=e2]").isEmpty)
+        #expect(Tools.snapshotHints("- checkbox \"I am human\" [ref=e3]").contains("browser_handoff"))
     }
 
     private func typed(_ value: String) -> U.Step {
