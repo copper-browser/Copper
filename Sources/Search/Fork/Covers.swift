@@ -97,7 +97,7 @@ struct CoverStore {
     // MARK: - the file
 
     /// A JPEG of at most `most` bytes, with the picture's size in points and
-    /// its ground written into its description. Full size first; then, on a
+    /// its ground written into its Exif comment. Full size first; then, on a
     /// Retina picture, at one pixel a point; then plainer, until it fits.
     static func fit(_ jpeg: Data, size: CGSize, ground: NSColor?, most: Int) -> Data? {
         guard let source = CGImageSourceCreateWithData(jpeg as CFData, nil),
@@ -124,8 +124,8 @@ struct CoverStore {
     static func said(in data: Data) -> (size: CGSize?, ground: NSColor?) {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let tiff = properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any],
-              let note = tiff[kCGImagePropertyTIFFImageDescription] as? String, note.hasPrefix("copper-cover ") else { return (nil, nil) }
+              let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any],
+              let note = exif[kCGImagePropertyExifUserComment] as? String, note.hasPrefix("copper-cover ") else { return (nil, nil) }
         let parts = note.split(separator: " ")
         var size: CGSize?
         var ground: NSColor?
@@ -157,7 +157,8 @@ struct CoverStore {
         guard let out = CGImageDestinationCreateWithData(data, "public.jpeg" as CFString, 1, nil) else { return nil }
         let properties: [CFString: Any] = [
             kCGImageDestinationLossyCompressionQuality: quality,
-            kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFImageDescription: note],
+            // The JPEG writer keeps an Exif comment (a TIFF description it drops).
+            kCGImagePropertyExifDictionary: [kCGImagePropertyExifUserComment: note],
         ]
         CGImageDestinationAddImage(out, image, properties as CFDictionary)
         return CGImageDestinationFinalize(out) ? data as Data : nil
