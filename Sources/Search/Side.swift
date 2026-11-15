@@ -654,6 +654,31 @@ private struct PinSquare: View {
     }
 }
 
+/// Fork (polish r5): a kept split's second half inside its partner's row:
+/// its mark and title, its own click (selecting it trades the panes over).
+private struct SidePairHalf: View {
+    let browser: Browser
+    @ObservedObject var tab: Tab
+    let live: Bool
+    let tint: SpaceTint
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if !tab.isBlank {
+                SideGlyphMark(prefs: browser.prefs, icon: tab.icon, letter: tab.monogram, tint: tint, size: 16)
+            }
+            FadingTitle(text: Text(tab.label)
+                .font(.system(size: SideBar.title, weight: live ? .semibold : .regular))
+                .foregroundStyle(tint.ink))
+        }
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture { if !live { browser.select(tab) } }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
 /// One tab, as a line in the column.
 ///
 /// Fork (space-perf): what the row needs from the window and from Heat comes
@@ -675,9 +700,15 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
     let tint: SpaceTint
     let pill: Namespace.ID
     let close: () -> Void
+    /// Fork (polish r5): the other half of a kept split, drawn in this row
+    /// (GroupedRows hides its own) — one row, both marks, a hairline, one
+    /// pill, as Arc's split items. `pairLive`: that half is the live tab.
+    var pair: Tab? = nil
+    var pairLive = false
 
     static func == (a: SideRow, b: SideRow) -> Bool {
         a.tab === b.tab && a.live == b.live && a.editing == b.editing && a.hot == b.hot && a.refusals == b.refusals
+            && a.pair === b.pair && a.pairLive == b.pairLive
             && a.pill == b.pill && a.tint.theme == b.tint.theme && a.tint.dark == b.tint.dark && a.tint.night == b.tint.night
     }
 
@@ -711,8 +742,12 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
                         .foregroundStyle(colour.opacity(0.7))
                 }
                 FadingTitle(text: Text(tab.label) // Fork (motion): a long title fades out, no "…"
-                    .font(.system(size: SideBar.title, weight: live ? .semibold : .regular))
+                    .font(.system(size: SideBar.title, weight: own ? .semibold : .regular))
                     .foregroundStyle(colour))
+                if let pair {
+                    Rectangle().fill(tint.hairline).frame(width: 1, height: 16)
+                    SidePairHalf(browser: browser, tab: pair, live: pairLive, tint: tint)
+                }
             }
 
             Spacer(minLength: 2)
@@ -731,11 +766,11 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
         .frame(height: SideBar.row)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background { ground }
-        .overlay(alignment: .leading) { if inPair { SplitBracket(tint: tint) } } // Fork (motion): the two halves of a split
+        .overlay(alignment: .leading) { if inPair, pair == nil { SplitBracket(tint: tint) } } // Fork (motion): the two halves of a split, when apart
         .modifier(Shake(travel: shake))
         .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .modifier(OneClick(double: false) {
-            if live { browser.beginTabEdit(tab) } else { browser.select(tab) }
+            if own { browser.beginTabEdit(tab) } else { browser.select(tab) }
         })
         .modifier(Pressable()) // Fork (motion): the shared pressed state, after the tap so the tap keeps the click
         .onHover { pointing = $0 }
@@ -759,6 +794,9 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
         // CPU work on every tab opened or closed.
         .transition(.opacity)
     }
+
+    /// This row's own tab is the live one (not its split's other half).
+    private var own: Bool { live && !pairLive }
 
     /// Whether anything is in the slot at the row's end right now.
     private var slotShown: Bool {
@@ -829,7 +867,7 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
         } else if hovering {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(tint.hover)
-        } else if inPair {
+        } else if inPair, pair == nil {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(tint.ink.opacity(0.05)) // Fork (motion): a split's other half, tinted like its partner's pill
         }

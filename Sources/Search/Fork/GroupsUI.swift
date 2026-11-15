@@ -59,7 +59,31 @@ struct GroupedRows: View {
         return FolderTree.plan(loose).count - loose.count
     }
 
+    /// Fork (polish r5): a kept split whose halves sit next to each other is
+    /// one row — the upper half's — and the lower half's row is not drawn.
+    @ObservedObject private var paired = SplitPairs.shared
+
+    /// The upper half of each adjacent pair, by id, with its partner.
+    private static func merged(_ rows: [FolderRow], pairs: [Tab.ID: Tab.ID]) -> [Tab.ID: Tab] {
+        guard !pairs.isEmpty else { return [:] }
+        var found: [Tab.ID: Tab] = [:]
+        var above: Tab?
+        for row in rows {
+            guard case .tab(let tab, _, _, _) = row else { above = nil; continue }
+            if let up = above, pairs[up.id] == tab.id, found[up.id] == nil {
+                found[up.id] = tab
+                above = nil
+            } else {
+                above = tab
+            }
+        }
+        return found
+    }
+
     var body: some View {
+        let rows = self.rows
+        let merged = paired.ids.isEmpty ? [:] : GroupedRows.merged(rows, pairs: Split.shared.pairs)
+        let hidden = Set(merged.values.map(\.id))
         VStack(spacing: GroupedRows.gap) {
             ForEach(rows) { row in
                 switch row {
@@ -72,8 +96,13 @@ struct GroupedRows: View {
                         }
                     // Onto the folder: its first place opens under it, open or shut.
                     if block == .saved { SavedDropGap(drag: drag, anchor: .into(group.id), tint: tint) }
+                case .tab(let tab, _, _, _) where hidden.contains(tab.id):
+                    // shortcut: a drag past a merged pair counts its hidden row, so the
+                    // held row jumps one row there; fold pairs into FolderTree if it matters.
+                    EmptyView()
                 case .tab(let tab, let index, let group, let depth):
                     let step = GroupedRows.row + GroupedRows.gap
+                    let pair = merged[tab.id]
                     let held = dragging == tab.id
                     if block == .saved { SavedDropGap(drag: drag, anchor: .before(tab.id), tint: tint) }
                     VStack(spacing: GroupedRows.gap) {
@@ -81,7 +110,7 @@ struct GroupedRows: View {
                         SideRow(
                             browser: browser,
                             tab: tab,
-                            live: tab.id == browser.activeID,
+                            live: tab.id == browser.activeID || (pair != nil && pair?.id == browser.activeID),
                             editing: editing,
                             hot: heat.isHot(tab),
                             refusals: editing ? browser.refusals : 0,
@@ -90,7 +119,9 @@ struct GroupedRows: View {
                             // Fork (saved-close): the cross (and Close Tab on the
                             // row's menu) is the one close that takes a Saved row
                             // out of Saved; ⌘W only puts it down.
-                            close: { Sections.shared.remove(tab, in: browser) }
+                            close: { Sections.shared.remove(tab, in: browser) },
+                            pair: pair,
+                            pairLive: pair != nil && pair?.id == browser.activeID
                         )
                         .equatable() // Fork (space-perf): only the rows whose values changed draw again
                         .padding(.leading, CGFloat(depth) * Folders.step)
