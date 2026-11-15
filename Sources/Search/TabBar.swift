@@ -150,6 +150,9 @@ struct TabBar: View {
         }
         .frame(height: Metrics.strip)
         .onHover { nearby = $0 }
+        // Fork (polish r5): as the sidebar does — every site's real icon asked
+        // for, once per host per launch, rows asleep included.
+        .task(id: Spaces.shared.current(in: browser)) { Marks.warm(browser.tabs) }
         // A link dragged onto the row opens there.
         .onDrop(of: [.url, .text], isTargeted: $landing) { providers in
             browser.take(providers)

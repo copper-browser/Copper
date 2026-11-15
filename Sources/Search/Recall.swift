@@ -45,6 +45,8 @@ struct HistoryPanel: View {
     @FocusState private var hunting: Bool
     @State private var traces: [History.Trace] = []
     @State private var clearing = false
+    /// Fork (polish r5): a site's mark asked for (`Marks.want`) lands here.
+    @ObservedObject private var marks = Marks.ticker
 
     var body: some View {
         // Fork (ui-system): empty is a state (symbol, line, one way to fill
@@ -114,6 +116,7 @@ struct HistoryPanel: View {
             refresh()
         }
         .onChange(of: browser.recallHunt) { _, _ in refresh() }
+        .onChange(of: traces.map(\.url)) { _, urls in Marks.want(urls) } // Fork (polish r5): a site's real icon, not a globe, wherever it can be had
     }
 
     /// Three separate things, worded so nobody has to guess which one signs
