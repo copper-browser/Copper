@@ -520,7 +520,6 @@ struct SideBar: View {
 /// the chip borrowed from the space instead.
 struct RowMark: View {
     let icon: NSImage?
-    let letter: String
     let tint: SpaceTint
     var size: CGFloat = 16
 
@@ -533,14 +532,7 @@ struct RowMark: View {
                     .frame(width: size, height: size)
                     .clipShape(RoundedRectangle(cornerRadius: size * 0.24, style: .continuous))
             } else {
-                Text(letter)
-                    .font(.system(size: size * 0.52, weight: .semibold))
-                    .foregroundStyle(tint.ink.opacity(0.6))
-                    .frame(width: size, height: size)
-                    .background(
-                        RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
-                            .fill(tint.chip)
-                    )
+                Globe(size: size, ink: tint.ink.opacity(0.6)) // Fork (polish r5): no letter tiles
             }
         }
         .transition(.opacity)
@@ -559,7 +551,7 @@ private struct PinDropGhost: View {
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: min(12, min(width, height) * 0.28), style: .continuous)
-        SideGlyphMark(prefs: browser.prefs, icon: tab.icon, letter: tab.monogram, tint: tint,
+        RowMark(icon: tab.icon, tint: tint,
                       size: max(14, min(20, height * 0.46)))
             .opacity(0.7)
             .frame(width: width, height: height)
@@ -600,7 +592,7 @@ private struct PinSquare: View {
             if browser.editingPin == tab.id {
                 PinField(browser: browser, tab: tab)
             } else {
-                SideGlyphMark(prefs: browser.prefs, icon: tab.pinMark, letter: tab.pin ?? tab.monogram, tint: tint, size: mark) // Fork (settings-browse): Tabs show Letters / Site icons
+                RowMark(icon: tab.pinMark, tint: tint, size: mark) // Fork (polish r5): always the site icon
             }
         }
         .frame(width: width, height: height)
@@ -665,7 +657,7 @@ private struct SidePairHalf: View {
     var body: some View {
         HStack(spacing: 8) {
             if !tab.isBlank {
-                SideGlyphMark(prefs: browser.prefs, icon: tab.icon, letter: tab.monogram, tint: tint, size: 16)
+                RowMark(icon: tab.icon, tint: tint, size: 16)
             }
             FadingTitle(text: Text(tab.label)
                 .font(.system(size: SideBar.title, weight: live ? .semibold : .regular))
@@ -727,7 +719,7 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
                     .frame(height: 18)
             } else {
                 if !tab.isBlank {
-                    SideGlyphMark(prefs: browser.prefs, icon: tab.icon, letter: tab.monogram, tint: tint, size: 16) // Fork (settings-browse): Tabs show Letters / Site icons
+                    RowMark(icon: tab.icon, tint: tint, size: 16) // Fork (polish r5): always the site icon
                         .opacity(live ? 1 : 0.9)
                 }
                 if tab.bench {

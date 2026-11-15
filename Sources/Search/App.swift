@@ -102,14 +102,6 @@ struct AppCommands: Commands {
             Button(browser.folded ? "Show Sidebar" : "Hide Sidebar") { browser.toggleFold() }
                 .keyboardShortcut("s")
                 .disabled(!browser.prefs.sidebar)
-            Picker("Tabs Wear", selection: Binding(
-                get: { browser.prefs.glyph },
-                set: { browser.prefs.glyph = $0 }
-            )) {
-                ForEach(Glyph.allCases) { glyph in
-                    Text(glyph.title).tag(glyph)
-                }
-            }
             Divider()
             Button("Reload Page") { browser.reload() }
                 .keyboardShortcut("r")
@@ -593,7 +585,7 @@ struct ContentView: View {
             // Fork (ui-system): whose password, at a glance — the site's
             // mark. Fork (uib): the 7 pt key badge on its corner went; the
             // sentence beside it already says password.
-            Mark(icon: Favicons.shared.cached(login.host), letter: login.host.first.map { String($0).uppercased() } ?? "•", size: 18)
+            Mark(icon: Favicons.shared.cached(login.host), size: 18)
                 .padding(.trailing, 4)
                 .accessibilityHidden(true)
             // Fork (uichrome): the question, then the site and the account on

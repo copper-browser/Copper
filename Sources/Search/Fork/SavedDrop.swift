@@ -499,7 +499,7 @@ struct SideDragCardRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            SideGlyphMark(prefs: browser.prefs, icon: tab.icon, letter: tab.monogram, tint: tint, size: 16)
+            RowMark(icon: tab.icon, tint: tint, size: 16)
             FadingTitle(text: Text(tab.label) // Fork (motion): the row's own title, as on the row
                 .font(.system(size: SideBar.title))
                 .foregroundStyle(tint.ink))

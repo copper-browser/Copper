@@ -362,7 +362,9 @@ struct BookmarkOutline: View {
                         .foregroundStyle(Palette.faint)
                         .rotationEffect(.degrees(isOpen ? 90 : 0))
                         .frame(width: 10)
-                    Mark(icon: nil, letter: "", size: 15)
+                    RoundedRectangle(cornerRadius: 15 * 0.22, style: .continuous) // Fork (polish r5): the chip Mark drew for a folder
+                        .fill(Palette.ink.opacity(0.06))
+                        .frame(width: 15, height: 15)
                         .overlay(
                             Image(systemName: "folder.fill")
                                 .font(.system(size: 9))
@@ -370,7 +372,7 @@ struct BookmarkOutline: View {
                         )
                 } else {
                     Spacer().frame(width: 10)
-                    Mark(icon: Favicons.shared.cached(node.host ?? ""), letter: String((node.host ?? "•").prefix(1)).uppercased(), size: 15)
+                    Mark(icon: Favicons.shared.cached(node.host ?? ""), size: 15)
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(node.title)

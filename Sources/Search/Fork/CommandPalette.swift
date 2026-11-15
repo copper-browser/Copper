@@ -585,12 +585,12 @@ struct CommandPalette: View {
             case _ where CanvasLinks.isCanvas(offer.url):
                 glyph("scribble.variable") // Fork (canvas): an open canvas wears the Canvas mark here too
             default:
-                // The same mark the sidebar row wears — icon or tinted letter
-                // chip — so a site looks like itself on both surfaces. On
+                // The same mark the sidebar row wears — icon, or a globe until
+                // it lands — so a site looks like itself on both surfaces. On
                 // the card's ground, not the column's: a toned-dark column's
                 // light letter would vanish on a white card.
                 RowMark(icon: Marks.key(for: offer.url).flatMap { Favicons.shared.cached($0) },
-                        letter: initial, tint: SpaceTint(scheme).offColumn)
+                        tint: SpaceTint(scheme).offColumn)
             }
         }
 
@@ -605,12 +605,6 @@ struct CommandPalette: View {
                 .frame(width: 18, height: 18)
         }
 
-        private var source: String {
-            let host = offer.url.host() ?? offer.key
-            return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
-        }
-
-        private var initial: String { String(source.prefix(1)).uppercased() }
     }
 }
 

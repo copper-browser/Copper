@@ -238,7 +238,6 @@ enum CloudApply {
         let values: [String: String] = [
             "look": p.look.rawValue,
             "sidebar": String(p.sidebar),
-            "glyph": p.glyph.rawValue,
             "tabs.switching": p.tabSwitching.rawValue,
             "tabs.sleep": String(p.sleepsTabs),
             "spaces.swipe": p.swipeDirection.rawValue,
@@ -255,7 +254,6 @@ enum CloudApply {
         func bool(_ key: String) -> Bool? { values[key].map { $0 == "true" } }
         if let v = values["look"].flatMap(Look.init(rawValue:)), v != p.look { p.look = v }
         if let v = bool("sidebar"), v != p.sidebar { p.sidebar = v }
-        if let v = values["glyph"].flatMap(Glyph.init(rawValue:)), v != p.glyph { p.glyph = v }
         if let v = values["tabs.switching"].flatMap(TabSwitching.init(rawValue:)), v != p.tabSwitching { p.tabSwitching = v }
         if let v = bool("tabs.sleep"), v != p.sleepsTabs { p.sleepsTabs = v }
         if let v = values["spaces.swipe"].flatMap(SwipeDirection.init(rawValue:)), v != p.swipeDirection { p.swipeDirection = v }

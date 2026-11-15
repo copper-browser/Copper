@@ -173,7 +173,7 @@ struct HistoryPanel: View {
                 // mark (GitHub's) inked for the app's look vanished on a panel
                 // drawn in the other one.
                 Mark(icon: Favicons.shared.cached(trace.url.host()?.lowercased() ?? "").map { IconInk.legible($0, dark: scheme == .dark) },
-                     letter: trace.key.first.map { String($0).uppercased() } ?? "•", size: 16)
+                     size: 16)
                 // Fork (uiflows r4): the title said once, as ⌘K says it, and
                 // both lines fade out at the end instead of ending in "…".
                 VStack(alignment: .leading, spacing: 2) {

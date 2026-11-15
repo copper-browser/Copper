@@ -118,12 +118,6 @@ struct WelcomePanel: View {
                     withAnimation(Motion.glide) { prefs.sidebar = true }
                 }
             }
-            HStack(spacing: 12) {
-                Text("Tabs show")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Palette.muted)
-                Segmented(options: Glyph.allCases.map { ($0, $0.title) }, selection: $prefs.glyph, label: "Tabs show") // Fork (settings-a11y)
-            }
         }
     }
 

@@ -577,7 +577,7 @@ private struct ShareRow: View {
         switch row {
         case .tab(let id), .listed(let id):
             let tab = AgentTabs.find(id)
-            RowMark(icon: tab?.icon, letter: tab?.monogram ?? Tab.monogram(host: candidate?.host, title: candidate?.title ?? "Tab"),
+            RowMark(icon: tab?.icon,
                     tint: SpaceTint(scheme).offColumn)
         case .all(_, let open):
             Image(systemName: "chevron.right")

@@ -57,7 +57,6 @@ struct TabBar: View {
                                     let live = tab.id == browser.activeID
                                     TabPill(
                                         browser: browser,
-                                        prefs: browser.prefs,
                                         tab: tab,
                                         live: live,
                                         width: live ? liveWidth(in: geo.size.width) : width(in: geo.size.width), // Fork (uib)
@@ -354,7 +353,6 @@ struct Helm: View {
 
 private struct TabPill: View {
     @ObservedObject var browser: Browser
-    @ObservedObject var prefs: Preferences
     @ObservedObject var tab: Tab
     let live: Bool
     let width: CGFloat
@@ -387,14 +385,9 @@ private struct TabPill: View {
                 Group {
                     if browser.editingPin == tab.id {
                         PinField(browser: browser, tab: tab)
-                    } else if prefs.glyph == .icons, let icon = tab.pinMark { // Fork (polish r5): the pinned site's own mark
-                        Mark(icon: icon, letter: tab.pin ?? "", size: 16, dim: tab.asleep)
                     } else {
-                        Text(tab.pin ?? "")
-                            .font(.system(size: 12, weight: .medium))
-                            // A pin holding no page is still there and still
-                            // yours; it just isn't costing anything.
-                            .foregroundStyle(colour.opacity(tab.asleep ? 0.6 : 1))
+                        // Fork (polish r5): always the pinned site's own mark (or a globe), never its letter.
+                        Mark(icon: tab.pinMark, size: 16, dim: tab.asleep)
                     }
                 }
                 .frame(width: 16, height: 16)
@@ -451,7 +444,7 @@ private struct TabPill: View {
                 if tab.loading {
                     Ring()
                 } else {
-                    Mark(icon: prefs.glyph == .icons ? tab.icon : nil, letter: tab.monogram, size: 15, dim: tab.asleep)
+                    Mark(icon: tab.icon, size: 15, dim: tab.asleep)
                 }
             }
             .frame(width: 16, height: 16)
@@ -469,8 +462,8 @@ private struct TabPill: View {
                 TabAddressField(browser: browser)
                     .frame(height: 16)
             } else {
-                if prefs.glyph == .icons, !tab.isBlank {
-                    Mark(icon: tab.icon, letter: tab.monogram, size: 15)
+                if !tab.isBlank {
+                    Mark(icon: tab.icon, size: 15)
                 }
                 if tab.bench {
                     // A script's tab, not yours.

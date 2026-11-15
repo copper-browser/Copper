@@ -332,12 +332,6 @@ struct SettingsPanel: View {
                     ))
                 }
                 .settingsAnchor("tabs.sidebar")
-                Rule()
-                // Fork (settings-browse): the sidebar honours it too (Side.swift).
-                Line("Tabs show", "Beside the title, and on a pinned square") {
-                    Segmented(options: Glyph.allCases.map { ($0, $0.title) }, selection: $prefs.glyph)
-                }
-                .settingsAnchor("tabs.glyph")
             }
             SettingsSection("Switching") {
                 Line("⌃Tab switches to", "The next tab in the row, or the one you used last") {

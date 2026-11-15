@@ -143,7 +143,7 @@ struct SplitGhost: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            Mark(icon: tab.icon, letter: tab.monogram, size: 28)
+            Mark(icon: tab.icon, size: 28)
             Text(tab.title.isEmpty ? (tab.address.map(Address.pretty) ?? "New Tab") : tab.title)
                 .font(.system(size: 13))
                 .foregroundStyle(Palette.muted)
@@ -177,7 +177,7 @@ struct SplitBar: View {
             Spacer(minLength: 2)
 
             HStack(spacing: 5) {
-                Mark(icon: tab.icon, letter: tab.monogram, size: 13)
+                Mark(icon: tab.icon, size: 13)
                 Text(name)
                     .font(.system(size: 12))
                     .foregroundStyle(Palette.ink.opacity(0.8))
