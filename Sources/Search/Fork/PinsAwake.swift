@@ -292,3 +292,14 @@ final class PinsAwake {
         return value.int32Value > 0 ? value.int32Value : nil
     }
 }
+
+extension Tab {
+    /// Fork (polish r5): a pin's mark is its own site's (Gmail's M, not the
+    /// Google G of the page it was redirected to to sign in), when Copper
+    /// has that site's icon; otherwise the page's.
+    var pinMark: NSImage? {
+        guard let host = home?.host()?.lowercased(), host != address?.host()?.lowercased(),
+              let own = Favicons.shared.cached(host) else { return icon }
+        return own
+    }
+}

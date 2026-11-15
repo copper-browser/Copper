@@ -387,7 +387,7 @@ private struct TabPill: View {
                 Group {
                     if browser.editingPin == tab.id {
                         PinField(browser: browser, tab: tab)
-                    } else if prefs.glyph == .icons, let icon = tab.icon {
+                    } else if prefs.glyph == .icons, let icon = tab.pinMark { // Fork (polish r5): the pinned site's own mark
                         Mark(icon: icon, letter: tab.pin ?? "", size: 16, dim: tab.asleep)
                     } else {
                         Text(tab.pin ?? "")

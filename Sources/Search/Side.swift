@@ -600,7 +600,7 @@ private struct PinSquare: View {
             if browser.editingPin == tab.id {
                 PinField(browser: browser, tab: tab)
             } else {
-                SideGlyphMark(prefs: browser.prefs, icon: tab.icon, letter: tab.pin ?? tab.monogram, tint: tint, size: mark) // Fork (settings-browse): Tabs show Letters / Site icons
+                SideGlyphMark(prefs: browser.prefs, icon: tab.pinMark, letter: tab.pin ?? tab.monogram, tint: tint, size: mark) // Fork (settings-browse): Tabs show Letters / Site icons
             }
         }
         .frame(width: width, height: height)
