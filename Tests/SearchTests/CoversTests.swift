@@ -217,6 +217,7 @@ struct BigPinsLaunchTests {
 
     @Test("A restored pin marked asleep is left for you, keeps its weight and its last look")
     func restoredPin() {
+        _ = NSApplication.shared // `restore` reads the icon, which asks NSApp for the appearance
         let tab = Tab()
         let url = URL(string: "https://mail.example.com/")!
         tab.restore(url: url, title: "Mail")
