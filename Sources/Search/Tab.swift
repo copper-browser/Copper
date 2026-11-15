@@ -1131,7 +1131,7 @@ final class Tab: ObservableObject, Identifiable {
         memory = built.interactionState
         self.picture = picture
         // Fork (covers): and on disk, so it outlives the launch (Fork/Covers.swift).
-        if let picture, Covers.keeps(self) { Covers.save(picture, size: pictureSize, ground: pictureGround, for: url) }
+        if let picture, Covers.keeps(self), let jar { Covers.save(picture, size: pictureSize, ground: pictureGround, for: url, jar: jar) }
         dozed = pin != nil
         pending = url
         stale = false
@@ -1139,19 +1139,42 @@ final class Tab: ObservableObject, Identifiable {
         discard()
     }
 
+    /// Fork (covers, council R6 privacy): the cookie jar this page signs in
+    /// with — the shared one or a space's profile — which a kept picture is
+    /// filed under, so a profile signed in as someone else never opens on
+    /// your page's picture. Nil for a jar that keeps nothing (private tabs).
+    var jar: String? {
+        guard !shy, let jar = given?.websiteDataStore ?? store, jar.isPersistent else { return nil }
+        return jar.identifier?.uuidString ?? "default"
+    }
+
     /// Fork (covers): a pin put to sleep by "Let big pins sleep": the
     /// background loader leaves it asleep until you go to it (PinsAwake).
     private(set) var dozed = false
+
+    /// Fork (covers, council R6): what this pin's page last weighed, kept in
+    /// the session so a launch knows a big pin before it loads it.
+    var weighed: UInt64?
+
+    /// Fork (covers, council R6): a pin brought back by a launch — when you
+    /// last looked at it (the session's, not the launch's: a pin loaded in
+    /// the background isn't looked at) and whether it stays asleep under its
+    /// picture until you do (PinsAwake.restored).
+    func restorePin(seen: Date?, weighed: UInt64?, dozed: Bool) {
+        if let seen { touched = min(seen, Date()) }
+        self.weighed = weighed
+        self.dozed = dozed && asleep
+    }
 
     /// Fork (covers): the page's picture now, kept on disk for the next
     /// launch (Covers.flush, at quit). `done` once WebKit has answered and
     /// the write is queued — no hop through the main queue, which a quit's
     /// wait (a nested run loop) may not drain.
     func keepCover(_ done: @escaping () -> Void) {
-        guard Covers.keeps(self), let url = address, let built else { return done() }
+        guard Covers.keeps(self), let jar, let url = address, let built else { return done() }
         let size = built.bounds.size
         built.takeSnapshot(with: nil) { image, _ in
-            if let cg = image?.cgImage(forProposedRect: nil, context: nil, hints: nil) { Covers.save(cg, size: size, for: url) }
+            if let cg = image?.cgImage(forProposedRect: nil, context: nil, hints: nil) { Covers.save(cg, size: size, for: url, jar: jar) }
             done()
         }
     }
@@ -1425,12 +1448,18 @@ final class Tab: ObservableObject, Identifiable {
             cover = image
             // Whatever happens to the page, the picture doesn't outstay it.
             uncover(after: 4)
-        } else if Covers.keeps(self), let kept = Covers.load(for: url) {
+        } else if Covers.keeps(self), let jar {
             // Fork (covers): none in memory — a tab brought back by a launch,
-            // a pin — so the one it left on disk (Fork/Covers.swift).
-            coverGround = kept.ground
-            cover = kept.image
-            uncover(after: 4)
+            // a pin — so the one it left on disk (Fork/Covers.swift), read and
+            // decoded off the main thread (council R6: +15 ms a wake on main)
+            // and put up only if the page hasn't painted in the meantime.
+            Covers.load(for: url, jar: jar) { [weak self] kept in
+                guard let self, let kept, self.cover == nil, self.pending == nil, self.address == url,
+                      self.built?.unpainted ?? true else { return }
+                coverGround = kept.ground
+                cover = kept.image
+                uncover(after: 4)
+            }
         }
         picture = nil
         pictureGround = nil

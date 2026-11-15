@@ -16,7 +16,11 @@ import ImageIO
 // `covers/` in the world's folder. A tab waking with no picture in memory
 // takes the one on disk. Pictures are filed by the page's address, not the
 // tab — a tab gets a new id every launch, its address is what the session
-// keeps — so two tabs on one page share one. A tab closed for good takes its
+// keeps — so two tabs on one page share one. Council R6 (privacy): filed by
+// the page's cookie jar too (`Tab.jar`: the shared one or a space's profile),
+// so a profile signed in as someone else never opens on your inbox's picture;
+// pictures from before that (no jar in the name) are deleted at launch
+// (`Covers.start`). A tab closed for good takes its
 // picture with it (unless another tab is on that page); past 100 MB the
 // pictures not looked at longest go first. Private (shy) and bench tabs never
 // leave one.
@@ -29,48 +33,62 @@ struct CoverStore {
 
     /// What came off disk: the picture at the size in points it was taken
     /// at, and the page's ground colour read off it (Tab.ground).
-    struct Kept {
+    struct Kept: @unchecked Sendable { // made on the read queue, then only read on main
         let image: NSImage
         let ground: NSColor?
     }
 
-    func file(for url: URL) -> URL {
-        let digest = SHA256.hash(data: Data(url.absoluteString.utf8))
-        let name = digest.prefix(16).map { String(format: "%02x", $0) }.joined()
-        return folder.appendingPathComponent(name + ".jpg")
+    /// `<jar>-<page>.jpg`: hashes of the cookie jar and of the address.
+    func file(for url: URL, jar: String) -> URL {
+        func hex(_ text: String, _ n: Int) -> String {
+            SHA256.hash(data: Data(text.utf8)).prefix(n).map { String(format: "%02x", $0) }.joined()
+        }
+        return folder.appendingPathComponent(hex(jar, 6) + "-" + hex(url.absoluteString, 16) + ".jpg")
+    }
+
+    /// The pictures filed before they carried their jar: anyone's, so gone.
+    func purgeUnscoped() {
+        let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+        for url in files where url.pathExtension == "jpg" && !url.lastPathComponent.contains("-") {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     /// `jpeg` (any size, any quality) kept for `url`: made to fit `most`,
     /// written, and the oldest pictures let go past `cap`. Synchronous: the
     /// shared store runs it on its own queue (`Covers.save`).
     @discardableResult
-    func write(_ jpeg: Data, size: CGSize, ground: NSColor?, for url: URL) -> Bool {
+    func write(_ jpeg: Data, size: CGSize, ground: NSColor?, for url: URL, jar: String) -> Bool {
         guard let source = CGImageSourceCreateWithData(jpeg as CFData, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return false }
-        return write(image, size: size, ground: ground, for: url)
+        return write(image, size: size, ground: ground, for: url, jar: jar)
     }
 
     @discardableResult
-    func write(_ image: CGImage, size: CGSize, ground: NSColor?, for url: URL) -> Bool {
+    func write(_ image: CGImage, size: CGSize, ground: NSColor?, for url: URL, jar: String) -> Bool {
         guard let data = CoverStore.fit(image, size: size, ground: ground, most: most) else { return false }
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        guard (try? data.write(to: file(for: url), options: .atomic)) != nil else { return false }
+        guard (try? data.write(to: file(for: url, jar: jar), options: .atomic)) != nil else { return false }
         evict()
         return true
     }
 
-    /// The picture kept for `url`, marked as just used (the eviction's clock).
-    func read(for url: URL) -> Kept? {
-        let path = file(for: url)
-        guard let data = try? Data(contentsOf: path), let image = NSImage(data: data) else { return nil }
+    /// The picture kept for `url`, marked as just used (the eviction's clock),
+    /// decoded here and now (`ShouldCacheImmediately`): the covers' read
+    /// queue runs it, so a wake's main thread only attaches what came back.
+    func read(for url: URL, jar: String) -> Kept? {
+        let path = file(for: url, jar: jar)
+        guard let data = try? Data(contentsOf: path), let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
+        else { return nil }
         try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: path.path)
-        let said = CoverStore.said(in: data)
-        if let size = said.size, size.width > 0, size.height > 0 { image.size = size }
-        return Kept(image: image, ground: said.ground)
+        let said = CoverStore.said(in: source)
+        let size = said.size.flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil } ?? CGSize(width: image.width, height: image.height)
+        return Kept(image: NSImage(cgImage: image, size: size), ground: said.ground)
     }
 
-    func remove(for url: URL) {
-        try? FileManager.default.removeItem(at: file(for: url))
+    func remove(for url: URL, jar: String) {
+        try? FileManager.default.removeItem(at: file(for: url, jar: jar))
     }
 
     /// Everything, for Clear browsing data.
@@ -127,8 +145,12 @@ struct CoverStore {
     }
 
     static func said(in data: Data) -> (size: CGSize?, ground: NSColor?) {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return (nil, nil) }
+        return said(in: source)
+    }
+
+    static func said(in source: CGImageSource) -> (size: CGSize?, ground: NSColor?) {
+        guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
               let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any],
               let note = exif[kCGImagePropertyExifUserComment] as? String, note.hasPrefix("copper-cover ") else { return (nil, nil) }
         let parts = note.split(separator: " ")
@@ -179,31 +201,41 @@ enum Covers {
     /// Off for `defaults write <domain> covers -bool false`.
     static var on: Bool { Store.settings.object(forKey: "covers") as? Bool ?? true }
 
-    static func keeps(_ tab: Tab) -> Bool { on && !tab.shy && !tab.bench }
+    /// Private (shy), bench and non-persistent-jar tabs never leave one.
+    static func keeps(_ tab: Tab) -> Bool { on && !tab.shy && !tab.bench && tab.jar != nil }
 
-    static func save(_ jpeg: Data, size: CGSize, ground: NSColor?, for url: URL) {
+    static func save(_ jpeg: Data, size: CGSize, ground: NSColor?, for url: URL, jar: String) {
         guard on else { return }
-        queue.async { store.write(jpeg, size: size, ground: ground, for: url) }
+        queue.async { store.write(jpeg, size: size, ground: ground, for: url, jar: jar) }
     }
 
     /// A picture straight from WebKit (the quit's pass): its ground is read
     /// and it is encoded here, on the covers queue.
-    nonisolated static func save(_ image: CGImage, size: CGSize, for url: URL) {
-        queue.async { store.write(image, size: size, ground: Tab.ground(of: image), for: url) }
+    nonisolated static func save(_ image: CGImage, size: CGSize, for url: URL, jar: String) {
+        queue.async { store.write(image, size: size, ground: Tab.ground(of: image), for: url, jar: jar) }
     }
 
-    static func load(for url: URL) -> CoverStore.Kept? {
-        guard on else { return nil }
-        // Not behind the queue: a write lands whole (atomic), so this reads
-        // the last picture or the one before, never half of one.
-        return store.read(for: url)
+    /// Reads (file, decode, the eviction clock) go on a queue of their own,
+    /// ahead of the writes: a wake is waiting. A write lands whole (atomic),
+    /// so this reads the last picture or the one before, never half of one.
+    nonisolated private static let reads = DispatchQueue(label: "copper.covers.read", qos: .userInitiated)
+
+    /// The picture kept for `url` in `jar`, decoded off the main thread;
+    /// `done` on main, nil when there is none.
+    static func load(for url: URL, jar: String, _ done: @escaping @MainActor (CoverStore.Kept?) -> Void) {
+        guard on else { return done(nil) }
+        reads.async {
+            let kept = store.read(for: url, jar: jar)
+            DispatchQueue.main.async { MainActor.assumeIsolated { done(kept) } }
+        }
     }
 
     /// A tab closed for good: its picture goes, unless another tab is on
-    /// that page.
+    /// that page in the same jar.
     static func closed(_ tab: Tab) {
-        guard let url = tab.pending ?? tab.address, !AgentTabs.all.contains(where: { $0 !== tab && ($0.pending ?? $0.address) == url }) else { return }
-        queue.async { store.remove(for: url) }
+        guard let jar = tab.jar, let url = tab.pending ?? tab.address,
+              !AgentTabs.all.contains(where: { $0 !== tab && $0.jar == jar && ($0.pending ?? $0.address) == url }) else { return }
+        queue.async { store.remove(for: url, jar: jar) }
     }
 
     static func clear() { queue.async { store.removeAll() } }
@@ -229,7 +261,9 @@ enum Covers {
     /// headless window, and the probes that run one take a SIGTERM as ⌘Q and
     /// wipe the world's folder straight after (the pass raced their `rm`).
     static func start() {
-        guard watching == nil, !Headless.on else { return }
+        guard watching == nil else { return }
+        queue.async { store.purgeUnscoped() } // council R6: pictures from before the jar was in the name
+        guard !Headless.on else { return }
         watching = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { flush() }
         }
