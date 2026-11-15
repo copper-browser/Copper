@@ -10,7 +10,7 @@ import SwiftUI
 // sit on them, and that page has its own way to stop. Everywhere else —
 // above all on the shared tab itself — it is there.
 struct ShareBar: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var share = TabShare.shared
 
     var body: some View {

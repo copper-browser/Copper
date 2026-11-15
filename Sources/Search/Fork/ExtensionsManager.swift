@@ -160,7 +160,7 @@ enum ExtensionsPicture {
 /// The page itself, inside Settings' own scroll.
 @available(macOS 15.4, *)
 struct ExtensionsSettings: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var extensions: Extensions
 
     @ObservedObject private var manager = ExtensionManager.shared
@@ -315,7 +315,7 @@ struct ExtensionsSettings: View {
 private struct ExtensionCardRow: View {
     let item: Installed
     @ObservedObject var extensions: Extensions
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var manager = ExtensionManager.shared
     @ObservedObject private var facts = ExtensionFacts.shared
     /// The view the popup hangs from when it is opened from here.
@@ -455,7 +455,7 @@ private struct ExtensionCardRow: View {
 private struct ExtensionDetails: View {
     let item: Installed
     @ObservedObject var extensions: Extensions
-    @ObservedObject var browser: Browser
+    let browser: Browser
     let problems: [String]
     let spot: ExtensionPopupSpot
     @ObservedObject private var manager = ExtensionManager.shared

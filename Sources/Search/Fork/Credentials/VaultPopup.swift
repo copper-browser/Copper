@@ -9,7 +9,7 @@ import SwiftUI
 /// Fill is offered only for accounts this page (or the frame with the caret)
 /// would offer anyway, so a password never goes to a site it isn't for.
 struct VaultPopup: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var bitwarden = Bitwarden.shared
     @ObservedObject private var onePassword = OnePassword.shared
 

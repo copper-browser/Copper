@@ -116,7 +116,7 @@ struct SettingsPanel: View {
             Task { await Bitwarden.shared.refreshStatus() }
             CloudIntelligence.shared.settingsOpened() // Fork (cloud-intelligence)
         }
-        .onReceive(browser.$settingsPage.removeDuplicates()) { now in // Fork (settings-perf)
+        .onReceive(browser.feed(\.settingsPage).removeDuplicates()) { now in // Fork (settings-perf)
             guard now != page else { return }
             page = now
             Store.settings.set(now.rawValue, forKey: "settings.page")
@@ -126,7 +126,7 @@ struct SettingsPanel: View {
         // Fork (settings-browse): opened again before the last close had
         // faded, the panel is the same view, so onAppear doesn't come round —
         // start fresh all the same, not on the old query.
-        .onReceive(browser.$tuning.removeDuplicates().dropFirst().filter { $0 }) { _ in finder.opened() }
+        .onReceive(browser.feed(\.tuning).removeDuplicates().dropFirst().filter { $0 }) { _ in finder.opened() }
     }
 
     // MARK: - the rail

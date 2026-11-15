@@ -249,7 +249,7 @@ enum CanvasTabs {
 
 /// "New Tab" and "New Canvas": the New Tab row's right-click, Arc's new-item menu.
 struct NewItemMenu: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
 
     var body: some View {
         Button("New Tab") { browser.launch() }

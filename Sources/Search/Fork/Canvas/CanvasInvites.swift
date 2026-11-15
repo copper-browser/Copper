@@ -67,7 +67,7 @@ enum CanvasInvites {
 /// ContentView draws it after `panels` (App.swift) and keeps its place in
 /// `bars` with `CanvasInviteSlot`, so the other lines there stack above it.
 struct CanvasInviteBar: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var canvases = Canvases.shared
 
     var body: some View {
@@ -86,7 +86,7 @@ struct CanvasInviteBar: View {
 /// The pill's room in `bars`, unseen: whatever else rises from the foot
 /// stands above it instead of under it.
 struct CanvasInviteSlot: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var canvases = Canvases.shared
 
     var body: some View {
@@ -102,7 +102,7 @@ struct CanvasInviteSlot: View {
 /// "<who> invited you to “<name>”  Open  ×".
 struct CanvasInvitePill: View {
     let invite: Canvases.Invite
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @State private var joining = false
 
     var body: some View {

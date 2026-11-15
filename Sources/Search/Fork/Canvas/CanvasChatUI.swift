@@ -12,7 +12,7 @@ import UserNotifications
 /// "<who> mentioned you in “<canvas>” — ‘<excerpt>’  Open  ×" (or "assigned you", with the row as the excerpt).
 struct CanvasMentionPill: View {
     let mention: CanvasChat.Mention
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @State private var opening = false
 
     var body: some View {
@@ -93,7 +93,7 @@ struct CanvasMentionPill: View {
 
 /// The mention pill in the invite pill's stack (over the panels), or its room in `bars`, unseen.
 struct CanvasMentionStack: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     var placeholder = false
     @ObservedObject private var chat = CanvasChat.shared
 

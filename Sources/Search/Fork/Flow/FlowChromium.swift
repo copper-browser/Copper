@@ -155,7 +155,7 @@ extension Browser {
             let icons = Chromium.icons(in: source.readerSource, for: urls)
             Task { @MainActor in
                 for (host, data) in icons { await Favicons.shared.adopt(data, for: host) }
-                self.objectWillChange.send()
+                self.redraw()
             }
         }
         return (found, new)

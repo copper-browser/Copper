@@ -11,9 +11,17 @@ typealias OmniboxSuggestion = Suggestion
 // whether the address field is up. Small enough to read in one sitting, which
 // is the point of a browser with no features.
 
+//
+// Fork (observe): @Observable, not ObservableObject. Each view redraws for
+// the properties its body reads, not for any change at all: a space switch
+// told ~100 views (menus, pills, panels that read nothing of the tab list)
+// to draw again in the switch's own pass. Properties that were never
+// @Published stay out of it (@ObservationIgnored).
 @MainActor
-final class Browser: NSObject, ObservableObject {
-    @Published var tabs: [Tab] = [] {
+@Observable
+final class Browser: NSObject {
+    var tabs: [Tab] = [] {
+        willSet { sets.send((\Browser.tabs, newValue)) }
         didSet {
             // `tabs` is a window's projection of its current space. Keep the
             // canonical row in Spaces in step, then publish that row to every
@@ -22,7 +30,8 @@ final class Browser: NSObject, ObservableObject {
             Spaces.shared.tabsChanged(self)
         }
     }
-    @Published var activeID: Tab.ID? {
+    var activeID: Tab.ID? {
+        willSet { sets.send((\Browser.activeID, newValue)) }
         didSet {
             // The tab just left is the tab just looked at. Whether a tab has
             // gone unwatched long enough to sleep is counted from here, not
@@ -40,7 +49,7 @@ final class Browser: NSObject, ObservableObject {
     /// The tab whose page is currently out in the little window. Nothing
     /// floating means no window: the two are checked against each other rather
     /// than trusted to stay in step.
-    @Published private(set) var floating: Tab.ID? {
+    private(set) var floating: Tab.ID? {
         didSet {
             guard floating == nil, floater.showing else { return }
             floater.drop()
@@ -49,25 +58,44 @@ final class Browser: NSObject, ObservableObject {
 
     /// Everything there is to set. Held here so the whole window redraws when
     /// one of them changes.
-    let prefs: Preferences // Fork: windows — one set, shared by every window
+    private(set) var prefs: Preferences // Fork: windows — one set, shared by every window; observe: tracked, so a view reading it hears `prefs` change (`redraw`)
     /// The settings panel.
-    @Published var tuning = false
+    var tuning = false { willSet { sets.send((\Browser.tuning, newValue)) } }
     /// The page the settings panel should open on. Bench uses this to land on
     /// Passwords without pretending a native sidebar row is a web element.
-    @Published var settingsPage: SettingsPanel.Page =
-        SettingsPanel.Page(rawValue: Store.settings.string(forKey: "settings.page") ?? "") ?? .general
+    var settingsPage: SettingsPanel.Page =
+        SettingsPanel.Page(rawValue: Store.settings.string(forKey: "settings.page") ?? "") ?? .general {
+        willSet { sets.send((\Browser.settingsPage, newValue)) }
+    }
     /// The first-launch walk-through, over everything. Also from the menu.
-    @Published var welcoming = false
+    var welcoming = false { willSet { sets.send((\Browser.welcoming, newValue)) } }
+
+    /// Fork (observe): what `$tabs`, `$activeID`, … were before @Observable,
+    /// for the few Combine sinks outside SwiftUI: the value now, then each
+    /// new one as it is set (before it lands, as @Published sent it). Only
+    /// properties whose willSet sends to `sets` have one.
+    @ObservationIgnored private let sets = PassthroughSubject<(AnyKeyPath, Any), Never>()
+    func feed<T>(_ key: KeyPath<Browser, T>) -> AnyPublisher<T, Never> {
+        sets.filter { $0.0 == key }.map { $0.1 as! T }.prepend(self[keyPath: key]).eraseToAnyPublisher()
+    }
+
+    /// Fork (observe): what `objectWillChange.send()` did for the stores the
+    /// window forwards — every view reading the settings or the bookmarks
+    /// draws again (a change in them, icons that came late, a move-in).
+    func redraw() {
+        withMutation(keyPath: \.prefs) {}
+        withMutation(keyPath: \.bookmarks) {}
+    }
 
     // MARK: - bookmarks
 
-    let bookmarks: Bookmarks
+    private(set) var bookmarks: Bookmarks
     /// The full list, for taking things out.
-    @Published var bookmarking = false
+    var bookmarking = false
     /// The dropdown off the button.
-    @Published var bookmarksOpen = false
+    var bookmarksOpen = false
     /// Fork (vault-popup): every account, searchable, off the key door or ⇧⌘Y.
-    @Published var vaultOpen = false
+    var vaultOpen = false
 
     /// ⇧⌘B. The page you are on, at the end of the list.
     func bookmarkCurrent() {
@@ -94,7 +122,7 @@ final class Browser: NSObject, ObservableObject {
             let icons = Chromium.icons(in: source, for: urls)
             Task { @MainActor in
                 for (host, data) in icons { await Favicons.shared.adopt(data, for: host) }
-                self.objectWillChange.send()
+                self.redraw()
             }
         }
         return count
@@ -107,8 +135,8 @@ final class Browser: NSObject, ObservableObject {
 
     /// ⌘S: the column folded away, and slid out over the page for a look
     /// while it is (see Fold.swift).
-    @Published var folded = false
-    @Published var peeking = false
+    var folded = false
+    var peeking = false
 
     /// Fork (perf): the field up or not, as ⌘K's bar or ⌘T's card, and the
     /// caret asked back into it, in an object of their own. Published from
@@ -169,7 +197,7 @@ final class Browser: NSObject, ObservableObject {
         set { field.picked = newValue }
     }
     /// Bumped when what was typed isn't an address and can't be searched for.
-    @Published private(set) var refusals = 0
+    private(set) var refusals = 0
     /// Bumped whenever the cursor should go back into the field.
     private(set) var focusRequest: Int {
         get { bar.focusRequest }
@@ -192,7 +220,11 @@ final class Browser: NSObject, ObservableObject {
         set { if bar.launching != newValue { bar.launching = newValue } }
     }
     /// True between the first ⌘K and letting go of ⌘.
-    var cycling = false
+    @ObservationIgnored var cycling = false
+    /// Fork (observe): bumped by Spaces whenever this window turns to another
+    /// space; `Spaces.current(in:)` reads it, so a view drawing this window's
+    /// space redraws on a switch even when the tab list doesn't change.
+    var spaceTurns = 0
 
     var active: Tab? { tabs.first { $0.id == activeID } }
     var fieldShowing: Bool { editing || (active?.isBlank ?? (taken == nil)) } // Fork: windows — not over "open in another window"
@@ -205,11 +237,11 @@ final class Browser: NSObject, ObservableObject {
 
     // MARK: - looking for something on the page
 
-    @Published var finding = false
-    @Published var needle = "" { didSet { look(forward: true) } }
+    var finding = false
+    var needle = "" { didSet { look(forward: true) } }
     /// Set when the page doesn't hold what was asked for.
-    @Published private(set) var missed = false
-    @Published private(set) var findFocus = 0
+    private(set) var missed = false
+    private(set) var findFocus = 0
 
     func openFind() {
         guard active?.isBlank == false else { return }
@@ -254,9 +286,9 @@ final class Browser: NSObject, ObservableObject {
     let loot: Loot
     let floater = Float()
     /// True while the pointer is picking things to hide.
-    @Published private(set) var veiling = false
+    private(set) var veiling = false
     /// True while the list of what is hidden here is up.
-    @Published var reviewing = false {
+    var reviewing = false {
         didSet { if !reviewing { stopPeeking() } }
     }
 
@@ -320,7 +352,7 @@ final class Browser: NSObject, ObservableObject {
 
     /// A name and password a page has just sent, waiting to be offered a place
     /// in the keychain. Held only until you answer.
-    @Published private(set) var offering: Offer?
+    private(set) var offering: Offer?
 
     struct Offer: Equatable {
         let login: Login
@@ -333,7 +365,7 @@ final class Browser: NSObject, ObservableObject {
     /// The accounts kept for the site whose sign-in box has the caret, and
     /// where that box is — a list hangs from it, and a click fills the form.
     /// Nothing is put into a page until you have pointed at it.
-    @Published private(set) var suggesting: Suggesting?
+    private(set) var suggesting: Suggesting?
 
     enum Suggestion: Identifiable, Hashable {
         case credential(Credential)
@@ -385,29 +417,29 @@ final class Browser: NSObject, ObservableObject {
     }
     /// The row whose secret is being fetched. Keeping it published lets the
     /// picker show a small, transient "Fetching…" state without exposing it.
-    @Published private(set) var fetching: CredentialID?
+    private(set) var fetching: CredentialID?
     /// Set once you have picked, so the list doesn't come straight back for
     /// the box you are still in. Cleared when the caret leaves the boxes.
-    private var pickedInto: Tab.ID?
+    @ObservationIgnored private var pickedInto: Tab.ID?
     /// The account last put into each tab from the list. Its two-step code
     /// comes first on the page that asks for one, which is often on another
     /// host than the sign-in (accounts.google.com, login.microsoftonline.com).
-    private var signedInWith: [Tab.ID: Credential] = [:]
+    @ObservationIgnored private var signedInWith: [Tab.ID: Credential] = [:]
     /// Fork (auto-codes): when each tab's sign-in went in, and the sign-in
     /// whose code was already filled on its own — once per sign-in.
-    private var signedInAt: [Tab.ID: Date] = [:]
-    private var autoCoded: [Tab.ID: Date] = [:]
+    @ObservationIgnored private var signedInAt: [Tab.ID: Date] = [:]
+    @ObservationIgnored private var autoCoded: [Tab.ID: Date] = [:]
     /// A code went into this tab's box. A password pick does not hold back
     /// the code list: the page that asks for the code often replaces the
     /// sign-in without the caret ever leaving a box.
-    private var codePickedInto: Tab.ID?
+    @ObservationIgnored private var codePickedInto: Tab.ID?
     /// Fork (new-password): the password last made for each tab, held only
     /// in memory so its own submit isn't offered for saving a second time.
-    private var madePasswords: [Tab.ID: (host: String, user: String, password: String, deferred: Bool)] = [:]
+    @ObservationIgnored private var madePasswords: [Tab.ID: (host: String, user: String, password: String, deferred: Bool)] = [:]
     /// The list is taken down a beat after the caret leaves, not the same
     /// instant: clicking a row can take the caret out of the page first, and
     /// a list that vanished on the way down would never be clicked.
-    private var lowering: DispatchWorkItem?
+    @ObservationIgnored private var lowering: DispatchWorkItem?
 
     func keepOffer() {
         guard let offer = offering else { return }
@@ -703,9 +735,9 @@ final class Browser: NSObject, ObservableObject {
 
     // The list of what is kept.
 
-    @Published var managing = false { didSet { if managing { relist() } } }
-    @Published private(set) var saved: [Login] = []
-    @Published var hunting = ""
+    var managing = false { didSet { if managing { relist() } } }
+    private(set) var saved: [Login] = [] { willSet { sets.send((\Browser.saved, newValue)) } }
+    var hunting = ""
 
     struct SiteRow {
         let host: String
@@ -799,9 +831,9 @@ final class Browser: NSObject, ObservableObject {
 
     // MARK: - what is kept, and getting rid of it
 
-    @Published var recalling = false
-    @Published var hoarding = false
-    @Published var recallHunt = ""
+    var recalling = false
+    var hoarding = false
+    var recallHunt = ""
 
     /// Cookies, caches, local storage — everything a site left on this Mac.
     /// Clearing it signs you out of everything, which is the point.
@@ -838,7 +870,7 @@ final class Browser: NSObject, ObservableObject {
     /// Fork (page-capture): every request waits its turn, answers are kept per
     /// site and per device, and what macOS itself allows is said in the bar —
     /// this window's desk, Fork/Capture/ (docs/capture.md).
-    lazy var capture = CaptureDesk(browser: self)
+    @ObservationIgnored lazy var capture = CaptureDesk(browser: self)
 
     /// Everything a site has been allowed, for the day you want to change
     /// your mind.
@@ -852,7 +884,7 @@ final class Browser: NSObject, ObservableObject {
     /// The pinned tab whose letter is being typed over, in place. There is no
     /// dialog: pinning happens at once, with a letter guessed from the address,
     /// and that letter arrives selected so the next keystroke replaces it.
-    @Published var editingPin: Tab.ID?
+    var editingPin: Tab.ID?
 
     var pinnedCount: Int { tabs.filter { $0.pin != nil }.count }
 
@@ -899,8 +931,8 @@ final class Browser: NSObject, ObservableObject {
 
     /// Clicking the tab you are already on turns it into the address, short
     /// form, ready to be changed.
-    @Published private(set) var editingTab: Tab.ID?
-    @Published var tabDraft = ""
+    private(set) var editingTab: Tab.ID?
+    var tabDraft = ""
 
     func beginTabEdit(_ tab: Tab) {
         guard let url = tab.address else {
@@ -932,7 +964,7 @@ final class Browser: NSObject, ObservableObject {
     // MARK: - saying so
 
     /// A line that rises from the bottom, says one thing, and leaves.
-    @Published private(set) var announcement: String?
+    private(set) var announcement: String?
 
     /// ⌘⇧C. The address, in the clipboard, and a line that says as much.
     func copyAddress() {
@@ -962,11 +994,11 @@ final class Browser: NSObject, ObservableObject {
     }
 
     /// The names extensions asked their downloads to be saved under.
-    var namedDownloads: [URL: String] = [:]
+    @ObservationIgnored var namedDownloads: [URL: String] = [:]
 
     /// Tabs you closed, newest last, so ⌘⇧T can put them back where they were
     /// and the History menu can offer them by name.
-    @Published private(set) var ghosts: [Ghost] = []
+    private(set) var ghosts: [Ghost] = []
 
     struct Ghost: Identifiable, Equatable {
         let id = UUID()
@@ -977,25 +1009,25 @@ final class Browser: NSObject, ObservableObject {
         var label: String { title.isEmpty ? Address.pretty(url) : title }
     }
 
-    private var bag = Set<AnyCancellable>()
+    @ObservationIgnored private var bag = Set<AnyCancellable>()
     /// The minute-by-minute look for tabs to put to sleep, and the ear for
     /// macOS saying memory is short. See Sleep.swift.
-    var dozing: Timer?
-    var pressure: DispatchSourceMemoryPressure?
+    @ObservationIgnored var dozing: Timer?
+    @ObservationIgnored var pressure: DispatchSourceMemoryPressure?
     /// Downloads still under way. See `keep(_:)`.
-    var downloading: [WKDownload] = []
+    @ObservationIgnored var downloading: [WKDownload] = []
     /// The Chrome Web Store's pages, told when installs come and go. See StoreRelay.swift.
-    var storeWatch: AnyCancellable?
-    private var hush: DispatchWorkItem?
-    private var zoomShown = 100
-    private var remembering = false
+    @ObservationIgnored var storeWatch: AnyCancellable?
+    @ObservationIgnored private var hush: DispatchWorkItem?
+    @ObservationIgnored private var zoomShown = 100
+    @ObservationIgnored private var remembering = false
     /// The untouched blank tab created only for a reopened/new window. It is
     /// removed on close without affecting the shared real rows.
-    private var windowBlankID: Tab.ID?
+    @ObservationIgnored private var windowBlankID: Tab.ID?
     /// Fork: windows — the tab another window took off this stage while it
     /// was the only one here. The stage says so and offers it back
     /// (`TakenStage`); cleared the moment anything is active here again.
-    @Published var taken: Tab.ID?
+    var taken: Tab.ID?
 
     // MARK: - beginning and ending
 
@@ -1035,7 +1067,7 @@ final class Browser: NSObject, ObservableObject {
         // menu's eight lines; the menu watches the history itself now
         // (AppCommands).
         bookmarks.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
+            .sink { [weak self] in self?.withMutation(keyPath: \.bookmarks) {} }
             .store(in: &bag)
         watchVault()
         // An icon that arrives is put on every tab showing that site, not only
@@ -1139,7 +1171,7 @@ final class Browser: NSObject, ObservableObject {
         // The window and the menus are drawn from this object; a setting that
         // changes what they show has to be heard here.
         prefs.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
+            .sink { [weak self] in self?.withMutation(keyPath: \.prefs) {} }
             .store(in: &bag)
 
         // WebKit read the defaults once at the start and keeps its own copy.
@@ -1277,10 +1309,10 @@ final class Browser: NSObject, ObservableObject {
     /// stores remain borrowed from the main browser.
     private func joinAsWindow() {
         bookmarks.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
+            .sink { [weak self] in self?.withMutation(keyPath: \.bookmarks) {} }
             .store(in: &bag)
         prefs.objectWillChange
-            .sink { [weak self] in self?.objectWillChange.send() }
+            .sink { [weak self] in self?.withMutation(keyPath: \.prefs) {} }
             .store(in: &bag)
         prefs.$look
             .dropFirst()
@@ -2328,7 +2360,7 @@ final class Browser: NSObject, ObservableObject {
 
     /// Fork (developer-shortcuts): the arrows have moved since the last
     /// keystroke, so the row they are on is what Tab takes.
-    private var walked = false
+    @ObservationIgnored private var walked = false
 
     /// The arrow keys walk the list, and walking off the top lets go of it.
     func walk(_ step: Int) {

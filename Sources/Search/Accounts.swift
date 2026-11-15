@@ -4,7 +4,7 @@ import SwiftUI
 /// caret is in. The same white and hairline as everything else that floats
 /// over a page; a click puts one row into the form.
 struct AccountList: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     let asked: Browser.Suggesting
 
     /// Loading and locked controls belong to a login picker, not an empty card

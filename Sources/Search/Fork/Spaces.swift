@@ -134,7 +134,12 @@ final class Spaces: ObservableObject {
     /// next launch has to build it with the same one or it comes back signed
     /// out. Written as the pin's `space` in session.json; nothing else reads it.
     private var pinHome: [Tab.ID: UUID] = [:]
-    private var currentByBrowser: [ObjectIdentifier: UUID] = [:]
+    private var currentByBrowser: [ObjectIdentifier: UUID] = [:] {
+        // Fork (observe): a window that turned to another space says so on its
+        // own (Browser.spaceTurns), so views drawing `current(in:)` hear it
+        // without observing every change of Spaces.
+        didSet { for b in browsers where oldValue[ObjectIdentifier(b)] != currentByBrowser[ObjectIdentifier(b)] { b.spaceTurns &+= 1 } }
+    }
     private var activeByBrowserSpace: [ObjectIdentifier: [UUID: Tab.ID]] = [:]
     private var updating = 0
     private weak var mainBrowser: Browser?
@@ -153,7 +158,7 @@ final class Spaces: ObservableObject {
     /// The projection a window draws: global pins first, then that space's
     /// loose tabs. Callers should use this rather than assembling the row.
     func projection(_ id: UUID) -> [Tab] { pins + row(id) }
-    func current(in browser: Browser) -> UUID { currentByBrowser[ObjectIdentifier(browser)] ?? current }
+    func current(in browser: Browser) -> UUID { _ = browser.spaceTurns; return currentByBrowser[ObjectIdentifier(browser)] ?? current }
     func space(in browser: Browser) -> Space { all.first { $0.id == current(in: browser) } ?? all[0] }
     func spaceID(of tab: Tab) -> UUID? {
         guard tab.pin == nil else { return nil }
@@ -1206,7 +1211,7 @@ extension Session.Entry {
 /// Everything Copper adds to the menu bar, in one Commands so upstream's
 /// `.commands {}` gains a single line (the builder takes ten at most).
 struct ForkCommands: Commands {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var spaces = Spaces.shared
     @ObservedObject var split = Split.shared
     @ObservedObject var agent = Agent.shared

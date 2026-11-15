@@ -129,7 +129,7 @@ final class Extensions: NSObject, ObservableObject {
     func start(for browser: Browser) {
         self.browser = browser
         controller.didOpenWindow(window)
-        browser.$tabs
+        browser.feed(\.tabs)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.follow() }
             .store(in: &bag)
@@ -139,7 +139,7 @@ final class Extensions: NSObject, ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.follow() }
             .store(in: &bag)
-        browser.$activeID
+        browser.feed(\.activeID)
             .removeDuplicates()
             .scan((nil, nil)) { ($0.1, $1) }
             .receive(on: DispatchQueue.main)

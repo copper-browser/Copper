@@ -4,7 +4,7 @@ import SwiftUI
 /// rest, and the same rule: a password is never shown until you have proved
 /// you are you, and never for longer than it takes to read it.
 struct PasswordsPanel: View {
-    @ObservedObject var browser: Browser
+    @Bindable var browser: Browser
 
     @FocusState private var hunting: Bool
     @State private var open: String?
@@ -297,7 +297,7 @@ struct PasswordsPanel: View {
 
     /// Typing one in by hand. The site, the name, the password, and Save.
     private struct AddForm: View {
-        @ObservedObject var browser: Browser
+        let browser: Browser
         let done: () -> Void
 
         @State private var site = ""

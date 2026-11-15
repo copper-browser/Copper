@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 /// not a badge bolted onto the toolbar: when there is nothing to say, there is
 /// nothing to look at.
 struct DownloadsDoor: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var downloads = Downloads.shared
     var size: CGFloat = 26
     var arrowEdge: Edge = .bottom
@@ -120,7 +120,7 @@ private struct DownloadRing: View {
 /// The anchored list is intentionally narrower and quieter than the full
 /// Downloads panel. It answers "what is happening?" before "what happened?".
 struct DownloadsPopover: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var downloads: Downloads
 
     private var session: [Downloads.Item] { downloads.shown }
@@ -191,7 +191,7 @@ struct DownloadsPopover: View {
 struct DownloadRow: View {
     var item: Downloads.Item?
     var keep: Keep?
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var downloads: Downloads
 
     init(item: Downloads.Item, browser: Browser, downloads: Downloads) {

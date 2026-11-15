@@ -461,7 +461,7 @@ struct SavedDropMark: View {
 struct SideDragCard: View {
     @ObservedObject var drag: SideDrag
     @ObservedObject var hand: SideDrag.Hand
-    @ObservedObject var browser: Browser
+    let browser: Browser
     let tint: SpaceTint
 
     init(drag: SideDrag, browser: Browser, tint: SpaceTint) {
@@ -493,7 +493,7 @@ struct SideDragCard: View {
 /// The card itself: the row's mark and title on the column's paper, with
 /// the lift the live row wears and a shadow a step deeper.
 struct SideDragCardRow: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var tab: Tab
     let tint: SpaceTint
 

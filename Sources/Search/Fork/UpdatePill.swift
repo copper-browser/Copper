@@ -370,7 +370,7 @@ struct UpdateInk {
 /// The wide pill at the foot of the column, with the space's ink handed in
 /// as the slide mixes it. Takes no room while there is nothing to say.
 struct UpdatePillSlot: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var updates = Updates.shared
     @ObservedObject private var pill = UpdatePill.shared
     @Environment(\.accessibilityReduceMotion) private var still
@@ -400,7 +400,7 @@ struct UpdatePillSlot: View {
 
 /// The toolbar's capsule, among the doors at the far end of the tab strip.
 struct UpdateToolbarPill: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var updates = Updates.shared
     @ObservedObject private var pill = UpdatePill.shared
     @ObservedObject private var spaces = Spaces.shared
@@ -428,7 +428,7 @@ struct UpdateToolbarPill: View {
 /// The folded column's badge, in the window's bottom-left corner — where the
 /// column's foot would be. Only while the column is folded and not out.
 struct UpdateCorner: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var prefs: Preferences
     @ObservedObject private var updates = Updates.shared
     @ObservedObject private var pill = UpdatePill.shared
@@ -458,7 +458,7 @@ struct UpdateCorner: View {
 struct UpdatePillView: View {
     enum Style { case wide, compact, corner }
 
-    @ObservedObject var browser: Browser
+    let browser: Browser
     let cue: UpdateCue
     let tint: SpaceTint
     var style: Style = .wide
@@ -690,7 +690,7 @@ private struct UpdateRing: View {
 /// What's New: the feed's gist of the release, the way Settings would say
 /// it, with the full changelog a click away and the pill's step beside it.
 struct UpdateNotes: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     let cue: UpdateCue
     let close: () -> Void
     @ObservedObject private var updates = Updates.shared
@@ -770,7 +770,7 @@ struct UpdateNotes: View {
 /// column is its flat colour (a picture or a scene is not drawn), and the
 /// badge is shown both at rest and spelled out as under the pointer.
 struct UpdatePillSheet: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     let dark: Bool
 
     private var cues: [UpdateCue] {

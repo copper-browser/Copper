@@ -114,7 +114,7 @@ final class Handoff: ObservableObject {
 
 /// The bar at the bottom of the window (App.swift `bars`), one ask at a time.
 struct HandoffSlot: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var handoff = Handoff.shared
 
     var body: some View {

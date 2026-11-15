@@ -6,7 +6,7 @@ import AppKit
 /// links from other apps should come here. Nothing is asked twice, and every
 /// page can be skipped.
 struct WelcomePanel: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var prefs: Preferences
 
     @State private var page = 0

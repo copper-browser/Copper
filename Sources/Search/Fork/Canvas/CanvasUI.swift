@@ -144,7 +144,7 @@ final class CanvasUI: ObservableObject {
 
 /// The door. A dot on it while any canvas has someone else in it.
 struct CanvasDoor: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     let tint: SpaceTint
     @ObservedObject private var ui = CanvasUI.shared
     @ObservedObject private var presence = CanvasPresence.shared
@@ -188,7 +188,7 @@ struct CanvasDoor: View {
 
 /// The card.
 struct CanvasPopover: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var canvases = Canvases.shared
     @ObservedObject private var ui = CanvasUI.shared
     @ObservedObject private var presence = CanvasPresence.shared
@@ -425,7 +425,7 @@ private struct CanvasSection: View {
 /// One canvas: a click opens it (switching to its tab if it has one).
 struct CanvasRow: View {
     let entry: Canvases.Entry
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var presence = CanvasPresence.shared
     @ObservedObject private var canvases = Canvases.shared
     @ObservedObject private var ui = CanvasUI.shared
@@ -573,7 +573,7 @@ struct CanvasRow: View {
 /// pill only puts the pill away.
 private struct CanvasInviteRow: View {
     let invite: Canvases.Invite
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var ui = CanvasUI.shared
     /// Which answer is on its way, if one is.
     @State private var working: Bool?
@@ -822,7 +822,7 @@ private struct CanvasMembers: View {
 
 private struct CanvasDeleteConfirm: View {
     let entry: Canvases.Entry
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var ui = CanvasUI.shared
     @State private var working = false
     @State private var failure: String?

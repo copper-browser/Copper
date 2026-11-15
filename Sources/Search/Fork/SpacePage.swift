@@ -19,7 +19,7 @@ import UniformTypeIdentifiers
 
 /// The page: the spaces to pick from, and the picked one's controls.
 struct SpacesSettingsPage: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var editing = SpaceEditing.shared
     @ObservedObject private var spaces = Spaces.shared
     @Environment(\.colorScheme) private var scheme
@@ -135,7 +135,7 @@ private struct SpaceChipDrop: DropDelegate {
 
 /// One space's controls, as Settings › Spaces shows them under the picker.
 struct SpacePage: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     let id: UUID
 
     @ObservedObject private var spaces = Spaces.shared

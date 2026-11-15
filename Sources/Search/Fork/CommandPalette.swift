@@ -14,7 +14,7 @@ import AppKit
 // hands it. What a row *is* is decided in CommandBar.offers.
 
 struct CommandPalette: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     /// A page is behind this, rather than an empty tab. The page gets dimmed;
     /// an empty tab has nothing to dim.
     let over: Bool

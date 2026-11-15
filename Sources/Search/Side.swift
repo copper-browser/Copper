@@ -13,7 +13,7 @@ import SwiftUI
 /// and the fact that the live row is a pill in a stronger tint of the same
 /// hue than everything around it.
 struct SideBar: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var prefs: Preferences
     @ObservedObject private var spaces = Spaces.shared
     @ObservedObject private var sections = Sections.shared
@@ -551,7 +551,7 @@ struct RowMark: View {
 /// Fork (saved-drag): the place a row carried up over the favourites will
 /// take, ringed in the space's colour as a folder lit for a drop is.
 private struct PinDropGhost: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var tab: Tab
     let tint: SpaceTint
     let width: CGFloat
@@ -574,7 +574,7 @@ private struct PinDropGhost: View {
 /// the same cell Copper's pins have always been, only with the icon in front
 /// and the letter behind it.
 private struct PinSquare: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var tab: Tab
     let live: Bool
     let tint: SpaceTint
@@ -961,7 +961,7 @@ struct Door: View {
 /// The host gives them its room and truncates, rather than sitting under
 /// them. Downloads, while there are any, stay put ahead of them.
 struct SideAddress: View {
-    @ObservedObject var browser: Browser
+    @Bindable var browser: Browser
     let tint: SpaceTint
     @ObservedObject private var downloads = Downloads.shared
     @ObservedObject private var bench = SideAddressHover.shared

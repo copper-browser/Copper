@@ -9,7 +9,7 @@ import SwiftUI
 // in each one starts.
 
 struct GroupedRows: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var prefs: Preferences
     @ObservedObject var groups = Groups.shared
     @ObservedObject private var heat = Heat.shared // Fork (space-perf): once for the block, not once a row
@@ -202,7 +202,7 @@ struct GroupedRows: View {
 /// width at all: it takes the glyph's place under the pointer, which is
 /// where Arc keeps its own, and rotates as the folder opens.
 struct GroupHead: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var groups = Groups.shared
     let group: TabGroup
     let count: Int
@@ -339,7 +339,7 @@ struct GroupHead: View {
 
 /// The Group submenu on a tab's context menu, in both layouts.
 struct GroupMenu: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var tab: Tab
     @ObservedObject var groups = Groups.shared
 
@@ -370,7 +370,7 @@ struct GroupMenu: View {
 
 /// The Groups menu in the menu bar; ⌃G is the one key to learn.
 struct GroupCommands: Commands {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var groups = Groups.shared
 
     var body: some Commands {

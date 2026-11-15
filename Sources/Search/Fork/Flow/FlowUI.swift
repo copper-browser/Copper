@@ -10,7 +10,7 @@ import SwiftUI
 /// a footer pinned to the bottom. A change of phase redraws the middle in
 /// place; nothing moves, nothing animates from one layout to the next.
 struct FlowSheet: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var flow = Flow.shared
 
     var body: some View {

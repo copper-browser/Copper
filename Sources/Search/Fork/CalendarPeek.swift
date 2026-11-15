@@ -118,7 +118,7 @@ final class CalendarPeek: ObservableObject {
 
 /// The card beside the pin.
 struct CalendarPeekCard: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var peek = CalendarPeek.shared
     var now = Date()
 

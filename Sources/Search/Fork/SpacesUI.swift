@@ -126,7 +126,7 @@ final class SpaceEditing: ObservableObject {
 /// The title row: which space this column is. Under the lights, above the
 /// favourites — the one label the column was missing.
 struct SpaceHeader: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var spaces = Spaces.shared
     @Environment(\.colorScheme) private var scheme
     @State private var over = false
@@ -202,7 +202,7 @@ struct SpaceHeader: View {
 // MARK: - the strip at the foot of the column
 
 struct SpaceStrip<Tools: View>: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     /// The column's ink as the slide mixes it (SlideInk), or nil for the
     /// current space's own.
     var tint: SpaceTint? = nil
@@ -478,7 +478,7 @@ struct SpaceChip: View {
 
 /// The space menu — from the header, the chip's right-click, and ⌘K.
 struct SpaceMenu: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     let space: Space
     @ObservedObject private var spaces = Spaces.shared
 

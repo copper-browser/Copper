@@ -15,7 +15,7 @@ import SwiftUI
 // fades at the bottom edge while there is more below.
 
 struct CloudPage: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     /// What the Connect field starts with (the bench's `cloud picture … CODE`).
     var draft = ""
     @ObservedObject private var cloud = Cloud.shared

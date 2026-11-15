@@ -3,7 +3,7 @@ import SwiftUI
 /// The temporary MRU chooser shown while Control is held. It is deliberately
 /// quiet: a single quick Control-Tab never leaves a flash on the page.
 struct RecentStrip: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var recent = Recent.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 

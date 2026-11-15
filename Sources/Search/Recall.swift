@@ -40,7 +40,7 @@ enum When {
 }
 
 struct HistoryPanel: View {
-    @ObservedObject var browser: Browser
+    @Bindable var browser: Browser
 
     @FocusState private var hunting: Bool
     @State private var traces: [History.Trace] = []
@@ -206,7 +206,7 @@ struct HistoryPanel: View {
 }
 
 struct DownloadsPanel: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var loot: Loot
     @ObservedObject var downloads: Downloads
 

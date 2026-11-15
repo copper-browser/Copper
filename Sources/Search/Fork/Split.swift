@@ -341,7 +341,7 @@ extension Tab {
 /// colour washed behind so the cards read as cards rather than as a window
 /// sawn in half. Only the live one is outlined.
 struct SplitStage: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var split = Split.shared
     @ObservedObject var spaces = Spaces.shared
     let active: Tab

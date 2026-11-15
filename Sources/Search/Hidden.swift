@@ -6,7 +6,7 @@ import SwiftUI
 /// on a row puts that one thing back on the page, outlined, and scrolls to it —
 /// you decide what to restore by looking at it, not by decoding its name.
 struct HiddenPanel: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
 
     var body: some View {
         Plate(browser.hereHost ?? "This page", width: 380, close: { browser.reviewing = false }) {

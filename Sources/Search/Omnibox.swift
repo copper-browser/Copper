@@ -6,7 +6,7 @@ import AppKit
 /// shivers and says so, rather than quietly handing your keystrokes to a
 /// search engine.
 struct Omnibox: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     /// Raised over a page by ⌘L, rather than standing on an empty tab.
     let over: Bool
     /// Fork (new-tab-launcher): what is typed and offered; see `Browser.Field`.
@@ -202,7 +202,7 @@ struct Omnibox: View {
 /// selected, so carrying on typing replaces it and Return accepts it. That
 /// needs a real text field and its delegate.
 struct AddressField: NSViewRepresentable {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     /// Fork (command-bar-hooks): show what was typed and nothing else. The
     /// address field completes as you type and shows the row the arrows have
     /// walked to; a command bar must keep your question on screen while you

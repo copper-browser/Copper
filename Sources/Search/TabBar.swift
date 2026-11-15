@@ -5,7 +5,7 @@ import SwiftUI
 /// slides from the tab you left to the tab you picked rather than blinking out
 /// of one and into the other.
 struct TabBar: View {
-    @ObservedObject var browser: Browser
+    @Bindable var browser: Browser
     @ObservedObject private var downloads = Downloads.shared
 
     @Namespace private var pill
@@ -279,7 +279,7 @@ struct TabBar: View {
 /// every page. Used here and, beside the traffic lights instead of at the
 /// far end of the row, in the sidebar.
 struct Helm: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     /// Fork: the sidebar's own, larger doors in the column's ink.
     var size: CGFloat = 26
     var glyph: CGFloat = 11
@@ -341,7 +341,7 @@ struct Helm: View {
 }
 
 private struct TabPill: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var prefs: Preferences
     @ObservedObject var tab: Tab
     let live: Bool
@@ -631,7 +631,7 @@ private struct TabPill: View {
 /// its text, for as long as it is being edited, which is as long as it has
 /// the keyboard.
 struct TabAddressField: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
 
     var body: some View {
         TabAddressEditor(browser: browser)
@@ -647,7 +647,7 @@ struct TabAddressField: View {
 }
 
 private struct TabAddressEditor: NSViewRepresentable {
-    @ObservedObject var browser: Browser
+    let browser: Browser
 
     func makeCoordinator() -> Coordinator { Coordinator(browser: browser) }
 
@@ -727,7 +727,7 @@ private struct TabAddressEditor: NSViewRepresentable {
 
 /// What a right-click on any tab offers, wherever the tab is drawn.
 struct TabMenu: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var tab: Tab
     let close: () -> Void
 
@@ -860,7 +860,7 @@ final class RingView: NSView {
 /// in a tab: the system paints selected text as a solid block of accent colour,
 /// and over a thirty-point grey square that is the loudest thing on screen.
 struct PinField: NSViewRepresentable {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var tab: Tab
 
     func makeCoordinator() -> Coordinator { Coordinator(browser: browser, tab: tab) }

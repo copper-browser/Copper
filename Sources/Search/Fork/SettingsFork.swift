@@ -346,7 +346,7 @@ struct KeyField: View {
 // MARK: - Updates
 
 struct UpdatesPage: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var updates = Updates.shared
 
     private var isDevBuild: Bool {
@@ -1183,7 +1183,7 @@ struct ServerRow: View {
 
 /// The small Settings doorway to the full Flow sheet.
 struct FlowSettingsLine: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
 
     var body: some View {
         Line("Move in from another browser", "Tabs, spaces, bookmarks, history and passwords from \(MoveFrom.names)") { // Fork (ui-flows): the one list
@@ -1195,7 +1195,7 @@ struct FlowSettingsLine: View {
 /// A small, direct doorway for the part of Flow the address field can use on
 /// its own. The read is off-main; this line only reports its quiet progress.
 struct HistorySettingsLine: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var flow = Flow.shared
 
     var body: some View {

@@ -109,7 +109,7 @@ enum PickerFooter {
 /// app (or a service account) the unlock happens right here — the app shows
 /// its own Touch ID sheet — otherwise it opens Settings › Passwords.
 struct VaultPendingRows: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     let emptyLogin: Bool
     @ObservedObject private var bitwarden = Bitwarden.shared
     @ObservedObject private var onePassword = OnePassword.shared

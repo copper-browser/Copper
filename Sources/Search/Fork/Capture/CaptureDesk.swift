@@ -215,8 +215,8 @@ final class CaptureDesk: ObservableObject {
             MainActor.assumeIsolated { self?.recheckSystem() }
         }
         // A tab closed: a question it asked, or its paused bar, goes with it.
-        // (`$tabs` speaks before the change; look once it is made.)
-        tabsWatch = browser.$tabs.dropFirst().sink { [weak self] _ in
+        // (`feed(\.tabs)` speaks before the change; look once it is made.)
+        tabsWatch = browser.feed(\.tabs).dropFirst().sink { [weak self] _ in
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     guard let self, !self.queue.isEmpty || self.pausedTab != nil || !self.voiceAsks.isEmpty else { return }

@@ -41,15 +41,15 @@ struct SearchApp: App {
 /// The menus act on the window in front — the first one's browser when no
 /// browser window is. (Fork: windows)
 struct AppCommands: Commands {
-    @ObservedObject var main: Browser
-    @FocusedObject private var focused: Browser?
+    let main: Browser
+    @FocusedValue(Browser.self) private var focused: Browser? // Fork (observe): Browser is @Observable
     /// Fork (perf): the History menu's own source, watched here rather than
     /// through every change of the browser (Browser.init).
     @ObservedObject private var history: History
     private var browser: Browser { focused ?? main }
 
     init(main: Browser) {
-        _main = ObservedObject(wrappedValue: main)
+        self.main = main
         _history = ObservedObject(wrappedValue: main.history)
     }
 
@@ -277,7 +277,7 @@ private struct MenuLine: View {
 }
 
 struct ContentView: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     /// Fork (perf): the field up, ⌘K or not (`fieldShowing`, the transition
     /// below) — see `Browser.Bar`.
     @ObservedObject private var bar: Browser.Bar
@@ -533,7 +533,7 @@ struct ContentView: View {
             if browser.primary { Links.hand(to: browser) }
         }
         // The menus act on the window in front, and ⌘N works from any. (Fork: windows)
-        .focusedSceneObject(browser)
+        .focusedSceneValue(browser)
         .onDisappear {
             if let keys { NSEvent.removeMonitor(keys) }
             keys = nil

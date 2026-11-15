@@ -3,7 +3,7 @@ import SwiftUI
 /// Settings controls for the optional Bitwarden backend. The card intentionally
 /// owns only UI state; Bitwarden keeps the CLI session and metadata cache.
 struct BitwardenCard: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var bitwarden = Bitwarden.shared
 
     @State private var server = ""
@@ -624,7 +624,7 @@ struct AgentAccessCard: View {
         .onChange(of: onePassword.cacheVersion) { _, _ in list.forget(); policyRevision += 1 }
         .onChange(of: onePassword.isUnlocked) { _, _ in list.forget(); listRevision += 1 }
         // A login saved to the keychain while Settings is open.
-        .onReceive(browser.$saved.dropFirst()) { _ in list.forget(); listRevision += 1 }
+        .onReceive(browser.feed(\.saved).dropFirst()) { _ in list.forget(); listRevision += 1 }
     }
 
     private struct AgentIdentityRow: View {

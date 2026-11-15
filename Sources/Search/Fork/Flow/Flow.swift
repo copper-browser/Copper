@@ -793,7 +793,7 @@ final class Flow: ObservableObject {
 
         report.notes.append(contentsOf: haul.notes.filter { !$0.contains("bookmarks") && !$0.contains("places") })
         if let look { report.stayed = FlowSafari.stayed(look) }
-        browser.objectWillChange.send()
+        browser.redraw()
         Session.write(now: true, Spaces.shared.shape(visible: browser.tabs, active: browser.activeID))
         noteMoved(source.name, at: Date())
         Store.settings.set(false, forKey: "start.offer") // Fork (first-run): the start card has done its job

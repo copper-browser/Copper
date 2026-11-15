@@ -11,7 +11,7 @@ import SwiftUI
 /// Which browsers are listed comes from Launch Services (is the app here?),
 /// never from their folders: reading those waits for Move in itself.
 struct StartCard: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @AppStorage("start.offer", store: Store.settings) private var offer = false
     @Environment(\.colorScheme) private var scheme
     /// Fork (uiflows r4): the start card is the launcher's lower half (the
@@ -221,7 +221,7 @@ extension Preferences {
 /// three dashed places in the grid, and a site dropped on them is kept there.
 /// Gone with the start card, or once there is a favourite.
 struct GhostFavourites: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     let tint: SpaceTint
     let width: CGFloat
     let height: CGFloat

@@ -507,7 +507,7 @@ final class Sections: ObservableObject {
 
 /// Save / Unsave, on a tab's context menu in both layouts.
 struct SaveMenu: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var tab: Tab
     @ObservedObject var sections = Sections.shared
 

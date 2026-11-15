@@ -47,7 +47,7 @@ enum SplitMetrics {
 
 /// One pane: its toolbar, its page, its outline.
 struct SplitCard: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var tab: Tab
     /// The pane the keyboard is in.
     let live: Bool
@@ -154,7 +154,7 @@ struct SplitGhost: View {
 /// A pane's own hairline toolbar: where it has been, what it is, and the
 /// cross that ends it.
 struct SplitBar: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var tab: Tab
     let live: Bool
     /// Fork (motion): the cross waits until the pane has slid in.

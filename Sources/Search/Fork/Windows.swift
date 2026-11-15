@@ -376,7 +376,7 @@ extension Browser {
 /// the page is not gone, it is simply over there. One line, and the two
 /// things worth doing about it — as Arc's "open in another window" does.
 struct TakenStage: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var tab: Tab
 
     var body: some View {
@@ -402,11 +402,11 @@ struct TakenStage: View {
 /// A window opened with ⌘N: its own browser, the same view as the first.
 struct OtherWindow: View {
     let id: UUID
-    @StateObject private var browser: Browser
+    private let browser: Browser // Fork (observe): kept per id by `Windows.browser(for:)`
 
     init(id: UUID) {
         self.id = id
-        _browser = StateObject(wrappedValue: Windows.browser(for: id))
+        browser = Windows.browser(for: id)
     }
 
     var body: some View {

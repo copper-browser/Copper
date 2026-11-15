@@ -44,7 +44,7 @@ enum CanvasRowActions {
 /// and the top bar alike (TabMenu). Nothing for any other tab, nor for
 /// Personal, which is never renamed or deleted.
 struct CanvasTabMenu: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var tab: Tab
     @ObservedObject private var canvases = Canvases.shared
 

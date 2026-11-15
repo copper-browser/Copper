@@ -15,7 +15,7 @@ import SwiftUI
 // chat app pasted in. No JSON reaches it.
 
 struct AgentPane: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     /// A width that isn't the dragged one: the bench's pictures at 340–620 pt.
     var fixedWidth: CGFloat? = nil
     @ObservedObject var agent = Agent.shared

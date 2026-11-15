@@ -182,7 +182,7 @@ enum Headless {
     @MainActor static func start(for browser: Browser) {
         guard on else { return }
         // First-run welcome: not for a Mac nobody sits at.
-        browser.$welcoming
+        browser.feed(\.welcoming)
             .removeDuplicates()
             .filter { $0 }
             .receive(on: DispatchQueue.main)

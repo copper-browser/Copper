@@ -7,7 +7,7 @@ import SwiftUI
 /// status, where new logins go, and Lock / Sign out / Sync now. The card owns
 /// only what is being typed; `OnePassword` owns the session and the cache.
 struct OnePasswordCard: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var onePassword = OnePassword.shared
 
     @State private var path: OnePassword.Mode = OnePassword.appInstalled ? .app : .password
@@ -492,7 +492,7 @@ struct OnePasswordCard: View {
 /// up but locked stays offered; its saves go to the keychain until it opens,
 /// and the line says so.
 struct SaveTargetCard: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var bitwarden = Bitwarden.shared
     @ObservedObject private var onePassword = OnePassword.shared
 
@@ -506,7 +506,7 @@ struct SaveTargetCard: View {
 }
 
 struct SaveTargetLine: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var prefs: Preferences
     @ObservedObject private var bitwarden = Bitwarden.shared
     @ObservedObject private var onePassword = OnePassword.shared

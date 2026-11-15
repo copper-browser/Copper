@@ -427,7 +427,7 @@ struct BookmarkOutline: View {
 
 /// The button's dropdown: the tree, and the two things that aren't in it.
 struct BookmarksDropdown: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var bookmarks: Bookmarks
 
     var body: some View {
@@ -494,7 +494,7 @@ struct BookmarksDropdown: View {
 
 /// The full list, for taking things out of it or bringing more in.
 struct BookmarksPanel: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var bookmarks: Bookmarks
     @State private var query = "" // Fork (ui-system)
     @FocusState private var hunting: Bool
