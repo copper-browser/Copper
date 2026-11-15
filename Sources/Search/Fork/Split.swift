@@ -537,7 +537,7 @@ struct SplitStage: View {
     /// The picture is back (or late): both pages take their final frames
     /// under the cover, and it comes off once the left one has re-wrapped.
     private func settle() {
-        guard split.growing else { return }
+        guard split.growing, split.covering else { return } // a picture back before the slide began waits for it (`slide`)
         var now = Transaction()
         now.disablesAnimations = true
         withTransaction(now) { split.growing = false }
