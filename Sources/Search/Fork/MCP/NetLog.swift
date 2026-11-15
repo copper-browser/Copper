@@ -179,10 +179,13 @@ final class NetLog: NSObject {
 
     /// Something went to the server that changes things there: a non-GET
     /// request (a document or a data call) since `mark`, not bookkeeping.
-    static func posted(_ web: WKWebView, after mark: UInt64) -> Bool {
-        guard let log = log(for: web) else { return false }
-        return log.entries.contains { $0.seq > mark && (calls.contains($0.kind) || $0.kind == "document") && !noise($0)
-            && !["GET", "HEAD", "OPTIONS"].contains($0.method.uppercased()) }
+    static func posted(_ web: WKWebView, after mark: UInt64) -> Bool { !posts(web, after: mark).isEmpty }
+
+    /// Where those non-GET requests went.
+    static func posts(_ web: WKWebView, after mark: UInt64) -> [String] {
+        guard let log = log(for: web) else { return [] }
+        return log.entries.filter { $0.seq > mark && (calls.contains($0.kind) || $0.kind == "document") && !noise($0)
+            && !["GET", "HEAD", "OPTIONS"].contains($0.method.uppercased()) }.map(\.url)
     }
 
     /// Until the page's data calls since `mark` are answered and nothing new

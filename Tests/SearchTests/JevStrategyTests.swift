@@ -92,6 +92,38 @@ struct JevStrategyTests {
         #expect((U.goalTerms("Find Gödel’s theorems")["words"] as? [String] ?? []).contains("godel"))
     }
 
+    // The resend guard lets a search go once more when it found nothing or
+    // met the provider's error (Flights 15/16 → 12/16 in r5); a send that
+    // changes something never does.
+    @Test func searchMayGoAgainChangesMayNot() {
+        let oops = "Departing flights\nOops, something went wrong.\nReload"
+        let fine = "Departing flights\nSWISS 1h 30m CHF 120"
+        // search-type controls
+        #expect(U.searchControl(click(1, "button", "Search"), label: "Search", text: fine))
+        #expect(U.searchControl(click(1, "button", "Find hotels"), label: "Find hotels", text: fine))
+        #expect(U.searchControl(click(1, "searchbox", "Where to?"), label: "Where to?", text: fine))
+        var go = click(2, "button", "Go"); go["query"] = true
+        #expect(U.searchControl(go, label: "Go", text: fine))
+        #expect(!U.searchControl(click(2, "button", "Go"), label: "Go", text: fine))
+        // a retry only over the provider's error
+        #expect(U.searchControl(click(3, "button", "Reload"), label: "Reload", text: oops))
+        #expect(!U.searchControl(click(3, "button", "Reload"), label: "Reload", text: fine))
+        // never one that changes something, even in a search box
+        for label in ["Pay $24.00", "Post review", "Place order", "Buy now", "Submit", "Search and book", "Confirm and pay"] {
+            var a = click(4, "button", label); a["query"] = true
+            #expect(!U.searchControl(a, label: label, text: oops), "\(label)")
+        }
+        // where it posted
+        #expect(U.searchPosts(["https://www.google.com/_/FlightsFrontendUi/data/travel.frontend.flights.FlightsFrontendService/GetShoppingResults"], page: "https://www.google.com/travel/flights?tfs=x"))
+        #expect(U.searchPosts(["https://www.google.com/_/x/data/batchexecute"], page: "https://www.google.com/travel/flights/search?tfs=x"))
+        #expect(U.searchPosts([], page: "https://shop.test/products"))
+        #expect(!U.searchPosts(["http://127.0.0.1:4171/api/pay?sid=a"], page: "http://127.0.0.1:4171/c7/pay.html?sid=a"))
+        #expect(!U.searchPosts(["https://shop.test/search", "https://shop.test/cart/add"], page: "https://shop.test/p/1"))
+        // what the page shows
+        #expect(U.emptyResults(oops) && U.emptyResults("No results found for “xyzzy”") && U.emptyResults("No flights found"))
+        #expect(!U.emptyResults(fine) && !U.emptyResults("Your review was posted"))
+    }
+
     @Test func humanChecksAreNamed() {
         #expect(U.humanCheck("I am human") != nil)
         #expect(U.humanCheck("I'm not a robot") != nil)

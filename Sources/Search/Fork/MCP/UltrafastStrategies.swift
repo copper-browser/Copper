@@ -362,6 +362,37 @@ extension Tools.Ultrafast {
         return (c?.host ?? "") + (c?.path ?? "")
     }
 
+    /// A control that only looks something up, so sending it once more is no
+    /// resend: a search field, a Search/Find button, any control the page
+    /// marks `query` (in a role=search box, or a form whose only text field
+    /// is a query: its Go), or a retry (Reload, Try again) over the provider's
+    /// error. Never one that names a change (pay, order, post, submit…).
+    static func searchControl(_ action: [String: Any], label: String, text: String) -> Bool {
+        if label.range(of: #"(?i)\b(?:pay|buy|order|purchase|check ?out|book|reserve|post|submit|send|publish|reply|comment|review|confirm|place|delete|remove|save|sign|subscribe|donate|transfer|apply|register|add to|upload|share|vote)\b"#, options: .regularExpression) != nil { return false }
+        if action["role"] as? String == "searchbox" || action["query"] as? Bool == true { return true }
+        if label.range(of: #"(?i)^\s*(?:search|find)\b"#, options: .regularExpression) != nil { return true }
+        return label.range(of: #"(?i)^\s*(?:reload|retry|try again|refresh)\b"#, options: .regularExpression) != nil && emptyResults(text)
+    }
+
+    /// What a search sent went to a search: every POST's address names one,
+    /// or the page it lands on is one (Flights' /travel/flights/search). A POST
+    /// to /api/pay from a checkout is a change.
+    static func searchPosts(_ posts: [String], page: String) -> Bool {
+        let words = #"(?i)search|query|results?\b|lookup|suggest|autocomplete"#
+        func searchy(_ url: String) -> Bool {
+            guard let c = URLComponents(string: url) else { return false }
+            return c.path.range(of: words, options: .regularExpression) != nil
+                || (c.queryItems ?? []).contains { ["q", "query", "search"].contains($0.name.lowercased()) }
+        }
+        return searchy(page) || posts.allSatisfy(searchy)
+    }
+
+    /// The page shows no results, or the provider's error (Google Flights'
+    /// "Oops, something went wrong").
+    static func emptyResults(_ text: String) -> Bool {
+        text.range(of: #"(?i)something went wrong|an error (?:has )?occurred|\bno (?:matching )?results\b|\b0 results\b|\bno \w+ (?:were )?found\b|nothing (?:was )?found|could(?:n'?t|n’t| not) (?:load|find|get)|try again later|temporarily unavailable|service unavailable"#, options: .regularExpression) != nil
+    }
+
     /// A human check the agent must not answer: "I am human", "I'm not a
     /// robot", a CAPTCHA, "press and hold". The matched words, or nil.
     static func humanCheck(_ text: String) -> String? {

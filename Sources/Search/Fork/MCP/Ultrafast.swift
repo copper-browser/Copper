@@ -607,6 +607,15 @@ enum Ultrafast {
       // A control that sends its form: a submit button (or image) inside one.
       const submitter = t => !!t && !!(t.form || t.closest?.('form')) &&
         t.matches('button:not([type]),button[type="submit"],input[type="submit"],input[type="image"]');
+      // In a search box: a role=search, or a form whose only text field is a
+      // query (its Go button too). Sending it again only looks again.
+      const query = t => {
+        const box=t.closest?.('form,[role="search"]');
+        if (!box) return false;
+        if (box.matches('[role="search"]')) return true;
+        const fields=[...box.querySelectorAll('input,textarea')].filter(f=>!['hidden','submit','button','image','reset','checkbox','radio'].includes(f.type));
+        return fields.length===1 && (fields[0].type==='search' || /^(?:q|s|k|query|search|keywords?|term)$|search|query/i.test(fields[0].name||fields[0].id||''));
+      };
       const formState = () => [...document.querySelectorAll('input,textarea,select')].filter(safe)
         .map(e=>[identity(e),e.value,e.checked,e.selectedIndex,e.disabled,e.readOnly]);
       cache.pageKey=()=>JSON.stringify([performance.timeOrigin,location.href,scrollX,scrollY,innerWidth,innerHeight,formState()]);
@@ -689,6 +698,7 @@ enum Ultrafast {
           // button sends its form (never twice without the page answering).
           if (rname==='link' && e.href) base.href=e.href.split('#')[0];
           if (submitter(e)) base.submits=true;
+          if (query(e)) base.query=true;
           for (const key of ['checked','selected','expanded']) {
             const value=e.getAttribute('aria-'+key);
             if (value!==null) base[key]=value;
@@ -1863,11 +1873,16 @@ enum Ultrafast {
         /// nothing new (it posted a review three times; a fetch Pay button paid
         /// twice when only the viewport's size changed between reads). Choosing one asks Jev
         /// DONE or BLOCKED instead (`confirmOnly`), and that answer ends the run.
-        private var quietSend: (lines: Set<String>, url: String, node: Int?, label: String)?
+        /// `search`: it only looked something up (`searchControl`, `searchPosts`).
+        private var quietSend: (lines: Set<String>, url: String, node: Int?, label: String, search: Bool)?
         /// A send (Return, a form, a POST) that took the tab to another page:
         /// the same control there again before anything is typed is a resend
         /// (Flights clicked Search on the results Search had opened).
-        private var navigatedSend: (url: String, label: String, returned: Bool)?
+        private var navigatedSend: (url: String, label: String, returned: Bool, search: Bool)?
+        /// A search sent again once, past the guards above, because it found
+        /// nothing or met the provider's error (Flights' Reload/Search over
+        /// "Oops, something went wrong": r5 stopped it and ended BLOCKED).
+        private(set) var searchRetries = 0
         /// The visible text lines each step was decided on, by step number,
         /// and the control a WAIT was put in place of (`repeats`).
         private var linesAt: [Int: Set<String>] = [:]
@@ -2182,10 +2197,17 @@ enum Ultrafast {
             if let sent = navigatedSend, sent.url != obs.url || kind == "fill" || kind == "select" { navigatedSend = nil }
             let node = (action["node"] as? NSNumber)?.intValue
             let submits = kind == "click" && action["submits"] as? Bool == true
-            let resend = quietSend.map { sent in submits || (node != nil && node == sent.node) || (kind == "click" && label == sent.label) } ?? false
-                // Search again on the page the search already opened: the same send.
-                || navigatedSend.map { sent in kind == "click" && (label == sent.label || (sent.returned && submits)) } ?? false
-            if resend {
+            let quietAgain = quietSend.map { sent in submits || (node != nil && node == sent.node) || (kind == "click" && label == sent.label) } ?? false
+            // Search again on the page the search already opened: the same send.
+            let navigatedAgain = navigatedSend.map { sent in kind == "click" && (label == sent.label || (sent.returned && submits)) } ?? false
+            // Unless it was a search that found nothing (quiet) or shows the
+            // provider's error: that one may go once more. A send that
+            // changes something (pay, post, a form) still goes once only.
+            let searchAgain = searchRetries == 0 && Ultrafast.searchControl(action, label: label, text: obs.text)
+                && (!quietAgain || quietSend?.search == true)
+                && (!navigatedAgain || (navigatedSend?.search == true && Ultrafast.emptyResults(obs.text)))
+            if (quietAgain || navigatedAgain) && searchAgain { searchRetries += 1 }
+            else if quietAgain || navigatedAgain {
                 resendsStopped += 1
                 confirmOnly = true
                 if strategy.llm || seeing == .pixels {
@@ -2404,8 +2426,10 @@ enum Ultrafast {
             }
             step.sent = step.formSent || (kind != "wait" && NetLog.posted(web, after: netMark))
             step.nothingNew = Ultrafast.textLines(next.text).isSubset(of: shownLines)
-            if step.quietSend { quietSend = (Ultrafast.textLines(next.text), next.url, (action["node"] as? NSNumber)?.intValue, label) }
-            if step.sent || submitted, Ultrafast.place(next.url) != Ultrafast.place(obs.url) { navigatedSend = (next.url, label, submitted) }
+            let search = (step.sent || submitted) && Ultrafast.searchControl(action, label: label, text: obs.text)
+                && Ultrafast.searchPosts(NetLog.posts(web, after: netMark), page: next.url)
+            if step.quietSend { quietSend = (Ultrafast.textLines(next.text), next.url, (action["node"] as? NSNumber)?.intValue, label, search) }
+            if step.sent || submitted, Ultrafast.place(next.url) != Ultrafast.place(obs.url) { navigatedSend = (next.url, label, submitted, search) }
             if kind != "wait" { lastNetMark = netMark }
             step.url = next.url
             step.settleMs = Date().timeIntervalSince(settleStarted) * 1000
@@ -2466,7 +2490,7 @@ enum Ultrafast {
                                       "settles": spent.settles, "settles_capped": spent.settlesCapped,
                                       "burst_actions": history.filter(\.burst).count,
                                       "pictured": pictured, "doubts": doubts, "wait_ms": spent.waitMs,
-                                      "resends_stopped": resendsStopped, "sent": history.filter(\.sent).count,
+                                      "resends_stopped": resendsStopped, "search_retries": searchRetries, "sent": history.filter(\.sent).count,
                                       "llm_in_tokens": spent.llmIn, "llm_out_tokens": spent.llmOut, "llm_usd": spent.llmUsd]
             if !spent.textModel.isEmpty { out["text_model"] = spent.textModel }
             if !spent.llmModel.isEmpty { out["llm_model"] = spent.llmModel }

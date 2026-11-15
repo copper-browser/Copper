@@ -100,3 +100,18 @@ private func labels(_ obs: [String: Any]?) -> [String] {
     """) as? [NSNumber]
     #expect(counted?.map(\.intValue) == [2, 4])
 }
+
+// A search form's controls are marked `query` (searchControl lets them go
+// again once); a review form's are not.
+@MainActor @Test func queryFormsAreMarked() async throws {
+    let web = await page("""
+    <form action="/s"><input name="q" placeholder="Search the shop"><button>Go</button></form>
+    <form id="r"><input name="review" placeholder="Your review"><button>Post review</button></form>
+    <div role="search"><input placeholder="Find docs"><button type="button">Find</button></div>
+    """)
+    let obs = try await U.js(web, "window.__jevFast.observe(undefined, {deep: false})") as? [String: Any]
+    let actions = (obs?["actions"] as? [[String: Any]]) ?? []
+    func marked(_ label: String) -> Bool { actions.first { $0["label"] as? String == label }?["query"] as? Bool == true }
+    #expect(marked("Go") && marked("Search the shop") && marked("Find") && marked("Find docs"))
+    #expect(!marked("Post review") && !marked("Your review"))
+}
