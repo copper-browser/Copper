@@ -391,14 +391,11 @@ struct FlowSheet: View {
         .opacity(flow.selected == nil ? 0.5 : 1)
     }
 
-    /// Fork (uiflows r4, polish r5): "Nothing else to bring from this Arc
-    /// profile: no bookmarks, history or passwords." — it is this profile
-    /// that has none, not Arc.
+    /// Fork (uiflows r4, polish r5, hc6): "Nothing else in this Arc profile."
+    /// — it is this profile that has none, not Arc; the kinds it lacks are
+    /// left unsaid. `kinds` is kept for the callers.
     static func keepsNone(_ source: String?, _ kinds: [String]) -> String {
-        let words = kinds.map { $0.lowercased() }
-        let list = words.count < 2 ? words.joined() : words.dropLast().joined(separator: ", ") + " or " + (words.last ?? "")
-        let from = source.map { "this \($0) profile" } ?? "this browser"
-        return "Nothing else to bring from \(from): no \(list)."
+        "Nothing else in \(source.map { "this \($0) profile" } ?? "this browser")."
     }
 
     private var safariRows: some View {
