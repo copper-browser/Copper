@@ -226,7 +226,7 @@ def stage_active():
 
 
 def mb():
-    return {t["id"][:8]: t["mb"] for t in ask({"do": "heat"})["tabs"] if t["mb"] is not None}
+    return {t["id"][:8].lower(): t["mb"] for t in ask({"do": "heat"})["tabs"] if t["mb"] is not None}
 
 
 space = "AAAAAAAA-0000-4000-8000-000000000001"
@@ -335,7 +335,7 @@ try:
     print("5. closing a tab takes its picture; covers clear empties the folder")
     ask({"do": "select", "id": A})
     n = covers()["files"]
-    ask({"do": "close", "id": B})
+    ask({"do": "pins", "op": "close", "arg": B})  # ⌘W on it in its window (test worlds)
     after = until("one picture fewer", lambda: (lambda c: c if c["files"] == n - 1 else None)(covers()), 5)
     ask({"do": "covers", "op": "clear"})
     if covers()["files"] != 0:
