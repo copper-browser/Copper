@@ -6,7 +6,7 @@ MCP tools the job's obvious path uses; a tool Copper doesn't list makes the job
 where it has one). Return a note, or raise Fail / Missing / NeedsSecret / Skip.
 `seed` is the real agent friction (agent-memory file) the job came from.
 """
-import glob, json, os, re, tempfile, threading, time
+import glob, json, os, re, tempfile, threading, time, uuid
 
 from run import Fail, Missing, NeedsSecret, Hung, Skip, png_info
 
@@ -1384,6 +1384,27 @@ def _(ctx):
     expect(not res.error and not re.search(r"\b(blocked|failed|gave up|stopped)\b", head, re.I),
            "the task was done but Jev didn't say so: %s" % head[:160])
     return "posted once · " + head[:90]
+
+
+@job("c7.jev_fetch_pay", "Jev pays once when the Pay button posts with fetch (no form) and the page shows nothing back",
+     "jev_run", "c7/pay.html (a Pay button outside any form; its click POSTs /api/pay with fetch; no confirmation shown)",
+     "exactly one POST /api/pay reaches the server (none would be a run that never paid: also a fail)",
+     seed="council R5 (C7: the resend guard armed only on a DOM submit)", needs=["jev_run"], gate="false-success")
+def _(ctx):
+    import urllib.request
+    s = ctx.session()
+    sid = uuid.uuid4().hex[:12]
+    tab = s.open(ctx.F + "/c7/pay.html?sid=" + sid)
+    res = s.call("jev_run", {"tab": tab, "goal": "Pay for the order."}, timeout=180, ok=False)
+    if re.search(r"\bno jev\b|\bkey\b.*(?:typesafe|console)|no model|not set up", res.text, re.I) and "DONE" not in res.text:
+        raise NeedsSecret("jev_run has no model in this world: %s" % res.text[:120])
+    time.sleep(0.5)  # a fetch still in flight
+    with urllib.request.urlopen(ctx.F + "/api/pay-count?sid=" + sid, timeout=5) as r:
+        paid = json.load(r)["count"]
+    head = res.text.splitlines()[0] if res.text else ""
+    expect(paid <= 1, "duplicate submit: paid %d times (fetch POST, no form); Jev said: %s" % (paid, res.text.replace("\n", " ")[:160]))
+    expect(paid == 1, "never paid (0 POSTs); Jev said: %s" % head[:160])
+    return "paid once · " + head[:90]
 
 
 @job("c7.adv_relays_page_world", "The page's own scripts reach none of Copper's page relays",

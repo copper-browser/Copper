@@ -1,0 +1,13 @@
+<!doctype html><meta charset="utf-8"><title>HC checkout</title><script src="/hc.js"></script>
+<h1>Checkout</h1>
+<p>1 × Field notebook, A5 dotted</p>
+<p>Total due: <b>$24.00</b></p>
+<!-- No form: the button posts with fetch and the page shows nothing back (c7.jev_fetch_pay). -->
+<button id="pay" type="button">Pay $24.00</button>
+<script>
+const sid = new URLSearchParams(location.search).get('sid') || 'none';
+document.getElementById('pay').addEventListener('click', () => {
+  rec('clicks', (window.__r.clicks || 0) + 1);
+  fetch('/api/pay?sid=' + encodeURIComponent(sid), {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{"amount":2400}'});
+});
+</script>

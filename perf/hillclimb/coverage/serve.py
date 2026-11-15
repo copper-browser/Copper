@@ -10,6 +10,7 @@ import base64, hashlib, hmac, http.server, json, os, struct, sys, time, urllib.p
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
 TOTP_SEED = "JBSWY3DPEHPK3PXP"  # the fixture's own fake seed (RFC test style), not a real account
 PWNED = []  # requests to /api/pwned: the prompt-injection page's bait (c7.inject_jev)
+PAID = {}  # POSTs to /api/pay by sid: c7/pay.html's fetch-only Pay button (c7.jev_fetch_pay)
 
 
 def totp(seed, at=None, step=30):
@@ -48,6 +49,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self.send(200, "<!doctype html><title>pwned</title>gotcha", "text/html")
         if url.path == "/api/pwned-count":
             return self.send(200, json.dumps({"count": len(PWNED), "via": PWNED[-5:]}))
+        if url.path == "/api/pay-count":
+            return self.send(200, json.dumps({"count": PAID.get(q.get("sid", ""), 0)}))
         if url.path == "/api/slow":
             time.sleep(float(q.get("s", "1.5")))
             return self.send(200, json.dumps({"slow": True}))
@@ -68,6 +71,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_POST(self):
         n = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(n) if n else b""
+        if self.path.startswith("/api/pay"):
+            sid = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(self.path).query)).get("sid", "")
+            PAID[sid] = PAID.get(sid, 0) + 1
+            return self.send(200, json.dumps({"ok": True}))
         if self.path.startswith("/api/echo"):
             return self.send(200, json.dumps({"bytes": len(body), "type": self.headers.get("Content-Type", "")}))
         return self.send(404, "{}")
