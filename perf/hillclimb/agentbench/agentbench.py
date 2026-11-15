@@ -71,6 +71,8 @@ ARMS = {
     "nonear": {"strategy": "watched,burst,lean,paste,watch,reach,submit"},
     # browser-use jev-ultrafast in Chrome — prepared, NOT run until Collin OKs Chrome (ultrafast_arm.py)
     "ultrafast": None,
+    # browser-use 1.0 mode='ultrafast' (LLM writes code on accessibility-tree helpers) in the same Chrome (bu_ultrafast_arm.py)
+    "bu-ultrafast": None,
     # an LLM agent (AGENTBENCH_MCP_MODEL, sonnet) on browser_snapshot/browser_click & co. — play_mcp
     "phi-mcp": None,
 }
@@ -419,6 +421,28 @@ def play_ultrafast(task_id, task, sid, fixtures):
     return out["run"], out["page"]
 
 
+def play_bu(task_id, task, sid, fixtures):
+    """One run of browser-use mode='ultrafast' in ~/src/bu's venv, LLM via the router (keys from the dev world, never printed)."""
+    if os.environ.get("AGENTBENCH_ALLOW_CHROME") != "1":
+        raise SystemExit("bu-ultrafast arm needs Chrome; set AGENTBENCH_ALLOW_CHROME=1")
+    root = os.environ.get("BU_DIR", os.path.expanduser("~/src/bu"))
+    d = json.load(open(os.path.expanduser("~/Library/Application Support/Copper (dev)/intelligence.json")))
+    env = {**os.environ, "ROUTER_KEY": d["routerKey"], "ROUTER_URL": d["routerURL"], "BU_NAME": "agentbench-bu",
+           "BU_CDP_URL": os.environ.get("BU_CDP_URL", "http://127.0.0.1:4242")}
+    cmd = [os.path.join(root, ".venv/bin/python"), os.path.join(HERE, "bu_ultrafast_arm.py"), "--url", task["url"](sid),
+           "--goal", task["goal"], "--max-steps", str(task["max_steps"]), "--read", READ_PAGE]
+    begun = time.time()
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=200, env=env)
+        out = json.loads(p.stdout.strip().splitlines()[-1])
+    except subprocess.TimeoutExpired:
+        out = {"run": {"status": "error", "note": "harness timeout 200 s", "steps": [], "totals": {}}, "page": {}}
+    except (IndexError, json.JSONDecodeError):
+        out = {"run": {"status": "error", "note": (p.stderr or p.stdout)[-300:], "steps": [], "totals": {}}, "page": {}}
+    out["run"]["harness_ms"] = int((time.time() - begun) * 1000)
+    return out["run"], out["page"]
+
+
 # phi-mcp: an LLM agent on Copper's Playwright-style tools, the way phi or Claude Code drives Copper without Jev.
 # It sees the real browser_* tool list (tools/list: names, descriptions, input schemas), answers one JSON
 # action a turn, and after every action gets the page's interactive snapshot in full, as Playwright MCP's click
@@ -428,7 +452,7 @@ def play_ultrafast(task_id, task, sid, fixtures):
 # shortcut: a JSON-action loop over the router, not phi itself (no phi on the mini); phi would add its own
 # planning and keep the whole conversation, so this is the floor of what that arm costs.
 MCP_MODEL = os.environ.get("AGENTBENCH_MCP_MODEL", "sonnet")
-MCP_PRICE = {"sonnet": (3.0, 15.0), "haiku": (1.0, 5.0)}  # $ per million tokens in/out, list price
+MCP_PRICE = {"sonnet": (3.0, 15.0), "haiku": (1.0, 5.0), "luna": (0.14, 0.55), "llama": (0.24, 0.97)}  # luna/llama: solved from the router's x-litellm-response-cost (2026-11-15)  # $ per million tokens in/out, list price
 # Jev (TypeSafe) bills input tokens with no dollar figure in its answers; priced here at this assumed list price
 # (haiku's input price: an upper bound for a small classifier), so $/pass ranks every method. Set to change it.
 JEV_USD_PER_M = float(os.environ.get("AGENTBENCH_JEV_USD_PER_M", "1.0"))
@@ -1008,8 +1032,11 @@ def main():
             pending.remove(ready)
             task = T[tid]
             sid = f"{tid}-{arm}-{uuid.uuid4().hex[:8]}"
-            if arm == "ultrafast":
-                run, page = play_ultrafast(tid, task, sid, a.fixtures)
+            if arm in ("ultrafast", "bu-ultrafast"):
+                run, page = (play_ultrafast if arm == "ultrafast" else play_bu)(tid, task, sid, a.fixtures)
+                if task.get("flights"):
+                    with open(stamp, "w") as sf:
+                        sf.write(str(time.time()))
             elif arm == "phi-mcp":
                 try:
                     run, page = play_mcp(clients["main"], worlds["main"][0], task, sid)

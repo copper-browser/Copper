@@ -16,6 +16,11 @@ import sys
 import time
 
 from jev_ultrafast import Agent
+from jev_ultrafast import model as _model
+
+# The router's Bedrock llama rejects upstream's `reasoning` field (400 "extraneous key"): drop it on text calls only.
+_post = _model.post_json
+_model.post_json = lambda url, key, body: _post(url, key, {k: v for k, v in body.items() if k != "reasoning" or "typesafe" in url})
 
 
 def main():
@@ -57,7 +62,10 @@ def main():
             "jev_ms": jev_ms, "decide_ms": jev_ms,  # upstream has no observe/act/settle split
             "text_ms": sum(c.get("latency_ms") or 0 for c in state.get("text_calls") or []),
             "input_tokens": sum((d.get("usage") or {}).get("input_tokens") or 0 for d in decisions),
-            "requests": len(decisions), "model": os.environ.get("TYPESAFE_MODEL", "jev-latest"),
+            "requests": len(decisions),
+            "llm_in_tokens": sum((c.get("usage") or {}).get("prompt_tokens") or 0 for c in state.get("text_calls") or []),
+            "llm_out_tokens": sum((c.get("usage") or {}).get("completion_tokens") or 0 for c in state.get("text_calls") or []),
+            "llm_model": os.environ.get("TEXT_MODEL", ""), "text_calls": len(state.get("text_calls") or []), "model": os.environ.get("TYPESAFE_MODEL", "jev-latest"),
             "strategy": "jev-ultrafast", "vision": "off",
         },
         "steps": [{"operation": h.get("operation"), "kind": h.get("kind"), "label": h.get("action"),

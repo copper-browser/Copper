@@ -71,7 +71,8 @@ model/strategy/vision as answered, load average, every step.
 | `classic` | strategy classic, vision off | the original loop (control) |
 | `llm-haiku` | strategy fast,llm=haiku, vision off | a small LLM decides instead of Jev |
 | `base` | none, on `AGENTBENCH_BASE_APP` | another build's shipped loop in the second probe world (port+2), interleaved with this build's arms task by task, so both builds meet Google (and the Mac's load) alike. `ARMS=shipped,base AGENTBENCH_BASE_APP=~/hc/r3/Copper.app` is an A/B of a change |
-| `ultrafast` | — | browser-use jev-ultrafast in Chrome. **Prepared, not run** (needs Collin's OK for Chrome) |
+| `ultrafast` | — | browser-use jev-ultrafast in Chrome (`ultrafast_arm.py`; drops upstream's `reasoning` field, which the router's Bedrock llama refuses). First run 2026-11-15: `out/upstream/` |
+| `bu-ultrafast` | — | browser-use 1.0 `mode='ultrafast'` (an LLM writing code on accessibility-tree helpers) in the same Chrome: `bu_ultrafast_arm.py` in `~/src/bu`'s venv (e717df18), router `luna` at low reasoning (`AGENTBENCH_BU_MODEL`, `AGENTBENCH_BU_REASONING`), judge off, CDP `BU_CDP_URL` |
 | `phi-mcp` | — | an LLM agent (`AGENTBENCH_MCP_MODEL`, sonnet) on the real `browser_*` tool list (tools/list), one JSON action a turn (the first object of the reply is taken), the full interactive snapshot after every action (as Playwright MCP's answers carry one), screenshots shown to it as pictures, `browser_handoff` answered "not now" by the harness (ends BLOCKED). Wrong-tool calls are counted (`wrong_tool`) |
 
 ## The ultrafast arm (once Collin approves Chrome on the mini)
