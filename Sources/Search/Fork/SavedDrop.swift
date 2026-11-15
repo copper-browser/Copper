@@ -551,6 +551,7 @@ struct SideDragLift: ViewModifier {
         content
             .scaleEffect(held && !still ? 1.02 : 1)
             .shadow(color: .black.opacity(held ? 0.12 : 0), radius: 8, y: 3)
+            .animation(still ? nil : Motion.pickup, value: held) // Fork (polish r5): the lift lands in ~200 ms
     }
 }
 

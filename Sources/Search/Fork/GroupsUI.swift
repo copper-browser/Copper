@@ -169,7 +169,7 @@ struct GroupedRows: View {
                 let moved = Int((travel / step).rounded())
                 let target = min(max(0, from + moved), loose.count - 1)
                 if target != index {
-                    withAnimation(Motion.settle) {
+                    withAnimation(Motion.pickup) {
                         browser.move(tab, to: offset + target + browser.pinnedCount)
                     }
                 }
@@ -177,13 +177,13 @@ struct GroupedRows: View {
             .onEnded { _ in
                 let target = drag.target
                 drag.end()
-                withAnimation(Motion.settle) {
+                withAnimation(Motion.pickup) {
                     dragging = nil
                     travel = 0
                 }
                 holding?(false)
                 if let target {
-                    withAnimation(Motion.settle) { drag.drop(tab, at: target, in: browser) }
+                    withAnimation(Motion.pickup) { drag.drop(tab, at: target, in: browser) }
                 } else {
                     groups.settle(tab, in: browser)
                 }

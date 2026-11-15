@@ -170,6 +170,9 @@ enum Motion {
     static let glide = Animation.spring(response: 0.34, dampingFraction: 0.82)
     static let settle = Animation.spring(response: 0.30, dampingFraction: 0.86)
     static let quick = Animation.easeOut(duration: 0.14)
+    /// Fork (polish r5): a row picked up and the rows making way for it —
+    /// stiff, settled in ~200 ms (settle took ~500 under the hand).
+    static let pickup = Animation.spring(response: 0.18, dampingFraction: 0.9)
 }
 
 /// The Copper app icon, as the product mark in onboarding and About.

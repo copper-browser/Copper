@@ -156,7 +156,7 @@ struct DownloadsPopover: View {
                     NSWorkspace.shared.open(browser.prefs.downloads)
                 }
                 .buttonStyle(.plain)
-                .font(.system(size: 11.5))
+                .font(.system(size: 12, weight: .medium)) // Fork (polish r5): 12 pt, the footer's one primary
                 .foregroundStyle(Palette.ink)
                 Spacer(minLength: 0)
                 if hasFinished {
@@ -168,7 +168,7 @@ struct DownloadsPopover: View {
                 Button("Show All…") { browser.hoarding = true; downloads.popoverOpen = false }
                     .buttonStyle(.plain)
                     .font(.system(size: 12))
-                    .foregroundStyle(Palette.muted)
+                    .foregroundStyle(Palette.ink) // Fork (polish r5): a way on, in ink; Clear stays muted
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
