@@ -12,7 +12,7 @@ import ImageIO
 // lands white").
 //
 // So the picture is kept: when a tab sleeps (Tab.sleep) and, for every page
-// still awake, when Copper quits (`flush`), as a JPEG of at most 150 KB in
+// still awake, when Copper quits (`flush`; not in a headless run), as a JPEG of at most 150 KB in
 // `covers/` in the world's folder. A tab waking with no picture in memory
 // takes the one on disk. Pictures are filed by the page's address, not the
 // tab — a tab gets a new id every launch, its address is what the session
