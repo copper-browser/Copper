@@ -58,6 +58,7 @@ enum Fork {
         case "pace": return Pace.bench(request) // Fork/Pace.swift
         case "calendar": return CalendarPeek.bench(request) // Fork/CalendarPeek.swift
         case "pins": return PinsAwake.bench(request, in: browser) // Fork/PinsAwake.swift
+        case "covers": return Covers.bench(request) // Fork/Covers.swift
         case "stage": return StageReport.report() // Fork/StageBench.swift
         case "history": return Flow.shared.bench(request, in: browser)
         case "spaces": return Spaces.shared.bench(request, in: browser)

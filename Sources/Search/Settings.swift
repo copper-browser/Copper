@@ -363,6 +363,9 @@ struct SettingsPanel: View {
                 }
                 .settingsAnchor("tabs.sleep")
                 Rule()
+                BigPinsLine() // Fork (covers): off by default, Fork/PinsAwake.swift
+                    .settingsAnchor("tabs.pins")
+                Rule()
                 ArchiveLine() // Fork: sections
                     .settingsAnchor("tabs.archive")
             }

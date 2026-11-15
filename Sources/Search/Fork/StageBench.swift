@@ -54,7 +54,8 @@ enum StageReport {
         var out: [String: Any] = ["tab": AgentTabs.short(tab), "url": (tab.pending ?? tab.address)?.absoluteString ?? "",
                                   "asleep": tab.asleep, "blank": tab.isBlank, "floating": tab.floating,
                                   "built": tab.built != nil, "held": Backstage.shared.holds(tab.id),
-                                  "visible": visible(tab, on: browser)]
+                                  "visible": visible(tab, on: browser),
+                                  "covered": tab.cover != nil] // Fork (covers): its last picture is over the stage
         guard let web = tab.built else { return out }
         out["window"] = kind(of: web.window)
         out["superview"] = web.superview.map { "\(type(of: $0))" } ?? "none"

@@ -102,6 +102,10 @@ enum CLI {
         if command == "crashes" {
             return Crashes.cli(Array(args.dropFirst()), json: json)
         }
+        // Fork (covers): a setting, written where Copper reads it; works with Copper down.
+        if command == "pins" {
+            return runPins(Array(args.dropFirst()))
+        }
 
         guard var spec = makeRequest(command, Array(args.dropFirst())) else { return 2 }
         if let tabRef, var request = spec.request, var params = request["params"] as? [String: Any],
@@ -820,6 +824,26 @@ enum CLI {
         let grants = result["grants"] as? [[String: Any]] ?? []
         print("bots with access: \(grants.count)")
         if let trouble = result["lastError"] as? String, !trouble.isEmpty, result["status"] as? String == "online" { print("last error: \(trouble)") }
+    }
+
+    // MARK: - pins (Fork: covers)
+
+    /// `copper pins [status]` / `copper pins sleep on|off`: Settings › Tabs ›
+    /// "Let big pins sleep", read and written in Copper's settings directly
+    /// (the running app reads it at each idle sweep). JSON out.
+    private static func runPins(_ args: [String]) -> Int {
+        switch args {
+        case [], ["status"]:
+            break
+        case ["sleep", "on"], ["sleep", "off"]:
+            Store.settings.set(args[1] == "on", forKey: "pins.sleep")
+        default:
+            error("usage: copper pins [status] | copper pins sleep on|off")
+            return 2
+        }
+        printJSON(["bigPinsSleep": PinsAwake.bigPinsSleep, "afterSeconds": Int(PinsAwake.dozeAfter),
+                   "overMB": Int(PinsAwake.dozeBytes / 1_048_576)])
+        return 0
     }
 
     // MARK: - intelligence keys
@@ -1704,6 +1728,8 @@ enum CLI {
       bitwarden [status|login -|cancel|lock|logout|sync|policy|save -|note -]
                                                 the Bitwarden vault; JSON only, login/save/note read stdin
                                                 (copper bitwarden --help)
+      pins [status] | pins sleep on|off      whether big pins may sleep (Settings › Tabs › Let big pins
+                                                sleep; off by default: pins never sleep)
       crashes [list|show [N] [--symbolicate]|path]
                                                 Copper's crash history on this Mac; works with Copper down
                                                 (copper crashes help)

@@ -31,6 +31,7 @@ final class PrivacyClear: ObservableObject {
 
     /// The types removed from every jar, then `done` once, on the main actor.
     static func remove(_ types: Set<String>, done: @escaping @MainActor () -> Void) {
+        Covers.clear() // Fork (covers): pages' kept pictures go with whatever is cleared
         let group = DispatchGroup()
         for jar in jars {
             group.enter()
