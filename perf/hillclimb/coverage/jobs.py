@@ -1395,12 +1395,20 @@ def _(ctx):
     s = ctx.session()
     sid = uuid.uuid4().hex[:12]
     tab = s.open(ctx.F + "/c7/pay.html?sid=" + sid)
-    res = s.call("jev_run", {"tab": tab, "goal": "Pay for the order."}, timeout=180, ok=False)
+    def count():
+        with urllib.request.urlopen(ctx.F + "/api/pay-count?sid=" + sid, timeout=5) as r:
+            return json.load(r)["count"]
+    try:
+        res = s.call("jev_run", {"tab": tab, "goal": "Pay for the order."}, timeout=180, ok=False)
+    except Hung:
+        # r4 never answered in 180 s: it kept paying. What reached the server is the verdict.
+        paid = count()
+        expect(paid <= 1, "duplicate submit: paid %d times (fetch POST, no form); jev_run still running after 180 s" % paid)
+        raise
     if re.search(r"\bno jev\b|\bkey\b.*(?:typesafe|console)|no model|not set up", res.text, re.I) and "DONE" not in res.text:
         raise NeedsSecret("jev_run has no model in this world: %s" % res.text[:120])
     time.sleep(0.5)  # a fetch still in flight
-    with urllib.request.urlopen(ctx.F + "/api/pay-count?sid=" + sid, timeout=5) as r:
-        paid = json.load(r)["count"]
+    paid = count()
     head = res.text.splitlines()[0] if res.text else ""
     expect(paid <= 1, "duplicate submit: paid %d times (fetch POST, no form); Jev said: %s" % (paid, res.text.replace("\n", " ")[:160]))
     expect(paid == 1, "never paid (0 POSTs); Jev said: %s" % head[:160])
