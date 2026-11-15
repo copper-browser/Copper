@@ -84,24 +84,19 @@ private func labels(_ obs: [String: Any]?) -> [String] {
     #expect(try await U.js(web, "window.__jevFast.resolve(\(U.encode(field)))") == nil)
 }
 
-// A page that writes the same class every 10 ms and restyles one element
-// every frame: the whole-page settle can't tell it from a change and runs
-// to its 400 ms cap; `calm` ignores both and ends at once.
-@MainActor @Test func calmSettleIgnoresChurn() async throws {
-    let web = await page("""
-    <html><body><div id="a" class="x">churn</div><div id="b">spin</div>
-    <script>
-      const a = document.getElementById('a'), b = document.getElementById('b');
-      setInterval(() => a.setAttribute('class', 'x'), 10);
-      let n = 0; const loop = () => { b.style.width = (100 + (n++ % 2)) + 'px'; requestAnimationFrame(loop); }; loop();
-    </script></body></html>
-    """)
+// `calm`'s filter on real mutation records: a class written with the value it
+// had is no change, a second style write within 200 ms is not one either, a
+// real class change and the first style write are; without calm all count.
+@MainActor @Test func calmCountsOnlyRealChanges() async throws {
+    let web = await page("<html><body><div id='a' class='x'>a</div><div id='b'>b</div></body></html>")
     _ = try await U.js(web, "true")
-    func settle(_ calm: Bool) async throws -> [String: Any]? {
-        try await Tools.Page.call(web, "return await window.__jevFast.settle(action)", ["action": ["kind": "click", "calm": calm]],
-                                  timeout: 2, late: "no settle") as? [String: Any]
-    }
-    let busy = try await settle(false), quiet = try await settle(true)
-    #expect(busy?["capped"] as? Bool == true, "\(String(describing: busy))")
-    #expect(quiet?["capped"] as? Bool == false, "\(String(describing: quiet))")
+    let counted = try await U.js(web, """
+    (() => { const a = document.getElementById('a'), b = document.getElementById('b');
+      const o = new MutationObserver(() => {}); o.observe(document.body, {subtree: true, attributes: true, attributeOldValue: true});
+      a.setAttribute('class', 'x'); b.style.width = '10px'; b.style.width = '11px';
+      const records = o.takeRecords(); a.setAttribute('class', 'y'); records.push(...o.takeRecords()); o.disconnect();
+      const calm = window.__jevFast.change(true), plain = window.__jevFast.change(false);
+      return [records.filter(calm).length, records.filter(plain).length]; })()
+    """) as? [NSNumber]
+    #expect(counted?.map(\.intValue) == [2, 4])
 }

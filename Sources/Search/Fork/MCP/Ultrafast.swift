@@ -959,6 +959,18 @@ enum Ultrafast {
       //     tell.
       // Answers how long it took, whether the cap ended it, and what was
       // still moving then.
+      // calm (browser-use's ax.py filter): writing an attribute's own value
+      // again is no change (Google rewrites a class every frame), and a
+      // style or class write counts only when its element had none for
+      // 200 ms: a menu shown once is a change, a loop that restyles every
+      // frame goes quiet. (Off-screen churn: `near` already skips it.)
+      // Answers whether a mutation record is a change; keeps time per element.
+      cache.change=calm=>{ const styled=new WeakMap();
+        return m=>{ if (!calm || m.type!=='attributes') return true;
+          if (m.oldValue===m.target.getAttributeNS(m.attributeNamespace,m.attributeName)) return false;
+          if (m.attributeName!=='style' && m.attributeName!=='class') return true;
+          const now=performance.now(), was=styled.get(m.target); styled.set(m.target,now);
+          return was===undefined || now-was>200; }; };
       cache.settle=action=>new Promise(resolve=>{
         const field=cache.nodes.get(action?.node);
         const autocomplete=action?.kind==='fill' && field?.getAttribute('role')==='combobox';
@@ -970,17 +982,7 @@ enum Ultrafast {
         const steady=near && action?.kind==='click' && action?.role==='option';
         let frames=0, dirty=false, stopped=false, last=[], seen=null, reads=0, key=null, same=0;
         const ours=n=>{ const e=n && (n.nodeType===1 ? n : n.parentElement); return !!(e && e.closest && e.closest('#__jev-trail')); };
-        // calm (browser-use's ax.py filter): writing an attribute's own value
-        // again is no change (Google rewrites a class every frame), and a
-        // style or class write counts only when its element had none for
-        // 200 ms: a menu shown once is a change, a loop that restyles every
-        // frame goes quiet. (Off-screen churn: `near` already skips it.)
-        const calm=!!action?.calm, styled=new WeakMap();
-        const real=m=>{ if (!calm || m.type!=='attributes') return true;
-          if (m.oldValue===m.target.getAttributeNS(m.attributeNamespace,m.attributeName)) return false;
-          if (m.attributeName!=='style' && m.attributeName!=='class') return true;
-          const now=performance.now(), was=styled.get(m.target); styled.set(m.target,now);
-          return was===undefined || now-was>200; };
+        const calm=!!action?.calm, real=cache.change(calm);
         if (action && 'deep' in action) cache.deep=!!action.deep;
         const desc=e=>!e || !e.tagName ? '?' : e.tagName.toLowerCase()+(e.id ? '#'+e.id : '')+(e.classList && e.classList[0] ? '.'+e.classList[0] : '');
         const onScreen=n=>{ const e=n && (n.nodeType===1 ? n : n.parentElement); if (!e || !e.isConnected) return false;
