@@ -34,6 +34,12 @@ struct CommandPalette: View {
     /// pass and the rest in the next, each pass under a frame; a row already
     /// on the card stays drawn. The card's height counts them all from the start.
     @State private var laid: Set<String> = []
+    /// Fork (perf, r4; polish r5): the card opens at its full height in the
+    /// key's own pass and its rows are laid out in the next one. Drawing the
+    /// first rows in the key's pass cost ⌘K +10 ms and ⌘T +16 ms of commit
+    /// (keylat p50, paired vs r4), so they stay a pass behind — but land
+    /// at once, with no fade of their own.
+    @State private var filled = false
     static let slice = 4
     /// Fork (perf): where the last card stood. A card measures its window a
     /// moment after it is drawn; starting from the last answer, it opens in
@@ -122,7 +128,10 @@ struct CommandPalette: View {
         // these rows have no page behind them to ask. See Fork/Marks.
         .onAppear {
             Marks.want(browser.offers.map(\.url))
-            Launcher.afterCommit { laid = Set(CommandPalette.keyed(browser.offers).map(\.id)) }
+            Launcher.afterCommit {
+                filled = true
+                laid = Set(CommandPalette.keyed(browser.offers).map(\.id))
+            }
         }
         .onChange(of: browser.offers) { _, offers in
             Marks.want(offers.map(\.url))
@@ -172,11 +181,11 @@ struct CommandPalette: View {
                 Rectangle()
                     .fill(Palette.hairline.opacity(0.55))
                     .frame(height: 1)
-                // Fork (polish r5): the first `slice` rows are drawn in the
-                // card's first frame (they were held a pass and faded in, so
-                // the card showed empty for two or three frames); the rest
-                // follow a pass later (`laid`).
-                rows
+                if filled {
+                    rows
+                } else {
+                    Color.clear.frame(height: min(natural, room))
+                }
             }
             if let nudge {
                 Rectangle()
