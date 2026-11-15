@@ -1451,6 +1451,7 @@ final class Browser: NSObject {
         }
         guard tabs.contains(where: { $0.id == tab.id }) else { return }
         guard tab.id != activeID else { return }
+        Pace.step("select") // Fork (observe): a tab switch's own work by step (`bench pace` steps)
         // One WKWebView cannot be mounted in two stages. Selecting it here
         // hands it over and leaves its previous window on another tab.
         Spaces.shared.claim(tab, for: self)
@@ -1462,16 +1463,20 @@ final class Browser: NSObject {
         // it is never lifted and landed in the same breath.
         if floating == tab.id { land() }
         leaving()
+        Pace.step("select.left")
         activeID = tab.id
+        Pace.step("select.active")
         tab.touch()
         // A tab brought back from last time, or waking from being put down,
         // opens the moment you look at it — and only if there was nothing to
         // wake is this the other case, one whose page quietly died while you
         // were elsewhere, which revive() checks for on its own.
         if !tab.wake() { tab.revive() }
+        Pace.step("select.woke")
         rememberSession()
         editing = false
         typed = ""
+        Pace.step("select.done")
     }
 
     /// Close one of Clear's tabs through the ordinary path and return the
