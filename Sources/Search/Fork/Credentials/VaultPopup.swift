@@ -185,7 +185,7 @@ struct VaultPopup: View {
                         .foregroundStyle(Palette.ink)
                         .lineLimit(1)
                     Text(credential.user.isEmpty ? credential.host : "\(credential.user) · \(credential.host)")
-                        .font(.system(size: 10.5))
+                        .font(.system(size: 11))
                         .foregroundStyle(Palette.muted)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -202,7 +202,7 @@ struct VaultPopup: View {
                     .fixedSize()
                 } else if fills {
                     Text("This site")
-                        .font(.system(size: 10.5))
+                        .font(.system(size: 11))
                         .foregroundStyle(Palette.muted)
                 }
             }

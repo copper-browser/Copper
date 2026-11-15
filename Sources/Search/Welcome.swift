@@ -151,9 +151,11 @@ struct WelcomePanel: View {
         HStack(spacing: 14) {
             HStack(spacing: 6) {
                 ForEach(0..<pages, id: \.self) { i in
-                    Circle()
-                        .fill(i == page ? Palette.ink : Palette.muted.opacity(0.8)) // Fork (ui-flows): ≥3:1, faint was 1.5:1
-                        .frame(width: 6, height: 6)
+                    // Fork (uichrome): solid muted (0.8 of it drew 2.2:1 on dark),
+                    // the page you are on a longer ink capsule, not a shade apart.
+                    Capsule()
+                        .fill(i == page ? Palette.ink : Palette.muted) // Fork (ui-flows): ≥3:1, faint was 1.5:1
+                        .frame(width: i == page ? 14 : 6, height: 6)
                 }
             }
             Spacer()

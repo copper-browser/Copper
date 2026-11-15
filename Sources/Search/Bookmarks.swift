@@ -380,7 +380,7 @@ struct BookmarkOutline: View {
                     // Fork (ui-system): where it goes, under what it's called.
                     if let host = node.host, host != node.title.lowercased() {
                         Text(host)
-                            .font(.system(size: 11.5))
+                            .font(.system(size: 12))
                             .foregroundStyle(Palette.muted)
                             .lineLimit(1)
                     }

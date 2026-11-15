@@ -252,7 +252,7 @@ struct ListenCard: View {
     private func row(_ time: String, _ text: String, partial: Bool) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(time)
-                .font(.system(size: 10.5)).monospacedDigit()
+                .font(.system(size: 11)).monospacedDigit()
                 .foregroundStyle(Palette.muted)
                 .fixedSize()
             Text(text)

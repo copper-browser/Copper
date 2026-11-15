@@ -131,10 +131,10 @@ struct HandCard: View {
                 }
             }
             Text(timing(now))
-                .font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+                .font(.system(size: 11)).foregroundStyle(Palette.muted)
             if !hand.who.session.isEmpty || !hand.who.project.isEmpty {
                 Text([hand.who.project, hand.who.session.isEmpty ? "" : "session \(hand.who.session)"].filter { !$0.isEmpty }.joined(separator: " · "))
-                    .font(.system(size: 10, design: .monospaced)).foregroundStyle(Palette.muted).lineLimit(1)
+                    .font(.system(size: 11, design: .monospaced)).foregroundStyle(Palette.muted).lineLimit(1)
             }
         }
         .padding(12)
@@ -309,16 +309,18 @@ struct SidePillWords: View {
                 .lineLimit(1)
             if !task.isEmpty {
                 Text(task)
-                    .font(.system(size: 11.5))
+                    .font(.system(size: 12)) // Fork (uichrome): secondary chrome words ≥ 12 pt
                     .foregroundStyle(Palette.muted)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    // minWidth 0: without it the task's ideal width becomes the
+                    // pill's, and a long task pushes the whole column left.
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     .clipped()
                     .modifier(RowEndFade(on: true, clear: 0))
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
     }
 }
@@ -340,7 +342,7 @@ struct SidePillGround: ViewModifier {
             .padding(.leading, 10)
             .padding(.trailing, 6)
             .padding(.vertical, 6)
-            .frame(maxWidth: .infinity, minHeight: SidePillGround.height, alignment: .leading)
+            .frame(minWidth: 0, maxWidth: .infinity, minHeight: SidePillGround.height, alignment: .leading)
             .background(paper, in: shape)
             .background(wash, in: shape)
             .overlay(shape.strokeBorder(rim, lineWidth: 1.25))

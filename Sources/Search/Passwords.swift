@@ -83,7 +83,7 @@ struct PasswordsPanel: View {
                     if let importing {
                         Ring(size: 10)
                         Text("Reading \(importing)…")
-                            .font(.system(size: 11.5))
+                            .font(.system(size: 12))
                             .foregroundStyle(Palette.muted)
                     } else if !browser.saved.isEmpty { // Fork (ui-system): no count of nought
                         Text(browser.saved.count == 1 ? "1 password" : "\(browser.saved.count) passwords")
@@ -93,7 +93,7 @@ struct PasswordsPanel: View {
                     }
                 }
                 Text("Passwords from \(MoveFrom.names) land in your own keychain, under \(Fork.name); nothing changes there. macOS asks once for that browser's key.") // Fork (ui-flows)
-                    .font(.system(size: 11.5))
+                    .font(.system(size: 12))
                     .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -124,11 +124,11 @@ struct PasswordsPanel: View {
                         .lineLimit(1)
                     if logins.count > 1 {
                         Text("\(logins.count) accounts")
-                            .font(.system(size: 11.5))
+                            .font(.system(size: 12))
                             .foregroundStyle(Palette.muted)
                     } else if let only = logins.first, !only.user.isEmpty, !open {
                         Text(only.user)
-                            .font(.system(size: 11.5))
+                            .font(.system(size: 12))
                             .foregroundStyle(Palette.muted)
                             .lineLimit(1)
                             .truncationMode(.middle)

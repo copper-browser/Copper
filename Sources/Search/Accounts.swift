@@ -108,7 +108,7 @@ struct AccountList: View {
                     Image(systemName: code ? "number" : credential.source.symbol) // Fork: per-source glyph
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Palette.muted)
-                        .frame(width: 22, height: 22)
+                        .frame(width: 24, height: 24)
                         .background(Palette.wash, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                     VStack(alignment: .leading, spacing: 1) {
                         Text(credential.user.isEmpty ? "No name" : credential.user)
@@ -116,7 +116,7 @@ struct AccountList: View {
                             .foregroundStyle(Palette.ink)
                             .lineLimit(1)
                         Text(code ? "Two-step code · \(credential.host)" : credential.host)
-                            .font(.system(size: 10.5))
+                            .font(.system(size: 11))
                             .foregroundStyle(Palette.muted)
                             .lineLimit(1)
                     }
@@ -124,7 +124,7 @@ struct AccountList: View {
                     if fetching {
                         Ring(size: 10)
                         Text("Fetching…")
-                            .font(.system(size: 10.5))
+                            .font(.system(size: 11))
                             .foregroundStyle(Palette.muted)
                     }
                 }
@@ -145,7 +145,7 @@ struct AccountList: View {
                     Image(systemName: icon)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Palette.muted)
-                        .frame(width: 22, height: 22)
+                        .frame(width: 24, height: 24)
                         .background(Palette.wash, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                     VStack(alignment: .leading, spacing: 1) {
                         Text(title)
@@ -153,7 +153,7 @@ struct AccountList: View {
                             .foregroundStyle(Palette.ink)
                             .lineLimit(1)
                         Text(subtitle)
-                            .font(.system(size: 10.5))
+                            .font(.system(size: 11))
                             .foregroundStyle(Palette.muted)
                             .lineLimit(1)
                     }

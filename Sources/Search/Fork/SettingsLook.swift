@@ -117,12 +117,12 @@ struct SettingsAdvanced<Content: View>: View {
 /// Plate.swift carries only the reads.
 enum SettingsMetrics {
     static func detailInk(_ on: Bool) -> Color { on ? SettingsInk.detail : Palette.muted }
-    static func detailSize(_ on: Bool) -> CGFloat { on ? 12 : 11.5 }
+    static func detailSize(_ on: Bool) -> CGFloat { 12 } // Fork (uichrome): secondary words ≥ 12 pt in either look
     static func lineInset(_ on: Bool) -> CGFloat { on ? 16 : 14 }
     static func lineHeight(_ on: Bool) -> CGFloat { on ? 12 : 11 }
     static func cardFill(_ on: Bool) -> Color { on ? SettingsInk.card : Palette.ground }
     static func cardEdge(_ on: Bool) -> Color { on ? SettingsInk.cardEdge : Palette.hairline }
-    static func captionFont(_ on: Bool) -> Font { on ? .system(size: 12.5, weight: .semibold) : .system(size: 11.5, weight: .medium) }
+    static func captionFont(_ on: Bool) -> Font { on ? .system(size: 12.5, weight: .semibold) : .system(size: 12, weight: .medium) }
     static func captionInk(_ on: Bool) -> Color { on ? SettingsInk.heading : Palette.muted }
 }
 

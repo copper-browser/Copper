@@ -294,7 +294,7 @@ struct SpaceStrip<Tools: View>: View {
         let held = dragging == space.id
         return SpaceChip(space: space, current: space.id == spaces.current(in: browser), dark: scheme == .dark,
                          over: hovering == space.id, ink: SpaceTint(space: space, dark: scheme == .dark).mark(on: ink),
-                         glow: ink.hover, plate: ink.pill, dot: spaces.all.count > SpaceChip.dotsPast ? ink.muted : nil)
+                         glow: ink.hover, plate: ink.pill)
             .id(space.id)
             .anchorPreference(key: ChipFrames.self, value: .bounds) { [space.id: $0] }
             .offset(x: held ? travel - CGFloat(index - from) * step : 0)
@@ -310,6 +310,12 @@ struct SpaceStrip<Tools: View>: View {
             }
             .help(SpaceChip.help(space, index: index, current: space.id == spaces.current(in: browser)))
             .contextMenu { SpaceMenu(browser: browser, space: space) }
+            // Fork (uichrome): a named button to VoiceOver — the tap and the
+            // drag above stay as they are.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(space.title)
+            .accessibilityAddTraits(space.id == spaces.current(in: browser) ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction { SpaceEditing.shared.pressed(space.id, in: browser) }
     }
 
     /// Pick a chip up and the others make way, one step per chip's width —
@@ -422,12 +428,8 @@ struct SpaceChip: View {
     /// The column's live pill, under the current space's chip — the column's
     /// one word for "this one". (Fork: space-chips)
     var plate: Color? = nil
-    /// Fork (uib): past `dotsPast` spaces a chip at rest is a dot in this
-    /// ink — the name comes up under the pointer — as Arc's foot does.
-    var dot: Color? = nil
 
     static let size: CGFloat = 28
-    static let dotsPast = 4
     static let gap: CGFloat = 5
     /// The mark inside the chip: a 20 pt tile with an 11 pt initial, or the
     /// space's chosen icon at the same size. At 17 the initial came out
@@ -435,16 +437,12 @@ struct SpaceChip: View {
     static let tile: CGFloat = 20
 
     /// Fork (uib): Arc's foot — the current space in its colour on the live
-    /// pill, the others in one quiet grey (same lightness, so their letters
-    /// keep their contrast) until the pointer is on one.
+    /// pill, the others quieter until the pointer is on one.
+    /// Fork (uichrome): quieter is the space's own colour at about a third
+    /// (not grey, not a dot past four spaces), so each chip still says which
+    /// space it is; the row scrolls when they outgrow it.
     var body: some View {
-        Group {
-            if let dot, !current, !over {
-                Circle().fill(dot).frame(width: 6, height: 6)
-            } else {
-                mark.saturation(current || over ? 1 : 0)
-            }
-        }
+        mark.saturation(current || over ? 1 : 0.35)
         .opacity(current || over ? 1 : 0.72)
         .frame(width: SpaceChip.size, height: SpaceChip.size)
         .background(

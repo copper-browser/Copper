@@ -161,12 +161,12 @@ struct DownloadsPopover: View {
                 if hasFinished {
                     Button("Clear") { downloads.clearFinished() }
                         .buttonStyle(.plain)
-                        .font(.system(size: 11.5))
+                        .font(.system(size: 12))
                         .foregroundStyle(Palette.muted)
                 }
                 Button("Show All…") { browser.hoarding = true; downloads.popoverOpen = false }
                     .buttonStyle(.plain)
-                    .font(.system(size: 11.5))
+                    .font(.system(size: 12))
                     .foregroundStyle(Palette.muted)
             }
             .padding(.horizontal, 14)

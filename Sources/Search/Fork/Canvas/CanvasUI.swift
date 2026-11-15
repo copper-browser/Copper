@@ -230,7 +230,7 @@ struct CanvasPopover: View {
             if ui.mode != .list && ui.mode != .new {
                 Button { ui.mode = .list } label: {
                     Image(systemName: "chevron.left").font(.system(size: 11, weight: .semibold))
-                        .frame(width: 22, height: 22).contentShape(Rectangle())
+                        .frame(width: 24, height: 24).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Palette.muted)

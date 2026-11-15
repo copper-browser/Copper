@@ -58,7 +58,9 @@ extension Drive.Run {
         case .blocked: return said("Blocked")
         case .unsure: return said("Not sure it worked")
         case .budget: return said("Out of steps")
-        case .error: return said("Error")
+        // Fork (uichrome): a plain outcome; the tool's own words (codes and
+        // all) are behind Details and the foot's help.
+        case .error: return "Didn't finish"
         case .ended: return said("Let go")
         case .stopped: return note.isEmpty ? "Stopped by you" : note
         }
@@ -169,7 +171,7 @@ struct DriveCard: View {
         } else {
             let shown = run.cycles.suffix(DriveCard.folded)
             VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(shown)) { cycle in DriveStep(cycle: cycle, jev: run.driver == .jev) }
+                ForEach(Array(shown)) { cycle in DriveStep(cycle: cycle, jev: run.driver == .jev, runFailed: run.failed) }
             }
         }
         if run.cycles.count > DriveCard.folded || run.cycles.contains(where: { !($0.outcome?.candidates.isEmpty ?? true) || !($0.outcome?.error ?? "").isEmpty }) || open {
@@ -201,6 +203,7 @@ struct DriveCard: View {
                 .font(.system(size: 11)).foregroundStyle(run.failed ? Palette.ink : Palette.muted) // Fork (uitype): a sentence in ink, the red on its glyph
                 .lineLimit(2).truncationMode(.tail)
                 .fixedSize(horizontal: false, vertical: true)
+                .help(run.note)
             Spacer(minLength: 6)
             if drive.refusingUntil != nil, run.status == .stopped, drive.run?.id == run.id {
                 Button { drive.resume() } label: {
@@ -217,6 +220,8 @@ struct DriveCard: View {
 struct DriveClock: View {
     let run: Drive.Run
     let live: Bool
+    /// Fork (uichrome): telemetry in the live band reads after the task, in muted ink.
+    var muted = false
 
     var body: some View {
         if live {
@@ -231,7 +236,7 @@ struct DriveClock: View {
     private func label(_ seconds: TimeInterval) -> some View {
         Text(DriveStyle.span(seconds))
             .font(.system(size: 11)).monospacedDigit()
-            .foregroundStyle(live ? Palette.ink : Palette.muted)
+            .foregroundStyle(live && !muted ? Palette.ink : Palette.muted)
     }
 }
 
@@ -264,15 +269,14 @@ struct DriveLiveStrip: View {
         let swatch = Drive.colour(for: run.who)
         HStack(spacing: 8) {
             Button { Agent.shared.reveal() } label: {
+                // Fork (uichrome): who on one line, what it is at under it,
+                // faded where the band ends (was one line cut with "…");
+                // the clock is secondary, after the task.
                 HStack(spacing: 8) {
                     PulseDot(colour: swatch.fill, size: 7)
-                    Text(line)
-                        .font(.system(size: 11.5, weight: .medium))
-                        .foregroundStyle(Palette.ink)
-                        .lineLimit(1).truncationMode(.tail)
-                        .help(line)
-                    Spacer(minLength: 4)
-                    DriveClock(run: run, live: true).fixedSize()
+                    SidePillWords(name: "\(run.who.agent) is driving", task: doing)
+                        .help(doing)
+                    DriveClock(run: run, live: true, muted: true).fixedSize()
                 }
                 .contentShape(Rectangle())
             }
@@ -286,17 +290,12 @@ struct DriveLiveStrip: View {
         .onHover { over = $0 }
     }
 
-    /// "phi is driving · Read 45 shapes", "Jev is driving · Clicking Search".
+    /// "Read 45 shapes", "Clicking Search" — the band's second line.
     /// Fork (ui-flows): no call count — the task gets the room (the card
     /// below still counts).
-    private var line: String {
-        var bits = ["\(run.who.agent) is driving"]
-        if let doing = run.cycles.last, doing.ended == nil, let phase = doing.phases.last {
-            bits.append(phase.title)
-        } else if let thought = run.thought, !thought.isEmpty {
-            bits.append(thought)
-        }
-        return bits.joined(separator: " · ")
+    private var doing: String {
+        if let doing = run.cycles.last, doing.ended == nil, let phase = doing.phases.last { return phase.title }
+        return run.thought ?? ""
     }
 }
 
@@ -391,7 +390,8 @@ private struct DriveBand: ViewModifier {
         content
             .padding(.leading, 16)
             .padding(.trailing, 8)
-            .frame(height: 34)
+            .padding(.vertical, 4)
+            .frame(minHeight: 34)
             .background(swatch.fill.opacity(over ? 0.16 : 0.10))
             .overlay(alignment: .bottom) { Rectangle().fill(Palette.hairline).frame(height: 1) }
             .animation(Motion.quick, value: over)
@@ -402,13 +402,16 @@ private struct DriveBand: ViewModifier {
 struct DriveStep: View {
     let cycle: Drive.Cycle
     let jev: Bool
+    /// Fork (uichrome): red only when the run itself failed; a step that went
+    /// wrong in a run that carried on (or is still going) is amber.
+    var runFailed = false
 
     var body: some View {
         let failed = !(cycle.outcome?.error ?? "").isEmpty
         HStack(alignment: .firstTextBaseline, spacing: 7) {
             Image(systemName: DriveStep.icon(cycle.outcome?.operation ?? cycle.phases.last.map { $0.kind.rawValue.uppercased() } ?? ""))
                 .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(failed ? Palette.danger : Palette.muted)
+                .foregroundStyle(failed ? (runFailed ? Palette.danger : Color.orange) : Palette.muted)
                 .frame(width: 16)
             Text(line)
                 .font(.system(size: 12)).foregroundStyle(Palette.ink) // Fork (uitype): the red is the glyph's; the line says what failed
@@ -465,9 +468,10 @@ struct DriveStep: View {
         }
     }
 
-    /// "Changing the canvas" → "Changing the canvas didn't work".
+    /// "Changing the canvas · 12 ops" → "Changing the canvas didn't work":
+    /// the counts and codes after a "·" are the tool's, behind Details.
     static func plain(head: String) -> String {
-        let head = head.trimmingCharacters(in: CharacterSet(charactersIn: " .…"))
+        let head = (head.components(separatedBy: " · ").first ?? head).trimmingCharacters(in: CharacterSet(charactersIn: " .…"))
         return head.isEmpty ? "That step didn't work" : "\(head) didn't work"
     }
 
@@ -644,7 +648,7 @@ struct DriveTimeline: View {
 
     private func chip(_ operation: String) -> some View {
         Text(operation)
-            .font(.system(size: 10, design: .monospaced)) // Fork (uitype): the 10 pt floor for words
+            .font(.system(size: 11, design: .monospaced)) // Fork (uichrome): nothing read under 11 pt
             .foregroundStyle(Palette.ink)
             .padding(.horizontal, 5).padding(.vertical, 1.5)
             .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Palette.ink.opacity(0.25), lineWidth: 1))

@@ -180,7 +180,7 @@ struct HistoryPanel: View {
                         .foregroundStyle(Palette.ink)
                         .lineLimit(1)
                     Text(trace.key)
-                        .font(.system(size: 11.5))
+                        .font(.system(size: 12))
                         .foregroundStyle(Palette.muted)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -190,7 +190,7 @@ struct HistoryPanel: View {
                     Quick("Remove", tint: Palette.danger, act: forget)
                 } else {
                     Text(When.clock(trace.last))
-                        .font(.system(size: 11.5))
+                        .font(.system(size: 12))
                         .foregroundStyle(Palette.muted)
                         .monospacedDigit()
                 }
