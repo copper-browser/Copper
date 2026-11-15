@@ -98,10 +98,10 @@ private func labels(_ obs: [String: Any]?) -> [String] {
     """)
     _ = try await U.js(web, "true")
     func settle(_ calm: Bool) async throws -> [String: Any]? {
-        try await web.callAsyncJavaScript("return await window.__jevFast.settle(action)",
-                                          arguments: ["action": ["kind": "click", "calm": calm]], in: nil, in: .copper) as? [String: Any]
+        try await Tools.Page.call(web, "return await window.__jevFast.settle(action)", ["action": ["kind": "click", "calm": calm]],
+                                  timeout: 2, late: "no settle") as? [String: Any]
     }
     let busy = try await settle(false), quiet = try await settle(true)
-    #expect(busy?["capped"] as? Bool == true)
-    #expect(quiet?["capped"] as? Bool == false)
+    #expect(busy?["capped"] as? Bool == true, "\(String(describing: busy))")
+    #expect(quiet?["capped"] as? Bool == false, "\(String(describing: quiet))")
 }
