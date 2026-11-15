@@ -29,7 +29,8 @@ page isn't the size asked; `meta.json` has both worlds as configured, and `--sum
 the Jev that answered, the text model that wrote values and the page size measured after each run.
 The summary's last table counts forms sent, duplicate submits (a form sent again with nothing shown between),
 resends Jev was stopped from, WAIT ms, and what the router billed per run (`x-litellm-response-cost` when the
-gateway gives it, else list price; Jev's own tokens are not priced).
+gateway gives it, else list price). The main table's $/run and $/pass add Jev's own input tokens at an assumed
+`AGENTBENCH_JEV_USD_PER_M` (default $1 per million, haiku's input price: TypeSafe's answers carry no price), so $/pass ranks every method.
 
 `meta.json` also has `sha` (the build's commit: run with `AGENTBENCH_SRC=<its git worktree>` on the devbox),
 `harness_sha` and `binary_sha256` (the first 16 hex of the Copper executable), so two runs say what they measured.
@@ -71,7 +72,7 @@ model/strategy/vision as answered, load average, every step.
 | `llm-haiku` | strategy fast,llm=haiku, vision off | a small LLM decides instead of Jev |
 | `base` | none, on `AGENTBENCH_BASE_APP` | another build's shipped loop in the second probe world (port+2), interleaved with this build's arms task by task, so both builds meet Google (and the Mac's load) alike. `ARMS=shipped,base AGENTBENCH_BASE_APP=~/hc/r3/Copper.app` is an A/B of a change |
 | `ultrafast` | — | browser-use jev-ultrafast in Chrome. **Prepared, not run** (needs Collin's OK for Chrome) |
-| `phi-mcp` | — | stub: phi via browser_snapshot/click. A full LLM agent per run (~10–60 s, $); `play_phi` says how |
+| `phi-mcp` | — | an LLM agent (`AGENTBENCH_MCP_MODEL`, sonnet) on the real `browser_*` tool list (tools/list), one JSON action a turn (the first object of the reply is taken), the full interactive snapshot after every action (as Playwright MCP's answers carry one), screenshots shown to it as pictures, `browser_handoff` answered "not now" by the harness (ends BLOCKED). Wrong-tool calls are counted (`wrong_tool`) |
 
 ## The ultrafast arm (once Collin approves Chrome on the mini)
 
