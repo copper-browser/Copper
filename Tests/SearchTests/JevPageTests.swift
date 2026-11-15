@@ -77,10 +77,10 @@ private func labels(_ obs: [String: Any]?) -> [String] {
     #expect(try await U.js(web, "window.__jevFast.resolve(\(U.encode(button)))") is [String: Any])
     let bnode = try #require((button["node"] as? NSNumber)?.intValue)
     _ = try await U.js(web, "window.__jevFast.domClick(\(bnode))")
-    #expect(try await Page.raw(web, "window.shadowClicked === true", world: .page) as? Bool == true)
+    #expect(try await Tools.Page.raw(web, "window.shadowClicked === true", world: .page) as? Bool == true)
 
     // a frame covered on the top page is no place to click
-    _ = try await Page.raw(web, "const c=document.createElement('div'); c.style.cssText='position:fixed;inset:0;background:white'; document.body.append(c); true", world: .page)
+    _ = try await Tools.Page.raw(web, "const c=document.createElement('div'); c.style.cssText='position:fixed;inset:0;background:white'; document.body.append(c); true", world: .page)
     #expect(try await U.js(web, "window.__jevFast.resolve(\(U.encode(field)))") == nil)
 }
 
