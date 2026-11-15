@@ -69,6 +69,9 @@ ARMS = {
     # experiment arms (hc2/jev): Fast mode without one of its two newest words, to see what each does
     "noreach": {"strategy": "watched,burst,lean,paste,watch,near,submit"},
     "nonear": {"strategy": "watched,burst,lean,paste,watch,reach,submit"},
+    # experiment arms (hc6/jev): Fast mode with calm+deep, without one of them
+    "nocalm": {"strategy": "watched,burst,lean,paste,watch,near,reach,deep,submit"},
+    "nodeep": {"strategy": "watched,burst,lean,paste,watch,near,reach,calm,submit"},
     # browser-use jev-ultrafast in Chrome — prepared, NOT run until Collin OKs Chrome (ultrafast_arm.py)
     "ultrafast": None,
     # browser-use 1.0 mode='ultrafast' (LLM writes code on accessibility-tree helpers) in the same Chrome (bu_ultrafast_arm.py)
