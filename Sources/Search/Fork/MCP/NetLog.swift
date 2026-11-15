@@ -131,16 +131,22 @@ final class NetLog: NSObject {
     /// Where the log is now: requests after this are the next action's.
     static func mark(_ web: WKWebView) -> UInt64 { log(for: web)?.sequence ?? 0 }
 
-    /// A page's own bookkeeping, never its answer: analytics, logging and
-    /// beacons (Google's `log?format=json` is an xhr after every click).
+    /// A page's own bookkeeping, never its answer: beacons and pings by
+    /// kind, and the known analytics services by host (plus Google's own
+    /// `log?format=json`, an xhr after every click). Nothing by path words:
+    /// a POST to a shop's /payments/collect or a stats.example.com API is
+    /// real, and `posted` must see it.
     nonisolated static func noise(_ e: Entry) -> Bool {
         if ["beacon", "ping", "csp-report"].contains(e.kind) { return true }
-        guard let url = URL(string: e.url) else { return false }
-        let host = url.host?.lowercased() ?? ""
-        if ["google-analytics.", "googletagmanager.", "doubleclick.", "analytics.", "stats.", "telemetry.", "sentry."].contains(where: host.contains) { return true }
-        return ["log", "logs", "collect", "beacon", "ping", "track", "telemetry", "metrics", "rum", "csi", "jserror", "gen_204"]
-            .contains(url.lastPathComponent.lowercased())
+        guard let url = URL(string: e.url), let host = url.host?.lowercased() else { return false }
+        func under(_ domain: String) -> Bool { host == domain || host.hasSuffix("." + domain) }
+        if trackers.contains(where: under) { return true }
+        return (under("google.com") || under("youtube.com")) && ["/log", "/gen_204", "/csi", "/jserror"].contains(url.path.lowercased())
     }
+    nonisolated static let trackers = ["google-analytics.com", "googletagmanager.com", "doubleclick.net", "googlesyndication.com",
+                                       "sentry.io", "segment.io", "segment.com", "mixpanel.com", "amplitude.com", "hotjar.com", "hotjar.io",
+                                       "nr-data.net", "datadoghq.com", "browser-intake-datadoghq.com", "clarity.ms", "bat.bing.com",
+                                       "fullstory.com", "facebook.net", "scorecardresearch.com", "amazon-adsystem.com", "fls-na.amazon.com"]
 
     /// A data call asked for after `mark` and still out (Tools.settle),
     /// bookkeeping left out, by the same `pending` rule as Jev's WAIT.
@@ -183,9 +189,13 @@ final class NetLog: NSObject {
     /// was answered for `linger` (a reply often asks for the next thing), or
     /// `cap`: what they were. A page that left for another in the meantime
     /// has nothing to wait for here (its load is waited for).
-    static func answered(_ web: WKWebView, after mark: UInt64?, cap: TimeInterval = 3, linger: TimeInterval = 0) async -> [Entry] {
-        let deadline = Date().addingTimeInterval(cap)
-        while let out = dataCalls(web, after: mark), Date() < deadline, !quiet(out, linger: linger) {
+    /// `start`: with no call asked yet, how long to wait for one to begin
+    /// (a search's page asks for its results a moment after the address
+    /// changes: Google Flights' call came 34–78 ms after the old read).
+    static func answered(_ web: WKWebView, after mark: UInt64?, cap: TimeInterval = 3, linger: TimeInterval = 0, start: TimeInterval = 0) async -> [Entry] {
+        let begun = Date(), deadline = begun.addingTimeInterval(cap)
+        while let out = dataCalls(web, after: mark), Date() < deadline,
+              !quiet(out, linger: linger) || (out.isEmpty && Date().timeIntervalSince(begun) < start) {
             try? await Task.sleep(nanoseconds: 25_000_000)
         }
         return dataCalls(web, after: mark) ?? []

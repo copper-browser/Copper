@@ -467,7 +467,7 @@ enum Page {
       function snapshot(selector, interactiveOnly, limit, prefix) {
         var root = selector ? find(selector.indexOf(':') > 0 ? selector : 'css:' + selector) : document.body;
         if (!root) return { text: 'nothing matches ' + selector, frames: [] };
-        var lines = [], count = 0, frames = [];
+        var lines = [], count = 0, frames = [], named = [];
         function walk(el, depth) {
           if (count >= limit) return;
           if (!(el instanceof Element)) return;
@@ -498,6 +498,7 @@ enum Page {
             var label = inter || r === 'heading' || r === 'img' ? nm : landmark ? (el.getAttribute('aria-label') || '') : ownText;
             if (label) line += ' ' + JSON.stringify(label.length > 120 ? label.slice(0, 117) + '…' : label);
             if (inter) line += ' [ref=' + (prefix || '') + ref(el) + ']';
+            if (inter && interactiveOnly && label) named.push({ i: lines.length, el: el, r: r, nm: nm, quoted: JSON.stringify(label.length > 120 ? label.slice(0, 117) + '…' : label) });
             var a = attrs(el); if (a) line += ' ' + a;
             if (!inter && r === 'text' && !landmark && lines.length && lines[lines.length - 1].endsWith(line.trim())) { /* skip duplicate */ } else { lines.push(line); count++; }
           }
@@ -506,8 +507,29 @@ enum Page {
           for (var k = 0; k < kids.length; k++) walk(kids[k], emit ? depth + 1 : depth);
         }
         walk(root, 0);
+        if (interactiveOnly) rowNames(lines, named);
         if (count >= limit) lines.push('… (truncated at ' + limit + ' nodes; pass a selector or interactive: true for less)');
         return { text: lines.join('\n'), frames: frames };
+      }
+      // interactive: true leaves the rows' text out, so a table of "Approve"
+      // buttons read as eight alike. Controls by one name that go to
+      // different places each say their row (Jev's table does the same).
+      function rowNames(lines, named) {
+        var groups = {}, told = 0;
+        named.forEach(function (n) { var k = n.r + '|' + n.nm.toLowerCase(); (groups[k] = groups[k] || []).push(n); });
+        Object.keys(groups).forEach(function (k) {
+          var g = groups[k], places = {};
+          g.forEach(function (n) { places[n.el.href || n.i] = 1; });
+          if (g.length < 2 || Object.keys(places).length < 2) return;
+          g.forEach(function (n) {
+            var row = n.el.closest('tr,li,[role="row"],[role="listitem"],article,[role="article"]');
+            if (!row || told >= 40) return;
+            var said = (row.innerText || '').replace(/\s+/g, ' ').replace(n.nm, '').trim().slice(0, 60);
+            if (!said) return;
+            lines[n.i] = lines[n.i].replace(n.quoted, JSON.stringify(n.nm.slice(0, 117) + ' · ' + said));
+            told++;
+          });
+        });
       }
       // Frames. Windows compare across origins, so a frame can say where it
       // is and its parent which element holds it without reading each other.

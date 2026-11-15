@@ -285,8 +285,9 @@ enum Ultrafast {
     static let clickPatience: TimeInterval = 1.0
     /// Under this, a DONE or BLOCKED gets a second look first (Session.tick):
     /// in 220 hill-climb runs (r2) 11 of 17 wrong BLOCKEDs were under 0.6 and
-    /// no right one was; DONE: 2 wrong and 2 right under 0.6.
-    static let claimFloor = 0.6
+    /// no right one was. DONE (r4): every DONE at 80% or more passed its
+    /// checker; under 80%, 5 passed and 8 failed (Amazon's store page at 67%).
+    static let claimFloor = 0.8
     /// A BLOCKED needs more: far-link said BLOCKED at 76% on the very page it
     /// was sent to (r3). And a claim still under its floor after the second
     /// look ends `unsure` (DONE) or is checked for what is left (BLOCKED).
@@ -299,7 +300,15 @@ enum Ultrafast {
     /// answered and `waitLinger` quiet — at most this long. It waited for
     /// every call since the page loaded and sat at 3 s in 8 of 16 Flights runs.
     static let waitCap: TimeInterval = 1.2
-    static let waitLinger: TimeInterval = 0.15
+    /// Quiet this long after the last answer (a reply often asks for the
+    /// next thing), and a WAIT lasts at least `waitFloor`: on Flights (r4)
+    /// every WAIT of 175 ms or less was followed by Reload, every one of
+    /// 238 ms or more by DONE.
+    static let waitLinger: TimeInterval = 0.4
+    static let waitFloor: TimeInterval = 0.3
+    /// After a search went in (Return, or the address is another page now):
+    /// how long its page is given to ask for its results.
+    static let startWait: TimeInterval = 0.3
 
     /// Airport codes (ZRH) the goal names and the run typed that the page
     /// shows nowhere now: not in its text, its controls or its address (a
@@ -343,7 +352,7 @@ enum Ultrafast {
     /// What Jev reads when it chose to send a form again that the page took
     /// without a word: it is asked DONE or BLOCKED instead.
     static let sentNote: [String: Any] = [
-        "action": "The form was sent once and the page shows no confirmation. It is not sent again: answer DONE if sending it met the goal, else BLOCKED.",
+        "action": "That was sent once already and the page shows nothing new back. It is not sent again: answer DONE if sending it met the goal, else BLOCKED.",
         "kind": "done", "text": NSNull(), "page_changed": false,
     ]
 
@@ -476,13 +485,18 @@ enum Ultrafast {
             return out
         }
 
-        /// Sent and nothing to show for it: what Jev reads, so it doesn't send again.
-        var quietSend: Bool { formSent && pageChanged == false }
+        /// Sent and nothing to show for it: what Jev reads, so it doesn't send
+        /// again. Any POST counts, not only a form: a Pay button that posts
+        /// with fetch is the same send.
+        var quietSend: Bool { (formSent || sent) && pageChanged == false }
 
+        /// `page_changed` says what the page did; `sent` that a request went
+        /// out (Google reads with POSTs too, so it is not a change).
         var recent: [String: Any] {
-            let changed: Any = sent ? true : pageChanged.map { $0 as Any } ?? NSNull()
-            return ["action": quietSend ? label + " (sent; the page shows no confirmation)" : label, "kind": kind,
-                    "text": text.map { $0 as Any } ?? NSNull(), "page_changed": changed]
+            var out: [String: Any] = ["action": quietSend ? label + " (sent; the page shows no confirmation)" : label, "kind": kind,
+                                      "text": text.map { $0 as Any } ?? NSNull(), "page_changed": pageChanged.map { $0 as Any } ?? NSNull()]
+            if sent { out["sent"] = true }
+            return out
         }
 
         var line: String {
@@ -609,6 +623,12 @@ enum Ultrafast {
       // are above or below the viewport are offered too (a click scrolls
       // them in first): a page's useful link is often a screen or ten away,
       // and a scroll per screen was most of a run (the Wikipedia game).
+      // Not a way through for `reach`: a link in the page's footer, a
+      // category box or a navbox, or to a namespace page (/wiki/Category:X,
+      // Help:, File: — a word and a colon, no space after it). Beethoven's
+      // game clicked Category: links three runs of three (r4).
+      const furniture=e=>!!e.closest('footer,[role="contentinfo"],.catlinks,.navbox,.mw-footer,.printfooter');
+      const namespaced=e=>/\/[A-Za-z]+(?:_talk)?:[^\/_\s]/.test(decoded(e.pathname||''));
       cache.observe=goal=>{
         if (!document.body) return null;
         for (const [id,e] of cache.nodes) if (!e.isConnected) cache.nodes.delete(id);
@@ -620,7 +640,8 @@ enum Ultrafast {
           if (!rname || r.width<=0 || r.height<=0) continue;
           if (x<0 || y<0 || x>=innerWidth || y>=innerHeight) {
             const href=e.getAttribute('href')||'';
-            if (goal && goal.words && rname==='link' && e.tagName==='A' && x>=0 && x<innerWidth && href && !href.startsWith('#') && !/^javascript:/i.test(href)) away.push({e,r});
+            if (goal && goal.words && rname==='link' && e.tagName==='A' && x>=0 && x<innerWidth && href && !href.startsWith('#') && !/^javascript:/i.test(href) &&
+                !furniture(e) && !namespaced(e)) away.push({e,r});
             continue;
           }
           if (rname==='gridcell' && e.querySelector('button,[role="button"]')) continue;
@@ -710,7 +731,20 @@ enum Ultrafast {
           // way there is a link that only mentions it, so more are offered.
           const named=(goal.phrases||[]).map(p=>' '+p+' ');
           const found=items.some(it=>named.includes(it.text));
-          for (const it of [...byHref.values()].sort((a,b)=>b.score-a.score || a.dist-b.dist).slice(0,found || !named.length ? 12 : 30)) {
+          const chosen=[...byHref.values()].sort((a,b)=>b.score-a.score || a.dist-b.dist).slice(0,found || !named.length ? 12 : 30);
+          if (!found && named.length) {
+            // Nor one that only mentions it: the next links of the text below,
+            // in reading order, so a way round (Vienna for Austria) is on offer.
+            const have=new Set(chosen.map(it=>it.o.e.href.split('#')[0]));
+            let more=0;
+            for (const it of items.filter(it=>it.o && it.o.r.y>=innerHeight).sort((a,b)=>a.o.r.y-b.o.r.y)) {
+              const key=it.o.e.href.split('#')[0];
+              if (have.has(key) || location.href.split('#')[0]===key) continue;
+              have.add(key); chosen.push({...it,dist:it.o.r.y-innerHeight});
+              if (++more>=12) break;
+            }
+          }
+          for (const it of chosen) {
             const e=it.o.e, r=it.o.r;
             actions.push({node:identity(e),role:'link',label:name(e)||e.textContent.trim().slice(0,90)||'link',
               rect:{x:r.x,y:r.y,w:r.width,h:r.height},kind:'click',value:'',offscreen:r.y<0?'above':'below',href:e.href.split('#')[0]});
@@ -876,7 +910,12 @@ enum Ultrafast {
         const field=cache.nodes.get(action?.node);
         const autocomplete=action?.kind==='fill' && field?.getAttribute('role')==='combobox';
         const near=!!action?.near, started=performance.now();
-        let frames=0, dirty=false, stopped=false, last=[], seen=null, reads=0;
+        // A list option picked (an airport from the suggestions): the page
+        // fills its field and changes its address a frame or two after the
+        // list closes, so the form must read the same 2 frames running —
+        // two stale decisions a Flights run (r4) were made in between.
+        const steady=near && action?.kind==='click' && action?.role==='option';
+        let frames=0, dirty=false, stopped=false, last=[], seen=null, reads=0, key=null, same=0;
         const ours=n=>{ const e=n && (n.nodeType===1 ? n : n.parentElement); return !!(e && e.closest && e.closest('#__jev-trail')); };
         const desc=e=>!e || !e.tagName ? '?' : e.tagName.toLowerCase()+(e.id ? '#'+e.id : '')+(e.classList && e.classList[0] ? '.'+e.classList[0] : '');
         const onScreen=n=>{ const e=n && (n.nodeType===1 ? n : n.parentElement); if (!e || !e.isConnected) return false;
@@ -919,6 +958,7 @@ enum Ultrafast {
           else if (frames<2 || moving().length) still=false;
           else if (clean) still=true;
           else { const m=cache.marker(); reads++; still=m!==null && m===seen; seen=m; }
+          if (steady) { const k=cache.pageKey(); same=k===key ? same+1 : 0; key=k; if (same<2) still=false; }
           if (still && (!autocomplete || options.some(e=>{
             const r=e.getBoundingClientRect();
             return r.width && r.height && r.bottom>0 && r.top<innerHeight &&
@@ -1585,7 +1625,12 @@ enum Ultrafast {
             // Flights' results come a second after Search's page change;
             // a WAIT done in 1 ms then read the half-drawn page. Only the
             // calls the last action started: Google keeps some open for good.
-            if !(await fresh(web, obs)) { _ = await NetLog.answered(web, after: NetLog.current(web, since), cap: waitCap, linger: waitLinger); return false }
+            if !(await fresh(web, obs)) {
+                let started = Date()
+                _ = await NetLog.answered(web, after: NetLog.current(web, since), cap: waitCap, linger: waitLinger)
+                await padWait(started)
+                return false
+            }
         } else if kind == "click" || kind == "select" || (narrow && kind == "fill"), let node {
             // The form state and the target's own guard (`near` adds typing):
             // unrelated content loading in elsewhere doesn't make a click or a
@@ -1745,7 +1790,15 @@ enum Ultrafast {
         /// it: no control that sends a form is used again while the page still
         /// reads so (it posted a review three times). Choosing one asks Jev
         /// DONE or BLOCKED instead (`confirmOnly`), and that answer ends the run.
-        private var quietSend: (marker: String, node: Int?)?
+        private var quietSend: (marker: String, node: Int?, label: String)?
+        /// A send (Return, a form, a POST) that took the tab to another page:
+        /// the same control there again before anything is typed is a resend
+        /// (Flights clicked Search on the results Search had opened).
+        private var navigatedSend: (url: String, label: String, returned: Bool)?
+        /// The visible text lines each step was decided on, by step number,
+        /// and the control a WAIT was put in place of (`repeats`).
+        private var linesAt: [Int: Set<String>] = [:]
+        private var forcedWait: String?
         private var confirmOnly = false
         /// Why the last DONE was refused, when it wasn't the unmet check.
         private var refusal: [String: Any]?
@@ -1884,7 +1937,15 @@ enum Ultrafast {
             let decideStarted = Date()
             var decision: Decision
             if strategy.llm {
-                decision = try await Ultrafast.chooseLLM(obs, goal: goal, history: history, keys: keys, strategy: strategy)
+                do {
+                    decision = try await Ultrafast.chooseLLM(obs, goal: goal, history: history, keys: keys, strategy: strategy)
+                } catch let miss as Ultrafast.LLMMiss {
+                    // Replies that named nothing on offer were billed all the same.
+                    spent.decideMs += Date().timeIntervalSince(decideStarted) * 1000
+                    spent.jevMs += miss.latencyMs
+                    spent.llmIn += miss.inputTokens; spent.llmOut += miss.outputTokens; spent.llmUsd += miss.costUsd; spent.llmModel = miss.model
+                    throw Failure(text: miss.text)
+                }
             } else if seeing == .pixels, let shot {
                 decision = try await Ultrafast.choosePixels(tab, obs, goal: goal, history: history, keys: keys, shot: shot, model: model, strategy: strategy)
             } else {
@@ -1991,6 +2052,11 @@ enum Ultrafast {
                     // Asked what is left and nothing is: a DONE it didn't dare say.
                     status = "done"
                     note += String(format: ", but sees nothing left to do (%.0f%%): taken as DONE", unmet * 100)
+                } else if claim == "BLOCKED", !sure, !settledBlock, !answering {
+                    // Doubted, looked at again and still under its floor (wiki10 at
+                    // 47–59%, r4): not a BLOCKED anyone should act on.
+                    status = "unsure"
+                    note += " — unsure: Jev stayed under \(Int(Ultrafast.blockedFloor * 100))% after a second look — check the page"
                 }
                 if claim == "DONE", status == "done", let unmet = decision.unmet, unmet >= Ultrafast.unmetFloor {
                     note += String(format: " — but the page still looks unfinished (%.0f%%); check it", unmet * 100)
@@ -2001,7 +2067,7 @@ enum Ultrafast {
                                                pageChanged: nil, stale: false, candidates: []))
                 return nil
             }
-            let action: [String: Any]
+            var action: [String: Any]
             switch decision.operation {
             case "SIGN_IN":
                 action = ["id": "SIGN_IN", "kind": "SIGN_IN",
@@ -2021,8 +2087,11 @@ enum Ultrafast {
                 guard let observed = obs.action(decision.choice) else { observation = nil; shot = nil; return nil }
                 action = observed
             }
-            let kind = action["kind"] as? String ?? ""
-            let label = action["label"] as? String ?? decision.choice
+            var kind = action["kind"] as? String ?? ""
+            var label = action["label"] as? String ?? decision.choice
+            var operation = decision.operation
+            let shownLines = Ultrafast.textLines(obs.text)
+            linesAt[history.count + 1] = shownLines
             // A human check ("I am human", a CAPTCHA) is the user's to answer,
             // never an agent's: the run ends here and hands the page back.
             if kind == "click" || kind == "fill", (action["role"] as? String) != "link", let check = Ultrafast.humanCheck(label) {
@@ -2037,8 +2106,13 @@ enum Ultrafast {
             // that sends a form is used again (nor the field it went in from).
             // Jev is asked DONE or BLOCKED with that said instead.
             if let sent = quietSend, sent.marker != obs.marker { quietSend = nil }
+            if let sent = navigatedSend, sent.url != obs.url || kind == "fill" || kind == "select" { navigatedSend = nil }
             let node = (action["node"] as? NSNumber)?.intValue
-            if let sent = quietSend, (kind == "click" && action["submits"] as? Bool == true) || (node != nil && node == sent.node) {
+            let submits = kind == "click" && action["submits"] as? Bool == true
+            let resend = quietSend.map { sent in submits || (node != nil && node == sent.node) || (kind == "click" && label == sent.label) } ?? false
+                // Search again on the page the search already opened: the same send.
+                || navigatedSend.map { sent in kind == "click" && (label == sent.label || (sent.returned && submits)) } ?? false
+            if resend {
                 resendsStopped += 1
                 confirmOnly = true
                 if strategy.llm || seeing == .pixels {
@@ -2050,6 +2124,25 @@ enum Ultrafast {
                                                probability: decision.probability, confidence: decision.confidence,
                                                pageChanged: nil, stale: true, candidates: decision.candidates))
                 return nil
+            }
+            // The same control again and again with nothing new on the page
+            // (Flights' Reload, 11 clicks ~30 ms apart in r4): after two, a WAIT
+            // in its place; after that WAIT, the run ends unsure.
+            let tries = kind == "click" ? Ultrafast.repeats(kind, label, in: history, lines: linesAt, now: shownLines) : 0
+            if tries >= 2, let wait = obs.action("wait") {
+                if forcedWait == label {
+                    status = "unsure"
+                    note = "\(label.prefix(40)) was clicked \(tries) times and waited for; the page showed nothing new — check it"
+                    trace.outcome(Drive.Outcome(operation: decision.operation, label: "not clicked again: " + label, text: nil,
+                                                   probability: decision.probability, confidence: decision.confidence,
+                                                   pageChanged: nil, stale: false, candidates: decision.candidates))
+                    return nil
+                }
+                forcedWait = label
+                action = wait
+                kind = "wait"
+                operation = "WAIT"
+                label = wait["label"] as? String ?? "Wait for the page to update"
             }
 
             var text: String? = kind == "fill" ? decision.text : nil
@@ -2099,7 +2192,6 @@ enum Ultrafast {
                 // Flights' "Reload" over "Oops, something went wrong"): a
                 // moment between tries, longer each time (1 s, then 2 s), as
                 // a phase of its own.
-                let tries = history.reversed().prefix { $0.label == label && $0.kind == kind && $0.pageChanged == false }.count
                 if strategy.watch, kind == "click", tries > 0 {
                     let pausing = trace.phase(.wait, "Waiting \(min(tries, 2)) s before trying \(label.prefix(30)) again")
                     let started = Date()
@@ -2155,13 +2247,13 @@ enum Ultrafast {
                 self.stale += 1
                 // "CLICK Next (the target is gone)": what went stale, and why.
                 let why = stale.text.range(of: #"\(([^)]*)\)"#, options: .regularExpression).map { String(stale.text[$0]) } ?? ""
-                staleOps.append("\(decision.operation) \(label.prefix(30))" + (why.isEmpty ? "" : " " + why))
+                staleOps.append("\(operation) \(label.prefix(30))" + (why.isEmpty ? "" : " " + why))
                 settleBeforeRead = true
                 observation = nil
                 shot = nil
                 if let writing { trace.close(phase: writing) }
                 if let acting { trace.close(phase: acting) }
-                trace.outcome(Drive.Outcome(operation: decision.operation, label: label, text: text,
+                trace.outcome(Drive.Outcome(operation: operation, label: label, text: text,
                                                probability: decision.probability, confidence: decision.confidence,
                                                pageChanged: nil, stale: true, candidates: decision.candidates))
                 if staleStreak > 6 { status = "blocked"; note = "The page kept changing under the agent: \(stale.text)" }
@@ -2169,10 +2261,10 @@ enum Ultrafast {
             }
 
             if MCP.shared.config.announces {
-                browser.announce("Jev · \(decision.operation) \(label.prefix(40))")
+                browser.announce("Jev · \(operation) \(label.prefix(40))")
             }
             // Said in the step, so Jev reads that the search went in, not just the text.
-            var step = Step(number: history.count + 1, operation: decision.operation, kind: kind, label: submitted ? label + ", then Return" : label, text: text,
+            var step = Step(number: history.count + 1, operation: operation, kind: kind, label: submitted ? label + ", then Return" : label, text: text,
                             confidence: decision.confidence, probability: decision.probability, latencyMs: decision.latencyMs,
                             textLatencyMs: textLatency, pageChanged: nil, url: obs.url)
             step.inputTokens = decision.inputTokens
@@ -2195,7 +2287,12 @@ enum Ultrafast {
             // out — and doesn't click again, which asks again. (A WAIT has
             // waited for it already.)
             if strategy.watch, submitted || kind == "click" {
-                let calls = await NetLog.answered(web, after: netMark)
+                // A search that went in (Return, or the address is another page's
+                // now, drawn in place): its page asks for its results a moment
+                // later, so a call gets `startWait` to begin and its answer
+                // `waitLinger` to settle. A real load is waited for by the read.
+                let moved = (submitted || Ultrafast.place(web.url?.absoluteString ?? "") != Ultrafast.place(obs.url)) && !tab.loading
+                let calls = await NetLog.answered(web, after: netMark, linger: moved ? Ultrafast.waitLinger : 0, start: moved ? Ultrafast.startWait : 0)
                 step.net = calls.suffix(6).map(NetLog.brief)
                 step.inFlight = calls.contains { NetLog.pending($0) }
             }
@@ -2225,7 +2322,8 @@ enum Ultrafast {
                 step.formSent = (try? await Ultrafast.js(web, "(c => { const f = c.fired === true; c.fired = false; return f })(window.__jevFast)")) as? Bool ?? false
             }
             step.sent = step.formSent || (kind != "wait" && NetLog.posted(web, after: netMark))
-            if step.quietSend { quietSend = (next.marker, (action["node"] as? NSNumber)?.intValue) }
+            if step.quietSend { quietSend = (next.marker, (action["node"] as? NSNumber)?.intValue, label) }
+            if step.sent || submitted, Ultrafast.place(next.url) != Ultrafast.place(obs.url) { navigatedSend = (next.url, label, submitted) }
             if kind != "wait" { lastNetMark = netMark }
             step.url = next.url
             step.settleMs = Date().timeIntervalSince(settleStarted) * 1000
@@ -2250,7 +2348,7 @@ enum Ultrafast {
             history[history.count - 1 - burstSteps.count] = step
             trace.close(phase: settling, detail: step.pageChanged == true ? "changed" : "no change")
             trace.page(url: next.url, title: next.title)
-            trace.outcome(Drive.Outcome(operation: decision.operation, label: label, text: text,
+            trace.outcome(Drive.Outcome(operation: operation, label: label, text: text,
                                            probability: decision.probability, confidence: decision.confidence,
                                            pageChanged: step.pageChanged, stale: false, candidates: decision.candidates))
             // An action whose answer was still out isn't one that changed nothing.
