@@ -153,8 +153,6 @@ enum SettingsIndex {
         e(.tabs, "Layout", "Tabs in a sidebar", "Down the left instead of across the top",
           ["vertical tabs", "sidebar", "side bar", "left column", "tab bar", "horizontal tabs"], "tabs.sidebar",
           toggle: pref(\.sidebar)),
-        e(.tabs, "Layout", "Tabs show", "Icons or letters beside the title, and on a pinned square",
-          ["favicons", "icons", "letters", "glyph", "tab icons"], "tabs.glyph"),
         e(.tabs, "Switching", "⌃Tab switches to", "Whether Control-Tab follows the row or your most recent tabs",
           ["control tab", "ctrl tab", "mru", "most recent", "recent tabs", "cycle tabs", "tab switching", "switch tabs"], "tabs.switching"),
         e(.tabs, "Switching", "Swipe between spaces", "Two fingers across the sidebar: natural, inverted, or like scrolling",

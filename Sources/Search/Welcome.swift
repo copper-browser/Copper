@@ -32,7 +32,6 @@ struct WelcomePanel: View {
     static func top(in height: CGFloat) -> CGFloat { max(height * 0.4 - (least / 2 + 36), 24) }
 
     var body: some View {
-        let tint = SpaceTint(space: Spaces.shared.space(in: browser), dark: scheme == .dark)
         GeometryReader { room in
             ZStack {
                 ThemeBackdrop(theme: tint.theme, dark: tint.night)
@@ -78,15 +77,24 @@ struct WelcomePanel: View {
     // MARK: - the pages
 
     private var welcome: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            CopperIcon(size: 64)
-            heading(Fork.name, "A browser that works for you. Spaces, an agent at your side, and the engine already in your Mac.")
+        HStack(alignment: .top, spacing: 28) { // Fork (polish r5): the column it is about, beside the words
+            VStack(alignment: .leading, spacing: 22) {
+                CopperIcon(size: 64)
+                heading(Fork.name, "A browser that works for you. Spaces, an agent at your side, and the engine already in your Mac.")
+            }
+            SpacesThumb(tint: tint)
         }
     }
+
+    private var tint: SpaceTint { SpaceTint(space: Spaces.shared.space(in: browser), dark: scheme == .dark) }
 
     /// Fork (ui-flows): Move in's own pills and sheet, not a second importer
     /// with its own list of browsers (Fork/StartCard.swift `MoveFrom`).
     private var bring: some View {
+        HStack(alignment: .top, spacing: 28) { bringWords; SpacesThumb(tint: tint) } // Fork (polish r5)
+    }
+
+    private var bringWords: some View {
         VStack(alignment: .leading, spacing: 22) {
             heading("Bring things over.", "Tabs, bookmarks, history, passwords and sign-ins from \(MoveFrom.names). Nothing in the other browser changes.")
             if MoveFrom.found.isEmpty {
@@ -109,12 +117,6 @@ struct WelcomePanel: View {
                 Way(title: "Sidebar", sidebar: true, chosen: prefs.sidebar) {
                     withAnimation(Motion.glide) { prefs.sidebar = true }
                 }
-            }
-            HStack(spacing: 12) {
-                Text("Tabs show")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Palette.muted)
-                Segmented(options: Glyph.allCases.map { ($0, $0.title) }, selection: $prefs.glyph, label: "Tabs show") // Fork (settings-a11y)
             }
         }
     }
@@ -242,6 +244,50 @@ struct WelcomePanel: View {
     }
 
     /// One of the two ways, as a small drawing of the window.
+    /// Fork (polish r5): a small picture of the Spaces column — what Copper
+    /// is, shown, beside the first two pages' words (they were text alone).
+    /// Drawn, not a screenshot: it wears this space's own colours.
+    private struct SpacesThumb: View {
+        let tint: SpaceTint
+        static let widths: [CGFloat] = [52, 64, 44, 58]
+        static let hues: [Double] = [0.12, 0.42, 0.62]
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 3) { ForEach(0..<3, id: \.self) { _ in Circle().fill(tint.faint).frame(width: 5, height: 5) } }
+                    .padding(.bottom, 2)
+                RoundedRectangle(cornerRadius: 4, style: .continuous).fill(tint.square).frame(height: 14)
+                HStack(spacing: 4) {
+                    ForEach(0..<3, id: \.self) { _ in RoundedRectangle(cornerRadius: 4, style: .continuous).fill(tint.square).frame(height: 18) }
+                }
+                ForEach(0..<4, id: \.self) { i in // four rows: five overflowed the 176 pt card at its top
+                    HStack(spacing: 5) {
+                        RoundedRectangle(cornerRadius: 2).fill(i == 1 ? tint.dot : tint.faint).frame(width: 7, height: 7)
+                        RoundedRectangle(cornerRadius: 2).fill(tint.faint.opacity(0.7)).frame(width: SpacesThumb.widths[i], height: 5)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 5)
+                    .frame(height: 15)
+                    .background { if i == 1 { RoundedRectangle(cornerRadius: 4, style: .continuous).fill(tint.pill).shadow(color: tint.lift, radius: 2, y: 1) } }
+                }
+                Spacer(minLength: 0)
+                HStack(spacing: 5) {
+                    Spacer(minLength: 0)
+                    RoundedRectangle(cornerRadius: 3, style: .continuous).fill(tint.dot).frame(width: 11, height: 11)
+                    ForEach(SpacesThumb.hues, id: \.self) { hue in
+                        RoundedRectangle(cornerRadius: 3, style: .continuous).fill(Color(hue: hue, saturation: 0.35, brightness: tint.dark ? 0.6 : 0.75)).frame(width: 11, height: 11)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(10)
+            .frame(width: 132, height: 176)
+            .background(tint.ground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 1))
+            .accessibilityHidden(true)
+        }
+    }
+
     private struct Way: View {
         let title: String
         let sidebar: Bool

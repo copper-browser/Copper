@@ -356,7 +356,7 @@ struct SpacePreview: View, Equatable {
             HStack(spacing: 10) {
                 if !tab.isBlank {
                     // As the column draws it: Tabs show Letters / Site icons.
-                    SideGlyphMark(prefs: Windows.main.prefs, icon: tab.icon, letter: tab.monogram, tint: tint, size: 16)
+                    RowMark(icon: tab.icon, tint: tint, size: 16)
                         .opacity(live ? 1 : 0.9)
                 }
                 if tab.bench {

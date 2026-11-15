@@ -962,7 +962,8 @@ private struct CloudAccountCard: View {
                 }
                 Rule()
                 Line("This Mac", "The name your other devices see it by") {
-                    TextField("Device name", text: $name)
+                    TextField("", text: $name).fieldExample("Device name", when: name.isEmpty)
+                        .accessibilityLabel("Device name") // Fork (polish r5): our own example; the system prompt was 1.7:1
                         .textFieldStyle(.plain)
                         .font(.system(size: 12))
                         .frame(width: 170)

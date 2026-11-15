@@ -801,6 +801,7 @@ final class Flow: ObservableObject {
         // on it (`openGuide`), never opened over the summary on its own.
         phase = .done(report)
         log("done", report.summary.map(\.plain).joined(separator: " | "))
+        land() // Fork (polish r5): the window shows what came while the summary is up
         if watched, !open {
             unseenDone = true
             browser.announce("\(report.title) — open Move in to see what came")
@@ -1038,13 +1039,21 @@ final class Flow: ObservableObject {
     /// Done: the sheet goes, and the window lands on the first space the
     /// move made or filled.
     func finish() {
-        if case .done(let report) = phase, !report.undone, let landing = report.landing,
-           let browser = browserForUndo, Spaces.shared.all.contains(where: { $0.id == landing }) {
-            Spaces.shared.select(landing, in: browser)
-            log("landed", landing.uuidString)
-        }
+        land()
         close()
     }
+
+    /// Fork (polish r5): to the first space the move made or filled — the
+    /// moment the move is done, not only at Done (the window sat on Home
+    /// behind "Moved in from Arc"). Once: a space picked since stays picked.
+    private func land() {
+        guard case .done(let report) = phase, !report.undone, let landing = report.landing, landed != landing,
+              let browser = browserForUndo, Spaces.shared.all.contains(where: { $0.id == landing }) else { return }
+        landed = landing
+        Spaces.shared.select(landing, in: browser)
+        log("landed", landing.uuidString)
+    }
+    private var landed: UUID?
 
     private static let chromeCanvasKey = "flow.chromeCanvasID"
     private static let chromeCanvasName = "Switching from Chrome"

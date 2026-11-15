@@ -95,7 +95,7 @@ struct SplitCard: View {
     @ViewBuilder private var edge: some View {
         if live {
             RoundedRectangle(cornerRadius: SplitMetrics.corner, style: .continuous)
-                .strokeBorder(tint, lineWidth: 1.5)
+                .strokeBorder(tint, lineWidth: 1) // Fork (polish r5): 1 pt (the stage passes ~60%), Arc's weight
                 .allowsHitTesting(false)
         } else {
             PageCard.edge
@@ -108,8 +108,10 @@ struct SplitCard: View {
 /// page covers it the moment WebKit has a frame (`PageView.showFirstFrame`).
 struct SplitWaiting: View { // Fork (covers): also under a lone page card (PageFrame.swift)
     @ObservedObject var tab: Tab
-    /// Fork (motion): the page has painted. Gone then (in 80 ms), so it can't
-    /// show through wherever a page mid-resize hasn't drawn yet.
+    /// Fork (motion): the page has painted. Gone then, so it can't show
+    /// through wherever a page mid-resize hasn't drawn yet. Fork (polish r5):
+    /// at once — the page fades in over 120 ms (`showFirstFrame`), and an
+    /// 80 ms fade of this under it read as the label ghosting over the page.
     @State private var painted: Bool
 
     init(tab: Tab) {
@@ -126,7 +128,11 @@ struct SplitWaiting: View { // Fork (covers): also under a lone page card (PageF
 
     private func watch() {
         guard !painted, let web = tab.built else { return }
-        web.whenPainted { withAnimation(.easeOut(duration: 0.08)) { painted = true } }
+        web.whenPainted {
+            var now = Transaction()
+            now.disablesAnimations = true
+            withTransaction(now) { painted = true }
+        }
     }
 }
 
@@ -137,7 +143,7 @@ struct SplitGhost: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            Mark(icon: tab.icon, letter: tab.monogram, size: 28)
+            Mark(icon: tab.icon, size: 28)
             Text(tab.title.isEmpty ? (tab.address.map(Address.pretty) ?? "New Tab") : tab.title)
                 .font(.system(size: 13))
                 .foregroundStyle(Palette.muted)
@@ -171,7 +177,7 @@ struct SplitBar: View {
             Spacer(minLength: 2)
 
             HStack(spacing: 5) {
-                Mark(icon: tab.icon, letter: tab.monogram, size: 13)
+                Mark(icon: tab.icon, size: 13)
                 Text(name)
                     .font(.system(size: 12))
                     .foregroundStyle(Palette.ink.opacity(0.8))

@@ -271,10 +271,10 @@ final class Favicons {
 }
 
 /// What stands for a page when there is no room for its title: the site's
-/// icon if there is one, and a letter in a faint square until there is.
+/// icon if there is one, and a plain globe until there is (Fork, polish r5:
+/// never a letter — `Marks` asks the site hard for its real icon first).
 struct Mark: View {
     let icon: NSImage?
-    let letter: String
     var size: CGFloat = 16
     var dim = false
 
@@ -287,14 +287,7 @@ struct Mark: View {
                     .frame(width: size, height: size)
                     .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
             } else {
-                Text(letter)
-                    .font(.system(size: size * 0.56, weight: .medium))
-                    .foregroundStyle(Palette.muted)
-                    .frame(width: size, height: size)
-                    .background(
-                        RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
-                            .fill(Palette.ink.opacity(0.06))
-                    )
+                Globe(size: size, ink: Palette.muted)
             }
         }
         // Fork (uichrome): asleep is a little greyer and 0.6 (was 0.45, too faint to tell sites apart)
@@ -302,5 +295,20 @@ struct Mark: View {
         .opacity(dim ? 0.6 : 1)
         .transition(.opacity)
         .animation(Motion.quick, value: icon == nil)
+    }
+}
+
+/// Fork (polish r5): a site with no icon yet — a neutral globe, the size of
+/// an icon, in the surface's quiet ink. Never a letter tile.
+struct Globe: View {
+    let size: CGFloat
+    let ink: Color
+
+    var body: some View {
+        Image(systemName: "globe")
+            .font(.system(size: size * 0.8, weight: .regular))
+            .foregroundStyle(ink)
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
     }
 }

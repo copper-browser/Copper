@@ -306,7 +306,13 @@ final class Tab: ObservableObject, Identifiable {
     /// Fork (pins-awake): and open they stay — a pin keeps its page loaded
     /// until it is unpinned; nothing sleeps it or puts it down
     /// (Fork/PinsAwake.swift).
-    @Published var pin: String?
+    @Published var pin: String? {
+        didSet { if pin == nil { home = nil } else if home == nil { home = pending ?? address } } // Fork (polish r5): see `home`
+    }
+    /// Fork (polish r5): where a pin was pinned (or brought back) — its
+    /// square wears that site's mark (`pinMark`), not that of the sign-in
+    /// page the site sent it on to.
+    private(set) var home: URL?
 
     /// When you last looked at it. The summon lists pages by this, because
     /// what you were just reading is what you are most likely to want back.

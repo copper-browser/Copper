@@ -26,3 +26,13 @@ private func score(_ typed: String, key: String, title: String) -> Double? {
     #expect(score("g", key: "example.com/blog", title: "Engineering notes") == nil)
     #expect(score("g", key: "github.com", title: "GitHub") != nil)
 }
+
+@Test func aTitleThatStartsWithWhatWasTypedRanksFirst() throws {
+    // council r5 ux: "cal" with Google Calendar open beside a page on
+    // calendly's host — the title that starts with the letters wins.
+    let title = try #require(score("cal", key: "google.com/calendar", title: "Calendar"))
+    let label = try #require(score("cal", key: "docs.calendly.com/help", title: "Help center"))
+    let word = try #require(score("cal", key: "example.com/x", title: "My calendar"))
+    #expect(title > label)
+    #expect(title > word)
+}

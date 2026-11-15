@@ -609,10 +609,9 @@ struct AgentPane: View {
                 HStack(spacing: 5) {
                     Image(systemName: on ? (canvas != nil ? "rectangle.on.rectangle" : "doc.text") : "eye.slash")
                         .font(.system(size: 9.5))
-                    Text(canvas ?? (tab.title.isEmpty ? (tab.address?.host ?? "This page") : tab.title))
+                    FadingTitle(text: Text(canvas ?? (tab.title.isEmpty ? (tab.address?.host ?? "This page") : CommandPalette.tidy(tab.title))) // Fork (polish r5): fades, no "…"
                         .font(.system(size: 11))
-                        .lineLimit(1).truncationMode(.tail)
-                        .strikethrough(!on, color: Palette.muted)
+                        .strikethrough(!on, color: Palette.muted))
                 }
                 .foregroundStyle(on ? Palette.ink.opacity(0.75) : Palette.muted)
                 .padding(.horizontal, 8).frame(height: 22)
@@ -707,9 +706,8 @@ private struct SuggestionRow: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Palette.muted)
                     .frame(width: 16)
-                Text(text)
-                    .font(.system(size: 12.5)).foregroundStyle(Palette.ink)
-                    .lineLimit(1).truncationMode(.tail)
+                FadingTitle(text: Text(text) // Fork (polish r5): fades, no "…"
+                    .font(.system(size: 12.5)).foregroundStyle(Palette.ink))
                 Spacer(minLength: 0)
                 Image(systemName: "arrow.up.right")
                     .font(.system(size: 9, weight: .semibold))

@@ -835,7 +835,7 @@ struct SpaceColumnPreview: View {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(i == 0 ? tint.pill : tint.square)
                         .frame(height: 30)
-                        .overlay { RowMark(icon: nil, letter: ["M", "C", "G"][i], tint: tint, size: 14) }
+                        .overlay { RowMark(icon: nil, tint: tint, size: 14) }
                 }
             }
             .padding(8)
@@ -888,7 +888,7 @@ struct SpaceColumnPreview: View {
 
     private func row(_ title: String, _ letter: String, tint: SpaceTint, live: Bool = false) -> some View {
         HStack(spacing: 8) {
-            RowMark(icon: nil, letter: letter, tint: tint, size: 14)
+            RowMark(icon: nil, tint: tint, size: 14)
             Text(title)
                 .font(.system(size: 12, weight: live ? .semibold : .regular))
                 .foregroundStyle(live ? tint.ink : tint.ink.opacity(0.85))

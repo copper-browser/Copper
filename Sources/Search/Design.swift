@@ -13,6 +13,9 @@ enum Palette {
     static let ground = Color(nsColor: NS.ground)
     static let ink = Color(nsColor: NS.ink)             // neutral-900 · neutral-100
     static let muted = Color(nsColor: NS.muted)         // every secondary word: ≥4.5:1 on ground and wash
+    /// Fork (polish r5): an empty field's example — lighter than a value
+    /// (muted read as typed text) but AA: #737373 (4.7:1 on white) · #9A9A9A.
+    static let placeholder = Color(nsColor: NS.placeholder)
     static let faint = Color(nsColor: NS.faint)         // decoration only — rules, tracks, glyphs — never words
     /// Fork (uitype): the one red — a failure's glyph or count, a word that
     /// deletes. A sentence about a failure stays in ink with this on its glyph.
@@ -41,6 +44,7 @@ enum Palette {
         // 0.28 (#474747, 9.6:1 on paper) draws ≥4.5. 0.66 in dark.
         static let muted = pair(0.28, 0.66)
         static let faint = pair(0.83, 0.32)
+        static let placeholder = pair(0.45, 0.60)
         static let hairline = pair(0.91, 0.20)
         static let wash = pair(0.937, 0.175)
         static let hover = pair(0.965, 0.15)
@@ -166,6 +170,9 @@ enum Motion {
     static let glide = Animation.spring(response: 0.34, dampingFraction: 0.82)
     static let settle = Animation.spring(response: 0.30, dampingFraction: 0.86)
     static let quick = Animation.easeOut(duration: 0.14)
+    /// Fork (polish r5): a row picked up and the rows making way for it —
+    /// stiff, settled in ~200 ms (settle took ~500 under the hand).
+    static let pickup = Animation.spring(response: 0.18, dampingFraction: 0.9)
 }
 
 /// The Copper app icon, as the product mark in onboarding and About.

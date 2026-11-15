@@ -95,7 +95,11 @@ struct AgentActivity: View {
         let troubled = group.failures > 0 ? group.failures : group.warnings
         if troubled > 0 {
             // Fork (uib): red only when the turn failed; one it got past is said in the line's own ink.
-            line = line + Text(troubled == 1 ? " · 1 step had a problem" : " · \(troubled) steps had problems").foregroundColor(group.failed ? Palette.danger : Palette.muted)
+            // Fork (polish r5): a failure it got past is a retry, and says so.
+            let retried = group.failures > 0 && !group.failed
+            let words = retried ? (troubled == 1 ? " · 1 step retried" : " · \(troubled) steps retried")
+                : (troubled == 1 ? " · 1 step had a problem" : " · \(troubled) steps had problems")
+            line = line + Text(words).foregroundColor(group.failed ? Palette.danger : Palette.muted)
         }
         return line.font(.system(size: 12))
     }
@@ -137,7 +141,9 @@ struct AgentActivity: View {
 
     private func step(_ item: Agent.Item) -> some View {
         let failed = !item.ok
-        let red = Palette.danger
+        // Fork (polish r5): red only while the turn is broken; a step it got
+        // past (retried, or worked with a problem) is said in muted ink.
+        let red = group.failed ? Palette.danger : Palette.muted
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: AgentActivity.icon(item.tool))
@@ -152,7 +158,7 @@ struct AgentActivity: View {
                     // Fork (agent-ux): a sentence first; the tool's own words behind Details.
                     if let raw = AgentActivity.raw(item) {
                         HStack(spacing: 6) {
-                            Text(failed ? "That step didn't work." : "It worked, with a problem.")
+                            Text(failed ? (group.failed ? "That step didn't work." : "That step didn't work; it was retried.") : "It worked, with a problem.")
                                 .font(.system(size: 11.5)).foregroundStyle(red)
                             Button(details.contains(item.id) ? "Hide details" : "Details") {
                                 withAnimation(Motion.quick) {

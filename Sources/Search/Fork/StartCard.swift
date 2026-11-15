@@ -232,18 +232,24 @@ struct GhostFavourites: View {
     var body: some View {
         if offer, browser.pinnedCount == 0 {
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: gap) {
-                    ForEach(0..<3, id: \.self) { _ in
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(tint.ink.opacity(landing ? 0.5 : 0.22), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                            .background(landing ? tint.hover : .clear, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .frame(width: width, height: height)
+                // Fork (polish r5): the empty slots only while something is
+                // dragged over them; at rest the one line says it.
+                if landing {
+                    HStack(spacing: gap) {
+                        ForEach(0..<3, id: \.self) { _ in
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(tint.ink.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                                .background(tint.hover, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .frame(width: width, height: height)
+                        }
                     }
+                    .transition(.opacity)
                 }
                 Text("Drop a site here to keep it")
-                    .font(.system(size: 11))
-                    .foregroundStyle(tint.ink.opacity(0.8))
+                    .font(.system(size: 12)) // Fork (polish r5): 12 pt, full ink (was 11 at 80%)
+                    .foregroundStyle(tint.ink)
                     .padding(.leading, 2)
+                    .padding(.vertical, landing ? 0 : 4)
             }
             .contentShape(Rectangle())
             .onDrop(of: [.url, .text], isTargeted: $landing) { providers in

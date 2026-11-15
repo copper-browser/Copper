@@ -20,6 +20,8 @@ struct TabBar: View {
     @State private var plussed = false
     /// How wide the doors at the far end are, extension buttons included.
     @State private var doors: CGFloat = 0
+    /// Fork (polish r5): which ends of a scrolling run have tabs out of view.
+    @State private var hidden = StripEdges()
 
     var body: some View {
         // A GeometryReader is only here to measure the width. Its content is
@@ -55,7 +57,6 @@ struct TabBar: View {
                                     let live = tab.id == browser.activeID
                                     TabPill(
                                         browser: browser,
-                                        prefs: browser.prefs,
                                         tab: tab,
                                         live: live,
                                         width: live ? liveWidth(in: geo.size.width) : width(in: geo.size.width), // Fork (uib)
@@ -76,6 +77,11 @@ struct TabBar: View {
                             .frame(height: Metrics.strip)
                         }
                         .scrollDisabled(!overflowing(in: geo.size.width))
+                        .stripEdges($hidden)
+                        // Fork (polish r5): a run that scrolls fades out at the
+                        // ends that hide tabs, the way the spaces strip does (SpaceStrip.fade) —
+                        // it used to stop dead at a cut tab.
+                        .mask(edgeFade(in: geo.size.width))
                         .frame(width: run(in: geo.size.width))
                         .onAppear { reveal(reader, in: geo.size.width) }
                         .onChange(of: overflowing(in: geo.size.width)) { _, _ in reveal(reader, in: geo.size.width) }
@@ -144,6 +150,9 @@ struct TabBar: View {
         }
         .frame(height: Metrics.strip)
         .onHover { nearby = $0 }
+        // Fork (polish r5): as the sidebar does — every site's real icon asked
+        // for, once per host per launch, rows asleep included.
+        .task(id: Spaces.shared.current(in: browser)) { Marks.warm(browser.tabs) }
         // A link dragged onto the row opens there.
         .onDrop(of: [.url, .text], isTargeted: $landing) { providers in
             browser.take(providers)
@@ -157,6 +166,11 @@ struct TabBar: View {
         .animation(Motion.glide, value: browser.editingTab)
         .animation(Motion.settle, value: browser.tabs.map(\.id))
         .animation(Motion.settle, value: downloads.doorShowing)
+    }
+
+    private func edgeFade(in strip: CGFloat) -> some View {
+        let over = overflowing(in: strip)
+        return StripFade(leading: over && hidden.leading, trailing: over && hidden.trailing)
     }
 
     /// Pick a tab up and the others get out of its way as it passes them.
@@ -342,7 +356,6 @@ struct Helm: View {
 
 private struct TabPill: View {
     let browser: Browser
-    @ObservedObject var prefs: Preferences
     @ObservedObject var tab: Tab
     let live: Bool
     let width: CGFloat
@@ -375,14 +388,9 @@ private struct TabPill: View {
                 Group {
                     if browser.editingPin == tab.id {
                         PinField(browser: browser, tab: tab)
-                    } else if prefs.glyph == .icons, let icon = tab.icon {
-                        Mark(icon: icon, letter: tab.pin ?? "", size: 16, dim: tab.asleep)
                     } else {
-                        Text(tab.pin ?? "")
-                            .font(.system(size: 12, weight: .medium))
-                            // A pin holding no page is still there and still
-                            // yours; it just isn't costing anything.
-                            .foregroundStyle(colour.opacity(tab.asleep ? 0.6 : 1))
+                        // Fork (polish r5): always the pinned site's own mark (or a globe), never its letter.
+                        Mark(icon: tab.pinMark, size: 16, dim: tab.asleep)
                     }
                 }
                 .frame(width: 16, height: 16)
@@ -439,7 +447,7 @@ private struct TabPill: View {
                 if tab.loading {
                     Ring()
                 } else {
-                    Mark(icon: prefs.glyph == .icons ? tab.icon : nil, letter: tab.monogram, size: 15, dim: tab.asleep)
+                    Mark(icon: tab.icon, size: 15, dim: tab.asleep)
                 }
             }
             .frame(width: 16, height: 16)
@@ -457,8 +465,8 @@ private struct TabPill: View {
                 TabAddressField(browser: browser)
                     .frame(height: 16)
             } else {
-                if prefs.glyph == .icons, !tab.isBlank {
-                    Mark(icon: tab.icon, letter: tab.monogram, size: 15)
+                if !tab.isBlank {
+                    Mark(icon: tab.icon, size: 15)
                 }
                 if tab.bench {
                     // A script's tab, not yours.
@@ -472,7 +480,7 @@ private struct TabPill: View {
                         .font(.system(size: 10))
                         .foregroundStyle(colour.opacity(0.7))
                 }
-                FadingTitle(text: Text(tab.label) // Fork (motion): a long title fades out, no "…"
+                FadingTitle(text: Text(shownTitle) // Fork (motion): a long title fades out, no "…"
                     .font(.system(size: 12.5, weight: live ? .semibold : .regular))
                     .foregroundStyle(colour))
                     .layoutPriority(1)
@@ -507,6 +515,16 @@ private struct TabPill: View {
     }
 
     private var slotShown: Bool { hovering || tab.loading || tab.noisy }
+
+    /// Fork (polish r5): the title, tidied; in a pill too narrow for all of
+    /// it, only the part before its first separator — "Copper — Wikipedia"
+    /// read "Copper -" with the dash fading out.
+    private var shownTitle: String {
+        let title = CommandPalette.tidy(tab.label)
+        let room = span - 11 - 7 - 15 - 6 - 2
+        guard TabPill.measure(title, size: 12.5, weight: live ? .semibold : .regular) > room else { return title }
+        return CommandPalette.head(title)
+    }
 
     /// Fork (uichrome): the width the live tab's words take: its title, 8 pt,
     /// its host — and the mark, the padding and the cross's slot around them.
@@ -941,6 +959,30 @@ struct PinField: NSViewRepresentable {
         func controlTextDidEndEditing(_ note: Notification) {
             let browser = browser
             DispatchQueue.main.async { browser.endPinEdit() }
+        }
+    }
+}
+
+/// Fork (polish r5): whether a horizontal run has content past either end.
+struct StripEdges: Equatable {
+    var leading = false
+    var trailing = true
+}
+
+private extension View {
+    /// macOS 15 reads the run's offset; before it, both ends of an
+    /// overflowing run fade (the tab in view is kept centred-ish anyway).
+    @ViewBuilder
+    func stripEdges(_ edges: Binding<StripEdges>) -> some View {
+        if #available(macOS 15, *) {
+            onScrollGeometryChange(for: StripEdges.self) { geometry in
+                StripEdges(leading: geometry.contentOffset.x > 1,
+                           trailing: geometry.contentOffset.x + geometry.containerSize.width < geometry.contentSize.width - 1)
+            } action: { _, now in
+                edges.wrappedValue = now
+            }
+        } else {
+            onAppear { edges.wrappedValue = StripEdges(leading: true, trailing: true) }
         }
     }
 }

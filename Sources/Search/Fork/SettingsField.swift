@@ -32,7 +32,7 @@ extension View {
             if empty {
                 Text(text)
                     .font(.system(size: 12))
-                    .foregroundStyle(Palette.muted)
+                    .foregroundStyle(Palette.placeholder) // Fork (polish r5)
                     .lineLimit(1)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)

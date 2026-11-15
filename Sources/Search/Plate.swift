@@ -201,7 +201,7 @@ struct Hunt: View {
                 .accessibilityHidden(true) // Fork (settings-a11y)
             ZStack(alignment: .leading) {
                 if text.isEmpty {
-                    Text(prompt).foregroundStyle(Palette.muted) // Fork (ui-system): a prompt is words, ≥4.5:1
+                    Text(prompt).foregroundStyle(Palette.placeholder) // Fork (ui-system, polish r5): a prompt is words, ≥4.5:1, lighter than a value
                         .accessibilityHidden(true) // Fork (settings-a11y): the field says it
                 }
                 TextField("", text: $text)
@@ -255,11 +255,18 @@ struct Fitted<Content: View>: View {
         }
         .frame(maxHeight: tall)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { shown = $0 }
-        .mask {
-            VStack(spacing: 0) {
-                Color.black
-                LinearGradient(colors: [.black, .black.opacity(cut ? 0 : 1)], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 28)
+        // Fork (polish r5): the cue is its own layer — a 16 pt shade and a
+        // hairline at the foot — not a mask: the 28 pt mask faded the last
+        // whole row to 2.3:1.
+        .overlay(alignment: .bottom) {
+            if cut {
+                VStack(spacing: 0) {
+                    LinearGradient(colors: [Palette.hairline.opacity(0), Palette.hairline.opacity(0.5)], startPoint: .top, endPoint: .bottom)
+                        .frame(height: 16)
+                    Rectangle().fill(Palette.hairline).frame(height: 1)
+                }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
             }
         }
     }

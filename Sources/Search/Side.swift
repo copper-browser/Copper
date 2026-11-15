@@ -520,7 +520,6 @@ struct SideBar: View {
 /// the chip borrowed from the space instead.
 struct RowMark: View {
     let icon: NSImage?
-    let letter: String
     let tint: SpaceTint
     var size: CGFloat = 16
 
@@ -533,14 +532,7 @@ struct RowMark: View {
                     .frame(width: size, height: size)
                     .clipShape(RoundedRectangle(cornerRadius: size * 0.24, style: .continuous))
             } else {
-                Text(letter)
-                    .font(.system(size: size * 0.52, weight: .semibold))
-                    .foregroundStyle(tint.ink.opacity(0.6))
-                    .frame(width: size, height: size)
-                    .background(
-                        RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
-                            .fill(tint.chip)
-                    )
+                Globe(size: size, ink: tint.ink.opacity(0.6)) // Fork (polish r5): no letter tiles
             }
         }
         .transition(.opacity)
@@ -559,7 +551,7 @@ private struct PinDropGhost: View {
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: min(12, min(width, height) * 0.28), style: .continuous)
-        SideGlyphMark(prefs: browser.prefs, icon: tab.icon, letter: tab.monogram, tint: tint,
+        RowMark(icon: tab.icon, tint: tint,
                       size: max(14, min(20, height * 0.46)))
             .opacity(0.7)
             .frame(width: width, height: height)
@@ -591,14 +583,16 @@ private struct PinSquare: View {
     private var radius: CGFloat { min(12, min(width, height) * 0.28) }
     /// A mark big enough to recognise at a glance, and no bigger than the
     /// cell can hold with air around it.
-    private var mark: CGFloat { max(14, min(20, height * 0.46)) }
+    /// Fork (polish r5): 16 pt like every other favicon in the chrome (was
+    /// up to 20, so two pins' marks read as two sizes).
+    private var mark: CGFloat { min(16, max(14, height * 0.46)) }
 
     var body: some View {
         Group {
             if browser.editingPin == tab.id {
                 PinField(browser: browser, tab: tab)
             } else {
-                SideGlyphMark(prefs: browser.prefs, icon: tab.icon, letter: tab.pin ?? tab.monogram, tint: tint, size: mark) // Fork (settings-browse): Tabs show Letters / Site icons
+                RowMark(icon: tab.pinMark, tint: tint, size: mark) // Fork (polish r5): always the site icon
             }
         }
         .frame(width: width, height: height)
@@ -652,6 +646,31 @@ private struct PinSquare: View {
     }
 }
 
+/// Fork (polish r5): a kept split's second half inside its partner's row:
+/// its mark and title, its own click (selecting it trades the panes over).
+private struct SidePairHalf: View {
+    let browser: Browser
+    @ObservedObject var tab: Tab
+    let live: Bool
+    let tint: SpaceTint
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if !tab.isBlank {
+                RowMark(icon: tab.icon, tint: tint, size: 16)
+            }
+            FadingTitle(text: Text(tab.label)
+                .font(.system(size: SideBar.title, weight: live ? .semibold : .regular))
+                .foregroundStyle(tint.ink))
+        }
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture { if !live { browser.select(tab) } }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
 /// One tab, as a line in the column.
 ///
 /// Fork (space-perf): what the row needs from the window and from Heat comes
@@ -673,9 +692,15 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
     let tint: SpaceTint
     let pill: Namespace.ID
     let close: () -> Void
+    /// Fork (polish r5): the other half of a kept split, drawn in this row
+    /// (GroupedRows hides its own) — one row, both marks, a hairline, one
+    /// pill, as Arc's split items. `pairLive`: that half is the live tab.
+    var pair: Tab? = nil
+    var pairLive = false
 
     static func == (a: SideRow, b: SideRow) -> Bool {
         a.tab === b.tab && a.live == b.live && a.editing == b.editing && a.hot == b.hot && a.refusals == b.refusals
+            && a.pair === b.pair && a.pairLive == b.pairLive
             && a.pill == b.pill && a.tint.theme == b.tint.theme && a.tint.dark == b.tint.dark && a.tint.night == b.tint.night
     }
 
@@ -694,7 +719,7 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
                     .frame(height: 18)
             } else {
                 if !tab.isBlank {
-                    SideGlyphMark(prefs: browser.prefs, icon: tab.icon, letter: tab.monogram, tint: tint, size: 16) // Fork (settings-browse): Tabs show Letters / Site icons
+                    RowMark(icon: tab.icon, tint: tint, size: 16) // Fork (polish r5): always the site icon
                         .opacity(live ? 1 : 0.9)
                 }
                 if tab.bench {
@@ -709,8 +734,12 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
                         .foregroundStyle(colour.opacity(0.7))
                 }
                 FadingTitle(text: Text(tab.label) // Fork (motion): a long title fades out, no "…"
-                    .font(.system(size: SideBar.title, weight: live ? .semibold : .regular))
+                    .font(.system(size: SideBar.title, weight: own ? .semibold : .regular))
                     .foregroundStyle(colour))
+                if let pair {
+                    Rectangle().fill(tint.hairline).frame(width: 1, height: 16)
+                    SidePairHalf(browser: browser, tab: pair, live: pairLive, tint: tint)
+                }
             }
 
             Spacer(minLength: 2)
@@ -729,11 +758,11 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
         .frame(height: SideBar.row)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background { ground }
-        .overlay(alignment: .leading) { if inPair { SplitBracket(tint: tint) } } // Fork (motion): the two halves of a split
+        .overlay(alignment: .leading) { if inPair, pair == nil { SplitBracket(tint: tint) } } // Fork (motion): the two halves of a split, when apart
         .modifier(Shake(travel: shake))
         .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .modifier(OneClick(double: false) {
-            if live { browser.beginTabEdit(tab) } else { browser.select(tab) }
+            if own { browser.beginTabEdit(tab) } else { browser.select(tab) }
         })
         .modifier(Pressable()) // Fork (motion): the shared pressed state, after the tap so the tap keeps the click
         .onHover { pointing = $0 }
@@ -757,6 +786,9 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
         // CPU work on every tab opened or closed.
         .transition(.opacity)
     }
+
+    /// This row's own tab is the live one (not its split's other half).
+    private var own: Bool { live && !pairLive }
 
     /// Whether anything is in the slot at the row's end right now.
     private var slotShown: Bool {
@@ -827,7 +859,7 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
         } else if hovering {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(tint.hover)
-        } else if inPair {
+        } else if inPair, pair == nil {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(tint.ink.opacity(0.05)) // Fork (motion): a split's other half, tinted like its partner's pill
         }

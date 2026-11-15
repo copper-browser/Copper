@@ -34,3 +34,13 @@ private func row(_ key: String, _ url: String, _ kind: Suggestion.Kind = .open, 
     #expect(CommandPalette.tidy("Inbox · Gmail · gmail") == "Inbox · Gmail")
     #expect(CommandPalette.tidy("Hacker News") == "Hacker News")
 }
+
+@Test func tidyDropsATrailingSeparatorAndHeadCutsAtTheFirst() {
+    #expect(CommandPalette.tidy("Copper -") == "Copper")
+    #expect(CommandPalette.tidy("Spaces — ") == "Spaces")
+    #expect(CommandPalette.tidy("C-") == "C")
+    #expect(CommandPalette.tidy("-") == "-")
+    #expect(CommandPalette.head("Copper — Wikipedia") == "Copper")
+    #expect(CommandPalette.head("Hacker News") == "Hacker News")
+    #expect(CommandPalette.head("Inbox · Gmail - me@x.com") == "Inbox")
+}

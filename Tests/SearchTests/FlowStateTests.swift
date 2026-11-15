@@ -189,8 +189,8 @@ struct FlowDoneLinesTests {
 
     @Test("Kinds a browser has none of fold into one sentence")
     func keepsNone() {
-        #expect(FlowSheet.keepsNone("Arc", ["Bookmarks", "History", "Passwords"]) == "Arc keeps no bookmarks, history or passwords to bring.")
-        #expect(FlowSheet.keepsNone("Arc", ["Extensions"]) == "Arc keeps no extensions to bring.")
-        #expect(FlowSheet.keepsNone(nil, ["History", "Passkeys"]) == "This browser keeps no history or passkeys to bring.")
+        #expect(FlowSheet.keepsNone("Arc", ["Bookmarks", "History", "Passwords"]) == "Nothing else to bring from this Arc profile: no bookmarks, history or passwords.")
+        #expect(FlowSheet.keepsNone("Arc", ["Extensions"]) == "Nothing else to bring from this Arc profile: no extensions.")
+        #expect(FlowSheet.keepsNone(nil, ["History", "Passkeys"]) == "Nothing else to bring from this browser: no history or passkeys.")
     }
 }

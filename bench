@@ -452,7 +452,7 @@
                                        extension, a dialog) — held for the bench in a headless test run;
                                        answer it by button number, title, or the start of its title;
                                        selftest puts up a SwiftUI dialog and answers it end to end
-    ./bench settings browse folder PATH|ask [PATH|cancel|folder|reset]|prefs|glyph letters|icons
+    ./bench settings browse folder PATH|ask [PATH|cancel|folder|reset]|prefs
                                        Downloads' Change… as a pick of PATH; how "Ask where to save" is
                                        answered in a test run, and the names it was asked about; the
                                        Browsing pages' values (test runs only)
