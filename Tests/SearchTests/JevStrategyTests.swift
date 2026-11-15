@@ -118,7 +118,7 @@ struct JevStrategyTests {
 
     @Test func shippedSubmitsAndVerifyIsOptIn() {
         #expect(!U.Strategy.shipped.verify && !U.Strategy.parse("turbo")!.verify && U.Strategy.parse("verify")!.verify)
-        #expect(U.Strategy.shipped.submit && U.Strategy.shipped.name.hasSuffix("watch,near,reach,submit"))
+        #expect(U.Strategy.shipped.submit && U.Strategy.shipped.name.hasSuffix("watch,near,reach,calm,deep,submit"))
     }
 
     @Test func visionParses() {
