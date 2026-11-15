@@ -84,12 +84,12 @@ enum FileChooser {
 
     nonisolated static var tool: [String: Any] { [
         "name": "browser_file_upload",
-        "description": "Choose files for the page's file chooser on your tab. After a click opened one, answers it; before the click, arms the next one the tab opens. Omit paths to cancel. With ref: drop them on that drop zone instead.",
+        "description": "Choose files for your tab's file chooser. After a click opened one, answers it; before the click, arms the next one. Omit paths to cancel. With ref: drop them on that drop zone.",
         "inputSchema": [
             "type": "object",
             "properties": [
                 "paths": ["type": "array", "items": ["type": "string"], "description": "Absolute paths of the files to upload; omit to cancel the chooser"] as [String: Any],
-                "ref": ["type": "string", "description": "Drop zone to drop them on"] as [String: Any],
+                "ref": ["type": "string", "description": "A drop zone"] as [String: Any],
                 "reason": Tools.reasonProperty,
                 "tab": Tools.tabProperty,
             ] as [String: Any],
