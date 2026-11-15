@@ -67,7 +67,13 @@ struct Plate<Content: View, Foot: View>: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(Palette.hairline, lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.16), radius: 34, y: 12)
+        // Fork (uiflows r4): the shadow is the card's shape's alone, under it —
+        // on the whole subtree every row and word cast its own.
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Palette.ground)
+                .shadow(color: .black.opacity(0.16), radius: 34, y: 12)
+        }
     }
 }
 

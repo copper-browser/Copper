@@ -167,20 +167,30 @@ struct FlowEventsTests {
 
 @Suite("Flow sheet: the done step")
 struct FlowDoneLinesTests {
-    @Test("Every kind switched on is listed: a kind the browser had none of says 'none to bring', in the summary's order")
-    func everyChosenKindHasALine() {
-        let tabs = FlowSummary.Line(category: .tabs, ok: true, text: "Tabs: 3 tabs in 1 space")
-        let lines = FlowSummary.doneLines([tabs], chosen: [.tabs, .bookmarks, .cookies])
-        #expect(lines.map(\.category) == [.tabs, .bookmarks, .cookies])
-        #expect(lines[0].detail == "3 tabs in 1 space")
-        #expect(lines[1] == .init(category: .bookmarks, ok: false, text: "Bookmarks: none to bring"))
-        #expect(lines[2].detail == "none to bring")
+    @Test("The done step lists exactly the switches that were on: kinds the browser had none of never show up as 'none to bring'")
+    func doneMatchesToggles() {
+        // An Arc read: 3 tabs, nothing else counted. Its sheet shows three
+        // switches (tabs, sign-ins, site data); the rest fold into one line.
+        let tab = FlowModel.Tab(url: URL(string: "https://example.com")!, title: "Example")
+        let haul = FlowModel.Haul(spaces: [FlowModel.Space(name: "Home", tabs: [tab, tab, tab])])
+        let choice = FlowModel.Choice().fitted(to: haul)
+        let toggled = FlowStep.steps(for: choice).map(\.category)
+        #expect(toggled == [.tabs, .cookies, .localStorage])
+        // The move runs only those (Flow.move), so the done step's lines are
+        // the summary of the same three.
+        var facts = FlowSummary.Facts(source: "Arc")
+        facts.tabsChosen = choice.tabs; facts.tabsAdded = 3; facts.spacesMade = 1
+        facts.bookmarksChosen = choice.bookmarks; facts.historyChosen = choice.history
+        facts.passwordsChosen = choice.passwords; facts.passkeysChosen = choice.passkeys
+        facts.cookiesChosen = choice.cookies; facts.storageChosen = choice.localStorage
+        facts.extensionsChosen = choice.extensions
+        #expect(FlowSummary.lines(facts).map(\.category) == toggled)
     }
 
-    @Test("A kind not switched on stays out, and a summary line is never doubled")
-    func onlyChosenKinds() {
-        let tabs = FlowSummary.Line(category: .tabs, ok: true, text: "Tabs: 2 tabs in 1 space")
-        let history = FlowSummary.Line(category: .history, ok: false, text: "History: Arc has none")
-        #expect(FlowSummary.doneLines([tabs, history], chosen: [.tabs, .history]) == [tabs, history])
+    @Test("Kinds a browser has none of fold into one sentence")
+    func keepsNone() {
+        #expect(FlowSheet.keepsNone("Arc", ["Bookmarks", "History", "Passwords"]) == "Arc keeps no bookmarks, history or passwords to bring.")
+        #expect(FlowSheet.keepsNone("Arc", ["Extensions"]) == "Arc keeps no extensions to bring.")
+        #expect(FlowSheet.keepsNone(nil, ["History", "Passkeys"]) == "This browser keeps no history or passkeys to bring.")
     }
 }

@@ -48,6 +48,10 @@ final class Downloads: ObservableObject {
     /// had the release (the Canvas door's bug, CanvasUI.doorWindow). Nil:
     /// the window in front.
     @Published private(set) var doorWindow: ObjectIdentifier?
+    /// Fork (uiflows r4): where the door is (window points, top left), for
+    /// `canvas picture` to hang the list from it in a headless window, which
+    /// AppKit can't. Not published: nothing on screen reads it.
+    var doorSpot: CGRect?
 
     func showsDoor(in browser: Browser) -> Bool {
         popoverOpen && (doorWindow ?? ObjectIdentifier(Windows.current)) == ObjectIdentifier(browser)

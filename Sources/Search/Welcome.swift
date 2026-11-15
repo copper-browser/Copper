@@ -20,10 +20,16 @@ struct WelcomePanel: View {
     @Environment(\.colorScheme) private var scheme
 
     /// Fork (ui-flows r3): one column on one card, Arc's onboarding size
-    /// (~560 pt wide), its middle ~38% down the window, every page left-aligned
-    /// and every heading in the same place — on the Home space's own ground.
+    /// (~560 pt wide), every page left-aligned and every heading in the same
+    /// place — on the Home space's own ground.
+    /// Fork (uiflows r4): the card hugs its page (no blank half), never
+    /// shorter than `least` (332 pt with its padding). Its top stays put
+    /// (`top`) so the headings don't move; a taller page grows it downward.
     static let column: CGFloat = 560
-    static let tall: CGFloat = 420
+    static let least: CGFloat = 260
+
+    /// Where the card's top sits: a `least` card's middle 40% down the window.
+    static func top(in height: CGFloat) -> CGFloat { max(height * 0.4 - (least / 2 + 36), 24) }
 
     var body: some View {
         let tint = SpaceTint(space: Spaces.shared.space(in: browser), dark: scheme == .dark)
@@ -39,22 +45,30 @@ struct WelcomePanel: View {
                         default: links
                         }
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                     .id(page)
                     .transition(.asymmetric(
                         insertion: .offset(x: forward ? 40 : -40).combined(with: .opacity),
                         removal: .offset(x: forward ? -40 : 40).combined(with: .opacity)
                     ))
+                    Spacer(minLength: 32)
                     foot
                 }
-                .frame(width: Self.column, height: Self.tall)
+                .frame(width: Self.column)
+                .frame(minHeight: Self.least)
+                .fixedSize(horizontal: false, vertical: true)
                 .clipped()
                 .padding(36)
-                .background(Palette.ground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                // Fork (uiflows r4): the shadow is the card's shape's alone —
+                // on the whole card every word and icon cast its own (a grey haze).
+                .background {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(Palette.ground)
+                        .shadow(color: .black.opacity(0.16), radius: 34, y: 12)
+                }
                 .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 1))
-                .shadow(color: .black.opacity(0.16), radius: 34, y: 12)
-                .position(x: room.size.width / 2,
-                          y: max(room.size.height * 0.38, (Self.tall + 72) / 2 + 24))
+                .padding(.top, Self.top(in: room.size.height))
+                .frame(width: room.size.width, height: room.size.height, alignment: .top)
             }
         }
         .animation(Motion.glide, value: page)
@@ -87,7 +101,7 @@ struct WelcomePanel: View {
 
     private var hold: some View {
         VStack(alignment: .leading, spacing: 22) {
-            heading("Two ways to hold it.", "Titles across the top, or down the side. The grey slides to the tab you pick either way, and you can change your mind with ⇧⌘S.")
+            heading("Two ways to hold it.", "Titles across the top, or down the side. The highlight follows the tab you pick either way, and you can change your mind with ⇧⌘S.")
             HStack(spacing: 12) {
                 Way(title: "Tab strip", sidebar: false, chosen: !prefs.sidebar) {
                     withAnimation(Motion.glide) { prefs.sidebar = false }
@@ -97,10 +111,10 @@ struct WelcomePanel: View {
                 }
             }
             HStack(spacing: 12) {
-                Text("Tabs wear")
+                Text("Tabs show")
                     .font(.system(size: 13))
                     .foregroundStyle(Palette.muted)
-                Segmented(options: Glyph.allCases.map { ($0, $0.title) }, selection: $prefs.glyph, label: "Tabs wear") // Fork (settings-a11y)
+                Segmented(options: Glyph.allCases.map { ($0, $0.title) }, selection: $prefs.glyph, label: "Tabs show") // Fork (settings-a11y)
             }
         }
     }
