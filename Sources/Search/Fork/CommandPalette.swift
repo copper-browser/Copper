@@ -100,7 +100,7 @@ struct CommandPalette: View {
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture { browser.dismiss() }
-                .modifier(Arrive(fades: true))
+                // Fork (hc6): no fade of its own — the dim lands in the card's frame, one step, not three.
 
             card
                 // Fork (perf): a slide, no scale — a scale redraws every glyph at
@@ -129,7 +129,8 @@ struct CommandPalette: View {
         .onAppear {
             Marks.want(browser.offers.map(\.url))
             Launcher.afterCommit {
-                filled = true
+                // Fork (hc6): after the key's pass, the rows fade in over 60 ms rather than pop.
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.06)) { filled = true }
                 laid = Set(CommandPalette.keyed(browser.offers).map(\.id))
             }
         }
@@ -145,13 +146,11 @@ struct CommandPalette: View {
     /// it costs redraws this modifier and not the card's rows under it.
     private struct Arrive: ViewModifier {
         var travel: CGFloat = 0
-        var fades = false
         @State private var shown = false
 
         func body(content: Content) -> some View {
             content
                 .offset(y: shown ? 0 : -travel)
-                .opacity(shown || !fades ? 1 : 0)
                 .onAppear { withAnimation(.easeOut(duration: 0.11)) { shown = true } }
         }
     }
@@ -182,7 +181,7 @@ struct CommandPalette: View {
                     .fill(Palette.hairline.opacity(0.55))
                     .frame(height: 1)
                 if filled {
-                    rows
+                    rows.transition(.opacity)
                 } else {
                     Color.clear.frame(height: min(natural, room))
                 }
@@ -602,6 +601,9 @@ struct CommandPalette: View {
                 glyph("magnifyingglass")
             case _ where CanvasLinks.isCanvas(offer.url):
                 glyph("scribble.variable") // Fork (canvas): an open canvas wears the Canvas mark here too
+            case .open where AgentTabs.find(offer.tab)?.pin != nil:
+                // Fork (hc6): a pin wears the mark its pin square wears (Gmail's M, not the sign-in page's G).
+                RowMark(icon: AgentTabs.find(offer.tab)?.pinMark, tint: SpaceTint(scheme).offColumn)
             default:
                 // The same mark the sidebar row wears — icon, or a globe until
                 // it lands — so a site looks like itself on both surfaces. On

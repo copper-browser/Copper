@@ -247,6 +247,7 @@ struct SettingsPanel: View {
                     if edge.scrolled != now { edge.scrolled = now }
                 }
             }
+            .mask(SettingsRailFade(fade: 12)) // Fork (hc6): a row under the foot runs out under a soft edge, not a hard cut
             .onPreferenceChange(SettingsAnchorsKey.self) { finder.drawn[page] = $0 }
             .task(id: finder.pending?.token) {
                 guard let target = finder.pending else { return }

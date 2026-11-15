@@ -19,3 +19,12 @@ private func group(_ oks: [Bool], warning: Int? = nil) -> AgentActivityGroup {
     #expect(group([true, false]).failed)
     #expect(!group([]).failed)
 }
+
+// Fork (hc6): nothing tracks a retry, so a failure the turn got past never claims one.
+@Test func activityNeverClaimsARetryItDidNotTrack() {
+    #expect(group([false, true]).trouble == " · 1 earlier step failed")
+    #expect(group([false, false, true]).trouble == " · 2 earlier steps failed")
+    #expect(group([true, false]).trouble == " · 1 step had a problem")
+    #expect(group([true, true], warning: 0).trouble == " · 1 step had a problem")
+    #expect(group([true, true]).trouble.isEmpty)
+}

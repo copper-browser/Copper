@@ -48,3 +48,11 @@ func smallWordsKeepAAOnceDrawn(_ look: NSAppearance.Name) {
         #expect(ratio >= 5.5, "\(what) in \(look.rawValue): \(ratio)")
     }
 }
+
+// Fork (hc6): a prompt is words. On the field's wash 0.45 grey drew ~4.1:1;
+// held to 5:1 on paper so it still reads ≥4.5 once antialiased.
+@Test(arguments: [NSAppearance.Name.aqua, .darkAqua])
+func placeholderReadsOnTheFieldWash(_ look: NSAppearance.Name) {
+    let ratio = contrast(Palette.NS.placeholder, Palette.NS.wash, look)
+    #expect(ratio >= 5.0, "placeholder on wash in \(look.rawValue): \(ratio)")
+}

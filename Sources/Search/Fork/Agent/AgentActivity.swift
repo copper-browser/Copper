@@ -26,6 +26,14 @@ struct AgentActivityGroup: Identifiable {
     /// Fork (uib): the turn ended on a step that failed — a problem it got
     /// past (a warning, or a failure followed by steps that worked) is not.
     var failed: Bool { steps.last.map { !$0.ok } ?? false }
+    /// Fork (ui-flows): what went wrong as a sentence, not "1 failed"; "" when nothing did.
+    /// Fork (hc6): a failure it got past is said plainly — no retry is tracked, so never "retried".
+    var trouble: String {
+        let troubled = failures > 0 ? failures : warnings
+        guard troubled > 0 else { return "" }
+        if failures > 0, !failed { return troubled == 1 ? " · 1 earlier step failed" : " · \(troubled) earlier steps failed" }
+        return troubled == 1 ? " · 1 step had a problem" : " · \(troubled) steps had problems"
+    }
     /// When the last step ended.
     var ended: Date {
         items.map { $0.kind == .tool ? $0.at.addingTimeInterval($0.ms / 1000) : $0.at }.max() ?? started
@@ -91,15 +99,9 @@ struct AgentActivity: View {
         var line = Text("Worked for \(DriveStyle.span(group.ended.timeIntervalSince(group.started)))")
             + Text(" · \(steps) step\(steps == 1 ? "" : "s")")
         line = line.foregroundColor(Palette.muted)
-        // Fork (ui-flows): what went wrong as a sentence, not "1 failed".
-        let troubled = group.failures > 0 ? group.failures : group.warnings
-        if troubled > 0 {
-            // Fork (uib): red only when the turn failed; one it got past is said in the line's own ink.
-            // Fork (polish r5): a failure it got past is a retry, and says so.
-            let retried = group.failures > 0 && !group.failed
-            let words = retried ? (troubled == 1 ? " · 1 step retried" : " · \(troubled) steps retried")
-                : (troubled == 1 ? " · 1 step had a problem" : " · \(troubled) steps had problems")
-            line = line + Text(words).foregroundColor(group.failed ? Palette.danger : Palette.muted)
+        // Fork (uib): red only when the turn failed; one it got past is said in the line's own ink.
+        if !group.trouble.isEmpty {
+            line = line + Text(group.trouble).foregroundColor(group.failed ? Palette.danger : Palette.muted)
         }
         return line.font(.system(size: 12))
     }
