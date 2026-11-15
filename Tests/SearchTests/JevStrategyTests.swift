@@ -186,6 +186,9 @@ struct JevHybridTests {
         #expect(step.quietSend)
         step.pageChanged = true
         #expect(!step.quietSend && step.recent["sent"] as? Bool == true)
+        // The read moved (the viewport's size) but showed nothing new: still quiet.
+        step.nothingNew = true
+        #expect(step.quietSend)
     }
 }
 

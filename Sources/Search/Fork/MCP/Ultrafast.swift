@@ -462,6 +462,8 @@ enum Ultrafast {
         /// change, though the page may show none.
         var sent = false
         var formSent = false
+        /// The read after it showed no text line the read before didn't.
+        var nothingNew = false
         /// Time spent waiting before trying the same control again.
         var waitMs: Double = 0
 
@@ -488,7 +490,9 @@ enum Ultrafast {
         /// Sent and nothing to show for it: what Jev reads, so it doesn't send
         /// again. Any POST counts, not only a form: a Pay button that posts
         /// with fetch is the same send.
-        var quietSend: Bool { (formSent || sent) && pageChanged == false }
+        /// A click counts as quiet when it showed no new line of text, though
+        /// something else in the read moved (a control's state, the viewport).
+        var quietSend: Bool { (formSent || sent) && (pageChanged == false || (kind == "click" && nothingNew)) }
 
         /// `page_changed` says what the page did; `sent` that a request went
         /// out (Google reads with POSTs too, so it is not a change).
@@ -1787,10 +1791,11 @@ enum Ultrafast {
         /// WAIT: the calls a WAIT (and a second look) wait on.
         private var lastNetMark: UInt64?
         /// A form sent that the page took without a word, and the read after
-        /// it: no control that sends a form is used again while the page still
-        /// reads so (it posted a review three times). Choosing one asks Jev
+        /// it: no control that sends a form is used again while the page shows
+        /// nothing new (it posted a review three times; a fetch Pay button paid
+        /// twice when only the viewport's size changed between reads). Choosing one asks Jev
         /// DONE or BLOCKED instead (`confirmOnly`), and that answer ends the run.
-        private var quietSend: (marker: String, node: Int?, label: String)?
+        private var quietSend: (lines: Set<String>, url: String, node: Int?, label: String)?
         /// A send (Return, a form, a POST) that took the tab to another page:
         /// the same control there again before anything is typed is a resend
         /// (Flights clicked Search on the results Search had opened).
@@ -2105,7 +2110,7 @@ enum Ultrafast {
             // A form went in and the page has shown nothing since: no control
             // that sends a form is used again (nor the field it went in from).
             // Jev is asked DONE or BLOCKED with that said instead.
-            if let sent = quietSend, sent.marker != obs.marker { quietSend = nil }
+            if let sent = quietSend, sent.url != obs.url || !shownLines.isSubset(of: sent.lines) { quietSend = nil }
             if let sent = navigatedSend, sent.url != obs.url || kind == "fill" || kind == "select" { navigatedSend = nil }
             let node = (action["node"] as? NSNumber)?.intValue
             let submits = kind == "click" && action["submits"] as? Bool == true
@@ -2330,7 +2335,8 @@ enum Ultrafast {
                 step.formSent = (try? await Ultrafast.js(web, "(c => { const f = c.fired === true; c.fired = false; return f })(window.__jevFast)")) as? Bool ?? false
             }
             step.sent = step.formSent || (kind != "wait" && NetLog.posted(web, after: netMark))
-            if step.quietSend { quietSend = (next.marker, (action["node"] as? NSNumber)?.intValue, label) }
+            step.nothingNew = Ultrafast.textLines(next.text).isSubset(of: shownLines)
+            if step.quietSend { quietSend = (Ultrafast.textLines(next.text), next.url, (action["node"] as? NSNumber)?.intValue, label) }
             if step.sent || submitted, Ultrafast.place(next.url) != Ultrafast.place(obs.url) { navigatedSend = (next.url, label, submitted) }
             if kind != "wait" { lastNetMark = netMark }
             step.url = next.url
