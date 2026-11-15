@@ -102,7 +102,11 @@ struct PageCard: View {
         let bare = tab.isBlank
         Page(tab: tab)
             .environment(\.pageCorners, PageCorners(radius: SplitMetrics.corner))
-            .background { if !bare { PageCard.plate(lifted: true) } }
+            // Fork (covers): and a page that has yet to paint — a space's
+            // page after a launch, with no picture kept — shows the site's
+            // mark and title, as a split's new pane does, never a white
+            // card; its page fades in over them on its first frame.
+            .background { if !bare { PageCard.plate(lifted: true).overlay { SplitWaiting(tab: tab).id(tab.id) } } }
             .overlay { if !bare { PageCard.edge } }
     }
 

@@ -128,7 +128,8 @@ extension Browser {
         // A tab an agent opened and is done with goes the same way: nobody
         // chose to keep it loaded.
         let heavy = Set(rested.filter {
-            AgentTabs.opened.contains($0.id) || (Heat.shared.weight(of: $0)?.bytes ?? 0) >= Browser.heavy
+            // Fork (covers): a pin here may doze (awake(because:)): it goes whatever the budget says.
+            $0.pin != nil || AgentTabs.opened.contains($0.id) || (Heat.shared.weight(of: $0)?.bytes ?? 0) >= Browser.heavy
         }.map(\.id))
         guard given == nil, Store.settings.double(forKey: "sleep.after") <= 0 else {
             let idle = rested
@@ -168,7 +169,7 @@ extension Browser {
     /// the caller's business; this is everything else.
     func awake(because tab: Tab) -> String? {
         if Windows.all.contains(where: { $0.activeID == tab.id }) || Split.shared.has(tab.id) { return "on screen" } // Fork: windows — any window's stage
-        if tab.pin != nil { return "pinned" } // Fork (pins-awake): always — Tab.sleep(picture:) refuses a pin too
+        if tab.pin != nil, !PinsAwake.mayDoze(tab) { return "pinned" } // Fork (pins-awake): always — Tab.sleep(picture:) refuses a pin too; Fork (covers): unless big pins may sleep
         if Backstage.shared.holds(tab.id) { return "an agent is working in it" } // Fork: agent-tabs
         if TabShare.shared.involves(tab.id) { return "being shared" } // Fork: tab-share — the shared tab and the page sharing it
         if tab.bench { return "a bench tab" }
@@ -209,7 +210,7 @@ extension Browser {
                     done?(reason)
                     return
                 }
-                tab.sleep(picture: picture)
+                tab.sleep(picture: picture, doze: tab.pin != nil) // Fork (covers): a pin got here only if it may doze
                 done?("asleep")
             }
         }

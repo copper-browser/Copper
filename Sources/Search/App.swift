@@ -786,7 +786,7 @@ struct ContentView: View {
             // one in front. (Fork: windows)
             if (Windows.owner(of: event.window) ?? Windows.current) !== browser { return event }
             guard event.type == .keyDown else {
-                SpaceWarm.control(event.modifierFlags.contains(.control), in: browser) // Fork (switch): ⌃ held warms the spaces either side
+                SpaceWarm.control(event.modifierFlags.contains(.control), in: browser, window: event.window) // Fork (switch, covers): ⌃ down warms the spaces either side
                 // Releasing ⌃ commits a most-recent tab walk wherever it stopped.
                 if !event.modifierFlags.contains(.control), Recent.shared.walking {
                     Recent.shared.end(in: browser)
@@ -795,6 +795,7 @@ struct ContentView: View {
                 if !event.modifierFlags.contains(.command) { browser.landSummon() }
                 return event
             }
+            SpaceWarm.key(event, in: browser) // Fork (covers): a non-space key with ⌃ takes the warming guess back
             return take(event) ? nil : event
         }
     }

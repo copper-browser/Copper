@@ -30,8 +30,9 @@ extension Drive {
         /// The thread's human title when one could be found, else the project
         /// folder and a short session id. Empty when nothing was said.
         var thread: String
-        /// What the colour is hashed from. A Jev run started by a thread
-        /// wears that thread's colour, so the two read as one piece of work.
+        /// What the colour is hashed from: the agent app (Fork: covers — it
+        /// was the session). A Jev run started by a thread wears that
+        /// thread's colour, so the two read as one piece of work.
         var seed: String
         /// For Jev: whose goal it is ("Claude Code").
         var via: String = ""
@@ -188,7 +189,7 @@ extension Drive {
     /// A pretend agent through the same model, so the badges, the bar and the
     /// card can be looked at without one: `drive fake NAME THREAD [tab ID] [--for S]`.
     func fake(agent: String, thread: String, tab: UUID, seconds: TimeInterval, doing: String) {
-        let who = Who(key: "fake:\(agent):\(thread)", agent: agent, thread: thread, seed: "fake:\(agent):\(thread)",
+        let who = Who(key: "fake:\(agent):\(thread)", agent: agent, thread: thread, seed: agent, // Fork (covers): by app, as `from`
                       project: "", session: String(UUID().uuidString.prefix(8)).lowercased())
         touch(who, driver: agent == "Jev" ? .jev : .agent(agent), tab: tab, doing: doing, busy: true)
         hands[who.key]?.until = Date().addingTimeInterval(seconds)
@@ -324,7 +325,10 @@ extension Drive.Who {
             }
         }()
         let key = "\(agent):\(session.isEmpty ? said.project : session)"
-        return Drive.Who(key: key, agent: agent, thread: thread, seed: session.isEmpty ? key : session,
+        // Fork (covers, hill-climb r5): coloured by the app, not the session —
+        // two Claude Code threads are one agent to look at (they were lavender
+        // and cyan); the thread's name tells them apart.
+        return Drive.Who(key: key, agent: agent, thread: thread, seed: agent,
                          project: said.project, session: short)
     }
 }

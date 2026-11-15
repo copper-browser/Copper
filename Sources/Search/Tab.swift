@@ -1039,6 +1039,7 @@ final class Tab: ObservableObject, Identifiable {
         memory = nil
         picture = nil
         cover = nil
+        dozed = false // Fork (covers)
         adoptIcon()
         web.load(URLRequest(url: url))
     }
@@ -1115,16 +1116,35 @@ final class Tab: ObservableObject, Identifiable {
     /// view built to wake it opens the same page, at the same place, with
     /// Back still going back. What was typed and not sent is the one thing
     /// that can't come back, which is why the browser asks `unsaved` first.
-    func sleep(picture: Data?) {
-        // Fork (pins-awake): a pin never sleeps, whoever asks.
-        guard PinRule.mayUnload(pinned: pin != nil, .sleep) else { return }
+    func sleep(picture: Data?, doze: Bool = false) {
+        // Fork (pins-awake): a pin never sleeps, whoever asks — unless it is
+        // a big one left for hours and you let big pins sleep (`doze`,
+        // Fork/PinsAwake.swift `mayDoze`; the caller has checked).
+        guard PinRule.mayUnload(pinned: pin != nil, doze ? .doze : .sleep) else { return }
         guard let url = address, let built else { return }
         memory = built.interactionState
         self.picture = picture
+        // Fork (covers): and on disk, so it outlives the launch (Fork/Covers.swift).
+        if let picture, Covers.keeps(self) { Covers.save(picture, size: pictureSize, ground: pictureGround, for: url) }
+        dozed = pin != nil
         pending = url
         stale = false
         pull = nil
         discard()
+    }
+
+    /// Fork (covers): a pin put to sleep by "Let big pins sleep": the
+    /// background loader leaves it asleep until you go to it (PinsAwake).
+    private(set) var dozed = false
+
+    /// Fork (covers): the page's picture now, kept on disk for the next
+    /// launch (Covers.flush, at quit). `done` either way.
+    func keepCover(_ done: @escaping () -> Void) {
+        guard Covers.keeps(self), let url = address else { return done() }
+        snapshot { [weak self] data in
+            if let self, let data { Covers.save(data, size: self.pictureSize, ground: self.pictureGround, for: url) }
+            done()
+        }
     }
 
     /// Whether the page holds something typed and not yet sent — a draft, a
@@ -1386,6 +1406,7 @@ final class Tab: ObservableObject, Identifiable {
         immersed = false
         let state = memory
         memory = nil
+        dozed = false // Fork (covers)
         if let picture, let image = NSImage(data: picture) {
             // Fork (wake-cover): back to the size it was taken at, so it is
             // drawn 1:1 over the page it stands in for — not at the pixel
@@ -1394,6 +1415,12 @@ final class Tab: ObservableObject, Identifiable {
             coverGround = pictureGround
             cover = image
             // Whatever happens to the page, the picture doesn't outstay it.
+            uncover(after: 4)
+        } else if Covers.keeps(self), let kept = Covers.load(for: url) {
+            // Fork (covers): none in memory — a tab brought back by a launch,
+            // a pin — so the one it left on disk (Fork/Covers.swift).
+            coverGround = kept.ground
+            cover = kept.image
             uncover(after: 4)
         }
         picture = nil
@@ -1502,6 +1529,7 @@ final class Tab: ObservableObject, Identifiable {
         onField = nil
         onCredentials = nil
         onCodeBox = nil // Fork (auto-codes)
+        Covers.closed(self) // Fork (covers): its picture goes with it
         discard()
     }
 

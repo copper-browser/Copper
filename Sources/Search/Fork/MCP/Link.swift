@@ -519,7 +519,7 @@ final class AgentLink: ObservableObject, Identifiable {
             let session = request.caller.sessionId ?? request.caller.runId ?? ""
             let hand = Drive.Who(key: "bot:\(request.caller.botId):\(session)", agent: "@\(who)",
                                  thread: request.caller.botName.isEmpty ? appName : "\(request.caller.botName) · \(appName)",
-                                 seed: "bot:\(request.caller.botId):\(session)", session: String(session.prefix(8)))
+                                 seed: "bot:\(request.caller.botId)", session: String(session.prefix(8))) // Fork (covers): coloured by the bot, not the session
             rpc = await MCP.shared.handle(request.message, announce: config.announces ? .prefix("@\(who) · \(appName)") : .quiet,
                                           driver: .bot("@\(who) · \(appName)"), who: hand)
             // The last progress frame goes before the reply.

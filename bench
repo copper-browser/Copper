@@ -20,6 +20,8 @@
     ./bench pins kill ID               a test world: end a tab's web process, as macOS does under memory
                                        pressure (a pin loads itself again in the background)
     ./bench pins close|others ID       a test world: ⌘W on a tab in its window / Close Other Tabs
+    ./bench covers [flush|clear]       pages' last pictures kept on disk (covers/): count and bytes;
+                                       flush = quit's pass now; clear = a test world's, all gone
     ./bench select ID                  bring a tab to the front — --test runs only
     ./bench resize W H [STEPS]         take the window to W×H in steps, like a drag — --test runs only
     ./bench wheel DY [--steps N] [--hz H] [--at X,Y] [--window N]
@@ -659,8 +661,8 @@ def main(argv):
         words = [a for a in args if a != "--table"]
         request["op"] = words[0] if words else "state"
         request["arg"] = " ".join(words[1:]) if len(words) > 1 else ""
-    elif verb in ("spaces", "groups", "sections", "agent", "ai", "updates", "bw", "op", "downloads", "drive", "ext-manager", "windows", "pace", "calendar", "pins"):
-        request["op"] = args[0] if args else ("status" if verb in ("updates", "bw", "op", "drive", "pace") else "state" if verb == "calendar" else "list")
+    elif verb in ("spaces", "groups", "sections", "agent", "ai", "updates", "bw", "op", "downloads", "drive", "ext-manager", "windows", "pace", "calendar", "pins", "covers"):
+        request["op"] = args[0] if args else ("status" if verb in ("updates", "bw", "op", "drive", "pace", "covers") else "state" if verb == "calendar" else "list")
         request["arg"] = " ".join(args[1:]) if len(args) > 1 else ""
     elif verb == "history":
         if not args or args[0] != "import" or len(args) < 2:

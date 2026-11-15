@@ -106,7 +106,7 @@ struct SplitCard: View {
 /// Fork (ui-flows): what a pane shows under its page until the page first
 /// paints — the site's mark and title on the wash, never a white card. The
 /// page covers it the moment WebKit has a frame (`PageView.showFirstFrame`).
-private struct SplitWaiting: View {
+struct SplitWaiting: View { // Fork (covers): also under a lone page card (PageFrame.swift)
     @ObservedObject var tab: Tab
     /// Fork (motion): the page has painted. Gone then (in 80 ms), so it can't
     /// show through wherever a page mid-resize hasn't drawn yet.
