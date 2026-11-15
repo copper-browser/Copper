@@ -61,17 +61,35 @@ def order(arms_, r):
     return arms_ if r % 2 == 0 else arms_[::-1]
 
 
+_held = 0
+
+
 @contextmanager
 def locked():
-    if not LOCK:
-        yield
-        return
-    with open(os.path.expanduser(LOCK), "a") as f:
-        fcntl.flock(f, fcntl.LOCK_EX)
+    """The mini lock; re-entrant, so a phase can hold it for a whole ABBA round (both arms) around per-arm holds."""
+    global _held
+    if not LOCK or _held:
+        _held += 1
         try:
             yield
         finally:
+            _held -= 1
+        return
+    with open(os.path.expanduser(LOCK), "a") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        _held += 1
+        try:
+            yield
+        finally:
+            _held -= 1
             fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def rounds(n):
+    """range(n), each round inside one lock hold (ABBA pairs measured back to back, nobody between the arms)."""
+    for r in range(n):
+        with locked():
+            yield r
 
 
 def load_avg():
@@ -315,7 +333,7 @@ def rawload_app():
 
 def launch(out, arms_):
     """A1: restored-page paint per launch, arms alternating. Round 0 is dropped in the summary."""
-    for r in range(N("HC_LAUNCHES", 8)):
+    for r in rounds(N("HC_LAUNCHES", 8)):
         for label, app in order(arms_, r):
             with locked():
                 t = start(app)
@@ -369,7 +387,7 @@ def world_store(app, world=WORLD):
 def cold(out, arms_):
     """A1 cold (COLD_NOTE): HC_COLD launches per arm, arms alternating; none dropped."""
     base = os.path.join(HOME, "hc", f"cold-{WORLD}")
-    for r in range(N("HC_COLD", 6)):
+    for r in rounds(N("HC_COLD", 6)):
         for label, app in order(arms_, r):
             copy = os.path.join(base, f"{label}-{r}-{int(time.time())}", "Copper.app")
             with locked():
@@ -399,7 +417,7 @@ def session(out, arms_):
     12 tabs twice (A2: wake, then warm), memory after (A4), typing in ⌘T and ⌘K (A7)."""
     settle, idle = N("HC_SETTLE", 30), N("HC_IDLE", 60)
     quiet = open(os.devnull, "w")
-    for r in range(N("HC_ROUNDS", 6)):
+    for r in rounds(N("HC_ROUNDS", 6)):
         for label, app in order(arms_, r):
             for attempt in range(2):  # a probe killed under us (memory, another runner): note it, go again once
                 try:
@@ -414,7 +432,7 @@ def session(out, arms_):
 def idle_phase(out, arms_):
     """A4 + A6 alone (r4): per launch, the idle minute of `session` (cost, wakeups per process, pins), then quit."""
     settle, idle, r0 = N("HC_SETTLE", 30), N("HC_IDLE", 60), N("HC_ROUND0", 0)  # HC_ROUND0: a run split into one-round calls
-    for r in range(r0, r0 + N("HC_ROUNDS", 6)):
+    for r in (r0 + i for i in rounds(N("HC_ROUNDS", 6))):
         for label, app in order(arms_, r):
             with locked():
                 t = start(app)
@@ -605,7 +623,7 @@ def load(out, arms_):
     t0; builds without it fall back to the harness clock). The first of each arm is dropped (cold DNS/cache)."""
     n = N("HC_LOADS", 21)
     quiet = open(os.devnull, "w")
-    for r in range(N("HC_LOAD_ROUNDS", 1)):
+    for r in rounds(N("HC_LOAD_ROUNDS", 1)):
         for label, app in order(arms_, r):
             with locked():
                 l0 = start(app)["load0"]
@@ -651,7 +669,7 @@ def smooth(out, arms_):
     """A5 (Retina): scripted scroll of 4 pages, HC_SMOOTH_RUNS runs each, per arm (the boards: `canvas`)."""
     runs = N("HC_SMOOTH_RUNS", 5)
     js = open(os.path.join(HERE, "scroll.js")).read()
-    for r in range(N("HC_SMOOTH_ROUNDS", 1)):
+    for r in rounds(N("HC_SMOOTH_ROUNDS", 1)):
         for label, app in order(arms_, r):
             with locked():
                 l0 = start(app)["load0"]
@@ -680,7 +698,7 @@ def smooth(out, arms_):
 def canvas_phase(out, arms_):
     """A5: canvas-big and canvas-easel pan+zoom (canvas-big/measure.js), HC_SMOOTH_RUNS runs each, arms alternating.
     On the mini the probe draws at 1× (no Retina): its numbers are a floor, the laptop's count."""
-    for r in range(N("HC_CANVAS_ROUNDS", 1)):
+    for r in rounds(N("HC_CANVAS_ROUNDS", 1)):
         for label, app in order(arms_, r):
             with locked():
                 canvas(out, label, app, r, N("HC_SMOOTH_RUNS", 5))
@@ -778,7 +796,7 @@ def hooks(out, arms_):
         wake = subprocess.Popen(["caffeinate", "-u", "-d", "-t", "3600"])
         time.sleep(3)
     try:
-        for r in range(N("HC_HOOK_ROUNDS", 1)):
+        for r in rounds(N("HC_HOOK_ROUNDS", 1)):
             for label, app in order(arms_, r):
                 with locked():
                     base = {"arm": label, "round": r, "load0": start(app)["load0"], "display_asleep": display_asleep()}
