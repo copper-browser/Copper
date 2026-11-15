@@ -1138,11 +1138,14 @@ final class Tab: ObservableObject, Identifiable {
     private(set) var dozed = false
 
     /// Fork (covers): the page's picture now, kept on disk for the next
-    /// launch (Covers.flush, at quit). `done` either way.
+    /// launch (Covers.flush, at quit). `done` once WebKit has answered and
+    /// the write is queued — no hop through the main queue, which a quit's
+    /// wait (a nested run loop) may not drain.
     func keepCover(_ done: @escaping () -> Void) {
-        guard Covers.keeps(self), let url = address else { return done() }
-        snapshot { [weak self] data in
-            if let self, let data { Covers.save(data, size: self.pictureSize, ground: self.pictureGround, for: url) }
+        guard Covers.keeps(self), let url = address, let built else { return done() }
+        let size = built.bounds.size
+        built.takeSnapshot(with: nil) { image, _ in
+            if let cg = image?.cgImage(forProposedRect: nil, context: nil, hints: nil) { Covers.save(cg, size: size, for: url) }
             done()
         }
     }
@@ -1193,7 +1196,7 @@ final class Tab: ObservableObject, Identifiable {
     /// the commonest colour rather than the average, because a scrollbar or a
     /// line of text on the edge would muddy an average into a grey no page
     /// is. Sixty-four samples, each the mean of a short run of edge pixels.
-    nonisolated private static func ground(of image: CGImage) -> NSColor? {
+    nonisolated static func ground(of image: CGImage) -> NSColor? { // Fork (covers): also Covers'
         let width = image.width, height = image.height
         guard width > 2, height > 2 else { return nil }
         let runs = 32

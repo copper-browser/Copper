@@ -45,7 +45,14 @@ struct CoverStore {
     /// shared store runs it on its own queue (`Covers.save`).
     @discardableResult
     func write(_ jpeg: Data, size: CGSize, ground: NSColor?, for url: URL) -> Bool {
-        guard let data = CoverStore.fit(jpeg, size: size, ground: ground, most: most) else { return false }
+        guard let source = CGImageSourceCreateWithData(jpeg as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return false }
+        return write(image, size: size, ground: ground, for: url)
+    }
+
+    @discardableResult
+    func write(_ image: CGImage, size: CGSize, ground: NSColor?, for url: URL) -> Bool {
+        guard let data = CoverStore.fit(image, size: size, ground: ground, most: most) else { return false }
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         guard (try? data.write(to: file(for: url), options: .atomic)) != nil else { return false }
         evict()
@@ -99,9 +106,7 @@ struct CoverStore {
     /// A JPEG of at most `most` bytes, with the picture's size in points and
     /// its ground written into its Exif comment. Full size first; then, on a
     /// Retina picture, at one pixel a point; then plainer, until it fits.
-    static func fit(_ jpeg: Data, size: CGSize, ground: NSColor?, most: Int) -> Data? {
-        guard let source = CGImageSourceCreateWithData(jpeg as CFData, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+    static func fit(_ image: CGImage, size: CGSize, ground: NSColor?, most: Int) -> Data? {
         let points = size.width > 0 && size.height > 0 ? size : CGSize(width: image.width, height: image.height)
         let note = describe(size: points, ground: ground)
         let small = scaled(image, to: points)
@@ -169,7 +174,7 @@ struct CoverStore {
 @MainActor
 enum Covers {
     nonisolated static let store = CoverStore(folder: Store.file("covers"))
-    private static let queue = DispatchQueue(label: "copper.covers", qos: .utility)
+    nonisolated private static let queue = DispatchQueue(label: "copper.covers", qos: .utility)
 
     /// Off for `defaults write <domain> covers -bool false`.
     static var on: Bool { Store.settings.object(forKey: "covers") as? Bool ?? true }
@@ -179,6 +184,12 @@ enum Covers {
     static func save(_ jpeg: Data, size: CGSize, ground: NSColor?, for url: URL) {
         guard on else { return }
         queue.async { store.write(jpeg, size: size, ground: ground, for: url) }
+    }
+
+    /// A picture straight from WebKit (the quit's pass): its ground is read
+    /// and it is encoded here, on the covers queue.
+    nonisolated static func save(_ image: CGImage, size: CGSize, for url: URL) {
+        queue.async { store.write(image, size: size, ground: Tab.ground(of: image), for: url) }
     }
 
     static func load(for url: URL) -> CoverStore.Kept? {
