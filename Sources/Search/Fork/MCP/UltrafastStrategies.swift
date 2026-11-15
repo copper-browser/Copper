@@ -362,21 +362,29 @@ extension Tools.Ultrafast {
         return (c?.host ?? "") + (c?.path ?? "")
     }
 
-    /// A control that only looks something up, so sending it once more is no
-    /// resend: a search field, a Search/Find button, any control the page
-    /// marks `query` (in a role=search box, or a form whose only text field
-    /// is a query: its Go), or a retry (Reload, Try again) over the provider's
-    /// error. Never one that names a change (pay, order, post, submit…).
-    static func searchControl(_ action: [String: Any], label: String, text: String) -> Bool {
-        if label.range(of: #"(?i)\b(?:pay|buy|order|purchase|check ?out|book|reserve|post|submit|send|publish|reply|comment|review|confirm|place|delete|remove|save|sign|subscribe|donate|transfer|apply|register|add to|upload|share|vote)\b"#, options: .regularExpression) != nil { return false }
-        if action["role"] as? String == "searchbox" || action["query"] as? Bool == true { return true }
-        if label.range(of: #"(?i)^\s*(?:search|find)\b"#, options: .regularExpression) != nil { return true }
-        return label.range(of: #"(?i)^\s*(?:reload|retry|try again|refresh)\b"#, options: .regularExpression) != nil && emptyResults(text)
+    /// A control whose send changes something, so it is never sent twice
+    /// without the page answering (council R6): pay/order/send/confirm/post
+    /// wording, a submit or field in a form that isn't a search's (`inForm`
+    /// from the page), or a POST to an address that isn't a search's. Never
+    /// a search (a search field, Search/Find, anything the page marks
+    /// `query`: a role=search box or a form whose only text field is a query)
+    /// nor a retry (Reload, Try again: Google Flights' Reload re-posts
+    /// GetShoppingResults): those go again under `repeats`' backoff.
+    static func commit(_ action: [String: Any], label: String, posts: [String], page: String) -> Bool {
+        if changes(label) { return true }
+        if action["role"] as? String == "searchbox" || action["query"] as? Bool == true
+            || label.range(of: #"(?i)^\s*(?:search|find|reload|retry|try again|refresh)\b"#, options: .regularExpression) != nil { return false }
+        return action["inForm"] as? Bool == true || !searchPosts(posts, page: page)
     }
 
-    /// What a search sent went to a search: every POST's address names one,
-    /// or the page it lands on is one (Flights' /travel/flights/search). A POST
-    /// to /api/pay from a checkout is a change.
+    /// A control's name that says it changes something.
+    static func changes(_ label: String) -> Bool {
+        label.range(of: #"(?i)\b(?:pay|buy|order|purchase|check ?out|book|reserve|post|submit|send|publish|reply|comment|review|confirm|place|delete|remove|save|sign|subscribe|donate|transfer|apply|register|add to|upload|share|vote|follow|like)\b"#, options: .regularExpression) != nil
+    }
+
+    /// What a send posted went to a search: every POST's address names one,
+    /// or the page it lands on is one (Flights' /travel/flights/search). A
+    /// POST to /api/pay from a checkout does not.
     static func searchPosts(_ posts: [String], page: String) -> Bool {
         let words = #"(?i)search|query|results?\b|lookup|suggest|autocomplete"#
         func searchy(_ url: String) -> Bool {
@@ -387,10 +395,10 @@ extension Tools.Ultrafast {
         return searchy(page) || posts.allSatisfy(searchy)
     }
 
-    /// The page shows no results, or the provider's error (Google Flights'
-    /// "Oops, something went wrong").
-    static func emptyResults(_ text: String) -> Bool {
-        text.range(of: #"(?i)something went wrong|an error (?:has )?occurred|\bno (?:matching )?results\b|\b0 results\b|\bno \w+ (?:were )?found\b|nothing (?:was )?found|could(?:n'?t|n’t| not) (?:load|find|get)|try again later|temporarily unavailable|service unavailable"#, options: .regularExpression) != nil
+    /// The document a read was of: `performance.timeOrigin`, first in its
+    /// marker. Another one is a new page load, not an address drawn in place.
+    static func documentStart(_ marker: String) -> Substring {
+        marker.dropFirst().prefix { $0 != "," }
     }
 
     /// A human check the agent must not answer: "I am human", "I'm not a

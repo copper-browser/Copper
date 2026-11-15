@@ -114,4 +114,20 @@ private func labels(_ obs: [String: Any]?) -> [String] {
     func marked(_ label: String) -> Bool { actions.first { $0["label"] as? String == label }?["query"] as? Bool == true }
     #expect(marked("Go") && marked("Search the shop") && marked("Find") && marked("Find docs"))
     #expect(!marked("Post review") && !marked("Your review"))
+    let inForm = { (label: String) in actions.first { $0["label"] as? String == label }?["inForm"] as? Bool == true }
+    #expect(inForm("Post review") && !inForm("Go") && !inForm("Find"))
+}
+
+// Ads are not offered: a sponsored brand-store banner is not the product.
+@MainActor @Test func sponsoredLinksAreLeftOut() async throws {
+    let web = await page("""
+    <a href="https://shop.test/stores/page/X?store_ref=SB_1">Brand store banner</a>
+    <a href="https://shop.test/sspa/click?x=1">Sponsored pick</a>
+    <div aria-label="Sponsored"><a href="https://shop.test/dp/2">Boxed ad</a></div>
+    <a href="https://shop.test/dp/1">The product</a>
+    """)
+    let obs = try await U.js(web, "window.__jevFast.observe(undefined, {deep: false})") as? [String: Any]
+    let shown = labels(obs)
+    #expect(shown.contains("The product"))
+    #expect(!shown.contains("Brand store banner") && !shown.contains("Sponsored pick") && !shown.contains("Boxed ad"))
 }

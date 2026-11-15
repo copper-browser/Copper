@@ -462,6 +462,8 @@ enum Ultrafast {
         /// change, though the page may show none.
         var sent = false
         var formSent = false
+        /// What it sent changes something (`Ultrafast.commit`): a search or a retry doesn't.
+        var commit = false
         /// The read after it showed no text line the read before didn't.
         var nothingNew = false
         /// Time spent waiting before trying the same control again.
@@ -492,7 +494,7 @@ enum Ultrafast {
         /// with fetch is the same send.
         /// A click counts as quiet when it showed no new line of text, though
         /// something else in the read moved (a control's state, the viewport).
-        var quietSend: Bool { (formSent || sent) && (pageChanged == false || (kind == "click" && nothingNew)) }
+        var quietSend: Bool { (formSent || sent) && commit && (pageChanged == false || (kind == "click" && nothingNew)) }
 
         /// `page_changed` says what the page did; `sent` that a request went
         /// out (Google reads with POSTs too, so it is not a change).
@@ -666,6 +668,8 @@ enum Ultrafast {
       // game clicked Category: links three runs of three (r4).
       const furniture=e=>!!e.closest('footer,[role="contentinfo"],.catlinks,.navbox,.mw-footer,.printfooter');
       const namespaced=e=>/\/[A-Za-z]+(?:_talk)?:[^\/_\s]/.test(decoded(e.pathname||''));
+      const sponsored=e=>/\/sspa\/|[?&]store_ref=SB|\/gp\/slredirect\/|\/aclk\?/.test(e.href||'') ||
+        !!e.closest('[aria-label="Sponsored" i],[data-component-type="sp-sponsored-result"],.AdHolder');
       cache.observe=(goal,opts)=>{
         if (!document.body) return null;
         if (opts) cache.deep=!!opts.deep;
@@ -676,6 +680,8 @@ enum Ultrafast {
           if (!safe(e) || !shown(e,f) || e.matches(':disabled') || e.closest('[aria-disabled="true"],[inert]')) continue;
           let r=f.getBoundingClientRect(); const rname=role(e);
           if (!rname || r.width<=0 || r.height<=0) continue;
+          // An ad is never the way (Amazon: a sponsored brand-store banner taken for the product, DONE, r6).
+          if (rname==='link' && sponsored(e)) continue;
           // In a frame: on that frame's screen, then where that is on the top page.
           const view=e.ownerDocument.defaultView;
           if (view!==window) {
@@ -699,6 +705,7 @@ enum Ultrafast {
           if (rname==='link' && e.href) base.href=e.href.split('#')[0];
           if (submitter(e)) base.submits=true;
           if (query(e)) base.query=true;
+          else if (e.form || e.closest('form')) base.inForm=true;
           for (const key of ['checked','selected','expanded']) {
             const value=e.getAttribute('aria-'+key);
             if (value!==null) base[key]=value;
@@ -1873,16 +1880,11 @@ enum Ultrafast {
         /// nothing new (it posted a review three times; a fetch Pay button paid
         /// twice when only the viewport's size changed between reads). Choosing one asks Jev
         /// DONE or BLOCKED instead (`confirmOnly`), and that answer ends the run.
-        /// `search`: it only looked something up (`searchControl`, `searchPosts`).
-        private var quietSend: (lines: Set<String>, url: String, node: Int?, label: String, search: Bool)?
+        private var quietSend: (lines: Set<String>, url: String, node: Int?, label: String)?
         /// A send (Return, a form, a POST) that took the tab to another page:
         /// the same control there again before anything is typed is a resend
         /// (Flights clicked Search on the results Search had opened).
-        private var navigatedSend: (url: String, label: String, returned: Bool, search: Bool)?
-        /// A search sent again once, past the guards above, because it found
-        /// nothing or met the provider's error (Flights' Reload/Search over
-        /// "Oops, something went wrong": r5 stopped it and ended BLOCKED).
-        private(set) var searchRetries = 0
+        private var navigatedSend: (url: String, label: String, returned: Bool)?
         /// The visible text lines each step was decided on, by step number,
         /// and the control a WAIT was put in place of (`repeats`).
         private var linesAt: [Int: Set<String>] = [:]
@@ -2075,6 +2077,15 @@ enum Ultrafast {
                     observation = nil; shot = nil; return nil
                 }
                 let claim = decision.choice
+                // A human check on the page is never DONE (Amazon's bot page at 80%, r6): it is the user's.
+                if claim == "DONE", let check = Ultrafast.humanCheck(on: obs) {
+                    status = "blocked"
+                    note = String(format: "Jev said DONE, %.0f%% sure, but the page asks for a human check (%@): hand it to the user", decision.probability * 100, check)
+                    trace.outcome(Drive.Outcome(operation: "BLOCKED", label: "human check: " + check, text: nil,
+                                                   probability: decision.probability, confidence: decision.confidence,
+                                                   pageChanged: nil, stale: false, candidates: []))
+                    return nil
+                }
                 // Not sure (under its floor): the page settles in full — its
                 // load, the last action's data calls — and is read and asked
                 // again, once per kind, with "is anything left undone?" beside
@@ -2150,6 +2161,8 @@ enum Ultrafast {
                     note += String(format: " — but the page still looks unfinished (%.0f%%); check it", unmet * 100)
                 }
                 if answering { note += " — submitted, no confirmation shown" }
+                // The guard ended the run, not the page: nobody should act on that BLOCKED (council R6).
+                if answering, claim == "BLOCKED" { status = "unsure" }
                 trace.outcome(Drive.Outcome(operation: claim, label: answering ? "submitted, no confirmation shown" : "", text: nil,
                                                probability: decision.probability, confidence: decision.confidence,
                                                pageChanged: nil, stale: false, candidates: []))
@@ -2197,17 +2210,10 @@ enum Ultrafast {
             if let sent = navigatedSend, sent.url != obs.url || kind == "fill" || kind == "select" { navigatedSend = nil }
             let node = (action["node"] as? NSNumber)?.intValue
             let submits = kind == "click" && action["submits"] as? Bool == true
-            let quietAgain = quietSend.map { sent in submits || (node != nil && node == sent.node) || (kind == "click" && label == sent.label) } ?? false
-            // Search again on the page the search already opened: the same send.
-            let navigatedAgain = navigatedSend.map { sent in kind == "click" && (label == sent.label || (sent.returned && submits)) } ?? false
-            // Unless it was a search that found nothing (quiet) or shows the
-            // provider's error: that one may go once more. A send that
-            // changes something (pay, post, a form) still goes once only.
-            let searchAgain = searchRetries == 0 && Ultrafast.searchControl(action, label: label, text: obs.text)
-                && (!quietAgain || quietSend?.search == true)
-                && (!navigatedAgain || (navigatedSend?.search == true && Ultrafast.emptyResults(obs.text)))
-            if (quietAgain || navigatedAgain) && searchAgain { searchRetries += 1 }
-            else if quietAgain || navigatedAgain {
+            let resend = quietSend.map { sent in submits || (node != nil && node == sent.node) || (kind == "click" && label == sent.label) } ?? false
+                // Search again on the page the search already opened: the same send.
+                || navigatedSend.map { sent in kind == "click" && (label == sent.label || (sent.returned && submits)) } ?? false
+            if resend {
                 resendsStopped += 1
                 confirmOnly = true
                 if strategy.llm || seeing == .pixels {
@@ -2394,10 +2400,16 @@ enum Ultrafast {
             // above was of a page with nothing asked yet (Search → WAIT in 34–78 ms
             // → Reload, r4). A call gets `startWait` to begin and its answer
             // `waitLinger` to settle, then the page is read again.
-            if strategy.watch, burstSteps.isEmpty, kind == "click" || submitted, !tab.loading,
-               Ultrafast.place(next.url) != Ultrafast.place(obs.url) {
+            // Only an address drawn in place (same document, no page load since
+            // the action) and never after a link: MDN's links load a page that
+            // posts on its own, and each click waited 0.8–1.2 s for it (council R6).
+            let link = (action["role"] as? String) == "link" && !Ultrafast.changes(label)
+                && (action["href"] as? String).map { $0.hasPrefix("http") && $0 != obs.url.components(separatedBy: "#")[0] } ?? false
+            if strategy.watch, burstSteps.isEmpty, kind == "click" || submitted, !link, !tab.loading,
+               Ultrafast.place(next.url) != Ultrafast.place(obs.url),
+               Ultrafast.documentStart(next.marker) == Ultrafast.documentStart(obs.marker), NetLog.dataCalls(web, after: netMark) != nil {
                 let waited = Date()
-                let calls = await NetLog.answered(web, after: netMark, linger: Ultrafast.waitLinger, start: Ultrafast.startWait)
+                let calls = await NetLog.answered(web, after: netMark, cap: Ultrafast.waitCap, linger: Ultrafast.waitLinger, start: Ultrafast.startWait)
                 step.net = calls.suffix(6).map(NetLog.brief)
                 step.inFlight = calls.contains { NetLog.pending($0) }
                 if Date().timeIntervalSince(waited) > 0.02 { next = try await Ultrafast.observe(tab, terms: terms, near: strategy.near, calm: strategy.calm, deep: strategy.deep) }
@@ -2424,12 +2436,13 @@ enum Ultrafast {
             if kind == "click" || submitted {
                 step.formSent = (try? await Ultrafast.js(web, "(c => { const f = c.fired === true; c.fired = false; return f })(window.__jevFast)")) as? Bool ?? false
             }
-            step.sent = step.formSent || (kind != "wait" && NetLog.posted(web, after: netMark))
+            // A link that loads its page sends nothing, whatever that page posts on its own.
+            step.sent = step.formSent || (kind != "wait" && !link && NetLog.posted(web, after: netMark))
             step.nothingNew = Ultrafast.textLines(next.text).isSubset(of: shownLines)
-            let search = (step.sent || submitted) && Ultrafast.searchControl(action, label: label, text: obs.text)
-                && Ultrafast.searchPosts(NetLog.posts(web, after: netMark), page: next.url)
-            if step.quietSend { quietSend = (Ultrafast.textLines(next.text), next.url, (action["node"] as? NSNumber)?.intValue, label, search) }
-            if step.sent || submitted, Ultrafast.place(next.url) != Ultrafast.place(obs.url) { navigatedSend = (next.url, label, submitted, search) }
+            // Only a send that changes something arms the resend guards; a search or a retry is `repeats`' to back off.
+            step.commit = (step.sent || submitted) && Ultrafast.commit(action, label: label, posts: NetLog.posts(web, after: netMark), page: next.url)
+            if step.quietSend { quietSend = (Ultrafast.textLines(next.text), next.url, (action["node"] as? NSNumber)?.intValue, label) }
+            if step.commit, Ultrafast.place(next.url) != Ultrafast.place(obs.url) { navigatedSend = (next.url, label, submitted) }
             if kind != "wait" { lastNetMark = netMark }
             step.url = next.url
             step.settleMs = Date().timeIntervalSince(settleStarted) * 1000
@@ -2490,7 +2503,7 @@ enum Ultrafast {
                                       "settles": spent.settles, "settles_capped": spent.settlesCapped,
                                       "burst_actions": history.filter(\.burst).count,
                                       "pictured": pictured, "doubts": doubts, "wait_ms": spent.waitMs,
-                                      "resends_stopped": resendsStopped, "search_retries": searchRetries, "sent": history.filter(\.sent).count,
+                                      "resends_stopped": resendsStopped, "sent": history.filter(\.sent).count,
                                       "llm_in_tokens": spent.llmIn, "llm_out_tokens": spent.llmOut, "llm_usd": spent.llmUsd]
             if !spent.textModel.isEmpty { out["text_model"] = spent.textModel }
             if !spent.llmModel.isEmpty { out["llm_model"] = spent.llmModel }

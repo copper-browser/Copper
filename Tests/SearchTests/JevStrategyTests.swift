@@ -92,36 +92,36 @@ struct JevStrategyTests {
         #expect((U.goalTerms("Find Gödel’s theorems")["words"] as? [String] ?? []).contains("godel"))
     }
 
-    // The resend guard lets a search go once more when it found nothing or
-    // met the provider's error (Flights 15/16 → 12/16 in r5); a send that
-    // changes something never does.
-    @Test func searchMayGoAgainChangesMayNot() {
-        let oops = "Departing flights\nOops, something went wrong.\nReload"
-        let fine = "Departing flights\nSWISS 1h 30m CHF 120"
-        // search-type controls
-        #expect(U.searchControl(click(1, "button", "Search"), label: "Search", text: fine))
-        #expect(U.searchControl(click(1, "button", "Find hotels"), label: "Find hotels", text: fine))
-        #expect(U.searchControl(click(1, "searchbox", "Where to?"), label: "Where to?", text: fine))
-        var go = click(2, "button", "Go"); go["query"] = true
-        #expect(U.searchControl(go, label: "Go", text: fine))
-        #expect(!U.searchControl(click(2, "button", "Go"), label: "Go", text: fine))
-        // a retry only over the provider's error
-        #expect(U.searchControl(click(3, "button", "Reload"), label: "Reload", text: oops))
-        #expect(!U.searchControl(click(3, "button", "Reload"), label: "Reload", text: fine))
-        // never one that changes something, even in a search box
-        for label in ["Pay $24.00", "Post review", "Place order", "Buy now", "Submit", "Search and book", "Confirm and pay"] {
-            var a = click(4, "button", label); a["query"] = true
-            #expect(!U.searchControl(a, label: label, text: oops), "\(label)")
-        }
+    // Only a send that changes something arms the resend guard (council R6):
+    // Google Flights' Reload and a second Search go to `repeats`' backoff
+    // (r5 refused them: Flights 15/16 → 12/16); Pay and Post still go once.
+    @Test func onlyCommitsAreGuarded() {
+        let flights = "https://www.google.com/travel/flights/search?tfs=x"
+        let shopping = ["https://www.google.com/_/FlightsFrontendUi/data/travel.frontend.flights.FlightsFrontendService/GetShoppingResults"]
+        // searches and retries: not commits
+        #expect(!U.commit(click(1, "button", "Reload"), label: "Reload", posts: shopping, page: flights))
+        #expect(!U.commit(click(1, "button", "Try again"), label: "Try again", posts: ["https://x.test/api/rpc"], page: "https://x.test/"))
+        #expect(!U.commit(click(1, "button", "Search"), label: "Search", posts: shopping, page: "https://www.google.com/travel/flights?tfs=x"))
+        #expect(!U.commit(click(1, "searchbox", "Where to?"), label: "Where to?", posts: [], page: "https://x.test/"))
+        var go = click(2, "button", "Go"); go["query"] = true; go["submits"] = true
+        #expect(!U.commit(go, label: "Go", posts: ["https://shop.test/s"], page: "https://shop.test/"))
+        #expect(!U.commit(click(3, "button", "More results"), label: "More results", posts: ["https://x.test/_/batchexecute"], page: flights))
+        // commits: wording, a form that isn't a search's, a POST to a non-search address
+        #expect(U.commit(click(4, "button", "Pay $24.00"), label: "Pay $24.00", posts: ["http://127.0.0.1:4171/api/pay?sid=a"], page: "http://127.0.0.1:4171/c7/pay.html?sid=a"))
+        var post = click(5, "button", "Post review"); post["submits"] = true; post["inForm"] = true
+        #expect(U.commit(post, label: "Post review", posts: [], page: "http://127.0.0.1:4171/c7/inject.html"))
+        var next = click(6, "button", "Next"); next["inForm"] = true
+        #expect(U.commit(next, label: "Next", posts: ["https://x.test/search"], page: "https://x.test/search"))
+        #expect(U.commit(click(7, "button", "Upvote"), label: "Upvote", posts: ["https://x.test/api/vote"], page: "https://x.test/p/1"))
+        // change wording wins even in a search box or over a retry's name
+        var buy = click(8, "button", "Search and book"); buy["query"] = true
+        #expect(U.commit(buy, label: "Search and book", posts: [], page: flights))
+        #expect(U.commit(click(9, "button", "Retry payment"), label: "Retry payment", posts: [], page: flights))
         // where it posted
-        #expect(U.searchPosts(["https://www.google.com/_/FlightsFrontendUi/data/travel.frontend.flights.FlightsFrontendService/GetShoppingResults"], page: "https://www.google.com/travel/flights?tfs=x"))
-        #expect(U.searchPosts(["https://www.google.com/_/x/data/batchexecute"], page: "https://www.google.com/travel/flights/search?tfs=x"))
-        #expect(U.searchPosts([], page: "https://shop.test/products"))
-        #expect(!U.searchPosts(["http://127.0.0.1:4171/api/pay?sid=a"], page: "http://127.0.0.1:4171/c7/pay.html?sid=a"))
+        #expect(U.searchPosts(shopping, page: "https://www.google.com/travel/flights?tfs=x"))
         #expect(!U.searchPosts(["https://shop.test/search", "https://shop.test/cart/add"], page: "https://shop.test/p/1"))
-        // what the page shows
-        #expect(U.emptyResults(oops) && U.emptyResults("No results found for “xyzzy”") && U.emptyResults("No flights found"))
-        #expect(!U.emptyResults(fine) && !U.emptyResults("Your review was posted"))
+        // which document a read was of
+        #expect(U.documentStart(#"[1763251200123.5,"https://a.test/",0]"#) == "1763251200123.5")
     }
 
     @Test func humanChecksAreNamed() {
@@ -310,6 +310,9 @@ struct JevClaimTests {
         #expect(Tools.snapshotHints(swatches).contains("9 controls have no name"))
         #expect(Tools.snapshotHints("- button \"Approve\" [ref=e1]\n- button \"Reject\" [ref=e2]").isEmpty)
         #expect(Tools.snapshotHints("- checkbox \"I am human\" [ref=e3]").contains("browser_handoff"))
+        // body text about CAPTCHAs is no human check; a challenge frame is
+        #expect(Tools.snapshotHints("- heading \"CAPTCHA\" [level=1]\n- text: A CAPTCHA asks are you a human or a robot").isEmpty)
+        #expect(Tools.snapshotHints("- iframe \"reCAPTCHA\" [frame=f2]").contains("browser_handoff"))
     }
 
     private func typed(_ value: String) -> U.Step {

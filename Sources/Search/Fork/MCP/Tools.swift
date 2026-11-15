@@ -888,7 +888,16 @@ enum Tools {
             $0.range(of: #"^\s*- (button|generic|menuitem|tab|switch|checkbox|radio|option) \[ref="#, options: .regularExpression) != nil
         }.count
         if unnamed >= 2 { out.append("\(unnamed) controls have no name — take a screenshot (browser_take_screenshot) to tell them apart.") }
-        if let check = Ultrafast.humanCheck(snapshot) {
+        // Only control names and challenge frames: an article or a help page about CAPTCHAs is not one (council R6).
+        let names = snapshot.split(separator: "\n").compactMap { line -> String? in
+            guard line.range(of: #"^\s*- (?:button|link|checkbox|radio|switch|textbox|searchbox|combobox|menuitem|tab|option|slider|spinbutton) ""#, options: .regularExpression) != nil,
+                  let open = line.firstIndex(of: "\"") else { return nil }
+            return String(line[line.index(after: open)...].prefix { $0 != "\"" })
+        }
+        let frames = snapshot.split(separator: "\n").contains {
+            $0.range(of: #"(?i)^\s*- iframe ".*(?:captcha|security challenge|arkose|turnstile)"#, options: .regularExpression) != nil
+        }
+        if let check = Ultrafast.humanCheck(names.joined(separator: "\n")) ?? (frames ? "a CAPTCHA frame" : nil) {
             out.append("A human check is on this page (\(check)) — hand it to the user with browser_handoff; agents don't answer these.")
         }
         return out.isEmpty ? "" : "\n\n" + out.joined(separator: "\n")
