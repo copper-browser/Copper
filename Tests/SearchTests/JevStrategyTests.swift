@@ -426,4 +426,37 @@ struct JevBurstTests {
         #expect(U.burstFills([U.Assignment(literal: "London", target: "2", probability: 0.99)], except: "1", fills: fills).isEmpty)
         #expect(U.suggests(["role": "searchbox"]) && !U.suggests(["role": "textbox"]))
     }
+
+    // A question's DONE stands on its answer found on the page; anything that
+    // commits or goes somewhere keeps the strict DONE.
+    @Test func questionsAreToldFromTasks() {
+        for goal in ["What is the title of the top story right now?",
+                     "Open the httpx repository and tell me which license it uses.",
+                     "Search for Gödel's incompleteness theorems, open that article, and tell me the year they were published.",
+                     "Of the 2012 films listed here, which one won Best Picture?",
+                     "how many open issues does this repo have", "Find the price of the cheapest plan."] {
+            #expect(U.asksAnswer(goal), "\(goal)")
+        }
+        for goal in ["Open the abstract page of arXiv paper 1706.03762.", "Open the comments page of the top story.",
+                     "Find and open the Wikipedia article about Gödel’s incompleteness theorems.",
+                     "Find the link to the article \"Zanzibar\" further down this page and open it.",
+                     "Use the destination search and filters to find Design stays in Lisbon with Free cancellation, then open Casa Flora.",
+                     "Find one-way flights from Zurich to London on January 20, 2027. Do not select or book a flight.",
+                     "Approve invoice \"INV-1042\" and nothing else.", "What should I buy? Order the cheapest one.",
+                     "Sign in with the work email \"maya@northwind.test\"."] {
+            #expect(!U.asksAnswer(goal), "\(goal)")
+        }
+    }
+
+    @Test func answersAreCitedFromThePage() {
+        let page = "Gödel's incompleteness theorems\nThey were published by Kurt Gödel in 1931, and  are important.\nhttpx 0.28.1 · Released: Dec 6, 2024 · 12,345 downloads"
+        #expect(U.cite("1931", in: page)?.contains("published by Kurt Gödel in 1931") == true)
+        #expect(U.cite("published by kurt godel in 1931, and are important.", in: page) != nil)  // case, accents, spacing aside
+        #expect(U.cite("0.28.1", in: page) != nil && U.cite("12345", in: page) != nil)            // numerically
+        #expect(U.cite("httpx 0.28.1 (released December 6, 2024)", in: page) != nil)               // every number in it
+        #expect(U.cite("1930", in: page) == nil && U.cite("0.28", in: page) == nil)
+        #expect(U.cite("Argo", in: page) == nil && U.cite("null", in: page) == nil && U.cite("", in: page) == nil)
+        #expect(U.cite("2", in: "films of 2012") == nil)                                          // not inside a longer number
+        #expect(U.cite("Kurt", in: page) != nil && U.cite("urt", in: page) == nil)                  // whole words
+    }
 }

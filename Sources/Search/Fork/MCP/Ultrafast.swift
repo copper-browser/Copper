@@ -33,6 +33,8 @@ import WebKit
 extension Tools {
 enum Ultrafast {
     struct Stale: Error { let text: String }
+    /// The target is there and unchanged, but something is drawn over it (`by`): not stale, the same click would be refused again.
+    struct Covered: Error { let by: String }
 
     static let maxSteps = 60
 
@@ -344,6 +346,99 @@ enum Ultrafast {
         if !sure { said.append("Jev stayed under \(Int(claimFloor * 100))% after a second look") }
         return said.joined(separator: "; ") + " — check the page"
     }
+    /// What Jev reads after a click its target had something drawn over: the controls under it are left out while it stays.
+    static func coveredNote(_ label: String, by: String, others: Int) -> [String: Any] {
+        let more = others > 0 ? " and over \(others) other control\(others == 1 ? "" : "s")" : ""
+        return ["action": "Not clicked: something (\(by)) is drawn over \(label.prefix(40))\(more), so they are left out while it stays. Use what is on top.",
+                "kind": "click", "text": NSNull(), "page_changed": false]
+    }
+
+    /// A goal that asks for something read off the page (a question, "tell me…",
+    /// "find the…"), not only for a place to be or a thing done. Anything that
+    /// commits, types or changes something is never one: those keep the strict DONE.
+    static func asksAnswer(_ goal: String) -> Bool {
+        let g = goal.lowercased()
+        func has(_ pattern: String) -> Bool { g.range(of: pattern, options: .regularExpression) != nil }
+        if has(#"\b(buy|order|purchase|pay|checkout|check out|book|reserve|submit|send|post|publish|sign (up|in)|log ?in|subscribe|register|delete|remove|cancel|approve|add to|apply|save|create|upload|transfer|reply|comment|download|install|enable|disable|turn (on|off)|change|set|fill|enter|type|select|choose|pick)\b"#) { return false }
+        if g.contains("?") || has(#"^\W*(what|who|whom|whose|when|where|which|why|how|is|are|was|were|does|do|did|list|name)\b"#) { return true }
+        if has(#"\b(tell me|let me know|find out|read (me|out)|look up|how (many|much|old|long|far|big)|what (is|are|was|were))\b"#) { return true }
+        // "Find the price…" is a question; "find the pricing page" is a place to go.
+        return has(#"\bfind the\b"#) && !has(#"\b(open|go to|navigate|visit|page|article|link|site|website|tab)\b"#)
+    }
+
+    /// Where an answer stands on the page: the page's own words around it, when
+    /// the answer is there verbatim (case, accents and spacing aside) or every
+    /// number in it is; else nil. The evidence a question's DONE stands on.
+    static func cite(_ answer: String, in page: String) -> String? {
+        func squeeze(_ s: String) -> String {
+            s.replacingOccurrences(of: #"[\u2018\u2019]"#, with: "'", options: .regularExpression)
+                .replacingOccurrences(of: #"[\u201C\u201D]"#, with: "\"", options: .regularExpression)
+                .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        }
+        let text = squeeze(page)
+        var said = squeeze(answer).trimmingCharacters(in: CharacterSet(charactersIn: " .\"'"))
+        if said.count > 300 { said = String(said.prefix(300)) }
+        guard said.count >= 1, !["null", "none", "n/a", "unknown", "not found", "not shown"].contains(said.lowercased()) else { return nil }
+        func around(_ r: Range<String.Index>) -> String {
+            let lo = text.index(r.lowerBound, offsetBy: -80, limitedBy: text.startIndex) ?? text.startIndex
+            let hi = text.index(r.upperBound, offsetBy: 80, limitedBy: text.endIndex) ?? text.endIndex
+            return String(text[lo..<hi]).trimmingCharacters(in: .whitespaces)
+        }
+        // Whole words and numbers only: "2" is not in "2012", nor "0.28" in "0.28.1".
+        let pattern = (said.first.map { $0.isLetter || $0.isNumber } ?? false ? #"(?<![\p{L}\p{N}]|\p{N}[.,])"# : "")
+            + NSRegularExpression.escapedPattern(for: said)
+            + (said.last.map { $0.isLetter || $0.isNumber } ?? false ? #"(?![\p{L}\p{N}]|[.,]\p{N})"# : "")
+        if let r = text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) { return around(r) }
+        // Accents aside (a regex search ignores .diacriticInsensitive): found in the folded text, cited from the page's.
+        let folded = text.folding(options: .diacriticInsensitive, locale: nil)
+        if folded.count == text.count,
+           let r = folded.range(of: pattern.folding(options: .diacriticInsensitive, locale: nil), options: [.regularExpression, .caseInsensitive]) {
+            let lo = text.index(text.startIndex, offsetBy: folded.distance(from: folded.startIndex, to: r.lowerBound))
+            return around(lo..<text.index(lo, offsetBy: folded.distance(from: r.lowerBound, to: r.upperBound)))
+        }
+        // Numerically: 1,931 is 1931; a version 0.28.1 stays whole.
+        let number = #"(?<![\d.,])\d[\d,]*(?:\.\d+)*"#
+        func numbers(_ s: String) -> [(String, Range<String.Index>)] {
+            var out: [(String, Range<String.Index>)] = []
+            var from = s.startIndex
+            while let r = s.range(of: number, options: .regularExpression, range: from..<s.endIndex) {
+                out.append((s[r].replacingOccurrences(of: ",", with: ""), r))
+                from = r.upperBound
+            }
+            return out
+        }
+        let wanted = numbers(said).map(\.0)
+        guard !wanted.isEmpty else { return nil }
+        let onPage = numbers(text)
+        guard wanted.allSatisfy({ w in onPage.contains { $0.0 == w } }), let first = onPage.first(where: { $0.0 == wanted[0] }) else { return nil }
+        return around(first.1)
+    }
+
+    /// What a question's answer is asked as: short and in the page's own words, so it can be found there.
+    static let answerSchema: [String: Any] = ["type": "object", "properties": ["answer": [
+        "type": ["string", "null"],
+        "description": "The answer in as few words as the page itself uses (a name, title, number, date or version), copied exactly from the page; null when the page does not show it.",
+    ] as [String: Any]] as [String: Any]]
+
+    /// What `jev_extract` reads and asks: the page's text (`full`: the whole
+    /// page, ≤ 24k characters) and controls, the instruction, an optional schema.
+    @MainActor
+    static func extract(_ tab: Tab, instruction: String, schema: Any?, full: Bool, keys: Intelligence.Keys, timeout: TimeInterval = 40) async throws -> (reply: Router.Reply, text: String) {
+        let obs = try await observe(tab)
+        var text = obs.text
+        if full, let whole = try? await Page.js(tab.web, "window.__copper.text('')") as? String, !whole.isEmpty {
+            text = String(whole.prefix(24000))
+        }
+        var user: [String: Any] = [
+            "instruction": instruction,
+            "page": ["url": obs.url, "title": obs.title, "text": text, "controls": table(obs, limit: 120)],
+        ]
+        if let schema { user["schema"] = schema }
+        guard let data = try? JSONSerialization.data(withJSONObject: user, options: [.sortedKeys]) else { throw Failure(text: "couldn't encode the page") }
+        let reply = try await Router.ask(system: extractValue, user: String(decoding: data, as: UTF8.self), keys: keys, timeout: timeout, maxTokens: 2000, model: keys.textModel)
+        return (reply, obs.title + "\n" + text + "\n" + obs.actions.compactMap { $0["label"] as? String }.joined(separator: "\n"))
+    }
+
     /// What Jev reads in `recent_actions` after a DONE was not taken.
     static let refusedNote: [String: Any] = [
         "action": "DONE was refused: the page still shows something the goal asks for as not applied or not done. Do what is missing.",
@@ -837,7 +932,8 @@ enum Ultrafast {
         // The face, or the control drawn over it (a transparent checkbox laid
         // on its label), asked in its own tree: a shadow root or a frame.
         const hit=f.getRootNode().elementFromPoint(x,y);
-        if (!f.contains(hit) && !e.contains(hit)) return null;
+        // Drawn over (an open search panel, a dialog): said so, since the same click would only be refused again.
+        if (!f.contains(hit) && !e.contains(hit)) return hit ? {covered:hit.tagName.toLowerCase()+(hit.id ? '#'+hit.id : '')} : null;
         // In a frame: that frame on screen at that spot of the top page, and the point there.
         let o={x:0,y:0};
         if (view!==window) {
@@ -854,6 +950,11 @@ enum Ultrafast {
         }
         return {x:x+o.x,y:y+o.y};
       };
+      // The offered on-screen controls (top document) something else is drawn over, at the spot a click would go.
+      cache.covered=nodes=>nodes.filter(n=>{ const e=cache.nodes.get(n); if (!e?.isConnected || e.ownerDocument!==document) return false;
+        const f=face(e), r=f.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2;
+        if (!r.width || !r.height || x<0 || y<0 || x>=innerWidth || y>=innerHeight) return false;
+        const hit=f.getRootNode().elementFromPoint(x,y); return !!hit && !f.contains(hit) && !e.contains(hit); });
       cache.selectAll=node=>{
         const e=cache.nodes.get(node); if (!e) return false;
         e.focus();
@@ -918,7 +1019,8 @@ enum Ultrafast {
       cache.loneSearch=node=>{
         const e=cache.nodes.get(node);
         if (!e?.isConnected || !e.form || !e.value || active()!==e) return false;
-        if (e.type!=='search' && e.getAttribute('role')!=='searchbox') return false;
+        // A plain text field too when it is a query box (arXiv's header panel: name "query", "Press Enter to search").
+        if (e.type!=='search' && e.getAttribute('role')!=='searchbox' && !(e.type==='text' && query(e))) return false;
         if ([...e.form.elements].some(x=>x!==e && ['INPUT','TEXTAREA','SELECT'].includes(x.tagName) &&
             !['hidden','submit','button','reset','image'].includes(x.type))) return false;
         return ![...document.querySelectorAll('[role="option"]')].some(o=>{
@@ -1336,7 +1438,7 @@ enum Ultrafast {
     static func choose(_ obs: Observation, goal: String, history: [Step], keys: Intelligence.Keys, signInAvailable: Bool = false, autofill: Set<String> = [],
                        vision: Vision = .off, shot: Shot? = nil, model: String? = nil, strategy: Strategy = Strategy(),
                        doneRefused: Bool = false, blockedRefused: Bool = false, noScroll: Bool = false,
-                       askUnmet: Bool = false, confirmOnly: Bool = false, refusal: [String: Any]? = nil) async throws -> Decision {
+                       askUnmet: Bool = false, confirmOnly: Bool = false, refusal: [String: Any]? = nil, notes: [[String: Any]] = []) async throws -> Decision {
         let (elements, allTargets, allControls) = actionSpace(obs.actions, signInAvailable: signInAvailable, autofill: autofill)
         // A form sent once that the page took without a word: only DONE or BLOCKED is left to say.
         let targets = confirmOnly ? [:] : allTargets, controls = confirmOnly ? [:] : allControls
@@ -1420,7 +1522,7 @@ enum Ultrafast {
             "page": page,
             "elements": elements.map { var e = $0; e["offscreen"] = nil; return e },
             "recent_actions": history.suffix(strategy.lean ? 5 : 10).map(\.recent) + (doneRefused ? [refusal ?? Ultrafast.refusedNote] : [])
-                + (confirmOnly ? [Ultrafast.sentNote] : []),
+                + (confirmOnly ? [Ultrafast.sentNote] : []) + notes,
         ]
 
         // Their retry: a 429/503/529 is tried twice more, backing off; anything
@@ -1752,6 +1854,7 @@ enum Ultrafast {
                   let x = (point["x"] as? NSNumber)?.doubleValue, let y = (point["y"] as? NSNumber)?.doubleValue
             else {
                 if kind == "select" { throw Failure(text: "Dropdown execution was not confirmed; observe before retrying.") }
+                if let by = (result as? [String: Any])?["covered"] as? String { throw Covered(by: by) }
                 throw Stale(text: "Target changed or is covered. Observe again.")
             }
             // cosmetic only: the target outlined and the move named over it —
@@ -1899,6 +2002,18 @@ enum Ultrafast {
         private lazy var months = Ultrafast.calendarMonths(goal)
         private var staleStreak = 0
         private var traced = false
+        /// A question (asksAnswer): its answer, read off the page at a DONE, and
+        /// the page's own words around it when it is found there (Ultrafast.cite).
+        let asks: Bool
+        private(set) var answer: String?
+        private(set) var snippet: String?
+        private var answeredMarker: String?
+        /// Offered controls something is drawn over (an open search panel, a
+        /// dialog): once a click on one was refused, asked again with every
+        /// read and left out of what Jev reads, with why said, while the cover stays.
+        private var covered = Set<Int>()
+        private var coveredNote: [String: Any]?
+        private(set) var coveredRefusals = 0
         /// `reach`: the goal's words for the read, the nodes they named so
         /// far, and how many scrolls in a row found no new one.
         private let terms: [String: Any]?
@@ -1917,6 +2032,7 @@ enum Ultrafast {
             /// Waiting before the same control again; what the router billed (text model, LLM decider).
             var waitMs = 0.0, llmIn = 0, llmOut = 0, llmModel = "", llmUsd = 0.0
             var settles = 0, settlesCapped = 0
+            var answerMs = 0.0
         }
         private(set) var spent = Spent()
 
@@ -1934,6 +2050,31 @@ enum Ultrafast {
             let chosenStrategy = strategy ?? (Intelligence.shared.keys.jevFast ? .shipped : Strategy())
             self.strategy = chosenStrategy
             self.terms = chosenStrategy.reach ? Ultrafast.goalTerms(goal) : nil
+            self.asks = Ultrafast.asksAnswer(goal)
+        }
+
+        /// The goal's answer, read off this page once per page read: true when
+        /// it is found on the page. Its model call is the run's (time, tokens).
+        private func readAnswer(_ obs: Observation) async -> Bool {
+            if answeredMarker == obs.marker { return snippet != nil }
+            answeredMarker = obs.marker
+            let reading = Drive.shared.phase(.observe, "Reading the answer off the page")
+            let started = Date()
+            do {
+                let (reply, text) = try await Ultrafast.extract(tab, instruction: goal, schema: Ultrafast.answerSchema, full: true,
+                                                                keys: Intelligence.shared.effective, timeout: 20)
+                spent.llmIn += reply.inputTokens
+                spent.llmOut += reply.outputTokens
+                spent.llmUsd += reply.costUsd ?? 0
+                let said = (reply.json["answer"] as? String) ?? (reply.json["answer"] as? NSNumber)?.stringValue
+                answer = said
+                snippet = said.flatMap { Ultrafast.cite($0, in: text) }
+            } catch {
+                snippet = nil
+            }
+            spent.answerMs += Date().timeIntervalSince(started) * 1000
+            Drive.shared.close(phase: reading, detail: snippet != nil ? "found on the page" : answer == nil ? "no answer" : "not found on the page")
+            return snippet != nil
         }
 
         var elapsedMs: Int { Int(Date().timeIntervalSince(started) * 1000) }
@@ -1992,7 +2133,17 @@ enum Ultrafast {
             }
             // Jev reads a date picker's days of the goal's month only (`lean`):
             // Google Flights' two-month grid was ~60 named days a decision.
-            let shown = strategy.lean ? Ultrafast.elideCalendar(obs, months: months) : obs
+            if !reused, coveredNote != nil {
+                let nodes = obs.actions.compactMap { ($0["node"] as? NSNumber)?.intValue }
+                covered = Set(((try? await Ultrafast.js(web, "window.__jevFast.covered(\(Ultrafast.encode(nodes)))")) as? [NSNumber] ?? []).map(\.intValue))
+                if covered.isEmpty { coveredNote = nil }
+            }
+            var shown = strategy.lean ? Ultrafast.elideCalendar(obs, months: months) : obs
+            if !covered.isEmpty {
+                var raw = shown.raw
+                raw["actions"] = shown.actions.filter { a in (a["node"] as? NSNumber).map { !covered.contains($0.intValue) } ?? true }
+                shown = Observation(raw: raw)
+            }
             // What Jev sees this time: `auto` adds the numbered picture only
             // when the table alone can't tell the controls apart.
             let seeing: Vision = vision == .auto ? (Ultrafast.needsPicture(shown, after: history.last) ? .marks : .off) : vision
@@ -2045,7 +2196,8 @@ enum Ultrafast {
                                                vision: seeing, shot: seeing.usesPicture ? shot : nil, model: model, strategy: strategy,
                                                doneRefused: doneRefused, blockedRefused: blockedRefused,
                                                noScroll: barrenScrolls >= Session.barrenLimit,
-                                               askUnmet: doubts > 0 || confirmOnly, confirmOnly: confirmOnly, refusal: refusal)
+                                               askUnmet: doubts > 0 || confirmOnly, confirmOnly: confirmOnly, refusal: refusal,
+                                               notes: coveredNote.map { [$0] } ?? [])
                 }
                 decision = try await ask(seeing)
                 if vision == .auto, seeing == .off, decision.target != nil, Ultrafast.sharesName(shown, choice: decision.choice) {
@@ -2082,6 +2234,18 @@ enum Ultrafast {
                     status = "blocked"
                     note = String(format: "Jev said DONE, %.0f%% sure, but the page asks for a human check (%@): hand it to the user", decision.probability * 100, check)
                     trace.outcome(Drive.Outcome(operation: "BLOCKED", label: "human check: " + check, text: nil,
+                                                   probability: decision.probability, confidence: decision.confidence,
+                                                   pageChanged: nil, stale: false, candidates: []))
+                    return nil
+                }
+                // A question (asksAnswer): its DONE stands on the answer, read
+                // off this page and found on it, not on how sure Jev is. Not
+                // found: as strict as any DONE (the second look, the floor).
+                if claim == "DONE", asks, !confirmOnly, Intelligence.shared.modelReady, await readAnswer(obs),
+                   (decision.unmet ?? 0) < Ultrafast.unmetFloor, Ultrafast.unshownTyped(history, goal: goal, obs: obs).isEmpty {
+                    status = "done"
+                    note = String(format: "Jev said DONE, %.0f%% sure — the answer is on the page", decision.probability * 100)
+                    trace.outcome(Drive.Outcome(operation: claim, label: "answer found on the page", text: answer,
                                                    probability: decision.probability, confidence: decision.confidence,
                                                    pageChanged: nil, stale: false, candidates: []))
                     return nil
@@ -2342,6 +2506,39 @@ enum Ultrafast {
                 doneRefused = false
                 blockedRefused = false
                 refusal = nil
+            } catch let over as Covered {
+                // Not stale: the page is as read and the same click would be
+                // refused again (arXiv's open search panel over its page: 7
+                // stale decisions, then BLOCKED). Every offered control under
+                // something is left out of the next reads, Jev is told why,
+                // and it acts on what is on top.
+                if let actStarted { spent.actMs += Date().timeIntervalSince(actStarted) * 1000 }
+                if let acting { trace.close(phase: acting) }
+                // Read again once the page stands still: a cover that has gone
+                // by then (a dialog still closing) was a moment, as a stale decision is.
+                let again = try? await Ultrafast.observe(tab, after: ["kind": "read"], terms: terms, near: strategy.near, calm: strategy.calm, deep: strategy.deep)
+                observation = again
+                shot = nil
+                let nodes = (again ?? obs).actions.compactMap { ($0["node"] as? NSNumber)?.intValue }
+                let under = Set(((try? await Ultrafast.js(web, "window.__jevFast.covered(\(Ultrafast.encode(nodes)))")) as? [NSNumber] ?? []).map(\.intValue))
+                if let node, !under.contains(node) {
+                    self.stale += 1
+                    staleStreak += 1
+                    staleOps.append("\(operation) \(label.prefix(30)) (covered for a moment)")
+                    trace.outcome(Drive.Outcome(operation: operation, label: label, text: text,
+                                                   probability: decision.probability, confidence: decision.confidence,
+                                                   pageChanged: nil, stale: true, candidates: decision.candidates))
+                    if staleStreak > 6 { status = "blocked"; note = "The page kept changing under the agent: \(label.prefix(40)) was covered" }
+                    return nil
+                }
+                coveredRefusals += 1
+                covered = under
+                coveredNote = Ultrafast.coveredNote(label, by: over.by, others: max(0, covered.count - 1))
+                trace.outcome(Drive.Outcome(operation: operation, label: "covered: " + label, text: text,
+                                               probability: decision.probability, confidence: decision.confidence,
+                                               pageChanged: nil, stale: true, candidates: decision.candidates))
+                if coveredRefusals > 3 { status = "blocked"; note = "Every control Jev chose had something drawn over it (\(over.by))" }
+                return nil
             } catch let stale as Stale {
                 if let actStarted { spent.actMs += Date().timeIntervalSince(actStarted) * 1000 }
                 staleStreak += 1
@@ -2504,7 +2701,8 @@ enum Ultrafast {
                                       "burst_actions": history.filter(\.burst).count,
                                       "pictured": pictured, "doubts": doubts, "wait_ms": spent.waitMs,
                                       "resends_stopped": resendsStopped, "sent": history.filter(\.sent).count,
-                                      "llm_in_tokens": spent.llmIn, "llm_out_tokens": spent.llmOut, "llm_usd": spent.llmUsd]
+                                      "llm_in_tokens": spent.llmIn, "llm_out_tokens": spent.llmOut, "llm_usd": spent.llmUsd,
+                                      "answer_ms": spent.answerMs, "covered": coveredRefusals]
             if !spent.textModel.isEmpty { out["text_model"] = spent.textModel }
             if !spent.llmModel.isEmpty { out["llm_model"] = spent.llmModel }
             if !boxes.isEmpty { out["box_hits"] = boxes.filter { $0 }.count; out["box_asked"] = boxes.count }
@@ -2522,6 +2720,7 @@ enum Ultrafast {
             if let doneCheck { out["done_check"] = doneCheck }
             if doneRefusals > 0 { out["done_refused"] = doneRefusals }
             if !staleOps.isEmpty { out["stale_ops"] = staleOps }
+            if answeredMarker != nil { out["answer"] = answer ?? NSNull(); out["snippet"] = snippet ?? NSNull() }
             return out
         }
 
@@ -2531,6 +2730,7 @@ enum Ultrafast {
             out += String(format: " in %.1f s (%d action%@, %d decision%@)", Double(elapsedMs) / 1000, history.count, history.count == 1 ? "" : "s", decisions, decisions == 1 ? "" : "s")
             if !note.isEmpty { out += "\n\(note)" }
             out += "\nGoal: \(goal)"
+            if let answer { out += "\nAnswer: \(answer)" + (snippet.map { "\nOn the page: \"\($0)\"" } ?? " (not found on the page — check it)") }
             let t = totals
             var cost = String(format: "Jev: %.0f ms, %d tokens", t["jev_ms"] as? Double ?? 0, t["input_tokens"] as? Int ?? 0)
             if pictured > 0 { cost += String(format: " · pictures: %@ ×%d, %.0f ms", vision.rawValue, pictured, t["shot_ms"] as? Double ?? 0) }
@@ -2652,19 +2852,7 @@ enum Ultrafast {
             let tab = try Tools.current(browser)
             let keys = Intelligence.shared.effective
             guard Intelligence.shared.modelReady else { throw Failure(text: "jev_extract needs a model (Settings › Intelligence › Model access) to read for you") }
-            let obs = try await observe(tab)
-            var text = obs.text
-            if (args["full"] as? Bool) ?? false,
-               let whole = try? await Page.js(tab.web, "window.__copper.text('')") as? String, !whole.isEmpty {
-                text = String(whole.prefix(24000))
-            }
-            var user: [String: Any] = [
-                "instruction": instruction,
-                "page": ["url": obs.url, "title": obs.title, "text": text, "controls": table(obs, limit: 120)],
-            ]
-            if let schema = args["schema"] { user["schema"] = schema }
-            guard let data = try? JSONSerialization.data(withJSONObject: user, options: [.sortedKeys]) else { throw Failure(text: "couldn't encode the page") }
-            let reply = try await Router.ask(system: extractValue, user: String(decoding: data, as: UTF8.self), keys: keys, timeout: 40, maxTokens: 2000, model: keys.textModel)
+            let reply = try await extract(tab, instruction: instruction, schema: args["schema"], full: (args["full"] as? Bool) ?? false, keys: keys).reply
             guard !reply.json.isEmpty, let out = try? JSONSerialization.data(withJSONObject: reply.json, options: [.prettyPrinted, .sortedKeys]) else {
                 throw Failure(text: "The model answered without a JSON object: \(reply.text.prefix(300))")
             }

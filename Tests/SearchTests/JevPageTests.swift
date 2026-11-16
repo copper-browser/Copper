@@ -132,3 +132,42 @@ private func labels(_ obs: [String: Any]?) -> [String] {
     #expect(shown.contains("The product"))
     #expect(!shown.contains("Brand store banner") && !shown.contains("Sponsored pick") && !shown.contains("Boxed ad"))
 }
+
+// Something drawn over the target (arXiv's search panel over its page): resolve
+// says so instead of a bare null, and `covered` names every control under it.
+@MainActor @Test func coveredTargetsAreNamed() async throws {
+    let web = await page("""
+    <button id="a">Under</button> <button id="b" style="position:absolute;left:400px;top:400px">Clear</button>
+    <div id="ov" style="position:fixed;left:0;top:0;width:300px;height:200px;background:rgba(0,0,0,.4)"></div>
+    """)
+    let obs = try await U.js(web, "window.__jevFast.observe(undefined, {deep: false})") as? [String: Any]
+    let actions = (obs?["actions"] as? [[String: Any]]) ?? []
+    let under = try #require(actions.first { $0["label"] as? String == "Under" })
+    let clear = try #require(actions.first { $0["label"] as? String == "Clear" })
+    let said = try await U.js(web, "window.__jevFast.resolve(\(U.encode(under)))") as? [String: Any]
+    #expect(said?["covered"] as? String == "div#ov")
+    #expect((try await U.js(web, "window.__jevFast.resolve(\(U.encode(clear)))") as? [String: Any])?["x"] != nil)
+    let nodes = [under, clear].compactMap { ($0["node"] as? NSNumber)?.intValue }
+    let covered = try await U.js(web, "window.__jevFast.covered(\(U.encode(nodes)))") as? [NSNumber]
+    #expect(covered?.map(\.intValue) == [nodes[0]])
+}
+
+// A plain text field that is its form's query box goes in with Return, as a
+// type=search one does; a text field in another kind of form does not.
+@MainActor @Test func queryTextBoxesAreLoneSearches() async throws {
+    let web = await page("""
+    <div role="search"><form action="https://arxiv.test/search"><input type="text" name="query" id="q">
+      <input type="hidden" name="searchtype" value="all"></form></div>
+    <form action="/notes"><input type="text" name="title" id="t"></form>
+    """)
+    let obs = try await U.js(web, "window.__jevFast.observe(undefined, {deep: false})") as? [String: Any]
+    let fills = ((obs?["actions"] as? [[String: Any]]) ?? []).filter { $0["kind"] as? String == "fill" }
+    #expect(fills.count == 2)
+    var lone: [Bool] = []
+    for field in fills {
+        let node = try #require((field["node"] as? NSNumber)?.intValue)
+        _ = try await U.js(web, "window.__jevFast.insert(\(node), '1706.03762')")
+        lone.append(try await U.js(web, "window.__jevFast.loneSearch(\(node))") as? Bool == true)
+    }
+    #expect(lone == [true, false])
+}
