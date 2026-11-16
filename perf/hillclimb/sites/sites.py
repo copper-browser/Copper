@@ -341,6 +341,10 @@ def one(b, site, shots):
         try:
             b.shot(shot)
             row["blank"] = blank(shot)
+            if row["blank"]:  # Safari's driver often snaps a GPU-layer page (YouTube, Meet) before it paints: once more
+                time.sleep(2)
+                b.shot(shot)
+                row["blank"] = blank(shot)
         except Exception as e:
             row["blank"] = None
             row["shot_error"] = str(e)[:120]
