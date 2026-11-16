@@ -8,7 +8,8 @@ is Copper's fault (user agent, missing API, content blocking, headers, storage).
   sites.py table SAFARI.json COPPER.json [MORE.json …] > table.md
 
 Each site: load its page, then its key read-only flow (a search URL, an item,
-a video) and check what should be there. Per row: loads · wall (bot check or
+a video, started muted from script in both browsers: autoplay
+with sound needs a click in each) and check what should be there. Per row: loads · wall (bot check or
 "unsupported browser") · flow · visual (picture not blank, text ≥ 40% of the
 other browser's). Never signs in, never submits a form: flows are plain GETs.
 --extra is a file of host names, one per line, loaded as https://HOST/ (load
@@ -22,6 +23,8 @@ HOME = os.path.expanduser("~")
 # name, first page, key flow page (or None), JS that is true when the flow worked, media (a video should play)
 SITES = [
     ("pypi", "https://pypi.org/", "https://pypi.org/search/?q=requests", "document.querySelectorAll('a.package-snippet').length > 0", False),
+    # What bot checks read (FingerprintJS BotD, behind PyPI's Client Challenge): a focused 0×0 window is "headless".
+    ("bot-signals", "https://pypi.org/help/", None, "outerWidth > 0 && outerHeight > 0 && navigator.languages.length > 0 && navigator.plugins.length > 0 && navigator.webdriver !== undefined", False),
     ("pypi-project", "https://pypi.org/project/requests/", None, "/pip install requests/.test(document.body.innerText)", False),
     ("arxiv", "https://arxiv.org/", "https://arxiv.org/abs/1706.03762", "/Attention Is All You Need/.test(document.title + document.body.innerText)", False),
     ("google", "https://www.google.com/", "https://www.google.com/search?q=webkit", "document.querySelectorAll('#search a h3, #rso a h3').length > 0", False),
@@ -33,7 +36,7 @@ SITES = [
     ("docs", "https://docs.google.com/", None, None, False),
     ("meet", "https://meet.google.com/", None, None, False),
     ("gemini", "https://gemini.google.com/", None, None, False),
-    ("youtube", "https://www.youtube.com/", "https://www.youtube.com/watch?v=jNQXAC9IVRw", "(() => { const v = document.querySelector('video'); return !!v && v.readyState >= 2 && (v.currentTime > 0 || !v.paused); })()", True),
+    ("youtube", "https://www.youtube.com/", "https://www.youtube.com/watch?v=jNQXAC9IVRw", "(() => { const v = document.querySelector('video'); if (!v) return false; if (v.paused) { v.muted = true; v.play().catch(() => {}); } return v.currentTime > 0; })()", True),
     ("x", "https://x.com/", "https://x.com/github", "/GitHub/.test(document.body.innerText)", False),
     ("github", "https://github.com/", "https://github.com/search?q=webkit&type=repositories", "/WebKit\\/WebKit|webkit/i.test(document.body.innerText) && document.querySelectorAll('[data-testid=\"results-list\"] a, .search-title a').length > 0", False),
     ("github-repo", "https://github.com/WebKit/WebKit", None, "!!document.querySelector('[data-testid=\"latest-commit\"], #readme, react-app')", False),
@@ -88,7 +91,7 @@ PROBE = r"""(() => {
   const walls = ['#challenge-form', '#challenge-running', 'iframe[src*="challenges.cloudflare.com"]', '#px-captcha',
     'iframe[src*="captcha"]', '[id^="sec-if-cpt"]', '#cf-chl-widget', 'iframe[title*="challenge" i]', 'form[action*="captcha"]']
     .filter(s => document.querySelector(s));
-  return JSON.stringify({url: location.href, title: document.title, status: nav.responseStatus || 0,
+  return JSON.stringify({url: location.href, title: document.title, status: nav.responseStatus || 0, nav: nav.type,
     text: text.length, head: (document.title + '\n' + text.slice(0, 2500)), els: document.getElementsByTagName('*').length,
     walls, ua: navigator.userAgent, ready: document.readyState});
 })()"""
@@ -97,7 +100,8 @@ PROBE = r"""(() => {
 def wall_of(p):
     if not p:
         return "no page"
-    if p.get("walls"):
+    # A challenge iframe on a page with content (a sign-in form's invisible captcha) is not a wall.
+    if p.get("walls") and p.get("text", 0) < 1500:
         return ",".join(p["walls"])
     m = WALL.search(p.get("head", ""))
     # A long page that mentions "captcha" once is a page, not a wall.
@@ -329,7 +333,7 @@ def one(b, site, shots):
         time.sleep(3)  # JS bot checks and app shells settle after load
         p = probe(b)
         row["load_s"] = round(time.time() - t0, 1)
-        row["page"] = {k: p.get(k) for k in ("url", "title", "status", "text", "els", "ready", "walls", "error")} if p else None
+        row["page"] = {k: p.get(k) for k in ("url", "title", "status", "nav", "text", "els", "ready", "walls", "error")} if p else None
         row["ua"] = (p or {}).get("ua")
         row["wall"] = wall_of(p)
         row["loads"] = bool(p and not p.get("error") and p.get("els", 0) > 20 and p.get("text", 0) > 0)
@@ -348,7 +352,7 @@ def one(b, site, shots):
             row["flow"] = check(b, js) if js else True
             q = probe(b)
             if q:
-                row["flow_page"] = {k: q.get(k) for k in ("url", "title", "status", "text")}
+                row["flow_page"] = {k: q.get(k) for k in ("url", "title", "status", "nav", "text")}
                 row["flow_wall"] = wall_of(q)
                 if row["flow_wall"]:
                     row["wall"] = row["wall"] or "flow: " + row["flow_wall"]
@@ -388,6 +392,7 @@ def sweep(args, b):
         finally:
             if lock:
                 lock.close()
+                time.sleep(0.5)  # let a waiting worker take the lock before our next site
         rows.append(r)
         print("%-18s loads=%s wall=%-20s flow=%s blank=%s %ss" % (r["site"], r.get("loads"), (r.get("wall") or "-")[:20],
               r.get("flow", "-"), r.get("blank"), r.get("load_s")), flush=True)
@@ -401,6 +406,9 @@ def sweep(args, b):
 def verdict(r, other):
     loads = r.get("loads")
     wall = r.get("wall") or ""
+    page = r.get("page") or {}
+    if wall and page.get("walls") and wall == ",".join(page["walls"]) and page.get("text", 0) >= 1500:
+        wall = ""  # a run from before wall_of's text rule
     flow = r.get("flow")
     vis = r.get("blank") is False and (not other or not other.get("page") or not r.get("page")
                                        or r["page"].get("text", 0) >= 0.4 * (other["page"].get("text") or 0))
