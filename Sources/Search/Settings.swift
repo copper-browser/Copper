@@ -247,6 +247,7 @@ struct SettingsPanel: View {
                     if edge.scrolled != now { edge.scrolled = now }
                 }
             }
+            .mask(SettingsRailFade(fade: 12)) // Fork (hc6): a row under the foot runs out under a soft edge, not a hard cut
             .onPreferenceChange(SettingsAnchorsKey.self) { finder.drawn[page] = $0 }
             .task(id: finder.pending?.token) {
                 guard let target = finder.pending else { return }
@@ -352,7 +353,7 @@ struct SettingsPanel: View {
                 }
             }
             SettingsSection("Tabs you leave") {
-                Line("Sleep tabs you aren't using",  "When many pages are open, a page is heavy or memory runs short, the tabs you left longest sleep and come back where you were. Pinned tabs, sound, calls and anything typed stay awake.") {
+                Line("Sleep tabs you aren't using",  "When many pages are open, a page is heavy or memory runs short, the tabs you left longest sleep and come back where you were. Sound, calls and anything typed stay awake; pins follow the setting below.") {
                     Switch(on: $prefs.sleepsTabs)
                 }
                 .settingsAnchor("tabs.sleep")

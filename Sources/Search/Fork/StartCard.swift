@@ -44,7 +44,7 @@ struct StartCard: View {
             HStack(spacing: 18) {
                 hint("⌘T", "New tab", ink: tint.ink, cap: tint.square)
                 hint("⌘K", "Find a tab", ink: tint.ink, cap: tint.square)
-                hint("⌃1–9", "Switch space", ink: tint.ink, cap: tint.square)
+                hint("⌃1–9", "Switch spaces", ink: tint.ink, cap: tint.square)
             }
         }
         .padding(.top, 18)
@@ -84,7 +84,7 @@ struct StartCard: View {
             HStack(spacing: 18) {
                 hint("⌘T", "New tab")
                 hint("⌘K", "Find a tab")
-                hint("⌃1–9", "Switch space")
+                hint("⌃1–9", "Switch spaces")
             }
         }
         .padding(16)

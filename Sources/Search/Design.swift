@@ -44,7 +44,9 @@ enum Palette {
         // 0.28 (#474747, 9.6:1 on paper) draws ≥4.5. 0.66 in dark.
         static let muted = pair(0.28, 0.66)
         static let faint = pair(0.83, 0.32)
-        static let placeholder = pair(0.45, 0.60)
+        // Fork (hc6): 0.45 drew ~#7d7d7d on the field wash (4.1:1); 0.38 draws
+        // ~#686868 (≥4.5:1 on #eee), 0.62 draws ≥#8e8e8e on the dark wash.
+        static let placeholder = pair(0.38, 0.62)
         static let hairline = pair(0.91, 0.20)
         static let wash = pair(0.937, 0.175)
         static let hover = pair(0.965, 0.15)

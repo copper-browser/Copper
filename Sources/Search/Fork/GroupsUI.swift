@@ -298,8 +298,7 @@ struct GroupHead: View {
         HStack(spacing: 0) {
             mark
                 .padding(.trailing, 10)
-            Text(label ?? group.name)
-                .font(.system(size: SideBar.title, weight: .semibold))
+            Folders.title(label ?? group.name)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .foregroundStyle(tint.ink)

@@ -26,6 +26,17 @@ struct AgentActivityGroup: Identifiable {
     /// Fork (uib): the turn ended on a step that failed — a problem it got
     /// past (a warning, or a failure followed by steps that worked) is not.
     var failed: Bool { steps.last.map { !$0.ok } ?? false }
+    /// Fork (ui-flows): what went wrong as a sentence, not "1 failed"; "" when nothing did.
+    /// Fork (hc6): a failure it got past is said plainly — no retry is tracked, so never "retried".
+    var trouble: String {
+        if split, !failed { return " · split into smaller pieces" } // Fork (hc6): the cut step is the split, not a failure
+        let troubled = failures > 0 ? failures : warnings
+        guard troubled > 0 else { return "" }
+        if failures > 0, !failed { return troubled == 1 ? " · 1 earlier step failed" : " · \(troubled) earlier steps failed" }
+        return troubled == 1 ? " · 1 step had a problem" : " · \(troubled) steps had problems"
+    }
+    /// Fork (hc6): Copper asked for the work in smaller pieces (Agent.tooLong) inside this turn.
+    var split: Bool { items.contains { $0.kind == .note && $0.text == Agent.tooLong } }
     /// When the last step ended.
     var ended: Date {
         items.map { $0.kind == .tool ? $0.at.addingTimeInterval($0.ms / 1000) : $0.at }.max() ?? started
@@ -72,7 +83,7 @@ struct AgentActivity: View {
                 }
                 .fixedSize()
             } else {
-                Image(systemName: group.failed ? "exclamationmark.triangle.fill" : "checkmark.circle")
+                Image(systemName: group.failed ? "exclamationmark.triangle.fill" : group.split ? "info.circle" : "checkmark.circle")
                     .font(.system(size: 11))
                     .foregroundStyle(group.failed ? Palette.danger : Palette.muted)
                 summary
@@ -91,15 +102,9 @@ struct AgentActivity: View {
         var line = Text("Worked for \(DriveStyle.span(group.ended.timeIntervalSince(group.started)))")
             + Text(" · \(steps) step\(steps == 1 ? "" : "s")")
         line = line.foregroundColor(Palette.muted)
-        // Fork (ui-flows): what went wrong as a sentence, not "1 failed".
-        let troubled = group.failures > 0 ? group.failures : group.warnings
-        if troubled > 0 {
-            // Fork (uib): red only when the turn failed; one it got past is said in the line's own ink.
-            // Fork (polish r5): a failure it got past is a retry, and says so.
-            let retried = group.failures > 0 && !group.failed
-            let words = retried ? (troubled == 1 ? " · 1 step retried" : " · \(troubled) steps retried")
-                : (troubled == 1 ? " · 1 step had a problem" : " · \(troubled) steps had problems")
-            line = line + Text(words).foregroundColor(group.failed ? Palette.danger : Palette.muted)
+        // Fork (uib): red only when the turn failed; one it got past is said in the line's own ink.
+        if !group.trouble.isEmpty {
+            line = line + Text(group.trouble).foregroundColor(group.failed ? Palette.danger : Palette.muted)
         }
         return line.font(.system(size: 12))
     }
@@ -123,12 +128,24 @@ struct AgentActivity: View {
             Rectangle().fill(Palette.hairline).frame(width: 1).padding(.leading, 5.5).padding(.vertical, 4)
             VStack(alignment: .leading, spacing: 9) {
                 ForEach(group.items) { item in
-                    if item.kind == .tool { step(item) } else { aside(item) }
+                    if item.kind == .tool { step(item) } else if item.kind == .note { split(item) } else { aside(item) }
                 }
             }
             .padding(.leading, 12)
         }
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// Fork (hc6): the "too much in one go" callout, folded into the steps: what happened and the model's numbers, muted.
+    private func split(_ item: Agent.Item) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "info.circle").font(.system(size: 10.5, weight: .medium)).frame(width: 15)
+            Text(item.detail.isEmpty ? item.text : "\(item.text) \(item.detail)")
+                .font(.system(size: 12))
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        }
+        .foregroundStyle(Palette.muted)
     }
 
     private func aside(_ item: Agent.Item) -> some View {

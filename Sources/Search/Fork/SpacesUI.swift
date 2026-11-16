@@ -443,7 +443,6 @@ struct SpaceChip: View {
     /// space it is; the row scrolls when they outgrow it.
     var body: some View {
         mark.saturation(current || over ? 1 : 0.35)
-        .opacity(current || over ? 1 : 0.72)
         .frame(width: SpaceChip.size, height: SpaceChip.size)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -454,6 +453,8 @@ struct SpaceChip: View {
         .animation(Motion.quick, value: current)
     }
 
+    private var quiet: Double { current || over ? 1 : 0.72 }
+
     @ViewBuilder private var mark: some View {
         if space.emoji == nil, space.symbol == nil {
             let tint = SpaceTint(space: space, dark: dark)
@@ -461,9 +462,10 @@ struct SpaceChip: View {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(tint.tileInk)
                 .frame(width: SpaceChip.tile, height: SpaceChip.tile)
-                .background(RoundedRectangle(cornerRadius: SpaceChip.tile * 0.26, style: .continuous).fill(tint.tile.color))
+                // Fork (hc6): only the tile goes quiet; a faded letter drew 2.8:1 on it, a full one ≥3.
+                .background(RoundedRectangle(cornerRadius: SpaceChip.tile * 0.26, style: .continuous).fill(tint.tile.color).opacity(quiet))
         } else {
-            SpaceGlyph(space: space, size: SpaceChip.tile, dark: dark, ink: ink, bare: true)
+            SpaceGlyph(space: space, size: SpaceChip.tile, dark: dark, ink: ink, bare: true).opacity(quiet)
         }
     }
 

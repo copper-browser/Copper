@@ -17,6 +17,17 @@ import SwiftUI
 enum Folders {
     /// What `arc-import` puts between a folder and the one inside it.
     static let mark = " › "
+
+    /// Fork (hc6): a folder's header, in the column's ink: the folders above
+    /// it ("Projects › ") regular, its own name semibold — the order is said
+    /// by weight, not by a paler ink that drew 2.8:1 on a tinted column.
+    static func title(_ name: String) -> Text {
+        guard let cut = name.range(of: mark, options: .backwards) else {
+            return Text(name).font(.system(size: SideBar.title, weight: .semibold))
+        }
+        return Text(name[..<cut.upperBound]).font(.system(size: SideBar.title))
+            + Text(name[cut.upperBound...]).font(.system(size: SideBar.title, weight: .semibold))
+    }
     /// One step in. A tab in a top-level folder is one step; its folder's
     /// header is none; a folder inside it is one, and its tabs are two.
     static let step: CGFloat = 20

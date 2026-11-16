@@ -712,7 +712,7 @@ final class Agent: ObservableObject {
     /// not finding a smaller step, and the user should hear so.
     static let cutLimit = 3
     /// Fork (ui-flows): the output limit, said plainly; the numbers are under Details.
-    static let tooLong = "That was too much to do in one go, so Copper asked for it in smaller pieces."
+    nonisolated static let tooLong = "That was too much to do in one go, so Copper asked for it in smaller pieces."
     static let cutGiveUp = "The model kept running past its output limit, so it stopped there. Ask for the job in smaller pieces — say, 30 notes at a time."
     /// Told after a reply was cut off with no tool call in it.
     static let cutNudge = "Your last reply was cut off at the output-token limit. Carry on from where it stopped. If you were about to call a tool, call it now, with the work split into several smaller calls (at most 40 ops per canvas_apply)."

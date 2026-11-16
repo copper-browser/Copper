@@ -31,12 +31,14 @@ struct SettingsRailFade: View {
     /// As tall as the rail's own bottom padding, so the last page, scrolled
     /// to, is never faded.
     static let height: CGFloat = 28
+    /// Fork (hc6): a settings page's foot uses 12 pt (its 36 pt padding keeps the last row clear).
+    var fade: CGFloat = Self.height
 
     var body: some View {
         VStack(spacing: 0) {
             Rectangle().fill(.black)
             LinearGradient(colors: [.black, .black.opacity(0)], startPoint: .top, endPoint: .bottom)
-                .frame(height: Self.height)
+                .frame(height: fade)
         }
     }
 }

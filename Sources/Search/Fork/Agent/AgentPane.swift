@@ -256,6 +256,8 @@ struct AgentPane: View {
             case .assistant:
                 current = nil
                 out.append(.answer(item))
+            case .note where item.text == Agent.tooLong && current != nil:
+                fold(item) // Fork (hc6): the turn goes on after a split; one activity, red only if it ends failed
             case .note:
                 current = nil
                 out.append(.note(item))
@@ -407,7 +409,29 @@ struct AgentPane: View {
     /// quietly in the middle; a failure is a callout you cannot miss.
     @ViewBuilder
     private func note(_ item: Agent.Item) -> some View {
-        if item.ok {
+        if item.text == Agent.tooLong {
+            // Fork (hc6): Copper split the ask and went on — not a failure. One muted line;
+            // the sentence and the model's numbers wait behind Details.
+            let shown = noteDetails.contains(item.id)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle").font(.system(size: 11))
+                    Text("· split into smaller pieces").font(.system(size: 12))
+                    Button(shown ? "Hide details" : "Details") {
+                        withAnimation(Motion.quick) { if shown { noteDetails.remove(item.id) } else { noteDetails.insert(item.id) } }
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11.5, weight: .medium))
+                }
+                .foregroundStyle(Palette.muted)
+                if shown {
+                    Text(item.detail.isEmpty ? item.text : "\(item.text) \(item.detail)")
+                        .font(.system(size: 11.5)).foregroundStyle(Palette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                }
+            }
+        } else if item.ok {
             HStack(spacing: 8) {
                 Rectangle().fill(Palette.hairline).frame(height: 1)
                 Text(item.text)
