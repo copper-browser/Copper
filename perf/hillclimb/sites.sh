@@ -5,7 +5,7 @@
 #   perf/hillclimb/sites.sh LABEL APP [APP2 …]     # on a Mac, or from the devbox (runs on the mini, copies back)
 #   perf/hillclimb/sites.sh r7 '~/hc/v109/Copper.app' '~/hc/src-r7sites/build/Copper.app'
 #
-# Env: SITES_HOST=mac-mini · SITES_PORT=4320 (Copper probe; Safari's driver on +5) · SITES_ONLY=pypi,x
+# Env: SITES_HOST=mac-mini · SITES_PORT=4320 (Copper N on 4320+N-1, Safari's driver on +5) · SITES_ONLY=pypi,x
 #      SITES_EXTRA=FILE (host names, one per line, loaded as https://HOST/; keep it out of git: someone's history)
 #      SITES_SAFARI=0 (skip Safari: a laptop, where its window would take focus)
 # Out: ~/hc/out/LABEL/sites/{safari,copper-N}.json + shots, table.md (devbox: ~/plans/copper-hillclimb-2026-11-14/out/LABEL/sites/).
@@ -32,15 +32,17 @@ mkdir -p "$out"
 port="${SITES_PORT:-4320}"
 common=(${SITES_ONLY:+--only "$SITES_ONLY"} ${SITES_EXTRA:+--extra "$HOME/${SITES_EXTRA#$HOME/}"} --lock "${SITES_LOCK:-$HOME/hc/mini.lock}")
 files=()
+# The browsers run side by side (each takes the lock per site), so a site is seen by all of them within minutes.
 if [ "${SITES_SAFARI:-1}" != 0 ]; then
-  /usr/bin/python3 "$here/sites/sites.py" safari --out "$out/safari.json" --port $((port + 5)) "${common[@]}" | tee "$out/safari.log"
+  /usr/bin/python3 "$here/sites/sites.py" safari --out "$out/safari.json" --port $((port + 5)) "${common[@]}" > "$out/safari.log" 2>&1 &
   files+=("$out/safari.json")
 fi
 n=0
 for app in "$@"; do
   n=$((n + 1))
-  /usr/bin/python3 "$here/sites/sites.py" copper --app "${app/#\~/$HOME}" --out "$out/copper-$n.json" --port "$port" "${common[@]}" | tee "$out/copper-$n.log"
+  /usr/bin/python3 "$here/sites/sites.py" copper --app "${app/#\~/$HOME}" --out "$out/copper-$n.json" --port $((port + n - 1)) --world "hc-sites-$n" "${common[@]}" > "$out/copper-$n.log" 2>&1 &
   files+=("$out/copper-$n.json")
 done
+wait
 /usr/bin/python3 "$here/sites/sites.py" table "${files[@]}" > "$out/table.md"
 cat "$out/table.md"
