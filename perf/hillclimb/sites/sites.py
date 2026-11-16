@@ -16,12 +16,15 @@ other browser's). Never signs in, never submits a form: flows are plain GETs.
 and wall only); keep such lists out of git (they are someone's history).
 Python 3.9, stdlib only (the Mac's /usr/bin/python3).
 """
-import argparse, base64, fcntl, json, os, re, shutil, socket, subprocess, sys, tempfile, time, urllib.request
+import argparse, base64, fcntl, hashlib, json, os, re, shutil, socket, subprocess, sys, tempfile, time, urllib.request
 
 HOME = os.path.expanduser("~")
 
 # name, first page, key flow page (or None), JS that is true when the flow worked, media (a video should play)
 SITES = [
+    # Where the browser's traffic leaves from. Safari may go out through iCloud Private Relay, an app's web view never
+    # does: a wall one browser gets and the other doesn't can be the IP's reputation, not the browser (see the table).
+    ("egress", "https://www.cloudflare.com/cdn-cgi/trace", None, "/ip=/.test(document.body.innerText)", False),
     ("pypi", "https://pypi.org/", "https://pypi.org/search/?q=requests", "document.querySelectorAll('a.package-snippet').length > 0", False),
     # What bot checks read (FingerprintJS BotD, behind PyPI's Client Challenge): a focused 0×0 window is "headless".
     ("bot-signals", "https://pypi.org/help/", None, "outerWidth > 0 && outerHeight > 0 && navigator.languages.length > 0 && navigator.plugins.length > 0 && navigator.webdriver !== undefined", False),
@@ -337,6 +340,10 @@ def one(b, site, shots):
         row["ua"] = (p or {}).get("ua")
         row["wall"] = wall_of(p)
         row["loads"] = bool(p and not p.get("error") and p.get("els", 0) > 20 and p.get("text", 0) > 0)
+        if name == "egress":  # the IP as a short hash: same or not across browsers, without printing it
+            ip = re.search(r"ip=(\S+)", str(b.eval("document.body.innerText")))
+            row["egress"] = hashlib.sha1(ip.group(1).encode()).hexdigest()[:6] if ip else None
+            row["loads"] = bool(ip)
         shot = os.path.join(shots, name + ".png")
         try:
             b.shot(shot)
@@ -438,6 +445,7 @@ def table(paths, public=False):
     print("|---|" + "---|" * len(runs))
     passes = [0] * len(runs)
     own_pass = [0] * len(runs)
+    only = [[] for _ in runs]  # sites Safari (column 1) passes and this one doesn't: the browser's own failures
     for n in names:
         cells = []
         for i, run in enumerate(by):
@@ -449,7 +457,11 @@ def table(paths, public=False):
             ok, loads, wall, flow, vis = verdict(r, other)
             passes[i] += ok
             own_pass[i] += ok and n in own
+            if i and runs[0]["browser"] == "safari" and not ok and by[0].get(n) and verdict(by[0][n], r)[0]:
+                only[i].append("own host" if public and n in own else n)
             bits = ["✅" if ok else "❌", "load" if loads else "NO LOAD"]
+            if r.get("egress"):
+                bits.append("ip#" + r["egress"])
             if wall:
                 bits.append("wall: " + wall[:30])
             if flow is not None:
@@ -462,6 +474,11 @@ def table(paths, public=False):
     if public and own:  # --public: the private hosts as one count, for a PR or a report
         print("| *%d own hosts (history)* | %s |" % (len(own), " | ".join("%d/%d" % (p, len(own)) for p in own_pass)))
     print("| **pass** | " + " | ".join("**%d/%d**" % (p, len(r["rows"])) for p, r in zip(passes, runs)) + " |")
+    for head, o in zip(heads[1:], only[1:]):
+        print("\n%s fails where Safari passes (%d): %s" % (head, len(o), ", ".join(o) or "none"))
+    eg = [(by_run.get("egress") or {}).get("egress") for by_run in by]
+    if len(set(e for e in eg if e)) > 1:
+        print("\nThe browsers left from different IPs (egress row: Safari through iCloud Private Relay?): a wall only one of them got may be the IP's, not the browser's.")
 
 
 def main():
