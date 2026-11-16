@@ -779,7 +779,7 @@ def record(task_id, task, arm, rnd, run, page, fixtures, sid):
         "stale_ops": run.get("stale_ops"),
         **{k: t.get(k) for k in ("observe_ms", "decide_ms", "text_ms", "act_ms", "settle_ms", "jev_ms", "shot_ms",
                                  "input_tokens", "requests", "stale", "pictured", "burst_actions", "model", "strategy", "vision",
-                                 "text_model", "settles", "settles_capped")},
+                                 "text_model", "settles", "settles_capped", "covered")},
         "fills": fills, "text_calls": calls, "text_reused": reused, "literal_fills": max(0, fills - calls - reused),
         "final_url": page.get("url") or (run.get("page") or {}).get("url"), "final_title": page.get("title"),
         "read_error": page.get("read_error"), "viewport": page.get("viewport"), "doubts": t.get("doubts"), "cost_usd": run.get("cost_usd"), **extra,
