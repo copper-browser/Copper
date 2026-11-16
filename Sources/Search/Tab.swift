@@ -1747,13 +1747,16 @@ final class PageView: WKWebView {
         alphaValue = 0
     }
 
+    /// How long a page takes to come in over what was under it.
+    static let fadeIn: TimeInterval = 0.12
+
     /// In, quickly: the page is there, and the fade only covers the frame
     /// between WebKit laying it out and putting it on screen.
     func showFirstFrame() {
         guard unpainted else { return }
         unpainted = false
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.12
+            context.duration = PageView.fadeIn
             animator().alphaValue = 1
         }
         let waiting = painted

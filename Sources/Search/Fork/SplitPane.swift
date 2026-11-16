@@ -113,15 +113,21 @@ struct SplitWaiting: View { // Fork (covers): also under a lone page card (PageF
     /// at once — the page fades in over 120 ms (`showFirstFrame`), and an
     /// 80 ms fade of this under it read as the label ghosting over the page.
     @State private var painted: Bool
+    /// Fork (r7 space): the page is whole — its fade-in is over. The wash
+    /// stays under it until then: gone with the label, the card's white
+    /// plate showed through the page for those 120 ms (grey, white, page).
+    @State private var whole: Bool
 
     init(tab: Tab) {
         self.tab = tab
-        _painted = State(initialValue: tab.built.map { !$0.unpainted } ?? false)
+        let painted = tab.built.map { !$0.unpainted } ?? false
+        _painted = State(initialValue: painted)
+        _whole = State(initialValue: painted)
     }
 
     var body: some View {
-        SplitGhost(tab: tab)
-            .opacity(painted ? 0 : 1)
+        SplitGhost(tab: tab, labelled: !painted)
+            .opacity(whole ? 0 : 1)
             .onAppear(perform: watch)
             .onChange(of: tab.loading) { _, _ in watch() }
     }
@@ -132,6 +138,9 @@ struct SplitWaiting: View { // Fork (covers): also under a lone page card (PageF
             var now = Transaction()
             now.disablesAnimations = true
             withTransaction(now) { painted = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + PageView.fadeIn + 0.03) {
+                withTransaction(now) { whole = true }
+            }
         }
     }
 }
@@ -140,6 +149,8 @@ struct SplitWaiting: View { // Fork (covers): also under a lone page card (PageF
 /// Also the card that slides in when a split is made (`SplitStage.cover`).
 struct SplitGhost: View {
     @ObservedObject var tab: Tab
+    /// Off: the wash alone, under a page that is fading in (SplitWaiting).
+    var labelled = true
 
     var body: some View {
         VStack(spacing: 10) {
@@ -150,6 +161,7 @@ struct SplitGhost: View {
                 .lineLimit(1)
                 .padding(.horizontal, 24)
         }
+        .opacity(labelled ? 1 : 0)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Palette.wash)
         .clipShape(RoundedRectangle(cornerRadius: SplitMetrics.corner, style: .continuous))

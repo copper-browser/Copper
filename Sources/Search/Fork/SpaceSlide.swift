@@ -136,8 +136,9 @@ final class SpaceSlide: ObservableObject {
     let ink = InkSteps()
     static let inkSteps: CGFloat = 24
 
-    private func set(phase value: CGFloat) {
+    private func set(phase value: CGFloat, ink mixed: Bool = true) {
         phase = value
+        guard mixed else { return }
         let step = Int((min(1, max(0, value)) * SpaceSlide.inkSteps).rounded())
         if ink.step != step { ink.step = step }
     }
@@ -156,9 +157,70 @@ final class SpaceSlide: ObservableObject {
     /// only moved. `bench spaces slide clip on|off` to compare.
     static var clipsBand = true
 
+    /// Fork (r7 space): a click's travel is two Core Animation moves — the
+    /// live band's own layer in, the old rows' layer out — added in the
+    /// switch's pass, so they set off with the frame that first shows the
+    /// new rows and no frame of the travel is the main thread's. Before, the
+    /// travel was a SwiftUI animation: fourteen frames of 3–5 ms each, the
+    /// column's scroll view moved and re-clipped in every one. Off: as it
+    /// was. `bench spaces slide core on|off` to compare.
+    static var core = true
+    /// This slide's travel is the render server's (see `core`).
+    private(set) var riding = false
+    static let rideKey = "copper.space.ride"
+    private weak var ridden: CALayer?
+    private var edge: CALayer?
+
+    /// One move sideways in the render server, on the slide's curve.
+    static func travel(_ layer: CALayer?, from: CGFloat, to: CGFloat, stays: Bool = false) {
+        guard let layer else { return }
+        let move = CABasicAnimation(keyPath: "transform.translation.x")
+        move.fromValue = from
+        move.toValue = to
+        move.duration = duration
+        move.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1)
+        if stays {
+            move.fillMode = .forwards
+            move.isRemovedOnCompletion = false
+        }
+        layer.add(move, forKey: rideKey)
+    }
+
+    /// The live band comes in from `distance` to the side: its scroll view's
+    /// layer, held to the band's own rectangle by a mask that travels the
+    /// other way (so it stands still), since the part on its way must not
+    /// draw over the page.
+    func ride(_ layer: CALayer, from distance: CGFloat) {
+        unride()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        SpaceSlide.travel(layer, from: distance, to: 0)
+        if layer.mask == nil {
+            let edge = CALayer()
+            edge.frame = layer.bounds
+            edge.backgroundColor = .black
+            SpaceSlide.travel(edge, from: -distance, to: 0)
+            layer.mask = edge
+            self.edge = edge
+        }
+        ridden = layer
+        CATransaction.commit()
+    }
+
+    func unride() {
+        guard let layer = ridden else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.removeAnimation(forKey: SpaceSlide.rideKey)
+        if let edge, layer.mask === edge { layer.mask = nil }
+        CATransaction.commit()
+        edge = nil
+        ridden = nil
+    }
+
     /// Which slide is the current one, so a switch that interrupts another
     /// is not ended by the first one's completion.
-    private var serial = 0
+    private(set) var serial = 0
     /// `bench spaces slide at X`: the next slide stops at X and stays there,
     /// for a picture of it. Nil in normal use.
     private var hold: CGFloat?
@@ -191,6 +253,8 @@ final class SpaceSlide: ObservableObject {
         Pace.step("slide.begin") // Fork (switch)
         let model = SpacePreviewModel.live(old, in: browser, width: column.width, height: band.height)
         Pace.step("slide.planned")
+        let scroll = SideScrollElasticity.columns.object(forKey: window)
+        riding = SpaceSlide.core && !still && hold == nil && scroll?.window === window && scroll?.layer != nil
         withTransaction(calm) {
             dragging = false
             swiping = false
@@ -211,6 +275,7 @@ final class SpaceSlide: ObservableObject {
             if anchor.home == nil { anchor.home = old.id }
             anchor.arriving = nil
         }
+        if riding, let layer = scroll?.layer { ride(layer, from: (forward ? 1 : -1) * column.width) }
         timing = Timing(asked: started, planned: CACurrentMediaTime())
         // One turn of the run loop: it commits the frame that has the new
         // column in place under the preview (the switch's own frame, looking
@@ -235,10 +300,16 @@ final class SpaceSlide: ObservableObject {
             withTransaction(calm) { set(phase: hold) }
             return
         }
+        // Fork (r7 space): a ride's ink changes once, here, with the first
+        // frame of the travel — the ground under it is past half way two
+        // frames later (the curve). Glided, the lights, the address and the
+        // strip were coloured again on the main thread in every frame of the
+        // slide: ~30 of a switch's ~100 ms.
+        if riding { withTransaction(calm) { ink.step = Int(SpaceSlide.inkSteps) } }
         // A fade out and in wants an even pace; the travel's curve is over
         // its first half in a few frames.
         withAnimation(way == 0 ? .easeInOut(duration: SpaceSlide.duration) : SpaceSlide.curve, completionCriteria: .logicallyComplete) {
-            set(phase: 1)
+            set(phase: 1, ink: !riding)
         } completion: { [weak self] in
             guard let self, mine == self.serial else { return }
             self.end()
@@ -265,6 +336,8 @@ final class SpaceSlide: ObservableObject {
             leaving = nil
             anchor.arriving = nil
         }
+        riding = false
+        unride()
         timing?.ended = CACurrentMediaTime()
         unwatch()
         // The neighbours kept drawn become the new space's once the column
@@ -447,6 +520,7 @@ final class SpaceSlide: ObservableObject {
         if dragging { return sliding ? -way * width * phase : stretch }
         guard sliding else { return 0 }
         if swiping { return switched ? 0 : -way * width * phase }
+        if riding { return 0 } // its layer travels (ride)
         return way * width * (1 - phase)
     }
 
@@ -464,6 +538,7 @@ final class SpaceSlide: ObservableObject {
     /// travel under Reduce Motion — in place, fading (`fading`).
     func leavingPlace(in browser: Browser) -> (x: CGFloat, shown: Double) {
         guard owner === browser, sliding, !swiping else { return (0, 0) }
+        if riding { return (0, 1) } // its layer travels (LeavingRide)
         return (-way * column.width * phase, 1)
     }
 
@@ -533,6 +608,8 @@ final class SpaceSlide: ObservableObject {
             if moving { end() }
         } else if words.first == "clip", words.count > 1 {
             SpaceSlide.clipsBand = words[1] == "on"
+        } else if words.first == "core", words.count > 1 {
+            SpaceSlide.core = words[1] == "on"
         }
         let browser = owner ?? Windows.main
         var note: [String: Any] = ["moving": moving, "hold": hold.map { Double($0) } ?? -1,
@@ -541,6 +618,7 @@ final class SpaceSlide: ObservableObject {
                                    "way": Double(way), "stretch": (Double(stretch) * 10).rounded() / 10,
                                    "from": from?.name ?? "", "to": to?.name ?? "", "leaving": leaving?.space.name ?? "",
                                    "premount": SpacePreview.premount, "clip": SpaceSlide.clipsBand,
+                                   "core": SpaceSlide.core, "riding": riding,
                                    "reduceMotion": NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
                                    "space": Spaces.shared.space(in: browser).name,
                                    "owner": Windows.all.firstIndex { $0 === browser } ?? -1,
@@ -549,6 +627,16 @@ final class SpaceSlide: ObservableObject {
                                    "screens": NSScreen.screens.map { [Int($0.frame.minX), Int($0.frame.minY), Int($0.frame.width), Int($0.frame.height)] },
                                    "column": [Int(column.minX), Int(column.minY), Int(column.width), Int(column.height)],
                                    "band": [Int(band.minX), Int(band.minY), Int(band.width), Int(band.height)]]
+        if words.first == "tree" {
+            // The band's scroll view and what holds it, innermost first.
+            var view: NSView? = Windows.window(of: browser).flatMap { SideScrollElasticity.columns.object(forKey: $0) }
+            var tree: [String] = []
+            while let v = view, tree.count < 12 {
+                tree.append("\(type(of: v)) \(Int(v.frame.minX)),\(Int(v.frame.minY)) \(Int(v.frame.width))x\(Int(v.frame.height)) layer=\(v.layer != nil) mask=\(v.layer?.mask != nil) clips=\(v.layer?.masksToBounds ?? false) anims=\(v.layer?.animationKeys() ?? [])")
+                view = v.superview
+            }
+            note["tree"] = tree
+        }
         guard let t = timing else { return note }
         func ms(_ x: CFTimeInterval?) -> Double { x.map { (($0 - t.asked) * 10000).rounded() / 10 } ?? -1 }
         note["planned"] = ms(t.planned)
@@ -593,7 +681,7 @@ struct SpaceSlideBand: ViewModifier {
         content
             .modifier(HalfFade(phase: slide.fading(in: browser) ?? 1, incoming: true))
             .offset(x: slide.bandOffset(in: browser))
-            .clipShape(BandEdge(on: SpaceSlide.clipsBand && slide.moving(in: browser)))
+            .clipShape(BandEdge(on: SpaceSlide.clipsBand && slide.moving(in: browser) && !slide.riding))
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { slide.place(band: $0, in: browser) }
     }
 
@@ -666,12 +754,20 @@ struct SpaceSlideCurtain: View {
                 .equatable()
             if slide.owner === browser, slide.sliding, let leaving = slide.leaving {
                 // A click's old rows, on their way out.
-                let place = slide.leavingPlace(in: browser)
-                SpacePreview(model: leaving, width: width, height: height, dark: scheme == .dark)
-                    .equatable()
-                    .modifier(HalfFade(phase: slide.fading(in: browser) ?? 0, incoming: false))
-                    .offset(x: place.x)
-                    .opacity(place.shown)
+                if slide.riding {
+                    // Fork (r7 space): as a layer of its own, moved by Core Animation.
+                    LeavingRide(model: leaving, width: width, height: height, dark: scheme == .dark, travel: -slide.way * width)
+                        .equatable()
+                        .frame(width: width, height: height)
+                        .id(slide.serial)
+                } else {
+                    let place = slide.leavingPlace(in: browser)
+                    SpacePreview(model: leaving, width: width, height: height, dark: scheme == .dark)
+                        .equatable()
+                        .modifier(HalfFade(phase: slide.fading(in: browser) ?? 0, incoming: false))
+                        .offset(x: place.x)
+                        .opacity(place.shown)
+                }
             }
         }
         .frame(width: width, height: height, alignment: .topLeading)
@@ -679,6 +775,45 @@ struct SpaceSlideCurtain: View {
         .offset(y: top)
         .allowsHitTesting(false)
     }
+}
+
+/// A click's old rows on their way out, in a hosting view of their own so
+/// the travel is one Core Animation move of its layer (SpaceSlide.core): the
+/// animation is added as the view is made, in the switch's pass, and holds
+/// the rows out of sight at its end until the slide takes the view away.
+struct LeavingRide: NSViewRepresentable, Equatable {
+    let model: SpacePreviewModel
+    let width: CGFloat
+    let height: CGFloat
+    let dark: Bool
+    let travel: CGFloat
+
+    nonisolated static func == (a: LeavingRide, b: LeavingRide) -> Bool {
+        MainActor.assumeIsolated {
+            a.model.signature == b.model.signature && a.width == b.width && a.height == b.height && a.dark == b.dark && a.travel == b.travel
+        }
+    }
+
+    final class Box: NSView {
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+
+    func makeNSView(context: Context) -> Box {
+        let box = Box(frame: NSRect(x: 0, y: 0, width: width, height: height))
+        box.wantsLayer = true
+        box.layer?.masksToBounds = true
+        let host = NSHostingView(rootView: SpacePreview(model: model, width: width, height: height, dark: dark))
+        host.sizingOptions = []
+        host.safeAreaRegions = []
+        host.frame = box.bounds
+        host.autoresizingMask = [.width, .height]
+        host.wantsLayer = true
+        box.addSubview(host)
+        SpaceSlide.travel(host.layer, from: 0, to: travel, stays: true)
+        return box
+    }
+
+    func updateNSView(_ box: Box, context: Context) {}
 }
 
 /// Reduce Motion's switch, in two halves: the outgoing rows fade out over

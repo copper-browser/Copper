@@ -19,12 +19,14 @@
 // springs back (a `set` of the old one).
 //
 // The scenes' clock is the wall's, counted from an `epoch` Swift fixes once
-// per launch, not the page's own: a space's scene at any moment is where it
-// "would be" had it been drawing all along, so going away and coming back,
-// a pause behind another window, or a second window, all land on the same
-// frame of the same continuous motion. Each space's time is that clock times
-// its speed, plus an offset kept per space (`key`) so that dragging the
-// speed slider bends the motion rather than jumping it.
+// per launch, less the time the loop stood still (`away`): a scene nobody
+// was shown did not move, so coming back to Copper carries on from the very
+// frame that was left on screen. (It used to run on while paused, and the
+// way back was a 0.9 s glide through everything missed: a minute away was
+// a minute of motion in under a second, the gradient lurching as the window
+// came forward.) Each space's time is that clock times its speed, plus an
+// offset kept per space (`key`) so that dragging the speed slider bends the
+// motion rather than jumping it.
 //
 // Performance is the point. The canvas is rendered at half device
 // resolution (less as blur rises) and upscaled by the compositor — the
@@ -51,9 +53,12 @@ const STYLES = { ribbons: 0, silk: 1, aurora: 2, waves: 3 };
 // same instant for every space.
 const WRAP = 65536;
 let epoch = null;
+// `parked`: when the loop last stopped (it starts stopped); `away`: all the
+// seconds it has stood still. The clock stands at `parked` until it runs.
+const instant = () => performance.timeOrigin + performance.now();
+let parked = instant(), away = 0;
 function wall() {
-  const now = performance.timeOrigin + performance.now();
-  const since = (now - (epoch ?? performance.timeOrigin)) / 1000;
+  const since = ((parked ?? instant()) - (epoch ?? performance.timeOrigin)) / 1000 - away;
   return ((since % WRAP) + WRAP) % WRAP;
 }
 
@@ -377,14 +382,12 @@ class Backdrop {
   }
 
   setMode(mode) {
-    // Back from standing still (idle, behind another window): glide from the
-    // frame on screen to where the wall clock is now, rather than jump to it.
-    const resume = mode === 'run' && this.mode !== 'run' && this.to && this.frames > 0;
-    const held = resume ? { ...this.current(wall()), clock: (t => () => t)(this.time) } : null;
+    // Back from standing still (idle, behind another window, another app in
+    // front): the clock stood still too (`parked`), so the motion carries on
+    // from the frame on screen.
     this.mode = mode;
     // A fade is motion: with Reduce Motion (or nothing to see) it lands at once.
     if (mode !== 'run') this.from = null;
-    if (held) { this.from = held; this.fadeAt = performance.now(); this.fadeFor = 900; }
     this.reconsider();
     if (mode === 'still') this.poke();
   }
@@ -460,6 +463,7 @@ class Backdrop {
 
   start() {
     this.running = true;
+    if (parked !== null) { away += (instant() - parked) / 1000; parked = null; }
     this.last = performance.now();
     const step = now => {
       this.last = now;
@@ -492,6 +496,7 @@ class Backdrop {
 
   stop() {
     this.running = false;
+    if (parked === null) parked = instant();
     cancelAnimationFrame(this.frame);
     clearTimeout(this.timer);
   }

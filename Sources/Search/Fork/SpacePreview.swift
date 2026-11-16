@@ -472,6 +472,9 @@ final class PreviewAnchor: ObservableObject {
     @Published var generation = 0
     /// The column's scroll the previews were planned against.
     var scrollSeen: CGFloat = 0
+    /// The previews as last planned: a click's switch keeps them as they
+    /// are while it travels (SpacePreviewStack), and plans nothing.
+    var kept: [ObjectIdentifier: [SpacePreviewModel]] = [:] // per window
 }
 
 /// The previews over the column: the two neighbours of the space on screen,
@@ -500,12 +503,18 @@ struct SpacePreviewStack: View, Equatable {
     }
 
     var body: some View {
-        anchor.scrollSeen = SideScrollElasticity.column?.contentView.bounds.minY ?? 0
-        return ForEach(wanted, id: \.id) { space in
-            if let model = SpacePreviewModel.parked(space, in: browser, width: width, height: height) {
-                PreviewPlaced(browser: browser, space: space.id) {
-                    SpacePreview(model: model, width: width, height: height, dark: dark).equatable()
-                }
+        // Fork (r7 space): a click's switch asks this again in its own pass
+        // (the space changed) — and the neighbours it kept drawn, out of
+        // sight, were planned again there, the one being gone to dropped.
+        // They stay as they are until the column has settled (`anchor.home`).
+        let slide = SpaceSlide.shared
+        if !(slide.riding && slide.owner === browser) {
+            anchor.scrollSeen = SideScrollElasticity.column?.contentView.bounds.minY ?? 0
+            anchor.kept[ObjectIdentifier(browser)] = wanted.compactMap { SpacePreviewModel.parked($0, in: browser, width: width, height: height) }
+        }
+        return ForEach(anchor.kept[ObjectIdentifier(browser)] ?? [], id: \.space.id) { model in
+            PreviewPlaced(browser: browser, space: model.space.id) {
+                SpacePreview(model: model, width: width, height: height, dark: dark).equatable()
             }
         }
     }

@@ -16,7 +16,10 @@ whole window, and the page sits on it as a card: a 7pt margin on the top,
 right and bottom, 11pt round corners, a hairline and a soft shadow — the same
 card a split view's two panes are, and the agent's pane beside it. A space's
 picture keeps the column's width and fades into its colour past it. The top
-tab layout keeps its page edge to edge.
+tab layout keeps its page edge to edge. An animated ground (a scene, Settings ›
+Spaces) stands still while nobody can see it or has touched Copper for half a
+minute, and carries on from that very frame when you come back — its clock
+stops with it (`Fork/Backdrop/scene.js`), so the gradient never races to catch up.
 
 **The strip at the foot.** Every space is a 28pt chip — its emoji or its
 symbol at 20pt, or its initial (11pt semibold) on a 20pt tile of its own
@@ -30,12 +33,25 @@ editor*, so it gets a name, an icon and a colour straight away.
 
 **Switching.** The rows slide sideways by the column's width, Arc's pager:
 the old space's out, the new one's in, while the ground under them changes
-colour in place. With Reduce Motion on nothing travels — the old rows fade
+colour in place. A click's or a key's travel is two Core Animation moves
+(the live rows' layer in, the old rows' out), set off in the switch's own
+pass, so the rows move from the frame that first shows them and no frame of
+the travel waits on the main thread (`bench spaces slide core on|off` to
+compare; a swipe follows the fingers as before). The parts that stay put —
+the lights, the address, the strip — take the new space's ink once, with the
+travel's first frame (a swipe still mixes it by the fingers), and the
+neighbours kept drawn for a swipe are left as they are until the column has
+settled. The ground's change is one more such move: the new space's ground is
+there from the first frame and the old one fades out over it as a layer of
+its own (`GroundRide`; a switch to or from an animated ground is mixed by the
+scene, as before). With Reduce Motion on
+nothing travels — the old rows fade
 out, then the new ones fade in, never the two lists over each other. The
 new space's page takes the card in the same frame as its rows: a page
 already drawn is swapped in once WebKit has a frame of it (never faded over
 the old one); a page that is waking shows its own last picture, or its
-ground, until it draws. After a launch, the landing page of the space you
+ground, until it draws — and the ground stays under the page for the 120 ms
+it takes to fade in, so a card goes grey → page, never through white. After a launch, the landing page of the space you
 were in last is loaded in the background; another space's starts loading
 when you show you are going there — the pointer resting on its chip, a
 swipe setting off towards it, ⌃ held a moment (the spaces either side). A
@@ -117,5 +133,6 @@ views (header, strip, editor, menu, delete sheet).
 ./bench spaces edit [N|NAME]                the editor popover, on the header
 ./bench spaces delete N|NAME                the Delete sheet (prints its text)
 ./bench spaces answer close|move|cancel     press one of the sheet's buttons
+./bench spaces backdrop pause|still|run|auto  an animated space's scene, as with Copper behind another app (pause) and back (auto)
 ./bench ui width 176                        the column's width, for a look
 ```

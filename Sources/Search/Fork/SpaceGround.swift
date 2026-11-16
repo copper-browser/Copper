@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 // The column's ground, as one surface.
@@ -78,6 +79,15 @@ struct SpaceGround: View {
                     .equatable()
                     .opacity(layer.incoming ? 1 : 1 - x)
             }
+        }
+        .clipped()
+    }
+
+    /// One still ground on its own, as `body` stacks it (GroundRide).
+    static func whole(_ theme: SpaceTheme, dark: Bool, span: CGFloat?) -> some View {
+        ZStack {
+            Still(theme: theme, dark: dark, span: span)
+            Veil(tone: theme.tone, grain: theme.grain)
         }
         .clipped()
     }
@@ -170,7 +180,83 @@ struct SpaceGroundView: View {
         let on = slide.sliding && slide.owner === browser
         let from = on ? slide.from ?? space : space
         let to = on ? slide.to ?? space : space
-        SpaceGround(from: from.look, to: to.look, fromKey: from.id.uuidString, toKey: to.id.uuidString,
-                    t: on ? slide.phase : 1, dark: dark, span: span)
+        // Fork (r7 space): a click's switch between two still grounds — the
+        // new one is the ground from its first frame, and the old one fades
+        // out over it as a layer of its own, in the render server
+        // (GroundRide). The fade was SwiftUI's: the window-wide ground put
+        // together again on the main thread in every frame of the slide,
+        // ~30 of a switch's ~90 ms. A scene mixes its own (above), so a
+        // switch to or from an animated space fades as it did.
+        let ride = on && slide.riding && from.id != to.id && from.look.motion == nil && to.look.motion == nil
+        let out = ride ? to : from
+        SpaceGround(from: out.look, to: to.look, fromKey: out.id.uuidString, toKey: to.id.uuidString,
+                    t: on && !ride ? slide.phase : 1, dark: dark, span: span)
+            .overlay { GroundRide(leaving: ride ? from.look : nil, serial: slide.serial, dark: dark, span: span) }
+    }
+}
+
+/// The ground being left by a click's switch, whole (colour or picture,
+/// tone, grain), over the new one and fading out on the slide's curve — one
+/// Core Animation fade of one layer. Always there, hidden and empty at rest,
+/// so a switch adds no view to the window: it only fills this one.
+struct GroundRide: NSViewRepresentable {
+    let leaving: SpaceTheme?
+    let serial: Int
+    let dark: Bool
+    let span: CGFloat?
+    static let fadeKey = "copper.ground.ride"
+
+    final class Box: NSView {
+        let host = NSHostingView(rootView: AnyView(EmptyView()))
+        private(set) var riding: Int?
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            isHidden = true
+            host.sizingOptions = []
+            host.safeAreaRegions = []
+            host.frame = bounds
+            host.autoresizingMask = [.width, .height]
+            addSubview(host)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        /// The ground of slide `serial` on its way out, or nil: at rest.
+        func show(_ leaving: SpaceTheme?, serial: Int, dark: Bool, span: CGFloat?) {
+            guard let leaving else {
+                guard riding != nil else { return }
+                riding = nil
+                isHidden = true
+                layer?.removeAnimation(forKey: GroundRide.fadeKey)
+                host.rootView = AnyView(EmptyView())
+                return
+            }
+            guard riding != serial else { return }
+            riding = serial
+            host.rootView = AnyView(SpaceGround.whole(leaving, dark: dark, span: span))
+            isHidden = false
+            layer?.add(GroundRide.fade(), forKey: GroundRide.fadeKey)
+        }
+    }
+
+    func makeNSView(context: Context) -> Box { Box(frame: .zero) }
+
+    func updateNSView(_ box: Box, context: Context) { box.show(leaving, serial: serial, dark: dark, span: span) }
+
+    /// Out, on the slide's curve, and held out until the slide takes it away.
+    static func fade() -> CABasicAnimation {
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 1
+        fade.toValue = 0
+        fade.duration = SpaceSlide.duration
+        fade.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1)
+        fade.fillMode = .forwards
+        fade.isRemovedOnCompletion = false
+        return fade
     }
 }
