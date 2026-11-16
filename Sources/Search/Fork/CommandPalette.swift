@@ -467,9 +467,11 @@ struct CommandPalette: View {
     static var picture: (key: String, image: NSImage)?
 
     /// What ⌘K's resting card shows depends on: this window's space, its
-    /// active tab and how many tabs it has, and the look.
+    /// active tab, its tabs' titles and addresses, and the look.
     static func restKey(_ browser: Browser) -> String {
-        "\(dark)|\(Spaces.shared.current(in: browser))|\(browser.activeID?.uuidString ?? "")|\(browser.tabs.count)"
+        var tabs = Hasher()
+        for tab in browser.tabs { tabs.combine(tab.title); tabs.combine(tab.address) }
+        return "\(dark)|\(Spaces.shared.current(in: browser))|\(browser.activeID?.uuidString ?? "")|\(tabs.finalize())"
     }
 
     private static var dark: Bool { NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua }

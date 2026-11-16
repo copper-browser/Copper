@@ -165,8 +165,12 @@ final class Split: ObservableObject {
         // Fork (r7 motion): a split that slides in builds the new pane's page
         // once the card has landed (`wakeSide`), under the cover — built in
         // the key's pass, it held the slide's first frame back ~70 ms.
+        // The cover goes up with the stage, its card off to the right, so the
+        // slide can start as the stage first draws (`SplitStage.slide`).
         if growing, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             sleeping = tab.id
+            covering = true
+            incoming = true
         } else if !tab.wake() {
             tab.revive()
         }
@@ -541,18 +545,19 @@ struct SplitStage: View {
             return
         }
         Pace.step("split.slide")
-        withTransaction(now) {
-            split.covering = true
-            split.incoming = true
-        }
-        // The next pass, once the cover is on screen with the card off to the right.
-        DispatchQueue.main.async {
-            Pace.step("split.go")
-            withAnimation(.easeOut(duration: 0.16), completionCriteria: .logicallyComplete) {
-                split.incoming = false
-            } completion: {
-                settle()
+        // Fork (r7 motion): in the stage's own first pass — the cover came up
+        // with it, its card off to the right (`Split.open`); a pass later, the
+        // slide's first frame waited for a second layout of the whole stage.
+        if !split.covering || !split.incoming {
+            withTransaction(now) {
+                split.covering = true
+                split.incoming = true
             }
+        }
+        withAnimation(.easeOut(duration: 0.16), completionCriteria: .logicallyComplete) {
+            split.incoming = false
+        } completion: {
+            settle()
         }
     }
 
