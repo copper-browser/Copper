@@ -439,7 +439,11 @@ def play_copper(copper, task, arm, sid):
             raise ProbeDown() from e
         error = f"{type(e).__name__}: {e}"[:300]
         run = {"status": "error", "note": error, "elapsed_ms": int((time.time() - begun) * 1000), "steps": [], "totals": {}}
-    if task.get("ask") and not error:
+    if task.get("ask") and not error and "answer" in run:
+        # a build whose jev_run reads a question's answer itself (jev/questions-arxiv): its answer, time and $ are the run's
+        run["answer"] = None if run["answer"] is None else str(run["answer"])
+        run["extract_ms"] = int((run.get("totals") or {}).get("answer_ms") or 0)
+    elif task.get("ask") and not error:
         # a question: Copper's answer channel is jev_extract after the run (its own tool text: "verify with jev_extract");
         # its time goes on the run's clock, its model is the world's router model (estimated $, see EXTRACT_PRICE)
         t0 = time.time()
@@ -467,7 +471,7 @@ def play_copper(copper, task, arm, sid):
             copper.call("browser_close", {}, timeout=20)
         except Exception:
             pass
-    if "extract_ms" in run:
+    if "extract_ms" in run and "snippet" not in run:
         # shortcut: tokens estimated as chars/4 of the page text sent (≤24k chars) + ~3k of controls/prompt; no usage is returned
         tin = (min(len(page.get("text") or ""), 24000) + 12000) // 4
         run["extract_usd"] = round((tin * EXTRACT_PRICE[0] + 100 * EXTRACT_PRICE[1]) / 1e6, 5)
@@ -746,7 +750,7 @@ def record(task_id, task, arm, rnd, run, page, fixtures, sid):
         run["cost_usd"] = usd(tin, tout or 0, t.get("llm_model") or t.get("text_model") or "", t.get("llm_usd"))
     if run.get("extract_usd"):
         run["cost_usd"] = (run.get("cost_usd") or 0) + run["extract_usd"]
-    extra.update({k: run.get(k) for k in ("answer", "fb_status", "fb_dollars", "fb_unknown_lines", "llm_calls", "extract_ms", "extract_error")
+    extra.update({k: run.get(k) for k in ("answer", "snippet", "fb_status", "fb_dollars", "fb_unknown_lines", "llm_calls", "extract_ms", "extract_error")
                   if run.get(k) is not None})
     # A form sent again with nothing shown in between (the review posted three times, council R4).
     sent_before, dup = set(), 0
