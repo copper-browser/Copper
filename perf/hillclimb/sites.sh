@@ -9,7 +9,7 @@
 #      SITES_EXTRA=FILE (host names, one per line, loaded as https://HOST/; keep it out of git: someone's history)
 #      SITES_SAFARI=0 (skip Safari: a laptop, where its window would take focus)
 # Out: ~/hc/out/LABEL/sites/{safari,copper-N}.json + shots, table.md (devbox: ~/plans/copper-hillclimb-2026-11-14/out/LABEL/sites/).
-# Each site runs under SITES_LOCK (~/hc/mini.lock; the laptop: ~/hc/laptop.lock), one site per hold. Never signs in, never submits a form.
+# Sites run under SITES_LOCK (~/hc/mini.lock; the laptop: ~/hc/laptop.lock), SITES_BATCH (5) per hold, ~1 min. Never signs in, never submits a form.
 set -euo pipefail
 label="${1:?usage: sites.sh LABEL APP [APP2 …]}"; shift
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -20,7 +20,7 @@ if [ "$(uname)" != Darwin ]; then
   rsync -az --exclude __pycache__ "$here/sites/" "$host:hc/sites-harness/sites/"
   rsync -az "$here/sites.sh" "$host:hc/sites-harness/"
   [ -n "${SITES_EXTRA:-}" ] && { rsync -az "$SITES_EXTRA" "$host:hc/sites-harness/extra-hosts.txt"; extra=hc/sites-harness/extra-hosts.txt; }
-  ssh "$host" "SITES_PORT='${SITES_PORT:-}' SITES_ONLY='${SITES_ONLY:-}' SITES_EXTRA='${extra:-}' SITES_SAFARI='${SITES_SAFARI:-1}' SITES_LOCK='${SITES_LOCK:-}' hc/sites-harness/sites.sh '$label' $*" || echo "sites run exited $?"
+  ssh "$host" "SITES_PORT='${SITES_PORT:-}' SITES_ONLY='${SITES_ONLY:-}' SITES_EXTRA='${extra:-}' SITES_SAFARI='${SITES_SAFARI:-1}' SITES_LOCK='${SITES_LOCK:-}' SITES_BATCH='${SITES_BATCH:-}' hc/sites-harness/sites.sh '$label' $*" || echo "sites run exited $?"
   mkdir -p "$back"
   rsync -az "$host:hc/out/$label/sites/" "$back/"
   echo "→ $back/table.md"
@@ -30,7 +30,7 @@ fi
 out="$HOME/hc/out/$label/sites"
 mkdir -p "$out"
 port="${SITES_PORT:-4320}"
-common=(${SITES_ONLY:+--only "$SITES_ONLY"} ${SITES_EXTRA:+--extra "$HOME/${SITES_EXTRA#$HOME/}"} --lock "${SITES_LOCK:-$HOME/hc/mini.lock}")
+common=(--batch "${SITES_BATCH:-5}" ${SITES_ONLY:+--only "$SITES_ONLY"} ${SITES_EXTRA:+--extra "$HOME/${SITES_EXTRA#$HOME/}"} --lock "${SITES_LOCK:-$HOME/hc/mini.lock}")
 files=()
 # The browsers run side by side (each takes the lock per site), so a site is seen by all of them within minutes.
 if [ "${SITES_SAFARI:-1}" != 0 ]; then

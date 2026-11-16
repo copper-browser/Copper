@@ -382,22 +382,25 @@ def sweep(args, b):
     out = os.path.abspath(args.out)
     shots = os.path.splitext(out)[0] + "-shots"
     os.makedirs(shots, exist_ok=True)
-    rows = []
-    for s in sites_for(args):
-        lock = open(os.path.expanduser(args.lock), "a") if args.lock else None
-        if lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)  # one site per hold: the shared Mac's measurements run between them
+    rows, lock = [], None
+    for i, s in enumerate(sites_for(args)):
+        if args.lock and i % args.batch == 0:
+            lock = open(os.path.expanduser(args.lock), "a")
+            fcntl.flock(lock, fcntl.LOCK_EX)  # `batch` sites per hold (~10 s each): the shared Mac's measurements run between
         try:
             r = one(b, s, shots)
         finally:
-            if lock:
+            if lock and (i + 1) % args.batch == 0:
                 lock.close()
-                time.sleep(0.5)  # let a waiting worker take the lock before our next site
+                lock = None
+                time.sleep(0.5)  # let a waiting worker take the lock before our next sites
         rows.append(r)
         print("%-18s loads=%s wall=%-20s flow=%s blank=%s %ss" % (r["site"], r.get("loads"), (r.get("wall") or "-")[:20],
               r.get("flow", "-"), r.get("blank"), r.get("load_s")), flush=True)
         with open(out, "w") as f:
             json.dump({"browser": args.cmd, "version": b.version(), "when": time.strftime("%Y-%m-%d %H:%M"), "rows": rows}, f, indent=1)
+    if lock:
+        lock.close()
     return rows
 
 
@@ -460,7 +463,8 @@ def main():
     ap.add_argument("--world", default="hc-sites")
     ap.add_argument("--only")
     ap.add_argument("--extra")
-    ap.add_argument("--lock", help="flock this file around each site (the mini: ~/hc/mini.lock)")
+    ap.add_argument("--lock", help="flock this file around each batch of sites (the mini: ~/hc/mini.lock)")
+    ap.add_argument("--batch", type=int, default=5, help="sites per lock hold")
     args = ap.parse_args()
     if args.cmd == "table":
         return table(args.files)
