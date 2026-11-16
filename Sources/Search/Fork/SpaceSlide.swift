@@ -164,10 +164,7 @@ final class SpaceSlide: ObservableObject {
     /// column's scroll view moved and re-clipped in every one. Off: as it
     /// was. `bench spaces slide core on|off` to compare.
     static var core = true
-    /// Whether the parts that stay put change ink frame by frame (a SwiftUI
-    /// colour animation over the lights, the address and the strip) or in
-    /// two steps, half way and home. `bench spaces slide ink glide|step`.
-    static var inkGlides = true
+    static var leaves = true // EXPERIMENT (r7): the old rows' preview, off
     /// This slide's travel is the render server's (see `core`).
     private(set) var riding = false
     private static let rideKey = "copper.space.ride"
@@ -266,7 +263,7 @@ final class SpaceSlide: ObservableObject {
             stretch = 0
             from = old
             to = space
-            leaving = model
+            leaving = SpaceSlide.leaves ? model : nil
             sliding = true
             set(phase: 0)
             ink.objectWillChange.send()
@@ -301,18 +298,6 @@ final class SpaceSlide: ObservableObject {
         watch()
         if let hold {
             withTransaction(calm) { set(phase: hold) }
-            return
-        }
-        if riding, !SpaceSlide.inkGlides {
-            // The travel is under way in the render server; here only the
-            // ground fades, and the ink changes twice.
-            withTransaction(calm) { ink.step = Int(SpaceSlide.inkSteps / 2) }
-            withAnimation(.easeOut(duration: SpaceSlide.duration), completionCriteria: .logicallyComplete) {
-                phase = 1
-            } completion: { [weak self] in
-                guard let self, mine == self.serial else { return }
-                self.end()
-            }
             return
         }
         // A fade out and in wants an even pace; the travel's curve is over
@@ -619,8 +604,8 @@ final class SpaceSlide: ObservableObject {
             SpaceSlide.clipsBand = words[1] == "on"
         } else if words.first == "core", words.count > 1 {
             SpaceSlide.core = words[1] == "on"
-        } else if words.first == "ink", words.count > 1 {
-            SpaceSlide.inkGlides = words[1] == "glide"
+        } else if words.first == "leave", words.count > 1 {
+            SpaceSlide.leaves = words[1] == "on"
         }
         let browser = owner ?? Windows.main
         var note: [String: Any] = ["moving": moving, "hold": hold.map { Double($0) } ?? -1,
@@ -629,7 +614,7 @@ final class SpaceSlide: ObservableObject {
                                    "way": Double(way), "stretch": (Double(stretch) * 10).rounded() / 10,
                                    "from": from?.name ?? "", "to": to?.name ?? "", "leaving": leaving?.space.name ?? "",
                                    "premount": SpacePreview.premount, "clip": SpaceSlide.clipsBand,
-                                   "core": SpaceSlide.core, "ink": SpaceSlide.inkGlides ? "glide" : "step", "riding": riding,
+                                   "core": SpaceSlide.core, "riding": riding,
                                    "reduceMotion": NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
                                    "space": Spaces.shared.space(in: browser).name,
                                    "owner": Windows.all.firstIndex { $0 === browser } ?? -1,
