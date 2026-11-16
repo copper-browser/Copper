@@ -15,6 +15,8 @@ enum Session {
         var saved: Bool? = nil // Fork: sections — nil means saved, so upstream's files restore whole
         var seen: Double? = nil // Fork: sections — when it was last looked at, Unix seconds
         var split: UUID? = nil // Fork: split view — both halves of a kept split carry the same token
+        var mb: Int? = nil // Fork (covers): a pin's page's last weight, MB — whether it may stay asleep next launch
+        var dozed: Bool? = nil // Fork (covers): a pin asleep under "Let big pins sleep" when the session was written
     }
 
     struct Shape: Codable {

@@ -65,6 +65,15 @@ enum PinRule {
         on && hidden >= after && bytes >= least
     }
 
+    /// Fork (covers, council R6): at launch, whether a pin stays asleep under
+    /// its kept picture until it is looked at: it was asleep when the
+    /// session was written, or it is big and was left long enough — and
+    /// there is a picture to show. Off, never.
+    static func asleepAtLaunch(on: Bool, covered: Bool, dozed: Bool, hidden: TimeInterval, bytes: UInt64,
+                               after: TimeInterval, least: UInt64) -> Bool {
+        on && covered && (dozed || mayDoze(on: true, hidden: hidden, bytes: bytes, after: after, least: least))
+    }
+
     /// A pin with somewhere to be and no page there: asleep, or with no view
     /// at all. A blank pin has nothing to load.
     static func needsPage(pinned: Bool, blank: Bool, asleep: Bool, built: Bool) -> Bool {
@@ -174,6 +183,28 @@ final class PinsAwake {
     nonisolated static var dozeBytes: UInt64 {
         let set = Store.settings.integer(forKey: "pins.sleep.mb")
         return UInt64(set > 0 ? set : 300) * 1_048_576
+    }
+
+    /// The session's line for a pin: its weight now (or the last known, for
+    /// a page not loaded) and whether it dozed.
+    static func write(_ tab: Tab, into entry: inout Session.Entry) {
+        if let now = Heat.shared.weight(of: tab)?.bytes { tab.weighed = now }
+        entry.mb = tab.weighed.map { Int($0 / 1_048_576) }
+        entry.dozed = tab.dozed ? true : nil
+    }
+
+    /// A pin brought back from the session (Spaces.restore).
+    static func restored(_ tab: Tab, from entry: Session.Entry, now: Date = Date()) {
+        let seen = entry.seen.map { Date(timeIntervalSince1970: $0) }
+        let bytes = entry.mb.map { UInt64(max(0, $0)) * 1_048_576 }
+        var covered = false
+        if Covers.keeps(tab), let jar = tab.jar, let url = tab.pending ?? tab.address {
+            covered = FileManager.default.fileExists(atPath: Covers.store.file(for: url, jar: jar).path)
+        }
+        let asleep = PinRule.asleepAtLaunch(on: bigPinsSleep, covered: covered, dozed: entry.dozed == true,
+                                            hidden: seen.map { now.timeIntervalSince($0) } ?? 0, bytes: bytes ?? 0,
+                                            after: dozeAfter, least: dozeBytes)
+        tab.restorePin(seen: seen, weighed: bytes, dozed: asleep)
     }
 
     /// Whether this pin may sleep now (Browser.awake(because:)).

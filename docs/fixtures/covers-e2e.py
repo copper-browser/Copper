@@ -10,8 +10,9 @@ lived in memory only.
      both pins to sleep, they stay asleep (the background loader leaves a dozed pin
      alone), and their pages' memory is given back. Going to one wakes it under its
      picture.
-  4. ⌘Q and a relaunch: a tab brought back asleep wakes under the picture it left
-     on disk (`stage` → covered) — the white landing, fixed.
+  4. ⌘Q and a relaunch: a pin asleep at the quit stays asleep (council R6: every
+     launch loaded every pin), [M] (just looked at) loads; a tab brought back asleep
+     wakes under the picture it left on disk (`stage` → covered) — the white landing, fixed.
   5. Closing that tab takes its picture with it; `covers clear` empties the folder.
 
 A fresh SEARCH_PROBE world of the development build, headless, pages from a local
@@ -217,6 +218,17 @@ def covers():
     return ask({"do": "covers", "op": "status"})
 
 
+def covered_soon(what, seconds=2):
+    # The picture from disk lands a few ms after the select and goes ~0.15 s after the page paints: poll fast.
+    limit = time.time() + seconds
+    while time.time() < limit:
+        state = stage_active()
+        if state.get("covered"):
+            return state
+        time.sleep(0.01)
+    fail(f"{what} woke white (no picture from disk): {state}")
+
+
 def tab(i):
     return next(t for t in tabs() if t["id"] == i)
 
@@ -307,8 +319,11 @@ try:
         fail(f"the pin woke without its picture: {covered}")
     until("[M] loaded again", lambda: loaded(pins()["M"]))
     ask({"do": "select", "id": A})
-    cli("pins", "sleep", "off")
     show("after dozing and waking [M]")
+    # Back to the real thresholds (two hours, 300 MB) for the relaunch: [M], just
+    # looked at, loads again; [C], asleep at the quit, stays asleep (council R6).
+    for key in ("pins.sleep.after", "pins.sleep.mb"):
+        subprocess.run(["defaults", "delete", domain, key], check=False)
     print("ok the pins slept under the setting, stayed asleep, and woke under their picture")
 
     # 4 ---------------------------------------------------------------------------
@@ -328,16 +343,24 @@ try:
     if kept < 4:
         fail(f"the quit did not keep the awake page's picture ({kept} on disk)")
     launch()
-    until("pins loaded", lambda: (lambda p: p if len(p) == 2 and all(loaded(x) for x in p.values()) else None)(pins(settled=True)))
+    found = until("[M] loaded, the loader done", lambda: (lambda p: p if len(p) == 2 and loaded(p["M"]) else None)(pins(settled=True)))
+    time.sleep(2)
+    p = pins()
+    print(f"  after the relaunch: [M] loaded {loaded(p['M'])}; [C] asleep {p['C']['asleep']} dozed {p['C']['dozed']}")
+    if not (p["C"]["asleep"] and p["C"]["dozed"]):
+        fail(f"a pin asleep at the quit was loaded again by the launch: {p['C']}")
+    ask({"do": "select", "id": p["C"]["id"]})
+    covered_soon("[C]")
+    until("[C] loaded once looked at", lambda: loaded(pins()["C"]))
+    print("ok a pin asleep at the quit stays asleep at launch, and wakes under its picture when looked at")
     loose = {t["title"]: t for t in tabs() if not t["pin"]}
     A, B = loose["Loose A"]["id"], loose["Loose B"]["id"]
     if not tab(B)["asleep"]:
         fail("Loose B was meant to come back asleep")
     ask({"do": "select", "id": B})
-    covered = stage_active()
+    # Read and decoded off the main thread now (council R6): it lands a moment after the select.
+    covered = covered_soon("Loose B")
     print(f"  select Loose B → covered {covered.get('covered')}")
-    if not covered.get("covered"):
-        fail(f"the restored tab woke white (no picture from disk): {covered}")
     print("ok the restored tab woke under its kept picture")
 
     # 5 ---------------------------------------------------------------------------

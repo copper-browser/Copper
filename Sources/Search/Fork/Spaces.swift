@@ -1060,7 +1060,8 @@ final class Spaces: ObservableObject {
         }
         for tab in pins {
             let made = pinHome[tab.id].flatMap { id in all.contains { $0.id == id } ? id : nil }
-            guard let entry = written(tab, space: made, active: mainActive) else { continue }
+            guard var entry = written(tab, space: made, active: mainActive) else { continue }
+            PinsAwake.write(tab, into: &entry) // Fork (covers): weight + dozed, for the next launch
             pinEntries.append(entry)
         }
         return .init(tabs: entries, active: activeIndex, spaces: all, space: mainSpace, pins: pinEntries)
@@ -1123,6 +1124,7 @@ final class Spaces: ObservableObject {
             tab.restore(url: url, title: CanvasTabs.rowTitle(for: url, kept: entry.title))
             tab.pin = entry.pin ?? (tab.monogram.isEmpty ? "•" : tab.monogram)
             Sections.shared.restore(tab, saved: true, seen: entry.seen)
+            PinsAwake.restored(tab, from: entry) // Fork (covers): a big pin left asleep stays asleep
             Groups.shared.restore(tab, group: entry.group)
             if let token = entry.split { splits[token, default: []].append(tab.id) }
             pins.append(tab)

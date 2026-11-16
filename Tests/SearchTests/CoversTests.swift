@@ -39,17 +39,17 @@ struct CoverStoreTests {
         let url = URL(string: "https://example.com/inbox")!
         let jpeg = picture(2560, 1600)
         #expect(jpeg.count > 150 * 1024)
-        #expect(store.write(jpeg, size: CGSize(width: 1280, height: 800), ground: .white, for: url))
-        let bytes = try #require(try? Data(contentsOf: store.file(for: url)))
+        #expect(store.write(jpeg, size: CGSize(width: 1280, height: 800), ground: .white, for: url, jar: "default"))
+        let bytes = try #require(try? Data(contentsOf: store.file(for: url, jar: "default")))
         #expect(bytes.count <= 150 * 1024)
-        let kept = try #require(store.read(for: url))
+        let kept = try #require(store.read(for: url, jar: "default"))
         #expect(kept.image.size == CGSize(width: 1280, height: 800))
         let ground = try #require(kept.ground?.usingColorSpace(.sRGB))
         #expect(ground.redComponent > 0.99 && ground.greenComponent > 0.99 && ground.blueComponent > 0.99)
         // Another address has no picture; removed, this one has none either.
-        #expect(store.read(for: URL(string: "https://example.com/other")!) == nil)
-        store.remove(for: url)
-        #expect(store.read(for: url) == nil)
+        #expect(store.read(for: URL(string: "https://example.com/other")!, jar: "default") == nil)
+        store.remove(for: url, jar: "default")
+        #expect(store.read(for: url, jar: "default") == nil)
     }
 
     @Test("Past the cap, the pictures used longest ago go first")
@@ -59,26 +59,51 @@ struct CoverStoreTests {
         let urls = (0..<3).map { URL(string: "https://example.com/\($0)")! }
         let one = picture(400, 300)
         for (i, url) in urls.enumerated() {
-            #expect(store.write(one, size: CGSize(width: 400, height: 300), ground: nil, for: url))
+            #expect(store.write(one, size: CGSize(width: 400, height: 300), ground: nil, for: url, jar: "default"))
             // Oldest first: 0 an hour ago, 1 half an hour ago, 2 now.
             try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(Double(i - 2) * 1800)],
-                                                  ofItemAtPath: store.file(for: url).path)
+                                                  ofItemAtPath: store.file(for: url, jar: "default").path)
         }
         // Reading 0 makes it the newest.
-        #expect(store.read(for: urls[0]) != nil)
-        let each = try #require(try? Data(contentsOf: store.file(for: urls[1]))).count
+        #expect(store.read(for: urls[0], jar: "default") != nil)
+        let each = try #require(try? Data(contentsOf: store.file(for: urls[1], jar: "default"))).count
         store.cap = each * 2 + each / 2
         store.evict()
-        #expect(FileManager.default.fileExists(atPath: store.file(for: urls[0]).path))
-        #expect(!FileManager.default.fileExists(atPath: store.file(for: urls[1]).path))
-        #expect(FileManager.default.fileExists(atPath: store.file(for: urls[2]).path))
+        #expect(FileManager.default.fileExists(atPath: store.file(for: urls[0], jar: "default").path))
+        #expect(!FileManager.default.fileExists(atPath: store.file(for: urls[1], jar: "default").path))
+        #expect(FileManager.default.fileExists(atPath: store.file(for: urls[2], jar: "default").path))
+    }
+
+    @Test("Two profiles on one address: each sees only its own picture, after a relaunch too; unscoped files go")
+    func scopedByJar() throws {
+        let place = folder()
+        let url = URL(string: "https://mail.example.com/inbox")!
+        let first = CoverStore(folder: place)
+        defer { first.removeAll() }
+        #expect(first.write(picture(400, 300, seed: 1), size: CGSize(width: 400, height: 300), ground: nil, for: url, jar: "default"))
+        #expect(first.file(for: url, jar: "default") != first.file(for: url, jar: "work"))
+        #expect(first.read(for: url, jar: "work") == nil)
+        // An old-style file (no jar in the name) for the same address.
+        let legacy = place.appendingPathComponent(String(repeating: "ab", count: 16) + ".jpg")
+        try Data(contentsOf: first.file(for: url, jar: "default")).write(to: legacy)
+        // Relaunch: a new store on the same folder.
+        let again = CoverStore(folder: place)
+        #expect(again.read(for: url, jar: "work") == nil)
+        #expect(again.read(for: url, jar: "default") != nil)
+        again.purgeUnscoped()
+        #expect(!FileManager.default.fileExists(atPath: legacy.path))
+        #expect(FileManager.default.fileExists(atPath: again.file(for: url, jar: "default").path))
+        // Closing in one profile leaves the other's.
+        #expect(again.write(picture(400, 300, seed: 2), size: CGSize(width: 400, height: 300), ground: nil, for: url, jar: "work"))
+        again.remove(for: url, jar: "work")
+        #expect(again.read(for: url, jar: "default") != nil)
     }
 
     @Test("Not a picture: nothing is written")
     func refusesGarbage() {
         let store = CoverStore(folder: folder())
         defer { store.removeAll() }
-        #expect(!store.write(Data("not a jpeg".utf8), size: .zero, ground: nil, for: URL(string: "https://example.com")!))
+        #expect(!store.write(Data("not a jpeg".utf8), size: .zero, ground: nil, for: URL(string: "https://example.com")!, jar: "default"))
     }
 }
 
@@ -150,6 +175,71 @@ struct BigPinsTests {
         #expect(!PinRule.mayDoze(on: true, hidden: 7199, bytes: 900 * mb, after: 7200, least: 300 * mb))
         #expect(!PinRule.mayDoze(on: true, hidden: 9 * 3600, bytes: 299 * mb, after: 7200, least: 300 * mb))
         #expect(PinRule.mayUnload(pinned: true, .doze))
+    }
+}
+
+@Suite("Big pins at launch: asleep stays asleep, under its picture")
+@MainActor
+struct BigPinsLaunchTests {
+    private let mb: UInt64 = 1_048_576
+
+    private func rule(on: Bool = true, covered: Bool = true, dozed: Bool = false, hidden: TimeInterval = 0, bytes: UInt64 = 0) -> Bool {
+        PinRule.asleepAtLaunch(on: on, covered: covered, dozed: dozed, hidden: hidden, bytes: bytes, after: 7200, least: 300 * mb)
+    }
+
+    @Test("Dozed, or big and left two hours, with a picture: stays asleep; recent or small: loads")
+    func launchRule() {
+        #expect(rule(dozed: true))
+        #expect(rule(hidden: 3 * 3600, bytes: 900 * mb))
+        #expect(!rule(hidden: 60, bytes: 900 * mb))
+        #expect(!rule(hidden: 9 * 3600, bytes: 100 * mb))
+        #expect(!rule(covered: false, dozed: true))
+    }
+
+    @Test("Setting off: every pin loads, whatever the session said")
+    func offLoads() {
+        #expect(!rule(on: false, dozed: true))
+        #expect(!rule(on: false, hidden: 9 * 3600, bytes: 900 * mb))
+    }
+
+    @Test("Weight and dozed go into the session and come back")
+    func persists() throws {
+        var entry = Session.Entry(url: "https://mail.example.com/", title: "Mail", pin: "M")
+        entry.mb = 1200
+        entry.dozed = true
+        entry.seen = 1_000
+        let back = try JSONDecoder().decode(Session.Entry.self, from: JSONEncoder().encode(entry))
+        #expect(back.mb == 1200 && back.dozed == true && back.seen == 1_000)
+        // An older file has neither: it reads, and nothing stays asleep for it.
+        let old = try JSONDecoder().decode(Session.Entry.self, from: Data(#"{"url":"https://a.example/","title":"A"}"#.utf8))
+        #expect(old.mb == nil && old.dozed == nil)
+    }
+
+    @Test("A restored pin marked asleep is left for you, keeps its weight and its last look")
+    func restoredPin() {
+        _ = NSApplication.shared // `restore` reads the icon, which asks NSApp for the appearance
+        let tab = Tab()
+        let url = URL(string: "https://mail.example.com/")!
+        tab.restore(url: url, title: "Mail")
+        tab.pin = "M"
+        let seen = Date().addingTimeInterval(-3 * 3600)
+        tab.restorePin(seen: seen, weighed: 900 * mb, dozed: true)
+        #expect(tab.dozed && tab.asleep && tab.weighed == 900 * mb)
+        #expect(abs(tab.touched.timeIntervalSince(seen)) < 0.001)
+        #expect(!PinsAwake.needsPage(tab))
+        // Not dozed: the background loader takes it, as today.
+        let other = Tab()
+        other.restore(url: url, title: "Mail")
+        other.pin = "M"
+        other.restorePin(seen: seen, weighed: nil, dozed: false)
+        #expect(PinsAwake.needsPage(other))
+    }
+
+    @Test("A private tab has no jar and never keeps a picture")
+    func privateNever() {
+        let shy = Tab(shy: true)
+        #expect(shy.jar == nil)
+        #expect(!Covers.keeps(shy))
     }
 }
 
