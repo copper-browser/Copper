@@ -30,12 +30,18 @@ editor*, so it gets a name, an icon and a colour straight away.
 
 **Switching.** The rows slide sideways by the column's width, Arc's pager:
 the old space's out, the new one's in, while the ground under them changes
-colour in place. With Reduce Motion on nothing travels — the old rows fade
+colour in place. A click's or a key's travel is two Core Animation moves
+(the live rows' layer in, the old rows' out), set off in the switch's own
+pass, so the rows move from the frame that first shows them and no frame of
+the travel waits on the main thread (`bench spaces slide core on|off` to
+compare; a swipe follows the fingers as before). With Reduce Motion on
+nothing travels — the old rows fade
 out, then the new ones fade in, never the two lists over each other. The
 new space's page takes the card in the same frame as its rows: a page
 already drawn is swapped in once WebKit has a frame of it (never faded over
 the old one); a page that is waking shows its own last picture, or its
-ground, until it draws. After a launch, the landing page of the space you
+ground, until it draws — and the ground stays under the page for the 120 ms
+it takes to fade in, so a card goes grey → page, never through white. After a launch, the landing page of the space you
 were in last is loaded in the background; another space's starts loading
 when you show you are going there — the pointer resting on its chip, a
 swipe setting off towards it, ⌃ held a moment (the spaces either side). A

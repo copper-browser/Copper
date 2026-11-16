@@ -167,7 +167,7 @@ final class SpaceSlide: ObservableObject {
     static var leaves = true // EXPERIMENT (r7): the old rows' preview, off
     /// This slide's travel is the render server's (see `core`).
     private(set) var riding = false
-    private static let rideKey = "copper.space.ride"
+    static let rideKey = "copper.space.ride"
     private weak var ridden: CALayer?
     private var edge: CALayer?
 
@@ -190,7 +190,7 @@ final class SpaceSlide: ObservableObject {
     /// layer, held to the band's own rectangle by a mask that travels the
     /// other way (so it stands still), since the part on its way must not
     /// draw over the page.
-    private func ride(_ layer: CALayer, from distance: CGFloat) {
+    func ride(_ layer: CALayer, from distance: CGFloat) {
         unride()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -207,7 +207,7 @@ final class SpaceSlide: ObservableObject {
         CATransaction.commit()
     }
 
-    private func unride() {
+    func unride() {
         guard let layer = ridden else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
