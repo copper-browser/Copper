@@ -51,6 +51,21 @@ struct SpaceRideTests {
         #expect(layer.mask === own && layer.animationKeys() == nil)
     }
 
+    @Test("The ground being left fades out as one layer on the slide's curve, and is empty and hidden again at rest")
+    func groundRide() throws {
+        let box = GroundRide.Box(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        #expect(box.isHidden && box.layer?.animationKeys() == nil, "at rest: nothing over the ground")
+        box.show(SpaceTheme(colors: [.init(r: 0.9, g: 0.5, b: 0.3)]), serial: 1, dark: false, span: 240)
+        let fade = try #require(box.layer?.animation(forKey: GroundRide.fadeKey) as? CABasicAnimation)
+        #expect(!box.isHidden && fade.keyPath == "opacity" && fade.duration == SpaceSlide.duration)
+        #expect(fade.fromValue as? Int == 1 && fade.toValue as? Int == 0 && fade.fillMode == .forwards && !fade.isRemovedOnCompletion,
+                "out, and held out until the slide ends")
+        box.show(SpaceTheme(colors: [.init(r: 0.9, g: 0.5, b: 0.3)]), serial: 1, dark: false, span: 240) // the same slide, asked again: not started over
+        #expect(box.layer?.animation(forKey: GroundRide.fadeKey) === fade)
+        box.show(nil, serial: 1, dark: false, span: 240)
+        #expect(box.isHidden && box.layer?.animationKeys() == nil)
+    }
+
     /// The top-left of a waiting card, inside its corner: the wash's alpha.
     private func wash(_ host: NSView) -> CGFloat {
         host.layoutSubtreeIfNeeded()

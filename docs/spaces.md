@@ -41,7 +41,10 @@ compare; a swipe follows the fingers as before). The parts that stay put —
 the lights, the address, the strip — take the new space's ink once, with the
 travel's first frame (a swipe still mixes it by the fingers), and the
 neighbours kept drawn for a swipe are left as they are until the column has
-settled. With Reduce Motion on
+settled. The ground's change is one more such move: the new space's ground is
+there from the first frame and the old one fades out over it as a layer of
+its own (`GroundRide`; a switch to or from an animated ground is mixed by the
+scene, as before). With Reduce Motion on
 nothing travels — the old rows fade
 out, then the new ones fade in, never the two lists over each other. The
 new space's page takes the card in the same frame as its rows: a page
