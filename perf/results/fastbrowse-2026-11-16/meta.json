@@ -1,0 +1,65 @@
+{
+ "label": "fastbrowse",
+ "app": "/Users/collinrijock/hc/agentbench-app/fastbrowse/Copper.app",
+ "build": "202611151934",
+ "base_app": null,
+ "sha": "d8d3b34",
+ "harness_sha": "5a60417",
+ "binary_sha256": "6845e6cc5a3dc17e",
+ "machine": "Mac18,5",
+ "started": "2026-11-15T20:29:56-0500",
+ "load": [
+  2.0419921875,
+  2.28173828125,
+  2.27783203125
+ ],
+ "arms": "shipped,fastbrowse",
+ "worlds": {
+  "main": {
+   "world": "agentbench-fb",
+   "port": 4290,
+   "viewport": [
+    1280,
+    880,
+    1
+   ],
+   "arms": [
+    "shipped",
+    "fastbrowse"
+   ],
+   "jevModel": "jev-latest",
+   "textModel": null,
+   "routerModel": "sonnet"
+  }
+ },
+ "viewport": [
+  1280,
+  880,
+  1
+ ],
+ "jevModel": "jev-latest",
+ "textModel": null,
+ "routerModel": "sonnet",
+ "resolved": {
+  "fastbrowse": {
+   "jev": [
+    "jev-1.14.0 (fastbrowse)"
+   ],
+   "text_model": [],
+   "viewport": [
+    "1280x657"
+   ]
+  },
+  "shipped": {
+   "jev": [
+    "jev-1.14.0"
+   ],
+   "text_model": [
+    "llama"
+   ],
+   "viewport": [
+    "1280x800"
+   ]
+  }
+ }
+}

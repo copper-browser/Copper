@@ -1,0 +1,228 @@
+world ready: agent.json + intelligence.json (jevEndpoint,jevKey,jevModel,routerKey,routerModel,routerURL), textModel (build default)
+probe agentbench-fb up: pid 77117 port 4290, viewport build default; fixtures :4291
+{"label": "fastbrowse", "app": "/Users/collinrijock/hc/agentbench-app/fastbrowse/Copper.app", "build": "202611151934", "base_app": null, "sha": "d8d3b34", "harness_sha": "5a60417", "binary_sha256": "6845e6cc5a3dc17e", "machine": "Mac18,5", "started": "2026-11-15T20:03:01-0500", "load": [1.31396484375, 1.65966796875, 2.109375], "arms": "shipped,fastbrowse", "worlds": {"main": {"world": "agentbench-fb", "port": 4290, "viewport": [1280, 880, 1], "arms": ["shipped", "fastbrowse"], "jevModel": "jev-latest", "textModel": null, "routerModel": "sonnet"}}, "viewport": [1280, 880, 1], "jevModel": "jev-latest", "textModel": null, "routerModel": "sonnet"}
+[ultrafast,fbpub,realweb,uibench,wikigame] 120 of 120 runs to go, load 1.31
+  r1  hotel        shipped  PASS done        852 ms   5 dec  obs 37 dec 593 txt 0.0 act 77 set 122  tok 14522  lit 1 txt 0 stale 0
+  r1  hotel        fastbrowse PASS done       7897 ms  33 dec  obs — dec — txt 1,897 act — set —  tok 99198  lit 0 txt 2 stale 0
+  r1  godel        shipped  PASS done       1917 ms   5 dec  obs 166 dec 994 txt 0.0 act 191 set 499  tok 53470  lit 1 txt 0 stale 2
+  r1  godel        fastbrowse PASS done      12157 ms  31 dec  obs — dec — txt 2,461 act — set —  tok 612599  lit 0 txt 2 stale 0
+  r1  flights      shipped  PASS done       7051 ms  17 dec  obs 257 dec 2,615 txt 0.0 act 167 set 2,938  tok 95588  lit 2 txt 0 stale 4
+  r2  hotel        fastbrowse PASS done       7483 ms  33 dec  obs — dec — txt 1,816 act — set —  tok 99401  lit 1 txt 1 stale 0
+  r2  hotel        shipped  PASS done        891 ms   5 dec  obs 38 dec 632 txt 0.0 act 56 set 142  tok 14522  lit 1 txt 0 stale 0
+  r2  godel        fastbrowse PASS done      11389 ms  31 dec  obs — dec — txt 2,040 act — set —  tok 608120  lit 0 txt 2 stale 0
+  r2  godel        shipped  PASS done       1580 ms   4 dec  obs 137 dec 813 txt 0.0 act 85 set 506  tok 46224  lit 1 txt 0 stale 1
+  r3  hotel        shipped  PASS done        908 ms   5 dec  obs 37 dec 633 txt 0.0 act 68 set 149  tok 14522  lit 1 txt 0 stale 0
+  r3  hotel        fastbrowse PASS done       5319 ms  21 dec  obs — dec — txt 1,434 act — set —  tok 58905  lit 1 txt 1 stale 0
+  r3  godel        shipped  PASS done       1670 ms   4 dec  obs 111 dec 946 txt 0.0 act 116 set 447  tok 46221  lit 1 txt 0 stale 1
+  r3  godel        fastbrowse PASS done      11596 ms  30 dec  obs — dec — txt 2,532 act — set —  tok 608459  lit 0 txt 2 stale 0
+  r1  flights      fastbrowse PASS done      22427 ms  60 dec  obs — dec — txt 3,942 act — set —  tok 773819  lit 0 txt 3 stale 0
+  r1  fb-wiki-open shipped  PASS done       2433 ms   4 dec  obs 145 dec 801 txt 842 act 152 set 457  tok 40313  lit 0 txt 1 stale 1
+  r1  fb-wiki-open fastbrowse PASS done      11861 ms  30 dec  obs — dec — txt 2,349 act — set —  tok 630956  lit 0 txt 2 stale 0
+  r1  fb-arxiv-open shipped  fail blocked    5629 ms   9 dec  obs 369 dec 4,522 txt 449 act 89 set 123  tok 291835  lit 0 txt 1 stale 7  ✗path  — The page kept changing under the agent: Target changed or is
+  r1  fb-arxiv-open fastbrowse PASS done       5574 ms  16 dec  obs — dec — txt 1,233 act — set —  tok 205586  lit 0 txt 1 stale 0
+  r1  fb-hn-comments shipped  PASS done        993 ms   3 dec  obs 93 dec 607 txt 0.0 act 3.5 set 231  tok 28833  lit 0 txt 0 stale 0
+  r1  fb-hn-comments fastbrowse PASS done       4564 ms  11 dec  obs — dec — txt 1,318 act — set —  tok 227384  lit 0 txt 1 stale 0
+  r1  fb-hn-top    shipped  PASS done       1018 ms   1 dec  obs 52 dec 242 txt 0.0 act 0.0 set 0.0  tok 16698  lit 0 txt 0 stale 0
+  chunk over, 99 runs to go
+[ultrafast,fbpub,realweb,uibench,wikigame] 99 of 120 runs to go, load 3.09
+  r1  fb-hn-top    fastbrowse PASS done       4890 ms   7 dec  obs — dec — txt 2,739 act — set —  tok 112605  lit 0 txt 2 stale 0
+  r2  flights      fastbrowse PASS done      29189 ms  79 dec  obs — dec — txt 4,075 act — set —  tok 1089173  lit 4 txt 3 stale 0
+  r1  fb-github-license shipped  fail unsure     3659 ms   4 dec  obs 810 dec 847 txt 0.0 act 2.7 set 882  tok 45916  lit 0 txt 0 stale 1  — Jev said DONE, 75% sure — unsure: Jev stayed under 80% after
+  r1  fb-github-license fastbrowse PASS done       1535 ms   8 dec  obs — dec — txt 0.0 act — set —  tok 82142  lit 0 txt 0 stale 0
+  r1  fb-wiki-godel shipped  fail unsure     6726 ms  16 dec  obs 286 dec 2,511 txt 379 act 114 set 2,502  tok 128971  lit 0 txt 1 stale 1  — Jev said DONE, 61% sure — unsure: Jev stayed under 80% after
+  r1  fb-wiki-godel fastbrowse PASS done       9958 ms  30 dec  obs — dec — txt 751 act — set —  tok 606388  lit 0 txt 1 stale 0
+  r1  fb-arxiv-title shipped  fail blocked    6403 ms  10 dec  obs 304 dec 2,920 txt 353 act 99 set 1,368  tok 196897  lit 0 txt 1 stale 7  ✗answer  — The page kept changing under the agent: Target changed or is
+  r1  fb-arxiv-title fastbrowse PASS done       4907 ms  18 dec  obs — dec — txt 682 act — set —  tok 227767  lit 0 txt 1 stale 0
+  r1  fb-pypi-version shipped  fail blocked    2951 ms   4 dec  obs 84 dec 557 txt 410 act 840 set 314  tok 7536  lit 0 txt 1 stale 0  ✗answer  — Jev said BLOCKED, 51% sure — the page asks for a human check
+  r1  fb-pypi-version fastbrowse PASS done       4979 ms  18 dec  obs — dec — txt 681 act — set —  tok 168573  lit 0 txt 1 stale 0
+  r2  flights      shipped  PASS done       6918 ms  17 dec  obs 310 dec 2,632 txt 0.0 act 232 set 2,547  tok 92675  lit 2 txt 0 stale 4
+  r1  fb-oscars-2012 shipped  fail unsure     6945 ms   6 dec  obs 69 dec 619 txt 0.0 act 2,578 set 512  tok 15103  lit 0 txt 0 stale 0  ✗answer  — Jev said DONE, 56% sure — unsure: Jev stayed under 80% after
+  r1  fb-oscars-2012 fastbrowse PASS done       2934 ms  12 dec  obs — dec — txt 0.0 act — set —  tok 44567  lit 0 txt 0 stale 0
+  r2  fb-wiki-open fastbrowse PASS done      12276 ms  31 dec  obs — dec — txt 2,785 act — set —  tok 608488  lit 0 txt 2 stale 0
+  r2  fb-wiki-open shipped  PASS done       2302 ms   5 dec  obs 169 dec 970 txt 543 act 89 set 479  tok 46145  lit 0 txt 1 stale 2
+  r2  fb-arxiv-open fastbrowse PASS done       4195 ms  16 dec  obs — dec — txt 541 act — set —  tok 205603  lit 0 txt 1 stale 0
+  r2  fb-arxiv-open shipped  fail blocked    4913 ms   9 dec  obs 316 dec 3,922 txt 403 act 107 set 93  tok 292010  lit 0 txt 1 stale 7  ✗path  — The page kept changing under the agent: Target changed or is
+  r2  fb-hn-comments fastbrowse PASS done       5700 ms  11 dec  obs — dec — txt 2,505 act — set —  tok 227019  lit 0 txt 2 stale 0
+  r3  flights      shipped  PASS done       5576 ms  16 dec  obs 557 dec 2,262 txt 0.0 act 198 set 2,474  tok 82546  lit 2 txt 0 stale 4
+  chunk over, 80 runs to go
+[ultrafast,fbpub,realweb,uibench,wikigame] 80 of 120 runs to go, load 2.54
+  r2  fb-hn-comments shipped  PASS done        630 ms   2 dec  obs 70 dec 366 txt 0.0 act 3.0 set 164  tok 23112  lit 0 txt 0 stale 0
+  r2  fb-hn-top    fastbrowse PASS done       3946 ms   7 dec  obs — dec — txt 2,028 act — set —  tok 112109  lit 0 txt 2 stale 0
+  r2  fb-hn-top    shipped  PASS done        965 ms   1 dec  obs 50 dec 173 txt 0.0 act 0.0 set 0.0  tok 16709  lit 0 txt 0 stale 0
+  r2  fb-github-license fastbrowse PASS done       1431 ms   8 dec  obs — dec — txt 0.0 act — set —  tok 80035  lit 0 txt 0 stale 0
+  r2  fb-github-license shipped  fail unsure     3538 ms   4 dec  obs 789 dec 641 txt 0.0 act 7.0 set 874  tok 46012  lit 0 txt 0 stale 1  — Jev said DONE, 62% sure — unsure: Jev stayed under 80% after
+  r2  fb-wiki-godel fastbrowse PASS done      10115 ms  30 dec  obs — dec — txt 680 act — set —  tok 607610  lit 0 txt 1 stale 0
+  r2  fb-wiki-godel shipped  fail unsure     9409 ms  13 dec  obs 324 dec 2,448 txt 493 act 1,491 set 2,071  tok 109399  lit 0 txt 1 stale 1  — Jev said DONE, 55% sure — unsure: Jev stayed under 80% after
+  r2  fb-arxiv-title fastbrowse PASS done       4785 ms  18 dec  obs — dec — txt 654 act — set —  tok 227766  lit 0 txt 1 stale 0
+  r3  flights      fastbrowse PASS done      20181 ms  59 dec  obs — dec — txt 4,351 act — set —  tok 686459  lit 1 txt 3 stale 0
+  r2  fb-arxiv-title shipped  fail blocked   12293 ms   9 dec  obs 316 dec 9,969 txt 438 act 228 set 87  tok 292004  lit 0 txt 1 stale 7  ✗answer  — The page kept changing under the agent: Target changed or is
+  r2  fb-pypi-version fastbrowse PASS done       4790 ms  17 dec  obs — dec — txt 674 act — set —  tok 166679  lit 0 txt 1 stale 0
+  r2  fb-pypi-version shipped  PASS done       2432 ms   5 dec  obs 102 dec 661 txt 379 act 183 set 265  tok 17998  lit 0 txt 1 stale 1
+  r2  fb-oscars-2012 fastbrowse PASS done       2927 ms  12 dec  obs — dec — txt 0.0 act — set —  tok 44567  lit 0 txt 0 stale 0
+  r2  fb-oscars-2012 shipped  fail unsure     7313 ms   5 dec  obs 91 dec 570 txt 0.0 act 1,612 set 231  tok 12359  lit 0 txt 0 stale 0  — Jev said DONE, 75% sure — unsure: Jev stayed under 80% after
+  r1  gh-issues    shipped  PASS done       3127 ms   5 dec  obs 930 dec 827 txt 0.0 act 96 set 461  tok 49027  lit 1 txt 0 stale 1
+  r1  gh-issues    fastbrowse fail budget    52845 ms  76 dec  obs — dec — txt 4,385 act — set —  tok 2235165  lit 0 txt 3 stale 0  — Keep the minimap size when the zoom level is slightly negati
+  chunk over, 64 runs to go
+[ultrafast,fbpub,realweb,uibench,wikigame] 64 of 120 runs to go, load 3.01
+  r1  wiki-lang    shipped  PASS done       2365 ms   5 dec  obs 194 dec 1,204 txt 0.0 act 132 set 563  tok 63119  lit 0 txt 0 stale 2
+  r1  wiki-lang    fastbrowse fail done      33089 ms 203 dec  obs — dec — txt 2,050 act — set —  tok 2878374  lit 0 txt 1 stale 0  ✗path  — The German-language version of Wikipedia is open at https://
+  r1  amazon-pdp   shipped  PASS done       5927 ms   5 dec  obs 140 dec 831 txt 0.0 act 159 set 4,653  tok 50152  lit 1 txt 0 stale 0
+  r1  amazon-pdp   fastbrowse PASS done      43928 ms  85 dec  obs — dec — txt 7,012 act — set —  tok 2341875  lit 0 txt 2 stale 0
+  r1  pydocs       shipped  PASS done       3140 ms   5 dec  obs 91 dec 783 txt 0.0 act 1,276 set 920  tok 43519  lit 1 txt 0 stale 1
+  r1  pydocs       fastbrowse PASS done       9207 ms  19 dec  obs — dec — txt 2,216 act — set —  tok 350857  lit 0 txt 2 stale 0
+  r1  mdn          shipped  PASS done       2366 ms   4 dec  obs 228 dec 668 txt 790 act 134 set 516  tok 27762  lit 0 txt 1 stale 1
+  r1  mdn          fastbrowse PASS done       9518 ms  21 dec  obs — dec — txt 2,458 act — set —  tok 257712  lit 0 txt 2 stale 0
+  r2  gh-issues    fastbrowse fail budget    58209 ms  77 dec  obs — dec — txt 5,237 act — set —  tok 2215007  lit 0 txt 3 stale 0  — Issues
+
+Keep the minimap size when the zoom level is slightl
+  chunk over, 55 runs to go
+[ultrafast,fbpub,realweb,uibench,wikigame] 55 of 120 runs to go, load 1.53
+  r2  gh-issues    shipped  PASS done       2806 ms   4 dec  obs 230 dec 601 txt 0.0 act 1,359 set 528  tok 36934  lit 1 txt 0 stale 0
+  r2  wiki-lang    fastbrowse fail done      42999 ms 209 dec  obs — dec — txt 8,931 act — set —  tok 3175458  lit 0 txt 3 stale 0  ✗path  — Die deutsche Wikipedia ist geöffnet: https://de.wikipedia.or
+  r2  wiki-lang    shipped  PASS done       2082 ms   3 dec  obs 658 dec 837 txt 0.0 act 7.1 set 481  tok 58337  lit 0 txt 0 stale 0
+  r2  amazon-pdp   fastbrowse PASS done      47254 ms  72 dec  obs — dec — txt 11,236 act — set —  tok 1877163  lit 0 txt 2 stale 0
+  r2  amazon-pdp   shipped  PASS done       5663 ms   5 dec  obs 176 dec 1,036 txt 0.0 act 76 set 4,145  tok 70028  lit 1 txt 0 stale 1
+  r2  pydocs       fastbrowse PASS done       9320 ms  19 dec  obs — dec — txt 2,400 act — set —  tok 354255  lit 0 txt 2 stale 0
+  r2  pydocs       shipped  PASS done        819 ms   3 dec  obs 47 dec 427 txt 0.0 act 63 set 254  tok 30309  lit 1 txt 0 stale 0
+  r2  mdn          fastbrowse PASS done       8991 ms  20 dec  obs — dec — txt 2,069 act — set —  tok 263033  lit 0 txt 2 stale 0
+  r2  mdn          shipped  PASS done       3520 ms   6 dec  obs 103 dec 1,205 txt 719 act 842 set 586  tok 43308  lit 0 txt 1 stale 1
+  r3  gh-issues    shipped  PASS done       2758 ms   4 dec  obs 221 dec 620 txt 0.0 act 1,353 set 492  tok 37752  lit 1 txt 0 stale 0
+  r3  gh-issues    fastbrowse fail budget    55467 ms  79 dec  obs — dec — txt 6,087 act — set —  tok 2204636  lit 0 txt 3 stale 0  — Keep the minimap size when the zoom level is slightly negati
+  chunk over, 44 runs to go
+[ultrafast,fbpub,realweb,uibench,wikigame] 44 of 120 runs to go, load 2.11
+  r3  wiki-lang    shipped  PASS done       2161 ms   3 dec  obs 314 dec 1,289 txt 0.0 act 7.0 set 482  tok 61256  lit 0 txt 0 stale 0
+  r3  wiki-lang    fastbrowse fail done      32879 ms 203 dec  obs — dec — txt 1,495 act — set —  tok 2880989  lit 0 txt 1 stale 0  ✗path  — complete
+  r3  amazon-pdp   shipped  PASS done       5887 ms   6 dec  obs 517 dec 1,258 txt 0.0 act 155 set 3,789  tok 79927  lit 1 txt 0 stale 2
+  r3  amazon-pdp   fastbrowse PASS done      26945 ms  75 dec  obs — dec — txt 5,914 act — set —  tok 1640916  lit 0 txt 1 stale 0
+  r3  pydocs       shipped  PASS done        839 ms   3 dec  obs 40 dec 477 txt 0.0 act 73 set 221  tok 30311  lit 1 txt 0 stale 0
+  r3  pydocs       fastbrowse PASS done      11121 ms  22 dec  obs — dec — txt 2,570 act — set —  tok 460843  lit 0 txt 2 stale 0
+  r3  mdn          shipped  PASS done       1832 ms   4 dec  obs 66 dec 633 txt 834 act 113 set 153  tok 27689  lit 0 txt 1 stale 1
+  r3  mdn          fastbrowse PASS done       9169 ms  20 dec  obs — dec — txt 2,355 act — set —  tok 263306  lit 0 txt 2 stale 0
+  r1  ui-login     shipped  PASS done       1349 ms   4 dec  obs 33 dec 525 txt 0.0 act 673 set 90  tok 8937  lit 2 txt 0 stale 0
+  r1  ui-login     fastbrowse PASS done       2194 ms  17 dec  obs — dec — txt 0.0 act — set —  tok 41149  lit 2 txt 0 stale 0
+  r1  ui-settings  shipped  PASS done       1297 ms   5 dec  obs 38 dec 773 txt 0.0 act 19 set 442  tok 12065  lit 0 txt 0 stale 0
+  r1  ui-settings  fastbrowse PASS done       4385 ms  25 dec  obs — dec — txt 1,077 act — set —  tok 54027  lit 0 txt 1 stale 0
+  r1  ui-project   shipped  PASS done       1558 ms   7 dec  obs 46 dec 756 txt 0.0 act 124 set 601  tok 19330  lit 1 txt 0 stale 0
+  r1  ui-project   fastbrowse PASS done       4068 ms  28 dec  obs — dec — txt 0.0 act — set —  tok 69914  lit 1 txt 0 stale 0
+  r1  ui-checkout  shipped  PASS done       1184 ms   6 dec  obs 36 dec 730 txt 0.0 act 20 set 369  tok 11387  lit 0 txt 0 stale 0
+  r1  ui-checkout  fastbrowse fail stuck      1706 ms  13 dec  obs — dec — txt 0.0 act — set —  tok 25975  lit 0 txt 0 stale 0  ✗app_ok  — Partial evidence only. Remaining coverage is omitted; totals
+  r1  ui-invoices  shipped  PASS done        634 ms   3 dec  obs 31 dec 377 txt 0.0 act 5.9 set 200  tok 11045  lit 0 txt 0 stale 0
+  r1  ui-invoices  fastbrowse PASS done       2778 ms  15 dec  obs — dec — txt 892 act — set —  tok 71955  lit 0 txt 1 stale 0
+  r1  ui-files     shipped  PASS blocked     800 ms   3 dec  obs 32 dec 500 txt 0.0 act 10 set 212  tok 17405  lit 0 txt 0 stale 0
+  r1  ui-files     fastbrowse fail needs_confirmation    785 ms   7 dec  obs — dec — txt 0.0 act — set —  tok 19978  lit 0 txt 0 stale 0  ✗app_ok  — click 'button (3 of 18)' needs confirmation
+  r1  ui-whack     shipped  PASS done       2257 ms  13 dec  obs 55 dec 1,778 txt 0.0 act 55 set 335  tok 33182  lit 0 txt 0 stale 0
+  r1  ui-whack     fastbrowse fail stuck      3482 ms  14 dec  obs — dec — txt 1,909 act — set —  tok 34177  lit 0 txt 1 stale 0  ✗app_ok  — 2 of 12 · 0 wrong [1](<http://127.0.0.1:4291/app?task=whack&
+  r1  ui-swatches  shipped  PASS done       1972 ms   9 dec  obs 48 dec 1,549 txt 0.0 act 45 set 225  tok 42856  lit 0 txt 0 stale 0
+  r1  ui-swatches  fastbrowse fail stuck       760 ms   8 dec  obs — dec — txt 0.0 act — set —  tok 19050  lit 0 txt 0 stale 0  ✗app_ok  — Partial evidence only. Remaining coverage is omitted; totals
+  chunk over, 20 runs to go
+[ultrafast,fbpub,realweb,uibench,wikigame] 20 of 120 runs to go, load 2.22
+  r1  wiki01       shipped  PASS done        844 ms   2 dec  obs 99 dec 339 txt 0.0 act 2.8 set 362  tok 22805  lit 0 txt 0 stale 0
+  r1  wiki01       fastbrowse PASS done      11963 ms  49 dec  obs — dec — txt 2,243 act — set —  tok 1231594  lit 0 txt 1 stale 0
+  r1  wiki02       shipped  PASS done       1923 ms   3 dec  obs 747 dec 566 txt 0.0 act 2.6 set 358  tok 32937  lit 0 txt 0 stale 1
+  r1  wiki02       fastbrowse PASS done      15668 ms 237 dec  obs — dec — txt 0.0 act — set —  tok 6102318  lit 0 txt 0 stale 0
+  r1  wiki03       shipped  PASS done       1314 ms   3 dec  obs 306 dec 492 txt 0.0 act 4.6 set 330  tok 31755  lit 0 txt 0 stale 1
+  r1  wiki03       fastbrowse PASS done      14158 ms 113 dec  obs — dec — txt 2,590 act — set —  tok 2400454  lit 0 txt 1 stale 0
+  r1  wiki04       shipped  PASS done       3640 ms   5 dec  obs 759 dec 1,370 txt 0.0 act 14 set 976  tok 84723  lit 0 txt 0 stale 2
+  r1  wiki04       fastbrowse PASS done      19842 ms 231 dec  obs — dec — txt 3,584 act — set —  tok 6997433  lit 0 txt 1 stale 0
+  r1  wiki05       shipped  PASS done       1192 ms   2 dec  obs 375 dec 297 txt 0.0 act 2.7 set 475  tok 21617  lit 0 txt 0 stale 0
+  r1  wiki05       fastbrowse PASS done      14455 ms  92 dec  obs — dec — txt 2,200 act — set —  tok 2427642  lit 0 txt 1 stale 0
+  r1  wiki06       shipped  PASS done       1982 ms   3 dec  obs 406 dec 1,028 txt 0.0 act 13 set 483  tok 56489  lit 0 txt 0 stale 0
+  r1  wiki06       fastbrowse PASS done      17706 ms 142 dec  obs — dec — txt 3,117 act — set —  tok 3036419  lit 0 txt 1 stale 0
+  r1  wiki07       shipped  PASS done        930 ms   2 dec  obs 320 dec 356 txt 0.0 act 2.1 set 226  tok 20680  lit 0 txt 0 stale 0
+  r1  wiki07       fastbrowse PASS done       8992 ms  65 dec  obs — dec — txt 0.0 act — set —  tok 875998  lit 0 txt 0 stale 0
+  r1  wiki08       shipped  PASS done       1653 ms   2 dec  obs 721 dec 328 txt 0.0 act 5.8 set 542  tok 22264  lit 0 txt 0 stale 0
+  r1  wiki08       fastbrowse PASS done      18563 ms 178 dec  obs — dec — txt 3,243 act — set —  tok 3238633  lit 0 txt 1 stale 0
+  chunk over, 4 runs to go
+[ultrafast,fbpub,realweb,uibench,wikigame] 4 of 120 runs to go, load 2.51
+  r1  wiki09       shipped  PASS done       1036 ms   2 dec  obs 75 dec 299 txt 0.0 act 167 set 457  tok 22264  lit 0 txt 0 stale 0
+  r1  wiki09       fastbrowse PASS done      15700 ms 127 dec  obs — dec — txt 2,996 act — set —  tok 1978457  lit 0 txt 1 stale 0
+  r1  wiki10       shipped  PASS done       3697 ms   9 dec  obs 715 dec 1,439 txt 0.0 act 21 set 1,261  tok 83475  lit 0 txt 0 stale 1
+  r1  wiki10       fastbrowse PASS done      22359 ms 116 dec  obs — dec — txt 2,653 act — set —  tok 2598137  lit 0 txt 1 stale 0
+world ready: agent.json + intelligence.json (jevEndpoint,jevKey,jevModel,routerKey,routerModel,routerURL), textModel (build default)
+probe agentbench-fb up: pid 83112 port 4290, viewport build default; fixtures :4291
+{"label": "fastbrowse", "app": "/Users/collinrijock/hc/agentbench-app/fastbrowse/Copper.app", "build": "202611151934", "base_app": null, "sha": "d8d3b34", "harness_sha": "5a60417", "binary_sha256": "6845e6cc5a3dc17e", "machine": "Mac18,5", "started": "2026-11-15T20:23:31-0500", "load": [2.27734375, 2.2783203125, 2.2734375], "arms": "shipped,fastbrowse", "worlds": {"main": {"world": "agentbench-fb", "port": 4290, "viewport": [1280, 880, 1], "arms": ["shipped", "fastbrowse"], "jevModel": "jev-latest", "textModel": null, "routerModel": "sonnet"}}, "viewport": [1280, 880, 1], "jevModel": "jev-latest", "textModel": null, "routerModel": "sonnet"}
+[fbpub,uibench,wikigame] 54 of 126 runs to go, load 2.28
+  r3  fb-wiki-open shipped  PASS done       1859 ms   2 dec  obs 95 dec 340 txt 871 act 64 set 454  tok 16147  lit 0 txt 1 stale 0
+  r3  fb-wiki-open fastbrowse PASS done      11343 ms  31 dec  obs — dec — txt 2,311 act — set —  tok 614795  lit 0 txt 2 stale 0
+  r3  fb-arxiv-open shipped  fail blocked    5643 ms   9 dec  obs 364 dec 4,376 txt 449 act 229 set 141  tok 292020  lit 0 txt 1 stale 7  ✗path  — The page kept changing under the agent: Target changed or is
+  r3  fb-arxiv-open fastbrowse PASS done       4241 ms  16 dec  obs — dec — txt 687 act — set —  tok 205607  lit 0 txt 1 stale 0
+  r3  fb-hn-comments shipped  PASS done        864 ms   3 dec  obs 95 dec 465 txt 0.0 act 4.5 set 244  tok 28805  lit 0 txt 0 stale 0
+  r3  fb-hn-comments fastbrowse PASS done       5081 ms  11 dec  obs — dec — txt 1,557 act — set —  tok 241366  lit 0 txt 1 stale 0
+  r3  fb-hn-top    shipped  PASS done        953 ms   1 dec  obs 31 dec 190 txt 0.0 act 0.0 set 0.0  tok 16721  lit 0 txt 0 stale 0
+  r3  fb-hn-top    fastbrowse PASS done       4236 ms   7 dec  obs — dec — txt 2,447 act — set —  tok 112424  lit 0 txt 2 stale 0
+  r3  fb-github-license shipped  fail unsure     3467 ms   3 dec  obs 543 dec 553 txt 0.0 act 4.4 set 985  tok 33726  lit 0 txt 0 stale 0  — Jev said DONE, 68% sure — unsure: Jev stayed under 80% after
+  r3  fb-github-license fastbrowse PASS done       2004 ms  11 dec  obs — dec — txt 0.0 act — set —  tok 105298  lit 0 txt 0 stale 0
+  r3  fb-wiki-godel shipped  fail unsure     6705 ms  11 dec  obs 259 dec 1,657 txt 424 act 110 set 2,050  tok 83673  lit 0 txt 1 stale 1  — Jev said DONE, 69% sure — unsure: Jev stayed under 80% after
+  r3  fb-wiki-godel fastbrowse PASS done      10093 ms  30 dec  obs — dec — txt 929 act — set —  tok 610316  lit 0 txt 1 stale 0
+  r3  fb-arxiv-title shipped  fail blocked    6944 ms   9 dec  obs 352 dec 4,642 txt 461 act 84 set 126  tok 292019  lit 0 txt 1 stale 7  ✗answer  — The page kept changing under the agent: Target changed or is
+  r3  fb-arxiv-title fastbrowse PASS done       4944 ms  18 dec  obs — dec — txt 736 act — set —  tok 227765  lit 0 txt 1 stale 0
+  r3  fb-pypi-version shipped  fail blocked    3102 ms   4 dec  obs 57 dec 413 txt 381 act 1,024 set 424  tok 7536  lit 0 txt 1 stale 0  ✗answer  — Jev said BLOCKED, 58% sure — the page asks for a human check
+  r3  fb-pypi-version fastbrowse PASS done       4953 ms  17 dec  obs — dec — txt 760 act — set —  tok 167517  lit 0 txt 1 stale 0
+  r3  fb-oscars-2012 shipped  fail unsure     4970 ms   4 dec  obs 58 dec 624 txt 0.0 act 1,252 set 240  tok 9857  lit 0 txt 0 stale 0  ✗answer  — Jev said DONE, 50% sure — unsure: Jev stayed under 80% after
+  r3  fb-oscars-2012 fastbrowse PASS done       3026 ms  12 dec  obs — dec — txt 0.0 act — set —  tok 44567  lit 0 txt 0 stale 0
+  r2  ui-login     fastbrowse PASS done       2441 ms  17 dec  obs — dec — txt 0.0 act — set —  tok 41095  lit 2 txt 0 stale 0
+  r2  ui-login     shipped  PASS done       1511 ms   4 dec  obs 36 dec 546 txt 0.0 act 702 set 202  tok 8937  lit 2 txt 0 stale 0
+  r2  ui-settings  fastbrowse PASS done       2412 ms  20 dec  obs — dec — txt 0.0 act — set —  tok 40981  lit 1 txt 0 stale 0
+  r2  ui-settings  shipped  PASS done       1348 ms   5 dec  obs 38 dec 908 txt 0.0 act 19 set 355  tok 12065  lit 0 txt 0 stale 0
+  r2  ui-project   fastbrowse PASS done       4536 ms  29 dec  obs — dec — txt 0.0 act — set —  tok 72966  lit 1 txt 0 stale 0
+  r2  ui-project   shipped  PASS done       1575 ms   7 dec  obs 43 dec 805 txt 0.0 act 86 set 607  tok 19344  lit 1 txt 0 stale 0
+  r2  ui-checkout  fastbrowse fail stuck      1612 ms  13 dec  obs — dec — txt 0.0 act — set —  tok 26137  lit 0 txt 0 stale 0  ✗app_ok  — Partial evidence only. Remaining coverage is omitted; totals
+  r2  ui-checkout  shipped  PASS done       1172 ms   6 dec  obs 37 dec 628 txt 0.0 act 19 set 465  tok 11393  lit 0 txt 0 stale 0
+  r2  ui-invoices  fastbrowse PASS done       2667 ms  15 dec  obs — dec — txt 800 act — set —  tok 71733  lit 0 txt 1 stale 0
+  r2  ui-invoices  shipped  PASS done        629 ms   3 dec  obs 31 dec 380 txt 0.0 act 8.1 set 194  tok 11039  lit 0 txt 0 stale 0
+  r2  ui-files     fastbrowse fail stuck       869 ms   7 dec  obs — dec — txt 0.0 act — set —  tok 19978  lit 0 txt 0 stale 0  ✗app_ok  — Partial evidence only. Remaining coverage is omitted; totals
+  r2  ui-files     shipped  PASS blocked     710 ms   3 dec  obs 31 dec 428 txt 0.0 act 6.9 set 199  tok 17407  lit 0 txt 0 stale 0
+  r2  ui-whack     fastbrowse fail stuck      3825 ms  14 dec  obs — dec — txt 2,120 act — set —  tok 34157  lit 0 txt 1 stale 0  ✗app_ok  — Partial evidence only. Remaining coverage is omitted; totals
+  chunk over, 23 runs to go
+[fbpub,uibench,wikigame] 23 of 126 runs to go, load 2.22
+  r2  ui-whack     shipped  PASS done       2095 ms  13 dec  obs 51 dec 1,632 txt 0.0 act 55 set 322  tok 33182  lit 0 txt 0 stale 0
+  r2  ui-swatches  fastbrowse fail stuck       688 ms   7 dec  obs — dec — txt 0.0 act — set —  tok 14718  lit 0 txt 0 stale 0  ✗app_ok  — Partial evidence only. Remaining coverage is omitted; totals
+  r2  ui-swatches  shipped  PASS done       1841 ms   9 dec  obs 44 dec 1,423 txt 0.0 act 39 set 229  tok 42844  lit 0 txt 0 stale 0
+  r2  wiki01       fastbrowse PASS done      17403 ms  49 dec  obs — dec — txt 2,632 act — set —  tok 1236470  lit 0 txt 1 stale 0
+  r2  wiki01       shipped  PASS done       1283 ms   3 dec  obs 157 dec 464 txt 0.0 act 4.8 set 588  tok 32615  lit 0 txt 0 stale 1
+  r2  wiki02       fastbrowse PASS done      16519 ms 237 dec  obs — dec — txt 0.0 act — set —  tok 6105902  lit 0 txt 0 stale 0
+  r2  wiki02       shipped  PASS done       1763 ms   2 dec  obs 511 dec 431 txt 0.0 act 2.7 set 654  tok 23858  lit 0 txt 0 stale 0
+  r2  wiki03       fastbrowse PASS done      10938 ms 111 dec  obs — dec — txt 0.0 act — set —  tok 2317359  lit 0 txt 0 stale 0
+  r2  wiki03       shipped  PASS done       1169 ms   2 dec  obs 263 dec 281 txt 0.0 act 3.6 set 570  tok 21542  lit 0 txt 0 stale 0
+  r2  wiki04       fastbrowse PASS done      20813 ms 231 dec  obs — dec — txt 3,663 act — set —  tok 6991459  lit 0 txt 1 stale 0
+  r2  wiki04       shipped  PASS done       3213 ms   3 dec  obs 422 dec 790 txt 0.0 act 8.4 set 1,904  tok 49553  lit 0 txt 0 stale 0
+  r2  wiki05       fastbrowse PASS done      13083 ms  58 dec  obs — dec — txt 2,349 act — set —  tok 1505099  lit 0 txt 1 stale 0
+  r2  wiki05       shipped  PASS done       1207 ms   2 dec  obs 230 dec 378 txt 0.0 act 2.9 set 541  tok 22937  lit 0 txt 0 stale 0
+  r2  wiki06       fastbrowse PASS done      17894 ms 142 dec  obs — dec — txt 2,375 act — set —  tok 3029767  lit 0 txt 1 stale 0
+  r2  wiki06       shipped  PASS done       3539 ms   5 dec  obs 838 dec 2,010 txt 0.0 act 14 set 628  tok 102158  lit 0 txt 0 stale 1
+  r2  wiki07       fastbrowse PASS done       8744 ms  65 dec  obs — dec — txt 0.0 act — set —  tok 877863  lit 0 txt 0 stale 0
+  r2  wiki07       shipped  PASS done       1350 ms   2 dec  obs 334 dec 790 txt 0.0 act 4.5 set 200  tok 20680  lit 0 txt 0 stale 0
+  r2  wiki08       fastbrowse PASS done      20014 ms 217 dec  obs — dec — txt 3,555 act — set —  tok 5100015  lit 0 txt 1 stale 0
+  chunk over, 5 runs to go
+[fbpub,uibench,wikigame] 5 of 126 runs to go, load 2.41
+  r2  wiki08       shipped  PASS done       1748 ms   2 dec  obs 677 dec 402 txt 0.0 act 3.9 set 592  tok 22264  lit 0 txt 0 stale 0
+  r2  wiki09       fastbrowse PASS done      15612 ms 127 dec  obs — dec — txt 3,369 act — set —  tok 1962062  lit 0 txt 1 stale 0
+  r2  wiki09       shipped  PASS done       1186 ms   2 dec  obs 381 dec 292 txt 0.0 act 4.6 set 473  tok 23207  lit 0 txt 0 stale 0
+  r2  wiki10       fastbrowse PASS done      22963 ms 144 dec  obs — dec — txt 2,798 act — set —  tok 3632268  lit 0 txt 1 stale 0
+  r2  wiki10       shipped  PASS done       1791 ms   5 dec  obs 268 dec 719 txt 0.0 act 7.1 set 688  tok 52082  lit 0 txt 0 stale 1
+world ready: agent.json + intelligence.json (jevEndpoint,jevKey,jevModel,routerKey,routerModel,routerURL), textModel (build default)
+probe agentbench-fb up: pid 84740 port 4290, viewport build default; fixtures :4291
+{"label": "fastbrowse", "app": "/Users/collinrijock/hc/agentbench-app/fastbrowse/Copper.app", "build": "202611151934", "base_app": null, "sha": "d8d3b34", "harness_sha": "5a60417", "binary_sha256": "6845e6cc5a3dc17e", "machine": "Mac18,5", "started": "2026-11-15T20:29:56-0500", "load": [2.0419921875, 2.28173828125, 2.27783203125], "arms": "shipped,fastbrowse", "worlds": {"main": {"world": "agentbench-fb", "port": 4290, "viewport": [1280, 880, 1], "arms": ["shipped", "fastbrowse"], "jevModel": "jev-latest", "textModel": null, "routerModel": "sonnet"}}, "viewport": [1280, 880, 1], "jevModel": "jev-latest", "textModel": null, "routerModel": "sonnet"}
+[wikigame] 20 of 60 runs to go, load 2.04
+  r3  wiki01       shipped  PASS done       1023 ms   3 dec  obs 105 dec 491 txt 0.0 act 3.8 set 385  tok 33634  lit 0 txt 0 stale 1
+  r3  wiki01       fastbrowse PASS done      13886 ms  75 dec  obs — dec — txt 2,419 act — set —  tok 1824111  lit 0 txt 1 stale 0
+  r3  wiki02       shipped  PASS done       2067 ms   3 dec  obs 285 dec 593 txt 0.0 act 322 set 733  tok 32874  lit 0 txt 0 stale 1
+  r3  wiki02       fastbrowse PASS done      18732 ms 191 dec  obs — dec — txt 3,132 act — set —  tok 3874937  lit 0 txt 1 stale 0
+  r3  wiki03       shipped  PASS done       1501 ms   2 dec  obs 536 dec 329 txt 0.0 act 1.9 set 594  tok 20677  lit 0 txt 0 stale 0
+  r3  wiki03       fastbrowse PASS done      12207 ms 153 dec  obs — dec — txt 0.0 act — set —  tok 3759759  lit 0 txt 0 stale 0
+  r3  wiki04       shipped  PASS done       3398 ms   3 dec  obs 827 dec 861 txt 0.0 act 4.1 set 1,635  tok 49550  lit 0 txt 0 stale 0
+  r3  wiki04       fastbrowse fail stuck     50421 ms 526 dec  obs — dec — txt 6,750 act — set —  tok 26728045  lit 0 txt 1 stale 0  ✗reached  — https://en.wikipedia.org/wiki/History_of_India [1](<https://
+  r3  wiki05       shipped  PASS done       1195 ms   2 dec  obs 234 dec 389 txt 0.0 act 1.8 set 534  tok 22937  lit 0 txt 0 stale 0
+  r3  wiki05       fastbrowse PASS done      12854 ms  92 dec  obs — dec — txt 1,695 act — set —  tok 2424096  lit 0 txt 1 stale 0
+  r3  wiki06       shipped  PASS done       1917 ms   3 dec  obs 419 dec 935 txt 0.0 act 7.8 set 517  tok 56487  lit 0 txt 0 stale 0
+  r3  wiki06       fastbrowse PASS done      18099 ms 142 dec  obs — dec — txt 2,476 act — set —  tok 3040650  lit 0 txt 1 stale 0
+  r3  wiki07       shipped  PASS done        832 ms   2 dec  obs 331 dec 287 txt 0.0 act 5.0 set 195  tok 20680  lit 0 txt 0 stale 0
+  chunk over, 7 runs to go
+[wikigame] 7 of 60 runs to go, load 8.47
+  r3  wiki07       fastbrowse PASS done       8883 ms  65 dec  obs — dec — txt 0.0 act — set —  tok 879182  lit 0 txt 0 stale 0
+  r3  wiki08       shipped  PASS done       2180 ms   2 dec  obs 565 dec 534 txt 0.0 act 34 set 804  tok 22264  lit 0 txt 0 stale 0
+  r3  wiki08       fastbrowse PASS done      22507 ms 217 dec  obs — dec — txt 4,070 act — set —  tok 5100437  lit 0 txt 1 stale 0
+  r3  wiki09       shipped  PASS done       1214 ms   2 dec  obs 491 dec 338 txt 0.0 act 3.0 set 355  tok 23207  lit 0 txt 0 stale 0
+  r3  wiki09       fastbrowse PASS done      16940 ms 147 dec  obs — dec — txt 3,138 act — set —  tok 2606358  lit 0 txt 1 stale 0
+  r3  wiki10       shipped  PASS done       2258 ms   5 dec  obs 471 dec 829 txt 0.0 act 11 set 901  tok 53178  lit 0 txt 0 stale 0
+  r3  wiki10       fastbrowse PASS done      27173 ms 234 dec  obs — dec — txt 3,881 act — set —  tok 7250467  lit 0 txt 1 stale 0
