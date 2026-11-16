@@ -27,6 +27,7 @@ final class Split: ObservableObject {
     /// closes, the pair is kept for when either half is picked again.
     func release(_ id: Tab.ID) {
         guard side == id else { return }
+        sleeping = nil
         side = nil
         swapped = false
         holder = nil
@@ -137,6 +138,7 @@ final class Split: ObservableObject {
 
     func open(with tab: Tab, in browser: Browser) {
         guard tab.id != browser.activeID else { return }
+        Pace.step("split.open")
         growing = !on(in: browser)
         landing = growing || landing
         // Fork (polish r5): Reduce Motion takes no picture — the split cuts
@@ -159,11 +161,31 @@ final class Split: ObservableObject {
         if let active = browser.activeID { pair(active, tab.id) }
         side = tab.id
         holder = browser
-        if !tab.wake() { tab.revive() }
         tab.touch()
+        // Fork (r7 motion): a split that slides in builds the new pane's page
+        // once the card has landed (`wakeSide`), under the cover — built in
+        // the key's pass, it held the slide's first frame back ~70 ms.
+        if growing, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            sleeping = tab.id
+        } else if !tab.wake() {
+            tab.revive()
+        }
     }
 
-    func close() { unpair(side); side = nil; swapped = false; holder = nil; landing = false; still = nil; picturing = false; covering = false; incoming = false }
+    /// The new pane's tab, its page not built yet: the card is still sliding.
+    private var sleeping: Tab.ID?
+
+    /// The card has landed (or Reduce Motion cut straight there): the new
+    /// pane's page is built and loads under the cover.
+    func wakeSide(in browser: Browser) {
+        guard let id = sleeping else { return }
+        sleeping = nil
+        guard id == side, let tab = browser.tabs.first(where: { $0.id == id }) else { return }
+        Pace.step("split.wake")
+        if !tab.wake() { tab.revive() }
+    }
+
+    func close() { unpair(side); side = nil; swapped = false; holder = nil; landing = false; still = nil; picturing = false; covering = false; incoming = false; sleeping = nil }
 
     /// Fork (motion): the pane has slid in. Its cross can show, and the
     /// cover comes off once the page under it has drawn at its new width —
@@ -171,6 +193,7 @@ final class Split: ObservableObject {
     /// WebKit says when through a name outside the public framework; one
     /// that doesn't answer gets a fixed beat.
     func landed(in browser: Browser) {
+        wakeSide(in: browser)
         landing = false
         picturing = false
         incoming = false
@@ -216,6 +239,7 @@ final class Split: ObservableObject {
     /// the label ghosting over the painted page for two frames.
     private func uncover() {
         guard covering else { return }
+        Pace.step("split.uncover")
         var now = Transaction()
         now.disablesAnimations = true
         withTransaction(now) { covering = false; still = nil }
@@ -228,6 +252,7 @@ final class Split: ObservableObject {
         let other = tab.id == side ? browser.active : browser.tabs.first { $0.id == side }
         unpair(tab.id)
         side = nil
+        sleeping = nil
         swapped = false
         holder = nil
         landing = false
@@ -467,7 +492,8 @@ struct SplitStage: View {
                     // An overlay, not a sibling: only an overlay lands over the pages' AppKit layers.
                     .overlay(alignment: .topLeading) {
                         if split.covering {
-                            cover(left: leftWidth, span: span, tall: tall, incoming: right)
+                            // The card at its landed width: while growing the pages keep their old ones.
+                            cover(left: min(span - least, max(least, span * split.fraction)), span: span, tall: tall, incoming: right)
                         }
                     }
                     .padding(.horizontal, margin)
@@ -487,7 +513,6 @@ struct SplitStage: View {
             .background { if !inset { backdrop } }
             .coordinateSpace(name: Split.space)
             .onAppear(perform: slide)
-            .onChange(of: split.still?.id) { _, id in if id != nil { settle() } }
             .onChange(of: browser.activeID) { was, _ in split.reconcile(browser, was: was) }
             .onChange(of: browser.tabs.map(\.id)) { _, _ in split.reconcile(browser) }
         } else if card {
@@ -499,10 +524,12 @@ struct SplitStage: View {
 
     /// Fork (uiflows r4, polish r5): the new pane's card slides in over the
     /// old page the moment the split is made (160 ms, an ease-out) while the
-    /// old page's picture is taken alongside — it used to wait for the
-    /// picture, and nothing moved for 135 ms. Only the cover moves, a card
-    /// drawn by SwiftUI, so no web view is resized mid-move; the pages take
-    /// their final frames under it once the picture is back (`settle`).
+    /// old page's picture is taken alongside. Only the cover moves, a card
+    /// drawn by SwiftUI, so no web view is resized mid-move.
+    /// Fork (r7 motion): nothing else runs while it moves. The pages take
+    /// their final frames, and the new pane's page is built, once the card
+    /// has landed (`settle`) — re-framed mid-slide (the picture landing, or
+    /// a 120 ms beat), the pass that did it froze the slide and it cut.
     /// Reduce Motion: no slide and no cover, a cut to the final layout.
     private func slide() {
         guard split.growing else { return }
@@ -513,37 +540,35 @@ struct SplitStage: View {
             split.landed(in: browser)
             return
         }
+        Pace.step("split.slide")
         withTransaction(now) {
             split.covering = true
             split.incoming = true
         }
-        if split.picturing {
-            // The picture usually lands mid-slide; a page that doesn't answer
-            // gets 120 ms, then re-wraps under the card as before.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { settle() }
-        } else {
-            settle()
-        }
         // The next pass, once the cover is on screen with the card off to the right.
         DispatchQueue.main.async {
+            Pace.step("split.go")
             withAnimation(.easeOut(duration: 0.16), completionCriteria: .logicallyComplete) {
                 split.incoming = false
             } completion: {
-                split.landed(in: browser)
+                settle()
             }
         }
     }
 
-    /// The picture is back (or late): both pages take their final frames
-    /// under the cover, and it comes off once the left one has re-wrapped.
+    /// The card has landed: both pages take their final frames under the
+    /// cover (the new one's page is built now), and it comes off once the
+    /// left one has re-wrapped. A picture still out by now is not waited for.
     private func settle() {
-        guard split.growing, split.covering else { return } // a picture back before the slide began waits for it (`slide`)
+        guard split.growing, split.covering else { return split.landed(in: browser) }
+        Pace.step("split.settle")
         var now = Transaction()
         now.disablesAnimations = true
         withTransaction(now) { split.growing = false }
+        split.wakeSide(in: browser)
         DispatchQueue.main.async {
             split.watchRewrap(in: browser)
-            if !split.landing { split.landed(in: browser) }
+            split.landed(in: browser)
         }
     }
 

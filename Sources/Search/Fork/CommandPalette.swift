@@ -58,11 +58,18 @@ struct CommandPalette: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
 
+    /// Fork (r7 motion): ⌘K's resting rows as a picture (`drawRest`), drawn
+    /// in the key's pass while the real rows wait a pass (`filled`) — the
+    /// card opens with its rows, not blank. Nil when anything they show may
+    /// have moved since (another space or tab, the look).
+    @State private var picture: NSImage?
+
     init(browser: Browser, over: Bool) {
         self.browser = browser
         self.over = over
         _state = ObservedObject(wrappedValue: browser.field)
         _bar = ObservedObject(wrappedValue: browser.bar)
+        _picture = State(initialValue: browser.bar.launching ? nil : CommandPalette.picture.flatMap { $0.key == CommandPalette.restKey(browser) ? $0.image : nil })
     }
 
     /// Fixed so the card's height can be worked out before it is drawn: a
@@ -130,7 +137,8 @@ struct CommandPalette: View {
             Marks.want(browser.offers.map(\.url))
             Launcher.afterCommit {
                 // Fork (hc6): after the key's pass, the rows fade in over 60 ms rather than pop.
-                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.06)) { filled = true }
+                // Fork (r7 motion): over their own picture, at once.
+                withAnimation(reduceMotion || picture != nil ? nil : .easeOut(duration: 0.06)) { filled = true }
                 laid = Set(CommandPalette.keyed(browser.offers).map(\.id))
             }
         }
@@ -138,6 +146,7 @@ struct CommandPalette: View {
             Marks.want(offers.map(\.url))
             Launcher.afterCommit { laid = Set(CommandPalette.keyed(browser.offers).map(\.id)) }
         }
+        .onDisappear { CommandPalette.drawRest(browser, scale: displayScale) }
     }
 
     /// Fork (ui-flows): the card arrives the way Arc's does — solid at once,
@@ -176,12 +185,18 @@ struct CommandPalette: View {
     private var card: some View {
         VStack(spacing: 0) {
             field
-            if !browser.offers.isEmpty {
+            // Fork (r7 motion): the resting card stands at its height before
+            // its rows are worked out (Browser.fillSoon), hairline and all.
+            if !browser.offers.isEmpty || held {
                 Rectangle()
                     .fill(Palette.hairline.opacity(0.55))
                     .frame(height: 1)
                 if filled {
                     rows.transition(.opacity)
+                } else if let picture, state.typed.isEmpty {
+                    Image(nsImage: picture)
+                        .frame(width: CommandPalette.width, height: min(natural, room), alignment: .top)
+                        .clipped()
                 } else {
                     Color.clear.frame(height: min(natural, room))
                 }
@@ -440,6 +455,69 @@ struct CommandPalette: View {
 
     /// Fork (observe): the resting card's height, ⌘T's (true) and ⌘K's apart.
     static var resting: [Bool: CGFloat] = [:]
+
+    /// The resting card before its rows are in: as tall as the last one.
+    private var held: Bool {
+        browser.offers.isEmpty && state.typed.isEmpty && CommandPalette.resting[bar.launching] != nil
+    }
+
+    // MARK: Fork (r7 motion): the resting rows' picture
+
+    /// ⌘K's resting rows as a picture, with what they were drawn for.
+    static var picture: (key: String, image: NSImage)?
+
+    /// What ⌘K's resting card shows depends on: this window's space, its
+    /// active tab and how many tabs it has, and the look.
+    static func restKey(_ browser: Browser) -> String {
+        "\(dark)|\(Spaces.shared.current(in: browser))|\(browser.activeID?.uuidString ?? "")|\(browser.tabs.count)"
+    }
+
+    private static var dark: Bool { NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua }
+
+    /// A moment after a card goes (never while one is up: a keystroke would
+    /// wait for it), ⌘K's resting rows as they would be now, drawn for the
+    /// next ⌘K's first frame.
+    static func drawRest(_ browser: Browser, scale: CGFloat) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak browser] in
+            MainActor.assumeIsolated {
+                guard let browser, !browser.summoning else { return }
+                let key = restKey(browser)
+                guard picture?.key != key else { return }
+                let offers = CommandBar.offers(for: "", in: browser)
+                let headings = CardSections.shared.headings
+                guard !offers.isEmpty else { return }
+                let dark = self.dark
+                let tint = SpaceTint(space: Spaces.shared.space(in: browser), dark: dark).offColumn
+                let keyed = keyed(offers)
+                let height = offers.reduce(CGFloat(0)) { $0 + CommandPalette.height($1) + 1 }
+                    + CGFloat(headings.keys.filter { $0 < offers.count }.count) * (headingHeight + 3) + 16
+                let content = VStack(alignment: .leading, spacing: 1) {
+                    ForEach(keyed, id: \.id) { item in
+                        VStack(alignment: .leading, spacing: 1) {
+                            if let heading = headings[item.index] {
+                                Text(heading)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(Palette.muted)
+                                    .padding(.horizontal, 12)
+                                    .frame(height: headingHeight, alignment: .bottomLeading)
+                                    .padding(.bottom, 2)
+                            }
+                            Row(offer: item.offer, picked: item.index == 0, tint: tint.mark, fill: tint.dot, stamp: Marks.ticker.landed)
+                        }
+                    }
+                }
+                .padding(8)
+                .frame(width: width, height: height, alignment: .top)
+                .background(Palette.ground)
+                .environment(\.colorScheme, dark ? .dark : .light)
+                let renderer = ImageRenderer(content: content)
+                renderer.scale = scale
+                var image: NSImage?
+                NSAppearance(named: dark ? .darkAqua : .aqua)?.performAsCurrentDrawingAppearance { image = renderer.nsImage }
+                if let image { picture = (key, image) }
+            }
+        }
+    }
 
     /// No taller than the window below the card, less a margin that keeps
     /// the card's foot well clear of the window's (window − 160 at most).
