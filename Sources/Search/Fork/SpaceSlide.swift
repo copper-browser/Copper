@@ -164,7 +164,6 @@ final class SpaceSlide: ObservableObject {
     /// column's scroll view moved and re-clipped in every one. Off: as it
     /// was. `bench spaces slide core on|off` to compare.
     static var core = true
-    static var leaves = true // EXPERIMENT (r7): the old rows' preview, off
     /// This slide's travel is the render server's (see `core`).
     private(set) var riding = false
     static let rideKey = "copper.space.ride"
@@ -263,7 +262,7 @@ final class SpaceSlide: ObservableObject {
             stretch = 0
             from = old
             to = space
-            leaving = SpaceSlide.leaves ? model : nil
+            leaving = model
             sliding = true
             set(phase: 0)
             ink.objectWillChange.send()
@@ -604,8 +603,6 @@ final class SpaceSlide: ObservableObject {
             SpaceSlide.clipsBand = words[1] == "on"
         } else if words.first == "core", words.count > 1 {
             SpaceSlide.core = words[1] == "on"
-        } else if words.first == "leave", words.count > 1 {
-            SpaceSlide.leaves = words[1] == "on"
         }
         let browser = owner ?? Windows.main
         var note: [String: Any] = ["moving": moving, "hold": hold.map { Double($0) } ?? -1,
