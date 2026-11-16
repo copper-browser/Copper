@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import Search
@@ -19,4 +20,28 @@ import Testing
     let safari = Bundle(path: "/Applications/Safari.app")?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
     guard let safari else { return }
     #expect(Web.userAgentName == "Version/\(safari) Safari/605.1.15")
+}
+
+// What a page reads as window.outerWidth/outerHeight (Fork/WindowFrame.swift).
+// WebKit says 0×0 when the UI delegate doesn't answer, and bot checks
+// (FingerprintJS BotD, behind PyPI's Client Challenge) call a focused 0×0
+// window a headless browser.
+
+@Test func windowFrameIsThePagesWindowThenItsBrowsersThenTheScreen() {
+    let page = CGRect(x: 10, y: 20, width: 1200, height: 800)
+    let browser = CGRect(x: 0, y: 0, width: 1440, height: 900)
+    let screen = CGRect(x: 0, y: 25, width: 1920, height: 1055)
+    #expect(WindowFrame.frame(page: page, browser: browser, screen: screen) == page)
+    // Off stage (a background tab, or hung backstage for an agent): its browser's window.
+    #expect(WindowFrame.frame(page: nil, browser: browser, screen: screen) == browser)
+    #expect(WindowFrame.frame(page: .zero, browser: browser, screen: screen) == browser)
+    #expect(WindowFrame.frame(page: nil, browser: nil, screen: screen) == screen)
+    // Never the empty frame.
+    let none = WindowFrame.frame(page: nil, browser: nil, screen: nil)
+    #expect(none.width > 0 && none.height > 0)
+}
+
+@MainActor @Test func browserAnswersWebKitsWindowFrameQuestion() {
+    // Unanswered, WebKit tells the page 0×0; the selector must be exactly WebKit's.
+    #expect(Browser.instancesRespond(to: NSSelectorFromString("_webView:getWindowFrameWithCompletionHandler:")))
 }
