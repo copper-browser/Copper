@@ -346,10 +346,10 @@ enum Ultrafast {
         if !sure { said.append("Jev stayed under \(Int(claimFloor * 100))% after a second look") }
         return said.joined(separator: "; ") + " — check the page"
     }
-    /// What Jev reads after a click its target had something drawn over: those controls are left out until the page changes.
+    /// What Jev reads after a click its target had something drawn over: the controls under it are left out while it stays.
     static func coveredNote(_ label: String, by: String, others: Int) -> [String: Any] {
         let more = others > 0 ? " and over \(others) other control\(others == 1 ? "" : "s")" : ""
-        return ["action": "Not clicked: something (\(by)) is drawn over \(label.prefix(40))\(more), so they are left out until the page changes. Use what is on top.",
+        return ["action": "Not clicked: something (\(by)) is drawn over \(label.prefix(40))\(more), so they are left out while it stays. Use what is on top.",
                 "kind": "click", "text": NSNull(), "page_changed": false]
     }
 
@@ -2009,8 +2009,8 @@ enum Ultrafast {
         private(set) var snippet: String?
         private var answeredMarker: String?
         /// Offered controls something is drawn over (an open search panel, a
-        /// dialog), found when a click on one was refused: left out of what Jev
-        /// reads until an action goes through, and why said once.
+        /// dialog): once a click on one was refused, asked again with every
+        /// read and left out of what Jev reads, with why said, while the cover stays.
         private var covered = Set<Int>()
         private var coveredNote: [String: Any]?
         private(set) var coveredRefusals = 0
@@ -2133,6 +2133,11 @@ enum Ultrafast {
             }
             // Jev reads a date picker's days of the goal's month only (`lean`):
             // Google Flights' two-month grid was ~60 named days a decision.
+            if !reused, coveredNote != nil {
+                let nodes = obs.actions.compactMap { ($0["node"] as? NSNumber)?.intValue }
+                covered = Set(((try? await Ultrafast.js(web, "window.__jevFast.covered(\(Ultrafast.encode(nodes)))")) as? [NSNumber] ?? []).map(\.intValue))
+                if covered.isEmpty { coveredNote = nil }
+            }
             var shown = strategy.lean ? Ultrafast.elideCalendar(obs, months: months) : obs
             if !covered.isEmpty {
                 var raw = shown.raw
@@ -2498,8 +2503,6 @@ enum Ultrafast {
                     }
                 }
                 staleStreak = 0
-                covered = []
-                coveredNote = nil
                 doneRefused = false
                 blockedRefused = false
                 refusal = nil
@@ -2511,11 +2514,25 @@ enum Ultrafast {
                 // and it acts on what is on top.
                 if let actStarted { spent.actMs += Date().timeIntervalSince(actStarted) * 1000 }
                 if let acting { trace.close(phase: acting) }
+                // Read again once the page stands still: a cover that has gone
+                // by then (a dialog still closing) was a moment, as a stale decision is.
+                let again = try? await Ultrafast.observe(tab, after: ["kind": "read"], terms: terms, near: strategy.near, calm: strategy.calm, deep: strategy.deep)
+                observation = again
+                shot = nil
+                let nodes = (again ?? obs).actions.compactMap { ($0["node"] as? NSNumber)?.intValue }
+                let under = Set(((try? await Ultrafast.js(web, "window.__jevFast.covered(\(Ultrafast.encode(nodes)))")) as? [NSNumber] ?? []).map(\.intValue))
+                if let node, !under.contains(node) {
+                    self.stale += 1
+                    staleStreak += 1
+                    staleOps.append("\(operation) \(label.prefix(30)) (covered for a moment)")
+                    trace.outcome(Drive.Outcome(operation: operation, label: label, text: text,
+                                                   probability: decision.probability, confidence: decision.confidence,
+                                                   pageChanged: nil, stale: true, candidates: decision.candidates))
+                    if staleStreak > 6 { status = "blocked"; note = "The page kept changing under the agent: \(label.prefix(40)) was covered" }
+                    return nil
+                }
                 coveredRefusals += 1
-                let nodes = obs.actions.compactMap { ($0["node"] as? NSNumber)?.intValue }
-                let under = (try? await Ultrafast.js(web, "window.__jevFast.covered(\(Ultrafast.encode(nodes)))")) as? [NSNumber] ?? []
-                covered.formUnion(under.map(\.intValue))
-                if let node { covered.insert(node) }
+                covered = under
                 coveredNote = Ultrafast.coveredNote(label, by: over.by, others: max(0, covered.count - 1))
                 trace.outcome(Drive.Outcome(operation: operation, label: "covered: " + label, text: text,
                                                probability: decision.probability, confidence: decision.confidence,
