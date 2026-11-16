@@ -426,7 +426,7 @@ def verdict(r, other):
     flow = r.get("flow")
     vis = r.get("blank") is False and (not other or not other.get("page") or not r.get("page")
                                        or r["page"].get("text", 0) >= 0.4 * (other["page"].get("text") or 0))
-    ok = loads and not wall and flow is not False and vis
+    ok = loads and not wall and flow is not False and (vis or "egress" in r)  # egress is a line of text: no picture to judge
     return ok, loads, wall, flow, vis
 
 
@@ -474,7 +474,7 @@ def table(paths, public=False):
     if public and own:  # --public: the private hosts as one count, for a PR or a report
         print("| *%d own hosts (history)* | %s |" % (len(own), " | ".join("%d/%d" % (p, len(own)) for p in own_pass)))
     print("| **pass** | " + " | ".join("**%d/%d**" % (p, len(r["rows"])) for p, r in zip(passes, runs)) + " |")
-    for head, o in zip(heads[1:], only[1:]):
+    for head, o in zip(heads[1:], only[1:] if runs[0]["browser"] == "safari" else []):
         print("\n%s fails where Safari passes (%d): %s" % (head, len(o), ", ".join(o) or "none"))
     eg = [(by_run.get("egress") or {}).get("egress") for by_run in by]
     if len(set(e for e in eg if e)) > 1:
