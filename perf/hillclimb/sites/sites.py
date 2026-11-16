@@ -398,7 +398,7 @@ def sweep(args, b):
         print("%-18s loads=%s wall=%-20s flow=%s blank=%s %ss" % (r["site"], r.get("loads"), (r.get("wall") or "-")[:20],
               r.get("flow", "-"), r.get("blank"), r.get("load_s")), flush=True)
         with open(out, "w") as f:
-            json.dump({"browser": args.cmd, "version": b.version(), "when": time.strftime("%Y-%m-%d %H:%M"), "rows": rows}, f, indent=1)
+            json.dump({"browser": args.cmd, "version": b.version(), "build": os.path.basename(os.path.dirname(args.app or "")), "when": time.strftime("%Y-%m-%d %H:%M"), "rows": rows}, f, indent=1)
     if lock:
         lock.close()
     return rows
@@ -419,18 +419,21 @@ def verdict(r, other):
     return ok, loads, wall, flow, vis
 
 
-def table(paths):
+def table(paths, public=False):
     runs = [json.load(open(p)) for p in paths]
     names = []
     for run in runs:
         for r in run["rows"]:
             if r["site"] not in names:
                 names.append(r["site"])
+    known = [s[0] for s in SITES]
+    own = [n for n in names if n not in known]  # --extra hosts: someone's history
     by = [{r["site"]: r for r in run["rows"]} for run in runs]
-    heads = ["%s %s" % (run["browser"], run["version"]) for run in runs]
+    heads = [" ".join(filter(None, (run["browser"], run.get("build"), run["version"]))) for run in runs]
     print("| site | " + " | ".join(heads) + " |")
     print("|---|" + "---|" * len(runs))
     passes = [0] * len(runs)
+    own_pass = [0] * len(runs)
     for n in names:
         cells = []
         for i, run in enumerate(by):
@@ -441,6 +444,7 @@ def table(paths):
             other = by[0].get(n) if i else (by[1].get(n) if len(by) > 1 else None)
             ok, loads, wall, flow, vis = verdict(r, other)
             passes[i] += ok
+            own_pass[i] += ok and n in own
             bits = ["✅" if ok else "❌", "load" if loads else "NO LOAD"]
             if wall:
                 bits.append("wall: " + wall[:30])
@@ -449,7 +453,10 @@ def table(paths):
             if not vis:
                 bits.append("VISUAL")
             cells.append(" · ".join(bits))
-        print("| %s | %s |" % (n, " | ".join(cells)))
+        if not (public and n in own):
+            print("| %s | %s |" % (n, " | ".join(cells)))
+    if public and own:  # --public: the private hosts as one count, for a PR or a report
+        print("| *%d own hosts (history)* | %s |" % (len(own), " | ".join("%d/%d" % (p, len(own)) for p in own_pass)))
     print("| **pass** | " + " | ".join("**%d/%d**" % (p, len(r["rows"])) for p, r in zip(passes, runs)) + " |")
 
 
@@ -465,9 +472,10 @@ def main():
     ap.add_argument("--extra")
     ap.add_argument("--lock", help="flock this file around each batch of sites (the mini: ~/hc/mini.lock)")
     ap.add_argument("--batch", type=int, default=5, help="sites per lock hold")
-    args = ap.parse_args()
+    ap.add_argument("--public", action="store_true", help="table: --extra hosts as one count row, not by name")
+    args = ap.parse_intermixed_args()
     if args.cmd == "table":
-        return table(args.files)
+        return table(args.files, args.public)
     if args.cmd == "copper":
         b = Copper(args.app, args.world, args.port or 4320, os.path.dirname(os.path.abspath(args.out)))
     else:

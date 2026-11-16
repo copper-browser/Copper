@@ -8,7 +8,7 @@
 # Env: SITES_HOST=mac-mini · SITES_PORT=4320 (Copper N on 4320+N-1, Safari's driver on +5) · SITES_ONLY=pypi,x
 #      SITES_EXTRA=FILE (host names, one per line, loaded as https://HOST/; keep it out of git: someone's history)
 #      SITES_SAFARI=0 (skip Safari: a laptop, where its window would take focus)
-# Out: ~/hc/out/LABEL/sites/{safari,copper-N}.json + shots, table.md (devbox: ~/plans/copper-hillclimb-2026-11-14/out/LABEL/sites/).
+# Out: ~/hc/out/LABEL/sites/{safari,copper-N}.json + shots, table.md, table-public.md (devbox: ~/plans/copper-hillclimb-2026-11-14/out/LABEL/sites/).
 # Sites run under SITES_LOCK (~/hc/mini.lock; the laptop: ~/hc/laptop.lock), SITES_BATCH (5) per hold, ~1 min. Never signs in, never submits a form.
 set -euo pipefail
 label="${1:?usage: sites.sh LABEL APP [APP2 …]}"; shift
@@ -45,4 +45,5 @@ for app in "$@"; do
 done
 wait
 /usr/bin/python3 "$here/sites/sites.py" table "${files[@]}" > "$out/table.md"
+/usr/bin/python3 "$here/sites/sites.py" table --public "${files[@]}" > "$out/table-public.md"  # own hosts as a count: safe for a PR
 cat "$out/table.md"
