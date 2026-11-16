@@ -20,8 +20,9 @@ private final class Loaded: NSObject, WKNavigationDelegate {
 @MainActor
 private func page(_ html: String) async -> WKWebView {
     let web = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
-    // In a window, so the page draws and gets frames.
-    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600), styleMask: .borderless, backing: .buffered, defer: false)
+    // In a window, so the page draws and gets frames. A panel: kept open, an NSWindow would make
+    // LaunchWindowTests' "app has an open window" question true for the whole run.
+    let window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600), styleMask: .borderless, backing: .buffered, defer: false)
     window.contentView = web
     window.orderBack(nil)
     let loaded = Loaded()
