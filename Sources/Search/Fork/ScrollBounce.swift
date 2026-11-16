@@ -29,6 +29,7 @@ struct SideScrollElasticity: NSViewRepresentable {
             if scroll.verticalScrollElasticity != .allowed { scroll.verticalScrollElasticity = .allowed }
             if scroll.horizontalScrollElasticity != .none { scroll.horizontalScrollElasticity = .none }
             if window == Links.window { SideScrollElasticity.column = scroll }
+            if let window { SideScrollElasticity.columns.setObject(scroll, forKey: window) }
         }
 
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -36,6 +37,8 @@ struct SideScrollElasticity: NSViewRepresentable {
 
     /// The first window's column, for the bench.
     @MainActor static weak var column: NSScrollView?
+    /// Every window's column (Fork: r7 space) — the layer a space switch slides (SpaceSlide.ride).
+    @MainActor static let columns = NSMapTable<NSWindow, NSScrollView>.weakToWeakObjects()
 
     // MARK: - the bench
 
