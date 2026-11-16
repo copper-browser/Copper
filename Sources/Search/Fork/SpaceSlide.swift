@@ -136,8 +136,9 @@ final class SpaceSlide: ObservableObject {
     let ink = InkSteps()
     static let inkSteps: CGFloat = 24
 
-    private func set(phase value: CGFloat) {
+    private func set(phase value: CGFloat, ink mixed: Bool = true) {
         phase = value
+        guard mixed else { return }
         let step = Int((min(1, max(0, value)) * SpaceSlide.inkSteps).rounded())
         if ink.step != step { ink.step = step }
     }
@@ -299,10 +300,16 @@ final class SpaceSlide: ObservableObject {
             withTransaction(calm) { set(phase: hold) }
             return
         }
+        // Fork (r7 space): a ride's ink changes once, here, with the first
+        // frame of the travel — the ground under it is past half way two
+        // frames later (the curve). Glided, the lights, the address and the
+        // strip were coloured again on the main thread in every frame of the
+        // slide: ~30 of a switch's ~100 ms.
+        if riding { withTransaction(calm) { ink.step = Int(SpaceSlide.inkSteps) } }
         // A fade out and in wants an even pace; the travel's curve is over
         // its first half in a few frames.
         withAnimation(way == 0 ? .easeInOut(duration: SpaceSlide.duration) : SpaceSlide.curve, completionCriteria: .logicallyComplete) {
-            set(phase: 1)
+            set(phase: 1, ink: !riding)
         } completion: { [weak self] in
             guard let self, mine == self.serial else { return }
             self.end()

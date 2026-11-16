@@ -37,7 +37,11 @@ colour in place. A click's or a key's travel is two Core Animation moves
 (the live rows' layer in, the old rows' out), set off in the switch's own
 pass, so the rows move from the frame that first shows them and no frame of
 the travel waits on the main thread (`bench spaces slide core on|off` to
-compare; a swipe follows the fingers as before). With Reduce Motion on
+compare; a swipe follows the fingers as before). The parts that stay put —
+the lights, the address, the strip — take the new space's ink once, with the
+travel's first frame (a swipe still mixes it by the fingers), and the
+neighbours kept drawn for a swipe are left as they are until the column has
+settled. With Reduce Motion on
 nothing travels — the old rows fade
 out, then the new ones fade in, never the two lists over each other. The
 new space's page takes the card in the same frame as its rows: a page

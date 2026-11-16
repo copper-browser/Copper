@@ -5,8 +5,11 @@ scene's clock ran on while Copper was behind another app (or idle 30 s), and com
 0.9 s glide through everything missed: six seconds away, six seconds of motion in under one.
 
   1. A space with a scene (`spaces theme 0 motion ribbons`): the page draws, its clock moves.
-  2. `spaces backdrop pause` (as behind another app) for six seconds, then `auto` (in front again):
+  2. `spaces backdrop pause` (as behind another app) for six seconds, then `run` (in front again):
      half a second later the clock is half a second on, not six and a half; so is it after 1.5 s.
+
+The bench says `run` itself rather than leave it to the window (`auto`): a probe's window is
+never in front, and a Mac with Reduce Motion on keeps every scene still.
 
 A fresh SEARCH_PROBE world of the development build, headless.
 
@@ -81,13 +84,17 @@ def until(what, check, seconds=30):
 with socket.socket() as s:
     s.bind(("127.0.0.1", 0))
     port = s.getsockname()[1]
+for key in ("bench", "welcomed", "sidebar"):
+    subprocess.run(["defaults", "write", domain, key, "-bool", "true"], check=True)
 env = dict(os.environ, SEARCH_PROBE=world, SEARCH_HEADLESS="1", SEARCH_MCP_PORT=str(port))
 proc = subprocess.Popen([os.path.join(app, "Contents/MacOS/Copper")], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 until("the bench", lambda: os.path.exists(os.path.join(folder, "bench.sock")) and ask({"do": "tabs"}), 40)
 
 ask({"do": "spaces", "op": "theme", "arg": "0 motion ribbons"})
+ask({"do": "spaces", "op": "backdrop", "arg": "run"})
 until("the scene to draw", lambda: scene().get("running") and scene().get("frames", 0) > 5, 40)
-a, _ = scene()["time"], time.sleep(1)
+a = scene()["time"]
+time.sleep(1)
 b = scene()["time"]
 if not 0.5 < b - a < 2:
     fail(f"running, the clock should move a second a second: {a} → {b}")
@@ -97,7 +104,7 @@ ask({"do": "spaces", "op": "backdrop", "arg": "pause"})
 until("the scene to stop", lambda: not scene().get("running"), 5)
 left = scene()["time"]
 time.sleep(6)
-ask({"do": "spaces", "op": "backdrop", "arg": "auto"})
+ask({"do": "spaces", "op": "backdrop", "arg": "run"})
 time.sleep(0.5)
 soon = scene()
 time.sleep(1)
