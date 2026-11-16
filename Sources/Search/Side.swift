@@ -13,7 +13,7 @@ import SwiftUI
 /// and the fact that the live row is a pill in a stronger tint of the same
 /// hue than everything around it.
 struct SideBar: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var prefs: Preferences
     @ObservedObject private var spaces = Spaces.shared
     @ObservedObject private var sections = Sections.shared
@@ -21,9 +21,15 @@ struct SideBar: View {
     @ObservedObject private var clearTabs = ClearTabs.shared
     @ObservedObject private var drag: SideDrag // Fork (saved-drag): the row in the hand, and where it would land
 
-    init(browser: Browser, prefs: Preferences) { // Fork (saved-drag): picks up this window's drag
+    /// Fork (page-frame): whether the column draws the space's ground itself
+    /// — the folded column out over the page does; beside the page the
+    /// window draws it under both (Fork/PageFrame.swift).
+    let grounded: Bool
+
+    init(browser: Browser, prefs: Preferences, grounded: Bool = true) { // Fork (saved-drag): picks up this window's drag
         self.browser = browser
         self.prefs = prefs
+        self.grounded = grounded
         _drag = ObservedObject(wrappedValue: SideDrag.of(browser))
     }
 
@@ -55,6 +61,10 @@ struct SideBar: View {
     /// the window's edge.
     static let inset: CGFloat = 8
     static let rowInset: CGFloat = 10
+    /// Fork (uitype): a row's title (Arc's 14, the live one semibold), and
+    /// the space's name over the rows, a size under it.
+    static let title: CGFloat = 14
+    static let heading: CGFloat = 13
     private static let pinGap: CGFloat = 8
 
     private var tint: SpaceTint { SpaceTint(space: spaces.space(in: browser), dark: scheme == .dark) }
@@ -79,6 +89,10 @@ struct SideBar: View {
                 pinned
                     .padding(.horizontal, SideBar.inset)
                     .padding(.bottom, 8)
+            } else {
+                GhostFavourites(browser: browser, tint: tint, width: pinWidth, height: pinHeight, gap: SideBar.pinGap) // Fork (ui-flows r3, Fork/StartCard.swift)
+                    .padding(.horizontal, SideBar.inset)
+                    .padding(.bottom, 8)
             }
 
             // Fork (space-slide): the space's name and its rows are the part
@@ -86,6 +100,10 @@ struct SideBar: View {
             // the address, the favourites and the strip stay put.
             column
                 .modifier(SpaceSlideBand(browser: browser))
+
+            // Fork (ui-flows): an agent driving — its pill and Stop — above
+            // the foot, not over the page (Fork/MCP/HandsUI.swift).
+            DriveSlot(browser: browser, activeID: browser.activeID)
 
             // Fork (update-pill): Arc's update button, just above the foot,
             // only while there is a newer Copper (Fork/UpdatePill.swift).
@@ -100,7 +118,7 @@ struct SideBar: View {
         // never slid, so there is no seam between two grounds.
         .background {
             ZStack {
-                SpaceGroundView(browser: browser, dark: scheme == .dark)
+                if grounded { SpaceGroundView(browser: browser, dark: scheme == .dark) }
                 if landing { tint.hover }
             }
         }
@@ -109,7 +127,7 @@ struct SideBar: View {
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { SpaceSlide.shared.place(column: $0, in: browser) }
         .onDisappear { SpaceSlide.shared.place(column: nil, in: browser) }
         .overlay(alignment: .trailing) {
-            Rectangle().fill(tint.hairline.opacity(0.6)).frame(width: 1)
+            if grounded { Rectangle().fill(tint.hairline.opacity(0.6)).frame(width: 1) }
         }
         .overlay(alignment: .trailing) { edge }
         // Fork: the wheel button closes the favourite or row under it — one
@@ -119,7 +137,7 @@ struct SideBar: View {
             GeometryReader { geo in
                 Color.clear.onReceive(NotificationCenter.default.publisher(for: MouseButtons.middleClickedSidebar)) { note in
                     guard let point = MouseButtons.point(of: note),
-                          let id = targets.hit(point, in: geo), browser.editingTab != id,
+                          let id = targets.hit(point, in: geo, row: { drag.row(at: $0, among: SideBar.shown(browser)) }), browser.editingTab != id,
                           let tab = browser.tabs.first(where: { $0.id == id }) else { return }
                     browser.close(tab)
                 }
@@ -137,10 +155,26 @@ struct SideBar: View {
         .onChange(of: browser.tabs.map(\.id)) { _, _ in sections.arrived(in: browser) }
         .onChange(of: browser.activeID) { _, now in sections.note(now) }
         .animation(Motion.quick, value: landing)
-        .animation(Motion.glide, value: browser.activeID)
+        // Fork (sidebar-perf): the live row's glide is animated where the
+        // pill is (the favourites and the rows), not over the whole column —
+        // the lights, the address, the ground and the strip redrew every
+        // frame of it (about half of a tab switch's main-thread time).
         .animation(Motion.glide, value: browser.editingTab)
         .animation(Motion.settle, value: browser.tabs.map(\.id))
         .animation(Motion.settle, value: browser.pinnedCount)
+    }
+
+    /// Fork (space-perf): the loose rows the column draws now — none inside
+    /// a shut folder, whose last frames the drag still remembers.
+    static func shown(_ browser: Browser) -> [Tab] {
+        let loose = browser.tabs.filter { $0.pin == nil }
+        let space = Spaces.shared.current(in: browser)
+        return [true, false].flatMap { saved in
+            FolderTree.plan(loose.filter { Sections.shared.isSaved($0) == saved }, space: space).compactMap { row -> Tab? in
+                if case .tab(let tab, _, _, _) = row { return tab }
+                return nil
+            }
+        }
     }
 
     // MARK: - the lights' band
@@ -240,6 +274,7 @@ struct SideBar: View {
             }
         } }
         .coordinateSpace(name: "pins")
+        .animation(Motion.glide, value: browser.activeID) // Fork (sidebar-perf): see body
     }
 
     /// The one square actually held stays glued to the fingers; every other
@@ -309,7 +344,10 @@ struct SideBar: View {
     /// under it — never parked at the foot of the window.
     private var column: some View {
         let kept = looseRows.filter { sections.isSaved($0.tab) }
-        let today = looseRows.filter { !sections.isSaved($0.tab) }
+        var today = looseRows.filter { !sections.isSaved($0.tab) }
+        // Fork (ui-flows): a lone blank tab is what "+ New Tab" already says;
+        // listed too, the column read "New Tab" twice.
+        if today.count == 1, today[0].tab.isBlank { today = [] }
         let clearCount = clearTabs.clearable(in: browser).count
         return ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
@@ -334,7 +372,7 @@ struct SideBar: View {
                 // worked out from, a folder lit for a drop onto it, and the
                 // card in the hand (Fork/SavedDrop.swift).
                 .coordinateSpace(name: SavedDrop.space)
-                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { drag.contentTop = $0 } // Fork (saved-drag)
+                .onGeometryChange(for: CGPoint.self) { $0.frame(in: .global).origin } action: { drag.contentTop = $0.y; drag.contentLeft = $0.x } // Fork (saved-drag; space-perf: and where rows are, SideDrag.global)
                 .overlay(alignment: .topLeading) { SavedDropMark(drag: drag, tint: tint) }
                 .overlay(alignment: .topLeading) { SideDragCard(drag: drag, browser: browser, tint: tint) }
                 .padding(.horizontal, SideBar.inset)
@@ -343,6 +381,7 @@ struct SideBar: View {
                 // Fork (scroll-bounce): elastic up and down, never sideways.
                 .background(SideScrollElasticity())
             }
+            .animation(Motion.glide, value: browser.activeID) // Fork (sidebar-perf): see body
             .scrollBounceBehavior(.always, axes: .vertical)
             .frame(maxHeight: .infinity)
             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { drag.pinLine = $0 } // Fork (saved-drag): above it, the favourites
@@ -426,9 +465,10 @@ struct SideBar: View {
     }
 
     /// Arc's New Tab: a plus and the words, as quiet as the rows around it,
-    /// right under the rows you keep.
+    /// right under the rows you keep. Fork (uitype): the words at the
+    /// heading's strength (muted was 2.75:1 drawn), the plus quieter.
     private var newTab: some View {
-        Quiet(icon: "plus", title: "New Tab", height: SideBar.row, inset: SideBar.rowInset, glow: tint.hover, ink: tint.muted) {
+        Quiet(icon: "plus", title: "New Tab", height: SideBar.row, inset: SideBar.rowInset, glow: tint.hover, ink: tint.muted, words: tint.heading) {
             browser.launch() // Fork: the ⌘T card, as Arc's New Tab row opens it
         }
         .contextMenu { NewItemMenu(browser: browser) } // Fork (canvas): New Tab / New Canvas, Arc's new-item menu
@@ -480,7 +520,6 @@ struct SideBar: View {
 /// the chip borrowed from the space instead.
 struct RowMark: View {
     let icon: NSImage?
-    let letter: String
     let tint: SpaceTint
     var size: CGFloat = 16
 
@@ -493,14 +532,7 @@ struct RowMark: View {
                     .frame(width: size, height: size)
                     .clipShape(RoundedRectangle(cornerRadius: size * 0.24, style: .continuous))
             } else {
-                Text(letter)
-                    .font(.system(size: size * 0.52, weight: .semibold))
-                    .foregroundStyle(tint.ink.opacity(0.6))
-                    .frame(width: size, height: size)
-                    .background(
-                        RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
-                            .fill(tint.chip)
-                    )
+                Globe(size: size, ink: tint.ink.opacity(0.6)) // Fork (polish r5): no letter tiles
             }
         }
         .transition(.opacity)
@@ -511,7 +543,7 @@ struct RowMark: View {
 /// Fork (saved-drag): the place a row carried up over the favourites will
 /// take, ringed in the space's colour as a folder lit for a drop is.
 private struct PinDropGhost: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var tab: Tab
     let tint: SpaceTint
     let width: CGFloat
@@ -519,7 +551,7 @@ private struct PinDropGhost: View {
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: min(12, min(width, height) * 0.28), style: .continuous)
-        SideGlyphMark(prefs: browser.prefs, icon: tab.icon, letter: tab.monogram, tint: tint,
+        RowMark(icon: tab.icon, tint: tint,
                       size: max(14, min(20, height * 0.46)))
             .opacity(0.7)
             .frame(width: width, height: height)
@@ -534,7 +566,7 @@ private struct PinDropGhost: View {
 /// the same cell Copper's pins have always been, only with the icon in front
 /// and the letter behind it.
 private struct PinSquare: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var tab: Tab
     let live: Bool
     let tint: SpaceTint
@@ -551,14 +583,16 @@ private struct PinSquare: View {
     private var radius: CGFloat { min(12, min(width, height) * 0.28) }
     /// A mark big enough to recognise at a glance, and no bigger than the
     /// cell can hold with air around it.
-    private var mark: CGFloat { max(14, min(20, height * 0.46)) }
+    /// Fork (polish r5): 16 pt like every other favicon in the chrome (was
+    /// up to 20, so two pins' marks read as two sizes).
+    private var mark: CGFloat { min(16, max(14, height * 0.46)) }
 
     var body: some View {
         Group {
             if browser.editingPin == tab.id {
                 PinField(browser: browser, tab: tab)
             } else {
-                SideGlyphMark(prefs: browser.prefs, icon: tab.icon, letter: tab.pin ?? tab.monogram, tint: tint, size: mark) // Fork (settings-browse): Tabs show Letters / Site icons
+                RowMark(icon: tab.pinMark, tint: tint, size: mark) // Fork (polish r5): always the site icon
             }
         }
         .frame(width: width, height: height)
@@ -583,6 +617,7 @@ private struct PinSquare: View {
         .modifier(OneClick(double: live) {
             if live { browser.editLetter(tab) } else { browser.select(tab) }
         })
+        .modifier(Pressable(radius: radius)) // Fork (motion)
         .onHover { pointing = $0 }
         // Fork (calendar-peek): a Calendar pin shows the next meetings while
         // the pointer rests on it or on the card.
@@ -611,23 +646,71 @@ private struct PinSquare: View {
     }
 }
 
-/// One tab, as a line in the column.
-struct SideRow: View { // Fork: was private; GroupedRows draws it
-    @ObservedObject var browser: Browser
+/// Fork (polish r5): a kept split's second half inside its partner's row:
+/// its mark and title, its own click (selecting it trades the panes over).
+private struct SidePairHalf: View {
+    let browser: Browser
     @ObservedObject var tab: Tab
     let live: Bool
     let tint: SpaceTint
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if !tab.isBlank {
+                RowMark(icon: tab.icon, tint: tint, size: 16)
+            }
+            FadingTitle(text: Text(tab.label)
+                .font(.system(size: SideBar.title, weight: live ? .semibold : .regular))
+                .foregroundStyle(tint.ink))
+        }
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture { if !live { browser.select(tab) } }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
+/// One tab, as a line in the column.
+///
+/// Fork (space-perf): what the row needs from the window and from Heat comes
+/// in as plain values, and the row is Equatable (`GroupedRows` draws it
+/// `.equatable()`). It used to observe the whole Browser and Heat: every
+/// change to the window — the live tab, the field, the tab list — drew every
+/// row again, 185 of them in a big space with its folders open (a warm tab
+/// switch there was ~210 ms of main thread).
+struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
+    let browser: Browser // Fork (space-perf): not observed, see above
+    @ObservedObject var tab: Tab
+    let live: Bool
+    /// This row is the address field (`browser.editingTab`).
+    var editing = false
+    /// Heat says its page is burning a core.
+    var hot = false
+    /// The window's refusals while this row is the field (else 0): each one shakes it.
+    var refusals = 0
+    let tint: SpaceTint
     let pill: Namespace.ID
     let close: () -> Void
+    /// Fork (polish r5): the other half of a kept split, drawn in this row
+    /// (GroupedRows hides its own) — one row, both marks, a hairline, one
+    /// pill, as Arc's split items. `pairLive`: that half is the live tab.
+    var pair: Tab? = nil
+    var pairLive = false
+
+    static func == (a: SideRow, b: SideRow) -> Bool {
+        a.tab === b.tab && a.live == b.live && a.editing == b.editing && a.hot == b.hot && a.refusals == b.refusals
+            && a.pair === b.pair && a.pairLive == b.pairLive
+            && a.pill == b.pill && a.tint.theme == b.tint.theme && a.tint.dark == b.tint.dark && a.tint.night == b.tint.night
+    }
 
     @State private var pointing = false
     @ObservedObject private var benchHover = SideRowHover.shared // Fork (saved-close): `bench sections hover ID`
     /// Under the pointer — or, for a picture, under the bench's.
     private var hovering: Bool { pointing || benchHover.forced == tab.id }
     @State private var shake: CGFloat = 0
-    @ObservedObject private var heat = Heat.shared
-
-    private var editing: Bool { browser.editingTab == tab.id }
+    @ObservedObject private var paired = SplitPairs.shared // Fork (motion): changes only when a split is made or undone
+    private var inPair: Bool { paired.ids.contains(tab.id) }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -636,95 +719,119 @@ struct SideRow: View { // Fork: was private; GroupedRows draws it
                     .frame(height: 18)
             } else {
                 if !tab.isBlank {
-                    SideGlyphMark(prefs: browser.prefs, icon: tab.icon, letter: tab.monogram, tint: tint, size: 16) // Fork (settings-browse): Tabs show Letters / Site icons
+                    RowMark(icon: tab.icon, tint: tint, size: 16) // Fork (polish r5): always the site icon
                         .opacity(live ? 1 : 0.9)
                 }
                 if tab.bench {
                     // A script's tab, not yours.
                     Image(systemName: "flask")
-                        .font(.system(size: 9))
+                        .font(.system(size: 10)) // Fork (uib): the 10 pt floor
                         .foregroundStyle(colour.opacity(0.7))
                 }
                 if tab.shy {
                     Image(systemName: "eye.slash")
-                        .font(.system(size: 9))
+                        .font(.system(size: 10))
                         .foregroundStyle(colour.opacity(0.7))
                 }
-                Text(tab.label)
-                    .font(.system(size: 15, weight: live ? .semibold : .regular))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .foregroundStyle(colour)
+                FadingTitle(text: Text(tab.label) // Fork (motion): a long title fades out, no "…"
+                    .font(.system(size: SideBar.title, weight: own ? .semibold : .regular))
+                    .foregroundStyle(colour))
+                if let pair {
+                    Rectangle().fill(tint.hairline).frame(width: 1, height: 16)
+                    SidePairHalf(browser: browser, tab: pair, live: pairLive, tint: tint)
+                }
             }
 
             Spacer(minLength: 2)
 
             if !editing { HandBadges(tab: tab.id) } // Fork: agents' hands (Hands.swift)
-
-            ZStack {
-                if hovering, !editing {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(tint.muted)
-                        .frame(width: 15, height: 15)
-                        .background(tint.ink.opacity(0.07), in: Circle())
-                        .transition(.opacity)
-                } else if tab.loading {
-                    Ring().transition(.opacity)
-                } else if tab.noisy {
-                    Image(systemName: "speaker.wave.2.fill")
-                        .font(.system(size: 8))
-                        .foregroundStyle(tint.muted)
-                        .transition(.opacity)
-                } else if heat.isHot(tab), let reading = heat.reading(for: tab) {
-                    Image(systemName: "flame.fill")
-                        .font(.system(size: 8))
-                        .foregroundStyle(Color.orange.opacity(0.9))
-                        .help("Using \(Int(reading.cpu))% CPU")
-                        .transition(.opacity)
-                }
-            }
-            .frame(width: editing ? 0 : 15, height: 15)
-            .opacity(editing ? 0 : 1)
-            .overlay {
-                if !editing {
-                    Color.clear
-                        .frame(width: 30, height: 28)
-                        .contentShape(Rectangle())
-                        .onTapGesture { if hovering { close() } }
-                }
-            }
-            .animation(Motion.quick, value: hovering)
-            .animation(Motion.quick, value: tab.loading)
-            .animation(Motion.quick, value: tab.noisy)
+        }
+        // Fork (uitype): the cross and the ring take no room at rest — a slot
+        // kept for them cut every title 22 pt short. They are drawn over the
+        // title's end, which fades out under them.
+        .padding(.trailing, editing ? 10 : 8)
+        .modifier(RowEndFade(on: !editing && slotShown))
+        .overlay(alignment: .trailing) {
+            if !editing { slot.padding(.trailing, 8) }
         }
         .padding(.leading, SideBar.rowInset)
-        .padding(.trailing, editing ? 10 : 8)
         .frame(height: SideBar.row)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background { ground }
+        .overlay(alignment: .leading) { if inPair, pair == nil { SplitBracket(tint: tint) } } // Fork (motion): the two halves of a split, when apart
         .modifier(Shake(travel: shake))
         .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .modifier(OneClick(double: false) {
-            if live { browser.beginTabEdit(tab) } else { browser.select(tab) }
+            if own { browser.beginTabEdit(tab) } else { browser.select(tab) }
         })
+        .modifier(Pressable()) // Fork (motion): the shared pressed state, after the tap so the tap keeps the click
         .onHover { pointing = $0 }
         .contextMenu { TabMenu(browser: browser, tab: tab, close: close) }
         .modifier(CanvasTabRow(tab: tab)) // Fork (canvas): a canvas's rename field hangs from its row
         // The wheel button over a row closes it, as in Arc and Chrome. SwiftUI
         // never sees that button; the app's monitor does and says where
         // (Fork: MouseButtons). The row's own frame decides, not its hover
-        // state, which a synthetic pointer never sets — handed up to the
-        // column, which has the one listener (Fork: SideTargets).
-        .anchorPreference(key: SideTargets.self, value: .bounds) { SideTargets(rows: [tab.id: $0]) }
+        // state, which a synthetic pointer never sets — the column has the
+        // one listener, and finds the row from the frames the rows already
+        // hand the drag (Fork: SideTargets, space-perf: no anchor per row).
         .animation(Motion.quick, value: hovering)
         .animation(Motion.glide, value: editing)
-        .onChange(of: browser.refusals) { _, _ in
+        .onChange(of: refusals) { _, _ in
             guard editing else { return }
             shake = 0
             withAnimation(.easeOut(duration: 0.5)) { shake = 1 }
         }
-        .transition(.scale(scale: 0.94, anchor: .leading).combined(with: .opacity))
+        // Fork (perf): a fade. A scale redrew the row's text at a new size every
+        // frame, and on a 1× screen each new size of a glyph is hinted again —
+        // CPU work on every tab opened or closed.
+        .transition(.opacity)
+    }
+
+    /// This row's own tab is the live one (not its split's other half).
+    private var own: Bool { live && !pairLive }
+
+    /// Whether anything is in the slot at the row's end right now.
+    private var slotShown: Bool {
+        hovering || tab.loading || tab.noisy || hot
+    }
+
+    /// One slot doing four jobs — the cross under the pointer, else the ring
+    /// while the page comes, the sound, the heat — never two at once.
+    private var slot: some View {
+        ZStack {
+            if hovering, !editing {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(tint.ink.opacity(0.7)) // muted is ~4.4:1 on the column; this is ≥4.5
+                    .frame(width: 15, height: 15)
+                    .background(tint.ink.opacity(0.07), in: Circle())
+                    .transition(.opacity)
+            } else if tab.loading {
+                Ring().transition(.opacity)
+            } else if tab.noisy {
+                Image(systemName: "speaker.wave.2.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(tint.ink.opacity(0.7)) // muted is ~4.4:1 on the column; this is ≥4.5
+                    .transition(.opacity)
+            } else if hot, let reading = Heat.shared.reading(for: tab) {
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color.orange.opacity(0.9))
+                    .help("Using \(Int(reading.cpu))% CPU")
+                    .transition(.opacity)
+            }
+        }
+        .frame(width: 15, height: 15)
+        .overlay {
+            Color.clear
+                .frame(width: 30, height: 28)
+                .contentShape(Rectangle())
+                .onTapGesture { if hovering { close() } }
+                .allowsHitTesting(hovering)
+        }
+        .animation(Motion.quick, value: hovering)
+        .animation(Motion.quick, value: tab.loading)
+        .animation(Motion.quick, value: tab.noisy)
     }
 
     /// The live row is Arc's: paper half-way to white, lifting off the
@@ -752,6 +859,9 @@ struct SideRow: View { // Fork: was private; GroupedRows draws it
         } else if hovering {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(tint.hover)
+        } else if inPair, pair == nil {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(tint.ink.opacity(0.05)) // Fork (motion): a split's other half, tinted like its partner's pill
         }
     }
 
@@ -762,6 +872,31 @@ struct SideRow: View { // Fork: was private; GroupedRows draws it
     /// the one thing a list of twenty-five things you keep must not do.
     private var colour: Color {
         tint.ink
+    }
+}
+
+/// Fork (uitype): a row's or a tab's end, faded out under the cross or the
+/// ring drawn over it (24 pt of fade, then clear under the 15 pt slot, its
+/// 8 pt of air and a little more) — so the slot costs the title nothing
+/// while it is empty. Off, no mask at all: a mask is an offscreen pass, and
+/// on every row of a 185-tab column it cost the space slide 33 frames.
+struct RowEndFade: ViewModifier {
+    let on: Bool
+    var clear: CGFloat = 8 + 15 + 3
+
+    func body(content: Content) -> some View {
+        if on {
+            content.mask {
+                HStack(spacing: 0) {
+                    Rectangle()
+                    LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: 24)
+                    Color.clear.frame(width: clear)
+                }
+            }
+        } else {
+            content
+        }
     }
 }
 
@@ -779,6 +914,8 @@ struct Quiet: View {
     /// the column; the favourites' soft square for the one row Arc lets you
     /// see from across the room.
     var fill: Color?
+    /// Fork (uitype): the words' own ink, when the glyph's is too quiet for words.
+    var words: Color?
     let act: () -> Void
 
     @State private var hovering = false
@@ -790,7 +927,8 @@ struct Quiet: View {
                     .font(.system(size: 14, weight: .regular))
                     .frame(width: 16)
                 Text(title)
-                    .font(.system(size: 15))
+                    .font(.system(size: SideBar.title))
+                    .foregroundStyle(words ?? ink ?? Palette.muted) // Fork (uitype): words never in faint
                 Spacer(minLength: 0)
             }
             .foregroundStyle(hovering ? (ink ?? Palette.faint).opacity(1) : (ink ?? Palette.faint).opacity(0.82))
@@ -855,7 +993,7 @@ struct Door: View {
 /// The host gives them its room and truncates, rather than sitting under
 /// them. Downloads, while there are any, stay put ahead of them.
 struct SideAddress: View {
-    @ObservedObject var browser: Browser
+    @Bindable var browser: Browser
     let tint: SpaceTint
     @ObservedObject private var downloads = Downloads.shared
     @ObservedObject private var bench = SideAddressHover.shared
@@ -866,7 +1004,7 @@ struct SideAddress: View {
             Button { browser.edit() } label: {
                 Group {
                     if let tab = browser.active {
-                        Host(tab: tab, tint: tint)
+                        Host(tab: tab, tint: tint, open: hovering || bench.forced)
                     } else {
                         Placeholder(tint: tint)
                     }
@@ -876,7 +1014,7 @@ struct SideAddress: View {
             }
             .buttonStyle(.plain)
             .help("Change the address   ⌘L")
-            if downloads.doorShowing {
+            if downloads.doorShowing || downloads.showsDoor(in: browser) { // Fork (ui-flows r3): ⌘⇧J opens the list here even before a first download
                 DownloadsDoor(browser: browser, size: 24, arrowEdge: .bottom)
                     .transition(.scale(scale: 0.8).combined(with: .opacity))
             }
@@ -909,14 +1047,29 @@ struct SideAddress: View {
     private struct Host: View {
         @ObservedObject var tab: Tab
         let tint: SpaceTint
+        /// The pointer on the address: what it says about the connection comes out.
+        var open = false
 
         var body: some View {
             if let url = tab.address, !tab.isBlank {
-                Text(SideAddress.host(url))
-                    .font(.system(size: 14.5))
-                    .foregroundStyle(tint.ink.opacity(0.82))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                HStack(spacing: 6) {
+                    // Fork (uib): a page over plain http says so, as Safari and Chrome do.
+                    if open, url.scheme?.lowercased() == "http" {
+                        HStack(spacing: 3) {
+                            Image(systemName: "lock.open").font(.system(size: 11, weight: .medium))
+                            Text("Not secure").font(.system(size: 12, weight: .medium))
+                        }
+                        .foregroundStyle(tint.ink.opacity(0.82))
+                        .fixedSize()
+                        .help("This page's connection isn't encrypted")
+                        .transition(.opacity)
+                    }
+                    Text(SideAddress.host(url))
+                        .font(.system(size: 14.5))
+                        .foregroundStyle(tint.ink.opacity(0.82))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
             } else {
                 Placeholder(tint: tint)
             }
@@ -926,9 +1079,9 @@ struct SideAddress: View {
     private struct Placeholder: View {
         let tint: SpaceTint
         var body: some View {
-            Text("Search or Enter URL…")
+            Text("Search or enter address") // Fork (first-run): one wording, readable
                 .font(.system(size: 14.5))
-                .foregroundStyle(tint.faint)
+                .foregroundStyle(tint.ink.opacity(0.8)) // Fork (uitype): 0.7 drew 3.8:1 on a mid colour
                 .lineLimit(1)
         }
     }

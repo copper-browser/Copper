@@ -2668,7 +2668,7 @@ enum ExtensionAuth {
             let tab = browser.open(url, foreground: true)
             waiting[id] = (tab.id, { result in continuation.resume(with: result) })
             // Closing the tab is saying no.
-            watch = browser.$tabs.sink { tabs in
+            watch = browser.feed(\.tabs).sink { tabs in
                 for (key, entry) in waiting where !tabs.contains(where: { $0.id == entry.tab }) {
                     waiting[key] = nil
                     entry.finish(.failure(Declined()))

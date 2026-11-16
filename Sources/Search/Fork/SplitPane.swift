@@ -21,9 +21,11 @@ import SwiftUI
 // A web view is also a real AppKit layer: `.clipShape` does not round it, and
 // wrapping the subtree that holds it in `.clipShape` or `.shadow` hands it the
 // wrong frame again. So the card never clips or shadows the subtree — the
-// corners are painted back out afterwards (`CornerCut`), the shadow belongs to
-// the background shape alone, and the toolbar is an overlay, which does land
-// on top of an AppKit layer where a sibling would not.
+// page's bottom corners are cut on the stage's own layer (`PageCorners`,
+// Fork/PageFrame.swift), the shadow belongs to the background shape alone,
+// and the toolbar is an overlay, which does land on top of an AppKit layer
+// where a sibling would not. (The corners used to be painted back out in the
+// colour behind the card, which a picture or a gradient behind it defeats.)
 
 enum SplitMetrics {
     /// The air between the two cards.
@@ -32,8 +34,10 @@ enum SplitMetrics {
     static let margin: CGFloat = 7
     /// A card's corner. Between Arc's and the window's own.
     static let corner: CGFloat = 11
-    /// The strip of chrome each card carries.
+    /// The strip of chrome each card carries — over the page's top, and only
+    /// while the pointer is in the pane's top `reach` (Fork: uiflows r4).
     static let bar: CGFloat = 32
+    static let reach: CGFloat = 36
     /// A card never gets narrower than this, however far the handle is pulled.
     static let least: CGFloat = 220
     /// How wide the invisible line between the cards is to the pointer —
@@ -43,29 +47,38 @@ enum SplitMetrics {
 
 /// One pane: its toolbar, its page, its outline.
 struct SplitCard: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var tab: Tab
     /// The pane the keyboard is in.
     let live: Bool
     /// The space's colour, for the live pane's outline.
     let tint: Color
-    /// What is behind the cards, so the corners can be painted back out in it.
-    let wash: Color
     /// The room the stage measured for this card. Not negotiable: see above.
     let size: CGSize
+    /// Fork (motion): the pane has finished sliding in.
+    var landed = true
+    /// Fork (uiflows r4): the pointer is in the pane's top `reach`: its bar
+    /// shows over the page (120 ms in and out). At rest the page has the
+    /// whole card, as Arc's split panes do.
+    @State private var near = false
 
     var body: some View {
         Page(tab: tab)
-            .frame(width: size.width, height: max(size.height - SplitMetrics.bar, 1))
-            .padding(.top, SplitMetrics.bar)
+            .environment(\.pageCorners, PageCorners(radius: SplitMetrics.corner))
             .frame(width: size.width, height: size.height)
             .background(plate)
-            .overlay(alignment: .top) { SplitBar(browser: browser, tab: tab, live: live) }
-            // The web view is square whatever we ask of it, so the corners are
-            // painted back out in the colour behind the card. No layer tree
-            // argues with paint.
-            .overlay { CornerCut(radius: SplitMetrics.corner).fill(Palette.ground, style: FillStyle(eoFill: true)) }
-            .overlay { CornerCut(radius: SplitMetrics.corner).fill(wash, style: FillStyle(eoFill: true)) }
+            .overlay(alignment: .top) {
+                HoverZone { inside in withAnimation(.easeOut(duration: 0.12)) { near = inside } }
+                    .frame(width: size.width, height: SplitMetrics.reach)
+                    .allowsHitTesting(false) // a tracking area needs no hits; the page keeps its clicks
+            }
+            .overlay(alignment: .top) {
+                SplitBar(browser: browser, tab: tab, live: live, landed: landed)
+                    .frame(width: size.width)
+                    .clipShape(UnevenRoundedRectangle(topLeadingRadius: SplitMetrics.corner, topTrailingRadius: SplitMetrics.corner, style: .continuous))
+                    .opacity(near ? 1 : 0)
+                    .allowsHitTesting(near)
+            }
             .overlay { edge }
             .animation(Motion.quick, value: live)
     }
@@ -73,64 +86,108 @@ struct SplitCard: View {
     /// The card's own ground, and the only thing carrying the shadow — put the
     /// shadow on the subtree instead and the page inside it loses its place.
     private var plate: some View {
-        RoundedRectangle(cornerRadius: SplitMetrics.corner, style: .continuous)
-            .fill(Palette.ground)
-            .shadow(color: .black.opacity(live ? 0.16 : 0.09), radius: live ? 10 : 6, y: 2)
+        PageCard.plate(lifted: live)
+            .overlay { SplitWaiting(tab: tab) }
     }
 
     /// The live pane is outlined in the space's colour. The other is not
     /// outlined at all — that is the whole point of the outline.
-    private var edge: some View {
-        RoundedRectangle(cornerRadius: SplitMetrics.corner, style: .continuous)
-            .strokeBorder(live ? tint : Palette.hairline.opacity(0.9), lineWidth: live ? 2 : 1)
-            .allowsHitTesting(false)
+    @ViewBuilder private var edge: some View {
+        if live {
+            RoundedRectangle(cornerRadius: SplitMetrics.corner, style: .continuous)
+                .strokeBorder(tint, lineWidth: 1) // Fork (polish r5): 1 pt (the stage passes ~60%), Arc's weight
+                .allowsHitTesting(false)
+        } else {
+            PageCard.edge
+        }
     }
 }
 
-/// Everything outside a rounded rectangle, so it can be filled with whatever
-/// is behind the card and leave the corners looking cut.
-private struct CornerCut: Shape {
-    let radius: CGFloat
+/// Fork (ui-flows): what a pane shows under its page until the page first
+/// paints — the site's mark and title on the wash, never a white card. The
+/// page covers it the moment WebKit has a frame (`PageView.showFirstFrame`).
+struct SplitWaiting: View { // Fork (covers): also under a lone page card (PageFrame.swift)
+    @ObservedObject var tab: Tab
+    /// Fork (motion): the page has painted. Gone then, so it can't show
+    /// through wherever a page mid-resize hasn't drawn yet. Fork (polish r5):
+    /// at once — the page fades in over 120 ms (`showFirstFrame`), and an
+    /// 80 ms fade of this under it read as the label ghosting over the page.
+    @State private var painted: Bool
 
-    func path(in rect: CGRect) -> Path {
-        var path = Path(rect)
-        path.addPath(Path(roundedRect: rect, cornerRadius: radius, style: .continuous))
-        return path
+    init(tab: Tab) {
+        self.tab = tab
+        _painted = State(initialValue: tab.built.map { !$0.unpainted } ?? false)
+    }
+
+    var body: some View {
+        SplitGhost(tab: tab)
+            .opacity(painted ? 0 : 1)
+            .onAppear(perform: watch)
+            .onChange(of: tab.loading) { _, _ in watch() }
+    }
+
+    private func watch() {
+        guard !painted, let web = tab.built else { return }
+        web.whenPainted {
+            var now = Transaction()
+            now.disablesAnimations = true
+            withTransaction(now) { painted = true }
+        }
+    }
+}
+
+/// A pane before its page paints: the site's mark and title on the wash.
+/// Also the card that slides in when a split is made (`SplitStage.cover`).
+struct SplitGhost: View {
+    @ObservedObject var tab: Tab
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Mark(icon: tab.icon, size: 28)
+            Text(tab.title.isEmpty ? (tab.address.map(Address.pretty) ?? "New Tab") : tab.title)
+                .font(.system(size: 13))
+                .foregroundStyle(Palette.muted)
+                .lineLimit(1)
+                .padding(.horizontal, 24)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Palette.wash)
+        .clipShape(RoundedRectangle(cornerRadius: SplitMetrics.corner, style: .continuous))
+        .allowsHitTesting(false)
     }
 }
 
 /// A pane's own hairline toolbar: where it has been, what it is, and the
 /// cross that ends it.
 struct SplitBar: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var tab: Tab
     let live: Bool
+    /// Fork (motion): the cross waits until the pane has slid in.
+    var landed = true
 
     var body: some View {
         // The doors are PaneDoor, the same square the agent's and Jev's
-        // headers draw, at 24 here since the bar is only 32 tall.
+        // headers draw, at 24 here since the bar is only 32 tall. The whole
+        // bar shows under the pointer only (SplitCard), so they need no
+        // hover of their own.
         HStack(spacing: 1) {
-            PaneDoor(icon: "arrow.left", help: "Back", on: tab.canGoBack, tint: Palette.ink.opacity(0.65), size: 24) { tab.back() }
-            PaneDoor(icon: "arrow.right", help: "Forward", on: tab.canGoForward, tint: Palette.ink.opacity(0.65), size: 24) { tab.forward() }
-            PaneDoor(
-                icon: tab.loading ? "xmark" : "arrow.clockwise",
-                help: tab.loading ? "Stop" : "Reload",
-                tint: Palette.ink.opacity(0.65),
-                size: 24
-            ) {
-                tab.loading ? tab.stop() : tab.reload()
-            }
+            doors
 
             Spacer(minLength: 2)
 
             HStack(spacing: 5) {
-                Mark(icon: tab.icon, letter: tab.monogram, size: 13, dim: !live)
+                Mark(icon: tab.icon, size: 13)
                 Text(name)
                     .font(.system(size: 12))
-                    .foregroundStyle(live ? Palette.ink.opacity(0.7) : Palette.muted)
+                    .foregroundStyle(Palette.ink.opacity(0.8))
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
+            // Fork (uiflows r4): the other pane's mark and address dim as
+            // one (the mark was at 45%, its words at 70%); 0.8 × 0.82 ink
+            // keeps the words at AA on the band.
+            .opacity(live ? 1 : 0.82)
             .layoutPriority(1)
 
             Spacer(minLength: 2)
@@ -145,7 +202,10 @@ struct SplitBar: View {
                     Split.shared.dismiss(tab, in: browser)
                 }
             }
+            .opacity(landed ? 1 : 0)
+            .allowsHitTesting(landed)
         }
+        .animation(Motion.quick, value: landed)
         .padding(.horizontal, 7)
         .frame(height: SplitMetrics.bar)
         .background(alignment: .bottom) {
@@ -161,6 +221,21 @@ struct SplitBar: View {
         // A click anywhere on the bar is a click into the pane.
         .contentShape(Rectangle())
         .onTapGesture { Split.shared.touched(tab, in: browser) }
+    }
+
+    private var doors: some View {
+        HStack(spacing: 1) {
+            PaneDoor(icon: "arrow.left", help: "Back", on: tab.canGoBack, tint: Palette.ink.opacity(0.65), size: 24) { tab.back() }
+            PaneDoor(icon: "arrow.right", help: "Forward", on: tab.canGoForward, tint: Palette.ink.opacity(0.65), size: 24) { tab.forward() }
+            PaneDoor(
+                icon: tab.loading ? "xmark" : "arrow.clockwise",
+                help: tab.loading ? "Stop" : "Reload",
+                tint: Palette.ink.opacity(0.65),
+                size: 24
+            ) {
+                tab.loading ? tab.stop() : tab.reload()
+            }
+        }
     }
 
     /// Where the pane is, not what it is called: the tab in the column already
@@ -220,5 +295,46 @@ struct SplitHandle: View {
             }
         )
         .animation(Motion.quick, value: showing)
+    }
+}
+
+/// Fork (motion): the column's mark on both rows of a kept split — a 2 pt
+/// bar in the space's colour down each row's leading edge.
+struct SplitBracket: View {
+    let tint: SpaceTint
+
+    var body: some View {
+        Capsule(style: .continuous)
+            .fill(tint.bar)
+            .frame(width: 2)
+            .padding(.vertical, 7)
+            .padding(.leading, 3)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
+/// Fork (uiflows r4): says when the pointer comes over it and leaves, and
+/// takes nothing from the page under it — a tracking area, no hit test — so
+/// the page keeps its own clicks and hovers.
+struct HoverZone: NSViewRepresentable {
+    let changed: (Bool) -> Void
+
+    func makeNSView(context: Context) -> Zone { Zone() }
+    func updateNSView(_ view: Zone, context: Context) { view.changed = changed }
+
+    final class Zone: NSView {
+        var changed: (Bool) -> Void = { _ in }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            trackingAreas.forEach(removeTrackingArea)
+            addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+        }
+
+        override func mouseEntered(with event: NSEvent) { changed(true) }
+        override func mouseExited(with event: NSEvent) { changed(false) }
     }
 }

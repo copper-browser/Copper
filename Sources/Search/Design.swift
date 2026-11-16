@@ -12,8 +12,21 @@ import AppKit
 enum Palette {
     static let ground = Color(nsColor: NS.ground)
     static let ink = Color(nsColor: NS.ink)             // neutral-900 · neutral-100
-    static let muted = Color(nsColor: NS.muted)         // neutral-500
-    static let faint = Color(nsColor: NS.faint)         // neutral-300 · neutral-700
+    static let muted = Color(nsColor: NS.muted)         // every secondary word: ≥4.5:1 on ground and wash
+    /// Fork (polish r5): an empty field's example — lighter than a value
+    /// (muted read as typed text) but AA: #737373 (4.7:1 on white) · #9A9A9A.
+    static let placeholder = Color(nsColor: NS.placeholder)
+    static let faint = Color(nsColor: NS.faint)         // decoration only — rules, tracks, glyphs — never words
+    /// Fork (uitype): the one red — a failure's glyph or count, a word that
+    /// deletes. A sentence about a failure stays in ink with this on its glyph.
+    static let danger = Color(nsColor: NS.danger)
+    /// Fork (ui-system): Copper's one colour — the primary button, a switch
+    /// that is on, the keyboard's ring. Nothing else, so it always means
+    /// "this one".
+    static let accent = Color(nsColor: NS.accent)
+    /// Words on an accent fill: white on the deep light copper, near-black
+    /// on the bright dark one (white there is under 3:1).
+    static let onAccent = Color(nsColor: NS.onAccent)
     static let hairline = Color(nsColor: NS.hairline)   // neutral-200 · neutral-800
     static let wash = Color(nsColor: NS.wash)           // the live tab
     static let hover = Color(nsColor: NS.hover)         // the one under the pointer
@@ -23,13 +36,37 @@ enum Palette {
     enum NS {
         static let ground = pair(1.0, 0.11)
         static let ink = pair(0.09, 0.93)
-        static let muted = pair(0.55, 0.58)
+        // Fork (ui-system): was 0.55 · 0.58 — 3.4:1 on white. 0.40 (Settings'
+        // own detail ink) is 5.7:1 on ground and 5:1 on wash; 0.60 is 6:1
+        // and 4.8:1 in dark.
+        // Fork (uitype): 0.40 drew 3.4–4.4:1 once 11–12 pt strokes were
+        // antialiased (measured off the pictures), and 0.33 still 4.2–4.4;
+        // 0.28 (#474747, 9.6:1 on paper) draws ≥4.5. 0.66 in dark.
+        static let muted = pair(0.28, 0.66)
         static let faint = pair(0.83, 0.32)
+        // Fork (hc6): 0.45 drew ~#7d7d7d on the field wash (4.1:1); 0.38 draws
+        // ~#686868 (≥4.5:1 on #eee), 0.62 draws ≥#8e8e8e on the dark wash.
+        static let placeholder = pair(0.38, 0.62)
         static let hairline = pair(0.91, 0.20)
         static let wash = pair(0.937, 0.175)
         static let hover = pair(0.965, 0.15)
         /// The resting traffic lights, drawn by hand when the app is behind.
         static let resting = pair(0.80, 0.30)
+        /// #A9461F (5.9:1 under white) · #E07A52 (5.7:1 on the dark ground).
+        /// Fork (uib): was #BD522B — 4.7:1 on paper, 4.1:1 as drawn under a
+        /// filled pill's 12 pt words; small words need ~5.5 (see below).
+        static let accent = NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                ? NSColor(srgbRed: 0.878, green: 0.478, blue: 0.322, alpha: 1)
+                : NSColor(srgbRed: 0.663, green: 0.275, blue: 0.122, alpha: 1)
+        }
+        static let onAccent = pair(1.0, 0.11)
+        /// #B3261E (6.6:1 on white) · #FF8A80 (7.4:1 on the dark ground).
+        static let danger = NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                ? NSColor(srgbRed: 1.0, green: 0.541, blue: 0.502, alpha: 1)
+                : NSColor(srgbRed: 0.702, green: 0.149, blue: 0.118, alpha: 1)
+        }
 
         private static func pair(_ light: CGFloat, _ dark: CGFloat) -> NSColor {
             NSColor(name: nil) { appearance in
@@ -110,9 +147,11 @@ enum Metrics {
     /// narrower than tabTitled they show their site's mark alone, and they
     /// stop at tabMinWidth, the mark and its air. Past that the row scrolls,
     /// inside its own edges.
-    static let tabWidth: CGFloat = 186
+    static let tabWidth: CGFloat = 220 // Fork (uitype): spare strip width goes to the tabs (was 186)
     static let tabTitled: CGFloat = 80
-    static let tabMinWidth: CGFloat = 36
+    /// Fork (uichrome): was 36 (a strip of identical favicons under load);
+    /// tabs now keep a recognisable title and the run scrolls sooner.
+    static let tabMinWidth: CGFloat = 100
     static let tabGap: CGFloat = 2
     /// A pinned tab is a square the height of the row, holding one letter.
     static let pinWidth: CGFloat = 30
@@ -133,6 +172,9 @@ enum Motion {
     static let glide = Animation.spring(response: 0.34, dampingFraction: 0.82)
     static let settle = Animation.spring(response: 0.30, dampingFraction: 0.86)
     static let quick = Animation.easeOut(duration: 0.14)
+    /// Fork (polish r5): a row picked up and the rows making way for it —
+    /// stiff, settled in ~200 ms (settle took ~500 under the hand).
+    static let pickup = Animation.spring(response: 0.18, dampingFraction: 0.9)
 }
 
 /// The Copper app icon, as the product mark in onboarding and About.

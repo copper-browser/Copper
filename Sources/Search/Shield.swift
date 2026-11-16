@@ -48,8 +48,21 @@ final class Shield: ObservableObject {
     /// for the whole page rather than for the second half of it.
     func tune(_ controller: WKUserContentController, for host: String?) {
         guard let list else { return }
+        // Fork (navperf): touched only when it changes — the next page
+        // usually wants what the last one had.
+        let on = enabled && !isPaused(on: host)
+        guard attached.object(forKey: controller)?.boolValue != on else { return }
         controller.remove(list)
-        if enabled, !isPaused(on: host) { controller.add(list) }
+        if on { controller.add(list) }
+        attached.setObject(on as NSNumber, forKey: controller)
+    }
+
+    /// Fork (navperf): whether each controller has the list, as last set here.
+    private let attached = NSMapTable<WKUserContentController, NSNumber>.weakToStrongObjects()
+
+    /// Fork (navperf): something else took the list off (a canvas board).
+    func forget(_ controller: WKUserContentController) {
+        attached.removeObject(forKey: controller)
     }
 
     /// Third parties whose only job is to watch or to sell. First-party
@@ -120,7 +133,10 @@ final class Shield: ObservableObject {
                 }
                 self.list = compiled
                 // Tabs that opened while this was still compiling get it now.
-                if self.enabled { self.waiting.forEach { $0.add(compiled) } }
+                for controller in self.waiting {
+                    if self.enabled { controller.add(compiled) }
+                    self.attached.setObject(self.enabled as NSNumber, forKey: controller)
+                }
                 self.waiting = []
             }
         }
@@ -130,6 +146,7 @@ final class Shield: ObservableObject {
     func protect(_ controller: WKUserContentController) {
         if let list {
             if enabled { controller.add(list) }
+            attached.setObject(enabled as NSNumber, forKey: controller)
         } else {
             waiting.append(controller)
         }
@@ -141,6 +158,7 @@ final class Shield: ObservableObject {
         for controller in controllers {
             controller.remove(list)
             if enabled { controller.add(list) }
+            attached.setObject(enabled as NSNumber, forKey: controller)
         }
     }
 }

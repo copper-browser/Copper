@@ -55,7 +55,12 @@ final class Intelligence: ObservableObject {
         var jevModel = "jev-latest"
         var jevEndpoint = "https://api.typesafe.ai/v1/systemone"
         var routerKey = ""
-        var routerURL = "https://llm.dev.exowatt.com"
+        /// Fork (settings-plain): empty until someone says where their
+        /// gateway is — it showed Exowatt's internal one to everybody.
+        var routerURL = ""
+        /// The address an intelligence.json written before there was a
+        /// routerURL field meant, when it has a key (see `init(from:)`).
+        static let legacyRouterURL = "https://llm.dev.exowatt.com"
         var routerModel = "sonnet"
         var lane: Lane = .key
         var tier: Tier = .sonnet
@@ -90,7 +95,8 @@ final class Intelligence: ObservableObject {
             jevModel = try c.decodeIfPresent(String.self, forKey: .jevModel) ?? fresh.jevModel
             jevEndpoint = try c.decodeIfPresent(String.self, forKey: .jevEndpoint) ?? fresh.jevEndpoint
             routerKey = try c.decodeIfPresent(String.self, forKey: .routerKey) ?? fresh.routerKey
-            routerURL = try c.decodeIfPresent(String.self, forKey: .routerURL) ?? fresh.routerURL
+            routerURL = try c.decodeIfPresent(String.self, forKey: .routerURL)
+                ?? (routerKey.trimmingCharacters(in: .whitespaces).isEmpty ? fresh.routerURL : Keys.legacyRouterURL)
             routerModel = try c.decodeIfPresent(String.self, forKey: .routerModel) ?? fresh.routerModel
             lane = try c.decodeIfPresent(Lane.self, forKey: .lane) ?? fresh.lane
             tier = try c.decodeIfPresent(Tier.self, forKey: .tier) ?? fresh.tier
@@ -745,9 +751,18 @@ enum Router {
         let text: String
         let latencyMs: Double
         let model: String
+        /// What the gateway billed, when it says (`usage`).
+        var inputTokens = 0
+        var outputTokens = 0
+        /// What the gateway says the call cost, US$ (LiteLLM's x-litellm-response-cost).
+        var costUsd: Double? = nil
     }
 
-    static func ask(system: String, user: String, keys: Intelligence.Keys, timeout: TimeInterval = 20, maxTokens: Int = 400, model override: String? = nil) async throws -> Reply {
+    /// `json`: ask the gateway for JSON mode (`response_format`), which small
+    /// models answer faster and cleaner with. The Claude-account lane has no
+    /// such flag and the reply is read leniently either way.
+    static func ask(system: String, user: String, keys: Intelligence.Keys, timeout: TimeInterval = 20, maxTokens: Int = 400, model override: String? = nil,
+                    json: Bool = false) async throws -> Reply {
         if keys.lane == .claude {
             let token = try await ClaudeAccount.shared.token()
             let model = await MainActor.run { Intelligence.shared.model(override) }
@@ -778,7 +793,7 @@ enum Router {
             let body = Router.body(model: chosen, maxTokens: maxTokens, messages: [
                 ["role": "system", "content": system],
                 ["role": "user", "content": user],
-            ], cache: marks)
+            ], cache: marks, json: json)
             var sending = request
             sending.httpBody = try PromptCache.json(body)
             return try await URLSession.shared.data(for: sending)
@@ -808,7 +823,11 @@ enum Router {
         let model = (payload["model"] as? String) ?? chosen
         let answered = payload["model"] as? String
         await MainActor.run { Intelligence.shared.noteAnswer(sent: chosen, answered: answered) }
-        return Reply(json: Router.json(in: text), text: text, latencyMs: latency, model: model)
+        let usage = payload["usage"] as? [String: Any] ?? [:]
+        return Reply(json: Router.json(in: text), text: text, latencyMs: latency, model: model,
+                     inputTokens: (usage["prompt_tokens"] as? NSNumber)?.intValue ?? 0,
+                     outputTokens: (usage["completion_tokens"] as? NSNumber)?.intValue ?? 0,
+                     costUsd: http.value(forHTTPHeaderField: "x-litellm-response-cost").flatMap(Double.init))
     }
 
     /// One chat-completions body. No `temperature`, no thinking switch and
@@ -817,7 +836,7 @@ enum Router {
     /// A Claude model gets prompt-cache marks (PromptCache); write it with
     /// `PromptCache.json` so the same history is the same bytes every turn.
     static func body(model: String, maxTokens: Int, messages: [[String: Any]], tools: [[String: Any]] = [],
-                     cache: PromptCache.Marks = .prefix) -> [String: Any] {
+                     cache: PromptCache.Marks = .prefix, json: Bool = false) -> [String: Any] {
         let marks = PromptCache.gatewayCaches(model) ? cache : .none
         let (messages, tools) = PromptCache.chat(messages: messages, tools: tools, marks: marks)
         var body: [String: Any] = ["model": model, "max_tokens": maxTokens, "messages": messages]
@@ -825,6 +844,7 @@ enum Router {
             body["tools"] = tools
             body["tool_choice"] = "auto"
         }
+        if json { body["response_format"] = ["type": "json_object"] }
         return body
     }
 
@@ -969,9 +989,13 @@ extension Intelligence {
         m = merge(local: local, cloud: nil)
         check(m.keys.routerURL == "https://my.gateway.example/" && m.sources["routerURL"] == "local", "no cloud: a custom local address wins")
         local = Keys()
-        local.routerURL = "https://llm.dev.exowatt.com/"
+        local.routerURL = " / "
         m = merge(local: local, cloud: nil)
-        check(m.sources["routerURL"] == "default", "the default address with a slash is still the default")
+        check(m.sources["routerURL"] == "default" && m.keys.routerURL.isEmpty, "a blank address is the default, which is none")
+        check(Keys().routerURL.isEmpty, "no gateway address until someone gives one")
+        if let old = try? JSONDecoder().decode(Keys.self, from: Data(#"{"routerKey":"sk-x"}"#.utf8)) {
+            check(old.routerURL == Keys.legacyRouterURL, "a key saved before the address field keeps the address it meant")
+        } else { check(false, "decode a key without an address") }
         m = merge(local: Keys(), cloud: nil)
         check(m.keys == Keys() && m.sources == ["jevKey": "none", "jevEndpoint": "default", "jevModel": "default", "routerKey": "none", "routerURL": "default", "lane": "local"], "no cloud, no keys")
         let bad = CloudProvided(router: .init(key: "sk-cloud", url: "ftp://nope"))
@@ -1021,6 +1045,8 @@ extension Intelligence {
         let chat = Router.body(model: "opus", maxTokens: 100, messages: [["role": "user", "content": "hi"]], tools: tool)
         check(chat["temperature"] == nil && chat["thinking"] == nil && chat["tool_choice"] as? String == "auto" && chat["model"] as? String == "opus", "gateway body")
         check(Router.body(model: "opus", maxTokens: 1, messages: [])["tool_choice"] == nil, "no tools, no tool_choice")
+        check(Router.body(model: "llama", maxTokens: 1, messages: [])["response_format"] == nil, "no JSON mode unless asked")
+        check((Router.body(model: "llama", maxTokens: 1, messages: [], json: true)["response_format"] as? [String: String]) == ["type": "json_object"], "JSON mode when asked")
         let messages = Claude.body(model: "claude-opus-5-5", system: [], messages: [], tools: [["name": "x"]], maxTokens: 10)
         check(messages["temperature"] == nil && messages["thinking"] == nil && (messages["tool_choice"] as? [String: String]) == ["type": "auto"], "claude body")
         // Prompt-cache marks on both lanes (Fork/PromptCache.swift).

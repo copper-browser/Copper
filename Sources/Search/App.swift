@@ -6,7 +6,9 @@ import AppKit
 
 @main
 struct SearchApp: App {
-    @StateObject private var browser = Windows.main // Fork: windows — the first of however many
+    // Fork: windows — the first of however many. Fork (observe): read in
+    // `body`, after init has started the clock and taken the world.
+    private var browser: Browser { Windows.main }
     /// Links from other apps, and the Dock icon.
     @NSApplicationDelegateAdaptor(Links.self) private var links
 
@@ -41,15 +43,15 @@ struct SearchApp: App {
 /// The menus act on the window in front — the first one's browser when no
 /// browser window is. (Fork: windows)
 struct AppCommands: Commands {
-    @ObservedObject var main: Browser
-    @FocusedObject private var focused: Browser?
+    let main: Browser
+    @FocusedValue(Browser.self) private var focused: Browser? // Fork (observe): Browser is @Observable
     /// Fork (perf): the History menu's own source, watched here rather than
     /// through every change of the browser (Browser.init).
     @ObservedObject private var history: History
     private var browser: Browser { focused ?? main }
 
     init(main: Browser) {
-        _main = ObservedObject(wrappedValue: main)
+        self.main = main
         _history = ObservedObject(wrappedValue: main.history)
     }
 
@@ -102,14 +104,6 @@ struct AppCommands: Commands {
             Button(browser.folded ? "Show Sidebar" : "Hide Sidebar") { browser.toggleFold() }
                 .keyboardShortcut("s")
                 .disabled(!browser.prefs.sidebar)
-            Picker("Tabs Wear", selection: Binding(
-                get: { browser.prefs.glyph },
-                set: { browser.prefs.glyph = $0 }
-            )) {
-                ForEach(Glyph.allCases) { glyph in
-                    Text(glyph.title).tag(glyph)
-                }
-            }
             Divider()
             Button("Reload Page") { browser.reload() }
                 .keyboardShortcut("r")
@@ -207,7 +201,7 @@ struct AppCommands: Commands {
             Divider()
             Button("Show History…") { browser.recalling = true }
                 .keyboardShortcut("y")
-            Button("Downloads…") { browser.hoarding = true }
+            Button("Downloads…") { browser.showDownloads() } // Fork (ui-flows r3)
                 .keyboardShortcut("j", modifiers: [.command, .shift])
             Button("Open Downloads Folder") { browser.openDownloadsFolder() }
             Divider()
@@ -277,14 +271,23 @@ private struct MenuLine: View {
 }
 
 struct ContentView: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
+    /// Fork (perf): the field up, ⌘K or not (`fieldShowing`, the transition
+    /// below) — see `Browser.Bar`.
+    @ObservedObject private var bar: Browser.Bar
     @ObservedObject private var recent = Recent.shared
     @ObservedObject private var canvases = Canvases.shared
     @ObservedObject private var clearTabs = ClearTabs.shared
+    @ObservedObject private var launch = Launch.shared // Fork (launch): the column waits for the page (Fork/Launch.swift)
 
     @State private var keys: Any?
     @State private var window: NSWindow?
     @State private var resting: RestingLights?
+
+    init(browser: Browser) {
+        self.browser = browser
+        _bar = ObservedObject(wrappedValue: browser.bar)
+    }
 
 
     /// The window: room at the top, one stage for the page, and the row when
@@ -293,15 +296,26 @@ struct ContentView: View {
         ZStack(alignment: .top) {
             // Black while a page has the screen, so the frame of our own window
             // that survives the transition is not a white band across the top.
-            (browser.active?.immersed == true ? Color.black : Palette.ground)
+            if browser.active?.immersed == true {
+                Color.black
+            } else if sidebar {
+                WindowGround(browser: browser) // Fork (page-frame): the space's ground under the column and round the page
+            } else {
+                Palette.ground
+            }
 
             HStack(spacing: 0) {
                 // The column of tabs, in the way that has one. It takes the
                 // full height, so the traffic lights sit in its own corner
                 // rather than over the page.
                 if sidebar {
-                    SideBar(browser: browser, prefs: browser.prefs)
-                        .transition(.move(edge: .leading))
+                    if launch.dressed {
+                        SideBar(browser: browser, prefs: browser.prefs, grounded: false) // Fork (page-frame): the window draws its ground
+                            .transition(.move(edge: .leading))
+                    } else {
+                        // Fork (launch): the column's place, empty, until the restored page has painted.
+                        Color.clear.frame(width: browser.prefs.sideWidth)
+                    }
                 }
 
                 VStack(spacing: 0) {
@@ -313,7 +327,7 @@ struct ContentView: View {
 
                     // One stage, always.
                     if let tab = browser.active {
-                        SplitStage(browser: browser, active: tab)
+                        SplitStage(browser: browser, active: tab, inset: sidebar, framed: band > 0) // Fork (page-frame; uitype: the top-tab page is a card too)
                             .overlay {
                                 if recent.showing {
                                     RecentStrip(browser: browser)
@@ -329,6 +343,7 @@ struct ContentView: View {
                             .overlay(alignment: .topLeading) {
                                 if let asked = browser.suggesting, asked.tab == tab.id {
                                     AccountList(browser: browser, asked: asked)
+                                        .padding(.top, sidebar || band > 0 ? SplitMetrics.margin : 0) // Fork (page-frame): the page card starts a margin down
                                         .transition(.opacity)
                                 }
                             }
@@ -356,11 +371,8 @@ struct ContentView: View {
         VStack(spacing: 8) {
             clearTabsToast
             announcement
+            HandoffSlot(browser: browser) // Fork (agent-handoff): an agent handing a step to you (Fork/MCP/Handoff.swift)
             CaptureSlot(browser: browser, desk: browser.capture) // Fork (page-capture): asks, a refusal to undo, macOS's own "no" (Fork/Capture/CaptureBar.swift)
-            if let offer = browser.offering {
-                keepAsking(offer)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
             StoreOffer(browser: browser)
             if browser.veiling {
                 hint("Click anything to hide it   ⌘Z undo   esc done")
@@ -372,8 +384,23 @@ struct ContentView: View {
         .padding(.bottom, 30)
         .animation(Motion.settle, value: browser.veiling)
         .animation(Motion.settle, value: clearTabs.generation)
-        .animation(Motion.settle, value: browser.offering)
         .animation(Motion.settle, value: canvases.newInvite)
+    }
+
+    /// Fork (uichrome): the password offer hangs off the chrome — beside the
+    /// column's address field, or under the strip's far end where the
+    /// passwords door is — not at the foot of the window.
+    private var offerSlot: some View {
+        ZStack(alignment: sidebar ? .topLeading : .topTrailing) {
+            Color.clear.allowsHitTesting(false)
+            if let offer = browser.offering {
+                keepAsking(offer)
+                    .padding(.top, band + 8)
+                    .padding(sidebar ? .leading : .trailing, sidebar ? browser.prefs.sideWidth + 8 : 14)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(Motion.settle, value: browser.offering)
     }
 
     /// The address field: raised over a page by ⌘L or ⌘K, and standing on its
@@ -386,7 +413,15 @@ struct ContentView: View {
                 // is not what the field is standing over, and dimming it along
                 // with the page says otherwise.
                 .padding(.leading, sidebar ? browser.prefs.sideWidth : 0)
-                .transition(.scale(scale: 0.97).combined(with: .opacity))
+                // Fork (ui-flows): ⌘K's card draws its own arrival (solid, no
+                // ghost; Fork/CommandPalette) and leaves in one quick fade.
+                // Fork (perf): otherwise a fade. A scale redrew every letter on
+                // the card at a new size each frame, and on a 1× screen each new
+                // size of a glyph is hinted again, on the main thread.
+                // Fork (ui-motion): the dim and the card leave as one, in 120 ms.
+                .transition(bar.summoning
+                    ? .asymmetric(insertion: .identity, removal: AnyTransition.opacity.animation(.easeOut(duration: 0.12)))
+                    : .opacity)
         }
     }
 
@@ -401,7 +436,7 @@ struct ContentView: View {
                 close: { browser.hoarding = false }
         }
         if browser.tuning {
-            sheet { SettingsPanel(browser: browser, prefs: browser.prefs) }
+            sheet(fitted: false) { SettingsPanel(browser: browser, prefs: browser.prefs) }
                 close: { browser.tuning = false }
         }
         if browser.bookmarking {
@@ -415,6 +450,7 @@ struct ContentView: View {
         if browser.managing {
             sheet { PasswordsPanel(browser: browser) } close: { browser.managing = false }
         }
+        FlowBackdrop(browser: browser, column: sidebar ? browser.prefs.sideWidth : 0) // Fork (ui-flows r3): Move in's, the same backdrop
         if browser.reviewing {
             // No dimming for this one: the whole point is to keep looking at
             // the page while the list offers to put things back on it.
@@ -440,6 +476,7 @@ struct ContentView: View {
             .overlay(alignment: .bottomLeading) { UpdateCorner(browser: browser, prefs: browser.prefs) }
             .overlay(alignment: .bottomLeading) { CloudHoldCorner(browser: browser, prefs: browser.prefs) } // Fork (cloud): the spaces brake's prompt with no column
             .overlay(alignment: .bottom) { bars }
+            .overlay { offerSlot }
             .overlay { field }
             .overlay { panels }
             .overlay { SharePickerSlot(browser: browser) } // Fork (tab-share): what to share (Fork/TabShare/TabSharePicker.swift)
@@ -461,7 +498,13 @@ struct ContentView: View {
             }
             .onChange(of: browser.fieldShowing) { _, showing in
                 if showing {
-                    DispatchQueue.main.async { browser.askFocus() }
+                    DispatchQueue.main.async {
+                        // Fork (perf): ⌘T and ⌘K have already put the caret in
+                        // their field; asking again redrew the whole window a
+                        // second time in the key's pass.
+                        if (Windows.window(of: browser)?.firstResponder as? NSTextView)?.isFieldEditor == true { return }
+                        browser.askFocus()
+                    }
                 } else {
                     handBack()
                 }
@@ -476,6 +519,7 @@ struct ContentView: View {
             .animation(Motion.settle, value: browser.reviewing)
         .onAppear {
             Pace.mark("window") // Fork (pace)
+            Launch.shared.windowShown() // Fork (launch)
             watchKeys()
             browser.askFocus()
             // Addresses from other apps have somewhere to go from here on —
@@ -483,12 +527,13 @@ struct ContentView: View {
             if browser.primary { Links.hand(to: browser) }
         }
         // The menus act on the window in front, and ⌘N works from any. (Fork: windows)
-        .focusedSceneObject(browser)
+        .focusedSceneValue(browser)
         .onDisappear {
             if let keys { NSEvent.removeMonitor(keys) }
             keys = nil
         }
         .modifier(WindowOpener())
+        .tint(Palette.accent) // Fork (ui-system): system controls in Copper's accent, not the Mac's blue
     }
 
     /// Give the keyboard back to the page once the field is done with it.
@@ -538,43 +583,64 @@ struct ContentView: View {
         let login = offer.login
         let vault = offer.target != .keychain // Fork: Bitwarden or 1Password
         let name = offer.target.title
-        return HStack(spacing: 12) {
-            Text(vault
-                 ? (offer.changed
-                    ? "Update the password in \(name) for \(login.user) on \(login.host)?"
-                    : "Save to \(name) for \(login.user) on \(login.host)?")
-                 : (offer.changed
-                    ? "Update the password for \(login.user) on \(login.host)?"
-                    : (login.user.isEmpty
-                       ? "Save this password for \(login.host)?"
-                       : "Save the password for \(login.user) on \(login.host)?")))
-                .font(.system(size: 12.5))
-                .foregroundStyle(Palette.ink)
-                .lineLimit(1)
-            Button(vault ? (offer.changed ? "Update in \(name)" : "Save to \(name)") : (offer.changed ? "Update" : "Save")) { browser.keepOffer() }
-                .buttonStyle(.plain)
-                .font(.system(size: 12))
-                .foregroundStyle(Palette.ground)
-                .padding(.horizontal, 11)
-                .padding(.vertical, 5)
-                .background(Palette.ink, in: Capsule())
-            Button("Not now") { browser.dropOffer() }
-                .buttonStyle(.plain)
-                .font(.system(size: 12))
-                .foregroundStyle(Palette.muted)
-            if !offer.changed {
-                Button("Never here") { browser.neverOffer() }
-                    .buttonStyle(.plain)
+        return HStack(spacing: 10) {
+            // Fork (ui-system): whose password, at a glance — the site's
+            // mark. Fork (uib): the 7 pt key badge on its corner went; the
+            // sentence beside it already says password.
+            Mark(icon: Favicons.shared.cached(login.host), size: 18)
+                .padding(.trailing, 4)
+                .accessibilityHidden(true)
+            // Fork (uichrome): the question, then the site and the account on
+            // lines of their own (one long sentence was cut on narrow windows).
+            VStack(alignment: .leading, spacing: 1) {
+                Text(vault
+                     ? (offer.changed ? "Update the password in \(name)?" : "Save the password to \(name)?")
+                     : (offer.changed ? "Update the password?" : "Save the password?"))
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(Palette.ink)
+                Text(login.host)
                     .font(.system(size: 12))
-                    .foregroundStyle(Palette.muted)
+                    .foregroundStyle(Palette.ink)
+                if !login.user.isEmpty {
+                    Text(login.user)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Palette.muted)
+                }
+            }
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .frame(maxWidth: 220, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityElement(children: .combine)
+            // Fork (ui-system): one accent button, one bordered, and the
+            // rarely-wanted "never" tucked under ⌄ rather than a third word.
+            Pill(vault ? (offer.changed ? "Update in \(name)" : "Save to \(name)") : (offer.changed ? "Update" : "Save"), filled: true) { browser.keepOffer() }
+            Pill("Not now") { browser.dropOffer() }
+            if !offer.changed {
+                Menu {
+                    Button("Never here") { browser.neverOffer() }
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Palette.muted)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .tint(Palette.muted) // a menu's label takes the tint, not its own colour
+                .fixedSize()
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+                .help("Never here: don't offer for \(login.host) again")
+                .accessibilityLabel("More")
             }
         }
-        .padding(.leading, 16)
-        .padding(.trailing, 12)
-        .padding(.vertical, 9)
-        .background(Palette.ground, in: Capsule())
-        .overlay(Capsule().strokeBorder(Palette.hairline, lineWidth: 1))
+        .padding(.leading, 14)
+        .padding(.trailing, 10)
+        .padding(.vertical, 10)
+        .background(Palette.ground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 1))
         .shadow(color: .black.opacity(0.12), radius: 20, y: 6)
+        .fixedSize()
     }
 
 
@@ -592,17 +658,29 @@ struct ContentView: View {
 
     /// The same dimmed ground and spring for every panel that floats over a
     /// page, so they read as one kind of thing.
-    @ViewBuilder
     private func sheet<Panel: View>(
+        fitted: Bool = true,
         @ViewBuilder _ panel: () -> Panel,
         close: @escaping () -> Void
     ) -> some View {
-        ZStack {
-            Color.black.opacity(0.10)
-                .ignoresSafeArea()
-                .onTapGesture(perform: close)
-            panel()
-                .transition(.scale(scale: 0.97).combined(with: .opacity))
+        // Fork (ui-system): a panel is as tall as what it holds, up to 70% of
+        // the window; its list (`Fitted`) scrolls past that. Settings keeps
+        // its own size.
+        let content = panel()
+        let column = sidebar ? browser.prefs.sideWidth : 0
+        return GeometryReader { room in
+            ZStack {
+                // Fork (ui-flows r3): the one backdrop (Fork/ModalBackdrop.swift):
+                // the page card blurred and dimmed, the column left crisp.
+                ModalBackdrop(column: column, tap: close)
+                content
+                    .frame(maxHeight: fitted ? max(280, room.size.height * 0.7) : nil)
+                    // Over the page card, beside the column; Settings, wider,
+                    // keeps the window's middle.
+                    .padding(.leading, fitted ? column : 0)
+                    .transition(.scale(scale: 0.97).combined(with: .opacity))
+            }
+            .frame(width: room.size.width, height: room.size.height)
         }
         .transition(.opacity)
     }
@@ -693,11 +771,16 @@ struct ContentView: View {
     private func watchKeys() {
         guard keys == nil else { return }
         keys = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
+            // Fork (agent-keys): a key an agent pressed in a page and the page
+            // didn't use goes no further — not to the window in front, not to
+            // the menus (Fork/MCP/Input.swift `returned`).
+            if Input.returned(event) { return nil }
             // Every window watches the keys; a keystroke is the window's it
             // was typed in, and a panel or popup of no browser's goes to the
             // one in front. (Fork: windows)
             if (Windows.owner(of: event.window) ?? Windows.current) !== browser { return event }
             guard event.type == .keyDown else {
+                SpaceWarm.control(event.modifierFlags.contains(.control), in: browser, window: event.window) // Fork (switch, covers): ⌃ down warms the spaces either side
                 // Releasing ⌃ commits a most-recent tab walk wherever it stopped.
                 if !event.modifierFlags.contains(.control), Recent.shared.walking {
                     Recent.shared.end(in: browser)
@@ -706,6 +789,7 @@ struct ContentView: View {
                 if !event.modifierFlags.contains(.command) { browser.landSummon() }
                 return event
             }
+            SpaceWarm.key(event, in: browser) // Fork (covers): a non-space key with ⌃ takes the warming guess back
             return take(event) ? nil : event
         }
     }
@@ -768,7 +852,13 @@ struct ContentView: View {
                 browser.closeFind()
                 return true
             }
-            // One step at a time: the list first, then the field.
+            // Fork (ui-flows): ⌘K's card goes in one press, as Arc's does —
+            // its first row is always picked, so a step back there was a
+            // second ⎋ for nothing. ⌘L keeps the step: the list, then the field.
+            if browser.summoning {
+                browser.dismiss()
+                return true
+            }
             if browser.picked != nil {
                 browser.picked = nil
                 return true
@@ -778,6 +868,8 @@ struct ContentView: View {
                 browser.dismiss()
                 return true
             }
+            // Fork (agent-ux): an agent driving — the Stop pill's ⎋ — before the page has it.
+            if DriveStop.escape(in: browser) { return true }
             // Last of all, a pane beside the page — while the keyboard is
             // not in a page, where Escape is the page's. (Fork: Panes)
             return Panes.escape(event, in: browser)
@@ -829,7 +921,7 @@ struct ContentView: View {
         case "y" where !shifted:
             browser.recalling.toggle()
         case "j" where shifted:
-            browser.hoarding.toggle()
+            browser.showDownloads(toggling: true) // Fork (ui-flows r3): the popover from the column
         case "v" where shifted:
             browser.pasteAndGo()
         case "p" where !shifted:

@@ -11,19 +11,20 @@ enum AgentAutofill {
 
     @MainActor
     static func run(_ args: [String: Any], in browser: Browser, source: Source) async throws -> [String: Any] {
-        guard let tab = AgentTabs.target(in: browser) else { throw Failure(message: "no active tab") }
+        guard let tab = AgentTabs.target(in: browser) else { throw Failure(message: AgentTabs.missing()) }
         AgentTabs.prepare(tab)
         guard !tab.shy else { throw Failure(message: "autofill is unavailable in private tabs") }
-        guard let address = tab.address, let rawHost = address.host(), !rawHost.isEmpty else {
-            throw Failure(message: "current tab has no host")
-        }
-        var host = rawHost.lowercased()
-        if host.hasPrefix("www.") { host.removeFirst(4) }
+        // Fork (form-target): the box with the caret — an embedded frame's
+        // when one has it — its frame and origin fixed here, once. Every
+        // read, fill and submit below goes to that frame and only while its
+        // document is still of that origin: a caret that moves or a page that
+        // navigates during an await gets nothing.
+        guard let target = tab.formTarget else { throw Failure(message: "current tab has no host") }
         // Fork (new-password): needs no open vault — a locked one sends the
         // save to the keychain, as the picker's row does.
         if let raw = args["kind"] as? String,
            ["new-password", "new_password", "newpassword"].contains(raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) {
-            return try await newPassword(args, tab: tab, host: host, in: browser)
+            return try await newPassword(args, tab: tab, target: target, in: browser)
         }
         var bitwardenOpen = false
         if case .unlocked = Bitwarden.shared.state { bitwardenOpen = true }
@@ -73,14 +74,14 @@ enum AgentAutofill {
                 return ["candidates": matches.map(\.name), "kind": kind]
             }
             guard let card = matches.first else { throw Failure(message: "no saved card") }
-            guard await tab.hasFields(.card) else { throw Failure(message: "no card fields on the page") }
+            guard await tab.hasFields(.card, at: target) else { throw Failure(message: "no card fields on the page\(gone(tab, target))") }
             let filled = await withCheckedContinuation { (continuation: CheckedContinuation<Int, Never>) in
-                tab.fillValues(card.values()) { count in continuation.resume(returning: count) }
+                tab.fillValues(card.values(), at: target) { count in continuation.resume(returning: count) }
             }
             // The boxes were there but already held values: nothing was
             // overwritten, and that is a result, not a failure.
-            let submitted = shouldSubmit ? await submit(tab) : false
-            var result: [String: Any] = ["filled": filled, "kind": kind, "name": card.name, "submitted": submitted,
+            let submitted = shouldSubmit ? await submit(tab, at: target) : false
+            var result: [String: Any] = ["filled": filled, "kind": kind, "name": card.name, "submitted": submitted, "origin": target.origin,
                                          "source": Autofill.source(of: card.id) == .onePassword ? "onepassword" : "bitwarden"]
             if filled == 0 { result["note"] = "the card fields already hold values; nothing overwritten" }
             return result
@@ -111,35 +112,42 @@ enum AgentAutofill {
                 return ["candidates": matches.map(\.name), "kind": kind]
             }
             guard let identity = matches.first else { throw Failure(message: "no saved identity") }
-            guard await tab.hasFields(.identity) else { throw Failure(message: "no identity fields on the page") }
+            guard await tab.hasFields(.identity, at: target) else { throw Failure(message: "no identity fields on the page\(gone(tab, target))") }
             let filled = await withCheckedContinuation { (continuation: CheckedContinuation<Int, Never>) in
-                tab.fillValues(identity.values()) { count in continuation.resume(returning: count) }
+                tab.fillValues(identity.values(), at: target) { count in continuation.resume(returning: count) }
             }
-            let submitted = shouldSubmit ? await submit(tab) : false
-            var result: [String: Any] = ["filled": filled, "kind": kind, "name": identity.name, "submitted": submitted,
+            let submitted = shouldSubmit ? await submit(tab, at: target) : false
+            var result: [String: Any] = ["filled": filled, "kind": kind, "name": identity.name, "submitted": submitted, "origin": target.origin,
                                          "source": Autofill.source(of: identity.id) == .onePassword ? "onepassword" : "bitwarden"]
             if filled == 0 { result["note"] = "the identity fields already hold values; nothing overwritten" }
             return result
 
         case "field":
             guard let name else { throw Failure(message: "name is required for field") }
-            let all = Autofill.fields(for: host, matching: name)
-            guard let field = all.first(where: { Autofill.isAllowed($0.itemID) }) else {
-                if !all.isEmpty {
+            // Fork (form-target, form-origin): a field belongs to a login, as
+            // a password does — only a login saved for this document's exact
+            // address (scheme, host and port), filled only into that frame.
+            let all = Autofill.fields(for: target.host, matching: name)
+            let owned = all.filter { Credentials.owns(autofillID: $0.itemID, origin: target.origin) }
+            guard let field = owned.first(where: { Autofill.isAllowed($0.itemID) }) else {
+                if !owned.isEmpty {
                     throw Failure(message: "field exists but is not shared with agents — enable it in Settings › Passwords › Agent access")
+                }
+                if !all.isEmpty {
+                    throw Failure(message: "the field \(name) is saved with a login for another address than \(target.origin) — agents fill it only on the exact address (scheme, host and port) the login was saved for. Add this address to the item to use it here")
                 }
                 throw Failure(message: "no saved field named \(name)")
             }
             let filled = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-                tab.fillField(label: name, value: field.value) { ok in continuation.resume(returning: ok) }
+                tab.fillField(label: name, value: field.value, at: target) { ok in continuation.resume(returning: ok) }
             }
             if !filled {
                 let focused = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-                    tab.fillFocused(field.value) { ok in continuation.resume(returning: ok) }
+                    tab.fillFocused(field.value, at: target) { ok in continuation.resume(returning: ok) }
                 }
                 guard focused else { throw Failure(message: "no field named \(name) on the page") }
             }
-            return ["filled": 1, "kind": kind, "name": field.name, "item": field.itemName]
+            return ["filled": 1, "kind": kind, "name": field.name, "item": field.itemName, "origin": target.origin]
 
         default:
             throw Failure(message: "kind must be card, identity, or field")
@@ -152,25 +160,32 @@ enum AgentAutofill {
     /// where it went and how long it is — never the password. An existing
     /// login's password changes only when that login is shared with agents.
     @MainActor
-    private static func newPassword(_ args: [String: Any], tab: Tab, host: String, in browser: Browser) async throws -> [String: Any] {
+    private static func newPassword(_ args: [String: Any], tab: Tab, target: Tab.FormTarget, in browser: Browser) async throws -> [String: Any] {
+        let host = target.host
         let save = (args["save"] as? Bool) ?? true
         let shouldSubmit = (args["submit"] as? Bool) ?? false
         let named = (args["account"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard save || !shouldSubmit else {
             throw Failure(message: "submit needs save: a new password nobody kept would lock the account")
         }
-        guard let page = await tab.newPasswordPage() else {
-            throw Failure(message: "no new-password form on the page (sign-up or change-password)")
+        guard let page = await tab.newPasswordPage(at: target) else {
+            throw Failure(message: "no new-password form on the page (sign-up or change-password)\(gone(tab, target))")
         }
-        let target = Credentials.saveTarget
         let account = NewPassword.account(host: host, named: named.flatMap { $0.isEmpty ? nil : $0 } ?? page.user,
-                                          target: target, pickedHere: browser.pickedCredential(in: tab))
+                                          target: Credentials.saveTarget, pickedHere: browser.pickedCredential(in: tab))
         if let existing = account.existing, !AgentAccess.isAllowed(existing) {
             throw Failure(message: "the saved login \(existing.user.isEmpty ? host : existing.user) is not shared with agents — enable it in Settings › Passwords › Agent access")
         }
+        // Fork (form-origin): an agent changes (and reads the current
+        // password of) only a login saved for this exact address — never the
+        // same host's login on another port or over https when this is http.
+        if let existing = account.existing, !Credentials.owns(existing, origin: target.origin) {
+            let saved = existing.sites.prefix(3).joined(separator: ", ")
+            throw Failure(message: "the saved login \(existing.user.isEmpty ? host : existing.user) is for \(saved), not \(target.origin) — agents change a password only on the exact address (scheme, host and port) it was saved for. Nothing was made or filled")
+        }
         let (made, filled) = try await browser.makeNewPassword(
-            in: tab, host: host, page: page, named: account.user, save: save)
-        let submitted = shouldSubmit ? await submit(tab) : false
+            in: tab, at: target, page: page, named: account.user, save: save)
+        let submitted = shouldSubmit ? await submit(tab, at: target) : false
         return [
             "kind": "new-password", "filled": filled, "saved": !made.deferred, "target": made.target.rawValue,
             "user": made.user, "updated": made.updated, "current": made.current != nil,
@@ -179,9 +194,17 @@ enum AgentAutofill {
     }
 
     @MainActor
-    private static func submit(_ tab: Tab) async -> Bool {
+    private static func submit(_ tab: Tab, at target: Tab.FormTarget) async -> Bool {
         await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-            tab.submitSignIn { ok in continuation.resume(returning: ok) }
+            tab.submitSignIn(at: target) { ok in continuation.resume(returning: ok) }
         }
+    }
+
+    /// For a refusal: the form's document changed under the call.
+    @MainActor
+    private static func gone(_ tab: Tab, _ target: Tab.FormTarget) -> String {
+        let now = tab.formTarget
+        guard now?.origin != target.origin || (now?.frame == nil) != (target.frame == nil) else { return "" }
+        return " (the form's document at \(target.origin) changed during the call — nothing was filled; take a fresh browser_snapshot and call again)"
     }
 }

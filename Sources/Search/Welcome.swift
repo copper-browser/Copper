@@ -6,50 +6,69 @@ import AppKit
 /// links from other apps should come here. Nothing is asked twice, and every
 /// page can be skipped.
 struct WelcomePanel: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var prefs: Preferences
 
     @State private var page = 0
     @State private var forward = true
-
-    // Bringing things over.
-    @State private var source: Chromium.Source? = Chromium.installed().first
-    @State private var wantsPasswords = true
-    @State private var wantsHistory = true
-    @State private var wantsBookmarks = true
-    @State private var bringing = false
-    @State private var brought: String?
 
     // The default browser.
     @State private var isDefault = Links.isDefault
     @State private var asked = false
 
     private let pages = 4
+    @Environment(\.colorScheme) private var scheme
+
+    /// Fork (ui-flows r3): one column on one card, Arc's onboarding size
+    /// (~560 pt wide), every page left-aligned and every heading in the same
+    /// place — on the Home space's own ground.
+    /// Fork (uiflows r4): the card hugs its page (no blank half), never
+    /// shorter than `least` (332 pt with its padding). Its top stays put
+    /// (`top`) so the headings don't move; a taller page grows it downward.
+    static let column: CGFloat = 560
+    static let least: CGFloat = 260
+
+    /// Where the card's top sits: a `least` card's middle 40% down the window.
+    static func top(in height: CGFloat) -> CGFloat { max(height * 0.4 - (least / 2 + 36), 24) }
 
     var body: some View {
-        ZStack {
-            Palette.ground.ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
-                ZStack {
-                    switch page {
-                    case 0: welcome
-                    case 1: bring
-                    case 2: hold
-                    default: links
+        GeometryReader { room in
+            ZStack {
+                ThemeBackdrop(theme: tint.theme, dark: tint.night)
+                VStack(alignment: .leading, spacing: 0) {
+                    ZStack(alignment: .topLeading) {
+                        switch page {
+                        case 0: welcome
+                        case 1: bring
+                        case 2: hold
+                        default: links
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .id(page)
+                    .transition(.asymmetric(
+                        insertion: .offset(x: forward ? 40 : -40).combined(with: .opacity),
+                        removal: .offset(x: forward ? -40 : 40).combined(with: .opacity)
+                    ))
+                    Spacer(minLength: 32)
+                    foot
                 }
-                .frame(maxWidth: 520)
-                .id(page)
-                .transition(.asymmetric(
-                    insertion: .offset(x: forward ? 40 : -40).combined(with: .opacity),
-                    removal: .offset(x: forward ? -40 : 40).combined(with: .opacity)
-                ))
-                Spacer(minLength: 0)
-                foot
+                .frame(width: Self.column)
+                .frame(minHeight: Self.least)
+                .fixedSize(horizontal: false, vertical: true)
+                .clipped()
+                .padding(36)
+                // Fork (uiflows r4): the shadow is the card's shape's alone —
+                // on the whole card every word and icon cast its own (a grey haze).
+                .background {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(Palette.ground)
+                        .shadow(color: .black.opacity(0.16), radius: 34, y: 12)
+                }
+                .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 1))
+                .padding(.top, Self.top(in: room.size.height))
+                .frame(width: room.size.width, height: room.size.height, alignment: .top)
             }
-            .padding(40)
         }
         .animation(Motion.glide, value: page)
         .transition(.opacity)
@@ -58,68 +77,39 @@ struct WelcomePanel: View {
     // MARK: - the pages
 
     private var welcome: some View {
-        VStack(spacing: 22) {
-            CopperIcon(size: 72)
-            VStack(spacing: 10) {
-                Text(Fork.name)
-                    .font(.system(size: 34, weight: .medium))
-                    .foregroundStyle(Palette.ink)
-                Text("A browser that works for you. Spaces, an agent at your side, and the engine already in your Mac.")
-                    .font(.system(size: 14.5))
-                    .foregroundStyle(Palette.muted)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(3)
-                    .frame(maxWidth: 400)
+        HStack(alignment: .top, spacing: 28) { // Fork (polish r5): the column it is about, beside the words
+            VStack(alignment: .leading, spacing: 22) {
+                CopperIcon(size: 64)
+                heading(Fork.name, "A browser that works for you. Spaces, an agent at your side, and the engine already in your Mac.")
             }
+            SpacesThumb(tint: tint)
         }
     }
 
-    private var bring: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            heading("Bring things over.", "Passwords go into your keychain, bookmarks into the menu, and history means the address field already knows where you go. Nothing in the other browser changes.")
+    private var tint: SpaceTint { SpaceTint(space: Spaces.shared.space(in: browser), dark: scheme == .dark) }
 
-            let sources = Chromium.installed()
-            if sources.isEmpty {
+    /// Fork (ui-flows): Move in's own pills and sheet, not a second importer
+    /// with its own list of browsers (Fork/StartCard.swift `MoveFrom`).
+    private var bring: some View {
+        HStack(alignment: .top, spacing: 28) { bringWords; SpacesThumb(tint: tint) } // Fork (polish r5)
+    }
+
+    private var bringWords: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            heading("Bring things over.", "Tabs, bookmarks, history, passwords and sign-ins from \(MoveFrom.names). Nothing in the other browser changes.")
+            if MoveFrom.found.isEmpty {
                 Text("No other browser found on this Mac — nothing to bring.")
                     .font(.system(size: 13))
-                    .foregroundStyle(Palette.faint)
+                    .foregroundStyle(Palette.muted)
             } else {
-                VStack(alignment: .leading, spacing: 14) {
-                    if sources.count > 1 {
-                        Segmented(
-                            options: sources.map { ($0, $0.name) },
-                            selection: Binding(get: { source ?? sources[0] }, set: { source = $0 }),
-                            label: "Bring in from" // Fork (settings-a11y)
-                        )
-                    } else {
-                        Text("From \(sources[0].name)")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Palette.muted)
-                    }
-                    Choice("Passwords", "macOS will ask once for that browser's keychain key", on: $wantsPasswords)
-                    Choice("Bookmarks", "Folders and all, behind the bookmark button", on: $wantsBookmarks)
-                    Choice("History", "The last few thousand places, for finishing addresses", on: $wantsHistory)
-                }
-
-                HStack(spacing: 12) {
-                    Big(bringing ? "Bringing…" : "Bring them in", filled: true) { bringAll() }
-                        .disabled(bringing || brought != nil || !(wantsPasswords || wantsHistory || wantsBookmarks))
-                    if bringing { Ring(size: 10) }
-                    if let brought {
-                        Text(brought)
-                            .font(.system(size: 13))
-                            .foregroundStyle(Palette.muted)
-                            .transition(.opacity)
-                    }
-                }
-                .animation(Motion.settle, value: brought)
+                MoveFromPills(browser: browser, via: .welcome)
             }
         }
     }
 
     private var hold: some View {
         VStack(alignment: .leading, spacing: 22) {
-            heading("Two ways to hold it.", "Titles across the top, or down the side. The grey slides to the tab you pick either way, and you can change your mind with ⇧⌘S.")
+            heading("Two ways to hold it.", "Titles across the top, or down the side. The highlight follows the tab you pick either way, and you can change your mind with ⇧⌘S.")
             HStack(spacing: 12) {
                 Way(title: "Tab strip", sidebar: false, chosen: !prefs.sidebar) {
                     withAnimation(Motion.glide) { prefs.sidebar = false }
@@ -127,12 +117,6 @@ struct WelcomePanel: View {
                 Way(title: "Sidebar", sidebar: true, chosen: prefs.sidebar) {
                     withAnimation(Motion.glide) { prefs.sidebar = true }
                 }
-            }
-            HStack(spacing: 12) {
-                Text("Tabs wear")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Palette.muted)
-                Segmented(options: Glyph.allCases.map { ($0, $0.title) }, selection: $prefs.glyph, label: "Tabs wear") // Fork (settings-a11y)
             }
         }
     }
@@ -150,14 +134,14 @@ struct WelcomePanel: View {
                     .font(.system(size: 13))
                     .foregroundStyle(Palette.ink)
                 } else {
-                    Big("Make Copper the default", filled: true) {
+                    Big("Make Copper the default") { // Fork (ui-flows): one primary per page, Continue's
                         asked = true
                         Links.becomeDefault { _ in isDefault = Links.isDefault }
                     }
                     if asked, !isDefault {
                         Text("macOS asks in its own dialog")
                             .font(.system(size: 13))
-                            .foregroundStyle(Palette.faint)
+                            .foregroundStyle(Palette.muted)
                     }
                 }
             }
@@ -166,7 +150,7 @@ struct WelcomePanel: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Three things worth knowing")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Palette.faint)
+                    .foregroundStyle(Palette.muted)
                     .textCase(.uppercase)
                     .tracking(0.6)
                     .padding(.top, 6)
@@ -183,9 +167,11 @@ struct WelcomePanel: View {
         HStack(spacing: 14) {
             HStack(spacing: 6) {
                 ForEach(0..<pages, id: \.self) { i in
-                    Circle()
-                        .fill(i == page ? Palette.ink : Palette.faint.opacity(0.6))
-                        .frame(width: 6, height: 6)
+                    // Fork (uichrome): solid muted (0.8 of it drew 2.2:1 on dark),
+                    // the page you are on a longer ink capsule, not a shade apart.
+                    Capsule()
+                        .fill(i == page ? Palette.ink : Palette.muted) // Fork (ui-flows): ≥3:1, faint was 1.5:1
+                        .frame(width: i == page ? 14 : 6, height: 6)
                 }
             }
             Spacer()
@@ -206,57 +192,9 @@ struct WelcomePanel: View {
             }
             .keyboardShortcut(.defaultAction)
         }
-        .frame(maxWidth: 520)
     }
 
     // MARK: - doing
-
-    private func bringAll() {
-        guard let source else { return }
-        bringing = true
-        var lines: [String] = []
-        let group = DispatchGroup()
-        if wantsPasswords {
-            group.enter()
-            DispatchQueue.global(qos: .userInitiated).async {
-                let outcome = Result { try Chromium.read(source) }
-                DispatchQueue.main.async {
-                    switch outcome {
-                    case .success(let found):
-                        var kept = 0
-                        for login in found.logins
-                        where Vault.save(host: login.host, user: login.user, password: login.password, used: login.used) {
-                            kept += 1
-                        }
-                        var never = Vault.never
-                        found.never.forEach { never.insert($0) }
-                        Vault.never = never
-                        lines.append("\(kept) passwords")
-                    case .failure(Chromium.Trouble.noPassphrase):
-                        lines.append("passwords: macOS didn't hand over the key — allow it and try again")
-                    case .failure:
-                        lines.append("passwords: nothing readable")
-                    }
-                    group.leave()
-                }
-            }
-        }
-        if wantsBookmarks {
-            lines.append("\(browser.takeBookmarks(from: source)) bookmarks")
-        }
-        if wantsHistory {
-            group.enter()
-            browser.takePlaces(from: source) { count in
-                lines.append("\(count) places")
-                group.leave()
-            }
-        }
-        group.notify(queue: .main) {
-            bringing = false
-            brought = lines.joined(separator: " · ")
-            browser.relist()
-        }
-    }
 
     private func finish() {
         prefs.welcomed = true
@@ -266,10 +204,10 @@ struct WelcomePanel: View {
     private func heading(_ title: String, _ line: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.system(size: 26, weight: .medium))
+                .font(.system(size: 34, weight: .semibold)) // Fork (ui-flows r3): Arc's onboarding sizes
                 .foregroundStyle(Palette.ink)
             Text(line)
-                .font(.system(size: 14))
+                .font(.system(size: 15))
                 .foregroundStyle(Palette.muted)
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -294,10 +232,10 @@ struct WelcomePanel: View {
             Button(action: act) {
                 Text(title)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(filled ? Palette.ground : Palette.ink)
+                    .foregroundStyle(filled ? Palette.onAccent : Palette.ink) // Fork (ui-system)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 9)
-                    .background(filled ? Palette.ink : (hovering ? Palette.hover : Palette.wash), in: Capsule())
+                    .background(filled ? Palette.accent : (hovering ? Palette.hover : Palette.wash), in: Capsule())
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -305,30 +243,51 @@ struct WelcomePanel: View {
         }
     }
 
-    private struct Choice: View {
-        let title: String
-        let detail: String
-        @Binding var on: Bool
-
-        init(_ title: String, _ detail: String, on: Binding<Bool>) {
-            self.title = title
-            self.detail = detail
-            _on = on
-        }
+    /// One of the two ways, as a small drawing of the window.
+    /// Fork (polish r5): a small picture of the Spaces column — what Copper
+    /// is, shown, beside the first two pages' words (they were text alone).
+    /// Drawn, not a screenshot: it wears this space's own colours.
+    private struct SpacesThumb: View {
+        let tint: SpaceTint
+        static let widths: [CGFloat] = [52, 64, 44, 58]
+        static let hues: [Double] = [0.12, 0.42, 0.62]
 
         var body: some View {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 13.5)).foregroundStyle(Palette.ink)
-                    Text(detail).font(.system(size: 11.5)).foregroundStyle(Palette.faint)
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 3) { ForEach(0..<3, id: \.self) { _ in Circle().fill(tint.faint).frame(width: 5, height: 5) } }
+                    .padding(.bottom, 2)
+                RoundedRectangle(cornerRadius: 4, style: .continuous).fill(tint.square).frame(height: 14)
+                HStack(spacing: 4) {
+                    ForEach(0..<3, id: \.self) { _ in RoundedRectangle(cornerRadius: 4, style: .continuous).fill(tint.square).frame(height: 18) }
                 }
-                Spacer()
-                Switch(on: $on, label: title) // Fork (settings-a11y)
+                ForEach(0..<4, id: \.self) { i in // four rows: five overflowed the 176 pt card at its top
+                    HStack(spacing: 5) {
+                        RoundedRectangle(cornerRadius: 2).fill(i == 1 ? tint.dot : tint.faint).frame(width: 7, height: 7)
+                        RoundedRectangle(cornerRadius: 2).fill(tint.faint.opacity(0.7)).frame(width: SpacesThumb.widths[i], height: 5)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 5)
+                    .frame(height: 15)
+                    .background { if i == 1 { RoundedRectangle(cornerRadius: 4, style: .continuous).fill(tint.pill).shadow(color: tint.lift, radius: 2, y: 1) } }
+                }
+                Spacer(minLength: 0)
+                HStack(spacing: 5) {
+                    Spacer(minLength: 0)
+                    RoundedRectangle(cornerRadius: 3, style: .continuous).fill(tint.dot).frame(width: 11, height: 11)
+                    ForEach(SpacesThumb.hues, id: \.self) { hue in
+                        RoundedRectangle(cornerRadius: 3, style: .continuous).fill(Color(hue: hue, saturation: 0.35, brightness: tint.dark ? 0.6 : 0.75)).frame(width: 11, height: 11)
+                    }
+                    Spacer(minLength: 0)
+                }
             }
+            .padding(10)
+            .frame(width: 132, height: 176)
+            .background(tint.ground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 1))
+            .accessibilityHidden(true)
         }
     }
 
-    /// One of the two ways, as a small drawing of the window.
     private struct Way: View {
         let title: String
         let sidebar: Bool

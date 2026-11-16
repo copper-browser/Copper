@@ -162,7 +162,7 @@ struct ListenCard: View {
         let empty = listen.phase == .live || listen.phase == .arming ? "Nothing said yet" : "Nothing was said"
         return Text(last ?? empty)
             .font(.system(size: 11.5))
-            .foregroundStyle(last == nil ? Palette.faint : Palette.muted)
+            .foregroundStyle(last == nil ? Palette.muted : Palette.muted)
             .lineLimit(1).truncationMode(.head)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, 15)
@@ -205,7 +205,7 @@ struct ListenCard: View {
         VStack(alignment: .leading, spacing: 6) {
             if transcript.segments.isEmpty && listen.partial.isEmpty {
                 Text(listen.capturing ? "Nothing said yet" : "Nothing was said")
-                    .font(.system(size: 12)).foregroundStyle(Palette.faint)
+                    .font(.system(size: 12)).foregroundStyle(Palette.muted)
             }
             ForEach(transcript.segments, id: \.seq) { segment in
                 row(ListenCard.time.string(from: segment.start), segment.text, partial: false)
@@ -252,7 +252,7 @@ struct ListenCard: View {
     private func row(_ time: String, _ text: String, partial: Bool) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(time)
-                .font(.system(size: 10.5)).monospacedDigit()
+                .font(.system(size: 11)).monospacedDigit()
                 .foregroundStyle(Palette.muted)
                 .fixedSize()
             Text(text)

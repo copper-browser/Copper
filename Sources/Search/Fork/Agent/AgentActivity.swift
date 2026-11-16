@@ -23,6 +23,20 @@ struct AgentActivityGroup: Identifiable {
     var steps: [Agent.Item] { items.filter { $0.kind == .tool } }
     var failures: Int { steps.filter { !$0.ok }.count }
     var warnings: Int { steps.filter { $0.ok && !$0.warning.isEmpty }.count }
+    /// Fork (uib): the turn ended on a step that failed — a problem it got
+    /// past (a warning, or a failure followed by steps that worked) is not.
+    var failed: Bool { steps.last.map { !$0.ok } ?? false }
+    /// Fork (ui-flows): what went wrong as a sentence, not "1 failed"; "" when nothing did.
+    /// Fork (hc6): a failure it got past is said plainly — no retry is tracked, so never "retried".
+    var trouble: String {
+        if split, !failed { return " · split into smaller pieces" } // Fork (hc6): the cut step is the split, not a failure
+        let troubled = failures > 0 ? failures : warnings
+        guard troubled > 0 else { return "" }
+        if failures > 0, !failed { return troubled == 1 ? " · 1 earlier step failed" : " · \(troubled) earlier steps failed" }
+        return troubled == 1 ? " · 1 step had a problem" : " · \(troubled) steps had problems"
+    }
+    /// Fork (hc6): Copper asked for the work in smaller pieces (Agent.tooLong) inside this turn.
+    var split: Bool { items.contains { $0.kind == .note && $0.text == Agent.tooLong } }
     /// When the last step ended.
     var ended: Date {
         items.map { $0.kind == .tool ? $0.at.addingTimeInterval($0.ms / 1000) : $0.at }.max() ?? started
@@ -33,6 +47,8 @@ struct AgentActivity: View {
     let group: AgentActivityGroup
     @ObservedObject private var agent = Agent.shared
     @ObservedObject private var drive = Drive.shared
+    /// Fork (agent-ux): steps whose raw error is shown (Details).
+    @State private var details: Set<UUID> = []
 
     private var open: Bool { agent.expanded.contains(group.id) }
 
@@ -63,13 +79,13 @@ struct AgentActivity: View {
                     .shimmer()
                 TimelineView(.periodic(from: group.started, by: 1)) { beat in
                     Text("· \(DriveStyle.span(beat.date.timeIntervalSince(group.started)))")
-                        .font(.system(size: 12)).monospacedDigit().foregroundStyle(Palette.faint)
+                        .font(.system(size: 12)).monospacedDigit().foregroundStyle(Palette.muted)
                 }
                 .fixedSize()
             } else {
-                Image(systemName: group.failures > 0 ? "exclamationmark.triangle.fill" : "checkmark.circle")
+                Image(systemName: group.failed ? "exclamationmark.triangle.fill" : group.split ? "info.circle" : "checkmark.circle")
                     .font(.system(size: 11))
-                    .foregroundStyle(group.failures > 0 ? Color.red.opacity(0.75) : Palette.muted)
+                    .foregroundStyle(group.failed ? Palette.danger : Palette.muted)
                 summary
                     .lineLimit(1)
             }
@@ -86,10 +102,9 @@ struct AgentActivity: View {
         var line = Text("Worked for \(DriveStyle.span(group.ended.timeIntervalSince(group.started)))")
             + Text(" · \(steps) step\(steps == 1 ? "" : "s")")
         line = line.foregroundColor(Palette.muted)
-        if group.failures > 0 {
-            line = line + Text(" · \(group.failures) failed").foregroundColor(Color.red.opacity(0.8))
-        } else if group.warnings > 0 {
-            line = line + Text(" · \(group.warnings) with errors").foregroundColor(Color.red.opacity(0.8))
+        // Fork (uib): red only when the turn failed; one it got past is said in the line's own ink.
+        if !group.trouble.isEmpty {
+            line = line + Text(group.trouble).foregroundColor(group.failed ? Palette.danger : Palette.muted)
         }
         return line.font(.system(size: 12))
     }
@@ -113,12 +128,24 @@ struct AgentActivity: View {
             Rectangle().fill(Palette.hairline).frame(width: 1).padding(.leading, 5.5).padding(.vertical, 4)
             VStack(alignment: .leading, spacing: 9) {
                 ForEach(group.items) { item in
-                    if item.kind == .tool { step(item) } else { aside(item) }
+                    if item.kind == .tool { step(item) } else if item.kind == .note { split(item) } else { aside(item) }
                 }
             }
             .padding(.leading, 12)
         }
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// Fork (hc6): the "too much in one go" callout, folded into the steps: what happened and the model's numbers, muted.
+    private func split(_ item: Agent.Item) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "info.circle").font(.system(size: 10.5, weight: .medium)).frame(width: 15)
+            Text(item.detail.isEmpty ? item.text : "\(item.text) \(item.detail)")
+                .font(.system(size: 12))
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        }
+        .foregroundStyle(Palette.muted)
     }
 
     private func aside(_ item: Agent.Item) -> some View {
@@ -131,7 +158,9 @@ struct AgentActivity: View {
 
     private func step(_ item: Agent.Item) -> some View {
         let failed = !item.ok
-        let red = Color.red.opacity(0.82)
+        // Fork (polish r5): red only while the turn is broken; a step it got
+        // past (retried, or worked with a problem) is said in muted ink.
+        let red = group.failed ? Palette.danger : Palette.muted
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: AgentActivity.icon(item.tool))
@@ -140,30 +169,40 @@ struct AgentActivity: View {
                     .frame(width: 15)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.title.isEmpty ? Agent.plain(item.tool) : item.title)
-                        .font(.system(size: 12)).foregroundStyle(failed ? red : Palette.ink)
+                        .font(.system(size: 12)).foregroundStyle(Palette.ink) // Fork (uitype): the red is the glyph's and the line under it
                         .lineLimit(2).truncationMode(.tail)
                         .fixedSize(horizontal: false, vertical: true)
-                    if !item.warning.isEmpty {
-                        Text(item.warning)
-                            .font(.system(size: 11)).foregroundStyle(red)
-                            .lineLimit(3).truncationMode(.tail)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .textSelection(.enabled)
-                    } else if failed, let reason = item.text.split(separator: "\n").last, reason.hasPrefix("→") {
-                        Text(reason.dropFirst(2))
-                            .font(.system(size: 11)).foregroundStyle(red)
-                            .lineLimit(3)
-                            .fixedSize(horizontal: false, vertical: true)
+                    // Fork (agent-ux): a sentence first; the tool's own words behind Details.
+                    if let raw = AgentActivity.raw(item) {
+                        HStack(spacing: 6) {
+                            Text(failed ? (group.failed ? "That step didn't work." : "That step didn't work; it was retried.") : "It worked, with a problem.")
+                                .font(.system(size: 11.5)).foregroundStyle(red)
+                            Button(details.contains(item.id) ? "Hide details" : "Details") {
+                                withAnimation(Motion.quick) {
+                                    if details.contains(item.id) { details.remove(item.id) } else { details.insert(item.id) }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11.5, weight: .medium))
+                            .foregroundStyle(Palette.ink)
+                        }
+                        if details.contains(item.id) {
+                            Text(raw)
+                                .font(.system(size: 11, design: .monospaced)).foregroundStyle(Palette.muted)
+                                .lineLimit(8).truncationMode(.tail)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
                     }
                 }
                 .layoutPriority(1)
                 Spacer(minLength: 6)
                 if item.running {
                     Ring(size: 9)
-                } else if item.ms > 0 {
+                } else if item.ms > Double(DriveStyle.slow) { // Fork (ui-flows): only a slow step's time
                     Text(DriveStyle.ms(Int(item.ms)))
-                        .font(.system(size: 10.5)).monospacedDigit()
-                        .foregroundStyle(Palette.faint)
+                        .font(.system(size: 11)).monospacedDigit()
+                        .foregroundStyle(Palette.muted) // Fork (agent-ux): was faint
                         .fixedSize()
                 }
             }
@@ -179,16 +218,25 @@ struct AgentActivity: View {
         return VStack(alignment: .leading, spacing: 5) {
             if run.cycles.count > shown.count {
                 Text("\(run.cycles.count - shown.count) earlier steps")
-                    .font(.system(size: 11)).foregroundStyle(Palette.faint)
+                    .font(.system(size: 11)).foregroundStyle(Palette.muted)
             }
-            ForEach(Array(shown)) { cycle in DriveStep(cycle: cycle, jev: true) }
+            ForEach(Array(shown)) { cycle in DriveStep(cycle: cycle, jev: true, runFailed: run.failed) }
             if !live, run.status != .running {
                 Text(run.statusLine(busy: false))
-                    .font(.system(size: 11)).foregroundStyle(run.failed ? Color.red.opacity(0.8) : Palette.muted)
+                    .font(.system(size: 11)).foregroundStyle(run.failed ? Palette.danger : Palette.muted)
                     .lineLimit(2)
             }
         }
         .padding(.leading, 23)
+    }
+
+    /// What went wrong, in the tool's words: the warning, or a failure's
+    /// "→ reason" line. Nil when nothing did.
+    static func raw(_ item: Agent.Item) -> String? {
+        if !item.warning.isEmpty { return item.warning }
+        guard !item.ok else { return nil }
+        if let reason = item.text.split(separator: "\n").last, reason.hasPrefix("→") { return String(reason.dropFirst(2)) }
+        return item.text.isEmpty ? nil : item.text
     }
 
     /// An SF symbol per tool.

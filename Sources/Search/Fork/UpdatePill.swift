@@ -295,34 +295,36 @@ final class UpdatePill: ObservableObject {
 
 /// The pill's colours from the space: a deep, full shade of the column's own
 /// hue — the column is the same hue thinned, so this stands off it without
-/// being a colour from somewhere else — or the system accent on a grey
-/// space. The fill is opaque on purpose: over a picture or an animated scene
+/// being a colour from somewhere else — or Copper's own accent on a grey
+/// space (Fork (ui-system): it was the system's blue). The fill is opaque on purpose: over a picture or an animated scene
 /// a translucent pill would take its contrast from whatever is behind it.
 ///
 /// The words are white, so the fill is taken as deep as white needs — to a
-/// luminance near 0.16, about 5:1 — rather than to one brightness for every
-/// hue: blue and pink are dark at any brightness, green and teal are so
-/// light to the eye that one number made them highlighter. Never below
-/// 0.52 brightness, where a green turns to mud; those land near 4:1. Yellow
+/// luminance near 0.12, about 6:1, so the soft top light still leaves
+/// 4.5:1 under the words (Fork (ui-system): at 0.16 it measured 4.2:1) —
+/// rather than to one brightness for every hue: blue and pink are dark at
+/// any brightness, green and teal are so light to the eye that one number
+/// made them highlighter. Never below 0.42 brightness, where a green turns
+/// to mud. Yellow
 /// cannot be deep and still be yellow, so it goes the other way: a bright
 /// gold with the hue's own near-black words.
 struct UpdateInk {
     let fill: Color
     let label: Color
+    /// Fork (uib): the hue as words on the column itself — the soft pill at
+    /// rest: nearly the column's title ink (`SpaceTint.ink`), a touch more
+    /// colour; light on a dark column.
+    var text: Color = .clear
     /// Whether the label is dark — the sheen and the edge are lighter on it.
     let light: Bool
 
     /// The fill's target luminance under white words.
-    private static let deep = 0.16
+    private static let deep = 0.12
 
     init(_ tint: SpaceTint) {
-        guard let hue = tint.hue else {
-            let accent = NSColor.controlAccentColor.usingColorSpace(.sRGB).map {
-                SpaceTheme.Stop(r: $0.redComponent, g: $0.greenComponent, b: $0.blueComponent)
-            } ?? SpaceTheme.Stop(r: 0.0, g: 0.48, b: 1.0)
-            self.init(fill: accent)
-            return
-        }
+        // Fork (ui-system): a grey space's pill is Copper's accent (#BD522B's
+        // hue), taken as deep as the rest.
+        let hue = tint.hue ?? 0.044
         let (s, _) = SpaceTheme.strength(hue)
         // A dark column wants its colour a touch quieter than a light one.
         let saturation = tint.dark ? min(1, s + 0.1) : min(1, s + 0.24)
@@ -330,9 +332,10 @@ struct UpdateInk {
         if (0.115...0.2).contains(h) {
             let gold = SpaceTheme.Stop(hue: h, saturation: saturation, brightness: tint.dark ? 0.84 : 0.88)
             self.init(fill: gold.color, label: Color(hue: h, saturation: 0.9, brightness: 0.18), light: true)
+            text = Self.text(h, dark: tint.dark)
             return
         }
-        var low = 0.52, high = 0.9
+        var low = 0.42, high = 0.9
         if SpaceTheme.Stop(hue: h, saturation: saturation, brightness: low).luminance < Self.deep {
             for _ in 0..<12 {
                 let mid = (low + high) / 2
@@ -340,6 +343,11 @@ struct UpdateInk {
             }
         }
         self.init(fill: SpaceTheme.Stop(hue: h, saturation: saturation, brightness: low))
+        text = Self.text(h, dark: tint.dark)
+    }
+
+    private static func text(_ hue: Double, dark: Bool) -> Color {
+        Color(hue: hue, saturation: dark ? 0.32 : 0.9, brightness: dark ? 0.98 : 0.22)
     }
 
     /// White words on the fill unless they would read worse than near-black.
@@ -362,7 +370,7 @@ struct UpdateInk {
 /// The wide pill at the foot of the column, with the space's ink handed in
 /// as the slide mixes it. Takes no room while there is nothing to say.
 struct UpdatePillSlot: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var updates = Updates.shared
     @ObservedObject private var pill = UpdatePill.shared
     @Environment(\.accessibilityReduceMotion) private var still
@@ -374,6 +382,7 @@ struct UpdatePillSlot: View {
                 SlideInk(browser: browser) { tint in
                     UpdatePillView(browser: browser, cue: cue, tint: tint, style: .wide)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading) // Fork (ui-flows): as wide as its words
                 .padding(.horizontal, SideBar.inset)
                 .padding(.top, 6)
                 .padding(.bottom, 2)
@@ -391,7 +400,7 @@ struct UpdatePillSlot: View {
 
 /// The toolbar's capsule, among the doors at the far end of the tab strip.
 struct UpdateToolbarPill: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var updates = Updates.shared
     @ObservedObject private var pill = UpdatePill.shared
     @ObservedObject private var spaces = Spaces.shared
@@ -419,7 +428,7 @@ struct UpdateToolbarPill: View {
 /// The folded column's badge, in the window's bottom-left corner — where the
 /// column's foot would be. Only while the column is folded and not out.
 struct UpdateCorner: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var prefs: Preferences
     @ObservedObject private var updates = Updates.shared
     @ObservedObject private var pill = UpdatePill.shared
@@ -449,7 +458,7 @@ struct UpdateCorner: View {
 struct UpdatePillView: View {
     enum Style { case wide, compact, corner }
 
-    @ObservedObject var browser: Browser
+    let browser: Browser
     let cue: UpdateCue
     let tint: SpaceTint
     var style: Style = .wide
@@ -468,20 +477,27 @@ struct UpdatePillView: View {
     private var quiet: Bool { if case .failed = cue { return true }; return false }
     /// Quiet off the column — the toolbar, the badge over a page — has no
     /// column to be a shade of, so it takes the app's own surfaces.
-    private var fill: Color { quiet ? (style == .wide ? tint.pill : (style == .corner ? Palette.ground : Palette.wash)) : ink.fill }
+    private var fill: Color { quiet ? (style == .wide ? tint.pill : (style == .corner ? Palette.ground : Palette.wash)) : soft ? ink.fill.opacity(0.14) : ink.fill }
     private var rim: Color { style == .wide ? tint.rim : Palette.hairline }
-    private var label: Color { quiet ? (style == .wide ? tint.ink : Palette.ink) : ink.label }
+    private var label: Color { quiet ? (style == .wide ? tint.ink : Palette.ink) : soft ? ink.text : ink.label }
     private var lit: Bool { hovering || pill.hoverForced }
+    /// Fork (uib): the column's pill at rest is a wash of its colour with the
+    /// words in it, solid only under the pointer — the solid copper slab was
+    /// the loudest thing in the window. A download keeps its solid bar.
+    private var soft: Bool {
+        guard style == .wide, !quiet, !lit else { return false }
+        switch cue { case .downloading, .installing: return false; default: return true }
+    }
 
     private var height: CGFloat {
         switch style {
-        case .wide: return 34
+        case .wide: return SidePillGround.height // Fork (uib): the agent pill's geometry (HandsUI.swift)
         case .compact: return 24
         case .corner: return 30
         }
     }
 
-    private var radius: CGFloat { style == .wide ? 10 : height / 2 }
+    private var radius: CGFloat { style == .wide ? SidePillGround.radius : height / 2 }
     private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: radius, style: .continuous) }
     /// The badge says only its icon until the pointer is on it.
     private var spelled: Bool { style != .corner || lit }
@@ -492,7 +508,7 @@ struct UpdatePillView: View {
                 mark
                 if spelled {
                     Text(cue.title(compact: style != .wide))
-                        .font(.system(size: style == .wide ? 13 : 12, weight: .semibold))
+                        .font(.system(size: style == .wide ? 12.5 : 12, weight: .semibold))
                         .monospacedDigit()
                         .lineLimit(1)
                         .fixedSize()
@@ -500,8 +516,9 @@ struct UpdatePillView: View {
                 }
             }
             .foregroundStyle(label)
-            .padding(.horizontal, style == .wide ? 12 : (spelled ? 10 : 0))
-            .frame(minWidth: height, maxWidth: style == .wide ? .infinity : nil)
+            .padding(.horizontal, style == .wide ? 10 : (spelled ? 10 : 0))
+            .frame(minWidth: height)
+            .frame(maxWidth: style == .wide ? .infinity : nil, alignment: .leading) // Fork (uib): as wide as the column, as the agent pill
             .frame(height: height)
             // A crowded toolbar must not squeeze the capsule under its words.
             .fixedSize(horizontal: style != .wide, vertical: false)
@@ -575,12 +592,13 @@ struct UpdatePillView: View {
             } else {
                 shape.fill(fill)
             }
-            shape.fill(LinearGradient(colors: [.white.opacity(quiet ? 0 : (lit ? 0.22 : 0.14)), .clear],
+            // Fork (ui-flows): the column's pill is flat — no top light, no glow.
+            shape.fill(LinearGradient(colors: [.white.opacity(quiet || style == .wide ? 0 : (lit ? 0.22 : 0.14)), .clear],
                                       startPoint: .top, endPoint: .bottom))
-            shape.strokeBorder(quiet ? rim : Color.white.opacity(ink.light ? 0.35 : 0.18), lineWidth: 0.75)
+            shape.strokeBorder(quiet ? rim : soft ? ink.fill.opacity(0.45) : Color.white.opacity(ink.light ? 0.35 : 0.18), lineWidth: soft ? 1 : 0.75)
         }
         .brightness(lit && !quiet ? (ink.light ? -0.03 : 0.04) : 0)
-        .shadow(color: quiet ? tint.lift : ink.fill.opacity(style == .corner ? 0.45 : 0.32),
+        .shadow(color: style == .wide ? .clear : quiet ? tint.lift : ink.fill.opacity(style == .corner ? 0.45 : 0.32),
                 radius: lit ? 7 : 5, y: 2)
         .shadow(color: .black.opacity(style == .corner ? 0.18 : 0), radius: 10, y: 3)
     }
@@ -601,7 +619,7 @@ struct UpdatePillView: View {
         }
         .clipShape(shape)
         .allowsHitTesting(false)
-        .opacity(quiet ? 0 : 1)
+        .opacity(quiet || style == .wide ? 0 : 1)
     }
 
     @ViewBuilder private var menu: some View {
@@ -672,7 +690,7 @@ private struct UpdateRing: View {
 /// What's New: the feed's gist of the release, the way Settings would say
 /// it, with the full changelog a click away and the pill's step beside it.
 struct UpdateNotes: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     let cue: UpdateCue
     let close: () -> Void
     @ObservedObject private var updates = Updates.shared
@@ -752,7 +770,7 @@ struct UpdateNotes: View {
 /// column is its flat colour (a picture or a scene is not drawn), and the
 /// badge is shown both at rest and spelled out as under the pointer.
 struct UpdatePillSheet: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     let dark: Bool
 
     private var cues: [UpdateCue] {

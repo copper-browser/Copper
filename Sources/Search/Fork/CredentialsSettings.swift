@@ -3,7 +3,7 @@ import SwiftUI
 /// Settings controls for the optional Bitwarden backend. The card intentionally
 /// owns only UI state; Bitwarden keeps the CLI session and metadata cache.
 struct BitwardenCard: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var bitwarden = Bitwarden.shared
 
     @State private var server = ""
@@ -46,7 +46,7 @@ struct BitwardenCard: View {
                 Line("Bitwarden couldn't do that", firstLine(error)) {
                     Pill("Dismiss") { retry() }
                 }
-                .foregroundStyle(.red.opacity(0.78))
+                .foregroundStyle(Palette.danger)
             }
         }
         .onAppear {
@@ -109,7 +109,7 @@ struct BitwardenCard: View {
             Line("Master password") {
                 HStack(spacing: 8) {
                     SecureField("Password", text: $password)
-                        .textFieldStyle(.roundedBorder)
+                        .houseField() // Fork (ui-flows r3): the Intelligence field style, not the bezel
                         .frame(width: 220)
                         .onSubmit { unlock() }
                     actionPill("Unlock") { unlock() }
@@ -176,21 +176,23 @@ struct BitwardenCard: View {
         switch step {
         case .credentials:
             Line("Bitwarden server", "Use bitwarden.com, EU, or a self-hosted Vaultwarden server") {
-                TextField("https://vault.bitwarden.com", text: $server)
-                    .textFieldStyle(.roundedBorder)
+                TextField("", text: $server).fieldExample("https://vault.bitwarden.com", when: server.isEmpty)
+                    .accessibilityLabel("Bitwarden server") // Fork (polish r5): our own example; the system prompt was 1.7:1
+                    .houseField() // Fork (ui-flows r3): the Intelligence field style, not the bezel
                     .frame(width: 260)
             }
             .settingsAnchor("bitwarden.server") // Fork (settings-revamp): search anchors
             Rule()
             Line("Email") {
-                TextField("Email", text: $email)
-                    .textFieldStyle(.roundedBorder)
+                TextField("", text: $email).fieldExample("Email", when: email.isEmpty)
+                    .accessibilityLabel("Email") // Fork (polish r5): our own example; the system prompt was 1.7:1
+                    .houseField() // Fork (ui-flows r3): the Intelligence field style, not the bezel
                     .frame(width: 260)
             }
             Rule()
             Line("Master password", "A two-step or new-device code is asked for next, if the account wants one") {
                 SecureField("Password", text: $password)
-                    .textFieldStyle(.roundedBorder)
+                    .houseField() // Fork (ui-flows r3): the Intelligence field style, not the bezel
                     .frame(width: 260)
                     .onSubmit { signIn() }
             }
@@ -214,8 +216,9 @@ struct BitwardenCard: View {
         case .code(let prompt):
             Line(codeTitle(prompt), codeDetail(prompt)) {
                 HStack(spacing: 8) {
-                    TextField("Code", text: $otp)
-                        .textFieldStyle(.roundedBorder)
+                    TextField("", text: $otp).fieldExample("Code", when: otp.isEmpty)
+                        .accessibilityLabel("Code") // Fork (polish r5): our own example; the system prompt was 1.7:1
+                        .houseField() // Fork (ui-flows r3): the Intelligence field style, not the bezel
                         .frame(width: 120)
                         .focused($codeFocused)
                         .onSubmit { submitCode() }
@@ -624,7 +627,7 @@ struct AgentAccessCard: View {
         .onChange(of: onePassword.cacheVersion) { _, _ in list.forget(); policyRevision += 1 }
         .onChange(of: onePassword.isUnlocked) { _, _ in list.forget(); listRevision += 1 }
         // A login saved to the keychain while Settings is open.
-        .onReceive(browser.$saved.dropFirst()) { _ in list.forget(); listRevision += 1 }
+        .onReceive(browser.feed(\.saved).dropFirst()) { _ in list.forget(); listRevision += 1 }
     }
 
     private struct AgentIdentityRow: View {
@@ -736,7 +739,7 @@ struct AgentAccessCard: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
                         if credential.agentHint == .allow { badge(allowReason) }
-                        if denied { badge("denied in \(credential.source.title)", tint: .red.opacity(0.72)) }
+                        if denied { badge("denied in \(credential.source.title)", tint: Palette.danger) }
                     }
                 }
                 Spacer(minLength: 8)
@@ -755,7 +758,7 @@ struct AgentAccessCard: View {
 
         private func badge(_ text: String, tint: Color = Palette.muted) -> some View {
             Text(text)
-                .font(.system(size: 9.5, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(tint)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)

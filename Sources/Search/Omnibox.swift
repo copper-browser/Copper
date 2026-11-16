@@ -6,27 +6,30 @@ import AppKit
 /// shivers and says so, rather than quietly handing your keystrokes to a
 /// search engine.
 struct Omnibox: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     /// Raised over a page by ⌘L, rather than standing on an empty tab.
     let over: Bool
     /// Fork (new-tab-launcher): what is typed and offered; see `Browser.Field`.
     @ObservedObject private var state: Browser.Field
+    /// Fork (perf): ⌘K or ⌘L — see `Browser.Bar`.
+    @ObservedObject private var bar: Browser.Bar
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var shake: CGFloat = 0
     @State private var refused = false
-    @State private var breathing = false
 
     init(browser: Browser, over: Bool) {
         self.browser = browser
         self.over = over
         _state = ObservedObject(wrappedValue: browser.field)
+        _bar = ObservedObject(wrappedValue: browser.bar)
     }
 
     @ViewBuilder
     var body: some View {
         // Fork (command-bar-hooks): ⌘K is its own instrument and gets its own
         // card; ⌘L over a page is still upstream's field.
-        if browser.summoning {
+        if bar.summoning {
             CommandPalette(browser: browser, over: over)
         } else {
             plain
@@ -45,15 +48,64 @@ struct Omnibox: View {
             }
 
             VStack(spacing: 8) {
-                field
-                if !browser.offers.isEmpty { list }
+                launcher
+                if browser.offers.isEmpty, !over { StartCard(browser: browser).padding(.top, 8) } // Fork (first-run)
             }
             .frame(width: Metrics.fieldWidth)
             // Lifted a little above centre: dead centre reads as low, because
             // the strip at the top isn't part of what the eye is measuring.
-            .padding(.bottom, 60)
+            // Fork (ui-flows r3): with the start card or the empty space's
+            // keys under it, the pair sits ~40% down instead.
+            .padding(.bottom, !over && browser.spaceIsEmpty ? 140 : 60)
             .animation(Motion.settle, value: browser.offers)
             .animation(Motion.settle, value: refused)
+        }
+    }
+
+    /// Fork (uiflows r4): the field and what it thinks you mean are one
+    /// launcher card — one ground, one edge, one shadow under the shape —
+    /// with a hairline between them, not two cards each with its own shadow.
+    private var launcher: some View {
+        VStack(spacing: 0) {
+            field
+            if !browser.offers.isEmpty {
+                Rectangle().fill(Palette.hairline).frame(height: 1)
+                list
+            } else if !over {
+                StartCard(browser: browser, inCard: true) // Fork (first-run): the browsers to move in from, the keys
+            }
+        }
+        .background {
+            ZStack {
+                // A slow, almost invisible breath under the field. It is
+                // the only thing on an empty tab, and a thing that never
+                // moves at all reads as a picture of an app rather than
+                // an app.
+                Breath().padding(-Breath.reach)
+
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Palette.ground)
+                    .shadow(color: .black.opacity(0.07), radius: 22, y: 7)
+            }
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(
+                    refused ? Color.red.opacity(0.35) : Palette.hairline,
+                    lineWidth: 1
+                )
+                .allowsHitTesting(false)
+        )
+        .modifier(Shake(travel: shake))
+        .onChange(of: browser.refusals) { _, _ in
+            shake = 0
+            refused = true
+            // Fork (ui-motion): under Reduce Motion the red edge says it alone.
+            guard !reduceMotion else { return }
+            withAnimation(.easeOut(duration: 0.5)) { shake = 1 }
+        }
+        .onChange(of: browser.typed) { _, _ in
+            withAnimation(Motion.quick) { refused = false }
         }
     }
 
@@ -62,45 +114,6 @@ struct Omnibox: View {
             .frame(height: 22)
             .padding(.horizontal, 22)
             .padding(.vertical, 14)
-            .background {
-                ZStack {
-                    // A slow, almost invisible breath under the field. It is
-                    // the only thing on an empty tab, and a thing that never
-                    // moves at all reads as a picture of an app rather than
-                    // an app.
-                    RoundedRectangle(cornerRadius: 26, style: .continuous)
-                        .fill(Palette.ink.opacity(0.05))
-                        .blur(radius: 26)
-                        .scaleEffect(breathing ? 1.03 : 0.97)
-                        .opacity(breathing ? 1 : 0.65)
-
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Palette.ground)
-                }
-            }
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(
-                        refused ? Color.red.opacity(0.35) : Palette.hairline,
-                        lineWidth: 1
-                    )
-                    .allowsHitTesting(false)
-            )
-            .shadow(color: .black.opacity(0.06), radius: 24, y: 8)
-            .modifier(Shake(travel: shake))
-            .onAppear {
-                withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) {
-                    breathing = true
-                }
-            }
-            .onChange(of: browser.refusals) { _, _ in
-                shake = 0
-                refused = true
-                withAnimation(.easeOut(duration: 0.5)) { shake = 1 }
-            }
-            .onChange(of: browser.typed) { _, _ in
-                withAnimation(Motion.quick) { refused = false }
-            }
     }
 
     /// What it thinks you mean. Places you have been come with their titles;
@@ -115,13 +128,7 @@ struct Omnibox: View {
             }
         }
         .padding(6)
-        .background(Palette.ground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Palette.hairline, lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.07), radius: 20, y: 6)
-        .transition(.scale(scale: 0.98, anchor: .top).combined(with: .opacity))
+        .transition(.opacity)
     }
 
     private struct Row: View {
@@ -195,23 +202,26 @@ struct Omnibox: View {
 /// selected, so carrying on typing replaces it and Return accepts it. That
 /// needs a real text field and its delegate.
 struct AddressField: NSViewRepresentable {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     /// Fork (command-bar-hooks): show what was typed and nothing else. The
     /// address field completes as you type and shows the row the arrows have
     /// walked to; a command bar must keep your question on screen while you
     /// walk past six answers to it.
     var literal = false
     var size: CGFloat = 15.5
-    var placeholder = "Enter a web address"
+    var placeholder = "Search or enter address" // Fork (first-run): one wording everywhere
     /// Fork (new-tab-launcher): what is typed and offered; see `Browser.Field`.
     @ObservedObject private var state: Browser.Field
+    /// Fork (perf): the caret asked for (`focusRequest`) — see `Browser.Bar`.
+    @ObservedObject private var bar: Browser.Bar
 
-    init(browser: Browser, literal: Bool = false, size: CGFloat = 15.5, placeholder: String = "Enter a web address") {
+    init(browser: Browser, literal: Bool = false, size: CGFloat = 15.5, placeholder: String = "Search or enter address") {
         self.browser = browser
         self.literal = literal
         self.size = size
         self.placeholder = placeholder
         _state = ObservedObject(wrappedValue: browser.field)
+        _bar = ObservedObject(wrappedValue: browser.bar)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(browser: browser) }
@@ -233,7 +243,7 @@ struct AddressField: NSViewRepresentable {
             string: placeholder,
             attributes: [
                 .font: NSFont.systemFont(ofSize: size),
-                .foregroundColor: NSColor(Palette.ink.opacity(0.3)),
+                .foregroundColor: Palette.NS.muted, // Fork (ui-system): was ink at 0.3, ~2:1
             ]
         )
         return field
@@ -388,6 +398,86 @@ struct AddressField: NSViewRepresentable {
                 return false
             default:
                 return false
+            }
+        }
+    }
+}
+
+/// Fork (space-switch perf): the breath under an empty tab's field, run by
+/// Core Animation. As a SwiftUI `repeatForever` it was a SwiftUI update on
+/// the main thread every frame for as long as a blank tab was on screen —
+/// most of what landing on an empty space cost. Here the render server runs
+/// it and the app does nothing. Under Reduce Motion it holds still.
+struct Breath: NSViewRepresentable {
+    /// How far the glow reaches past the field: the view is this much larger
+    /// all round, so nothing between it and the window clips the blur.
+    static let reach: CGFloat = 48
+
+    func makeNSView(context: Context) -> BreathView { BreathView() }
+    func updateNSView(_ view: BreathView, context: Context) {}
+
+    final class BreathView: NSView {
+        private let glow = CALayer()
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            // A blurred fill of the ink at 5%: a shadow of the shape with no
+            // shape drawn.
+            glow.shadowOffset = .zero
+            glow.shadowRadius = 26
+            glow.shadowOpacity = 1
+            layer?.addSublayer(glow)
+            tint()
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func layout() {
+            super.layout()
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            glow.frame = bounds
+            let shape = bounds.insetBy(dx: Breath.reach, dy: Breath.reach)
+            glow.shadowPath = shape.width > 0 && shape.height > 0
+                ? CGPath(roundedRect: shape, cornerWidth: 26, cornerHeight: 26, transform: nil) : nil
+            CATransaction.commit()
+        }
+
+        override func viewDidChangeEffectiveAppearance() {
+            super.viewDidChangeEffectiveAppearance()
+            tint()
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard window != nil else { return }
+            if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                glow.removeAnimation(forKey: "breath")
+                glow.opacity = 0.82
+            } else if glow.animation(forKey: "breath") == nil {
+                let scale = CABasicAnimation(keyPath: "transform.scale")
+                scale.fromValue = 0.97
+                scale.toValue = 1.03
+                let fade = CABasicAnimation(keyPath: "opacity")
+                fade.fromValue = 0.65
+                fade.toValue = 1
+                let breath = CAAnimationGroup()
+                breath.animations = [scale, fade]
+                breath.duration = 2.6
+                breath.autoreverses = true
+                breath.repeatCount = .infinity
+                breath.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                glow.add(breath, forKey: "breath")
+            }
+        }
+
+        private func tint() {
+            effectiveAppearance.performAsCurrentDrawingAppearance {
+                glow.shadowColor = Palette.NS.ink.withAlphaComponent(0.05).cgColor
             }
         }
     }

@@ -13,6 +13,32 @@ extension View {
     func settingsField(radius: CGFloat = 7, fill: Color = Palette.wash) -> some View {
         modifier(SettingsFieldGround(radius: radius, fill: fill))
     }
+
+    /// Fork (ui-flows r3): a Settings text field in the house style — the
+    /// Intelligence page's plain field on the wash with the accent edge while
+    /// focused — where the vault pages had macOS's bezelled box.
+    func houseField() -> some View {
+        textFieldStyle(.plain)
+            .font(.system(size: 12))
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .settingsField()
+    }
+
+    /// Fork (uitype): an empty field's example, in muted ink and the
+    /// proportional face — the system's own prompt is ~1.5:1, and a plain
+    /// field ignores a prompt's colour. Goes on the field, before its padding.
+    func fieldExample(_ text: String, when empty: Bool) -> some View {
+        background(alignment: .leading) {
+            if empty {
+                Text(text)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.placeholder) // Fork (polish r5)
+                    .lineLimit(1)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
 }
 
 /// `settingsField()`: the wash, and the ink edge while focused.
@@ -28,7 +54,7 @@ struct SettingsFieldGround: ViewModifier {
             .background(fill, in: shape)
             .overlay {
                 shape
-                    .strokeBorder(Palette.ink.opacity(0.35), lineWidth: 1.5)
+                    .strokeBorder(Palette.accent, lineWidth: 1.5) // Fork (ui-system)
                     .opacity(focused ? 1 : 0)
                     .animation(Motion.quick, value: focused)
                     .allowsHitTesting(false)

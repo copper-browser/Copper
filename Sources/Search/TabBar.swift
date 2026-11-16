@@ -5,7 +5,7 @@ import SwiftUI
 /// slides from the tab you left to the tab you picked rather than blinking out
 /// of one and into the other.
 struct TabBar: View {
-    @ObservedObject var browser: Browser
+    @Bindable var browser: Browser
     @ObservedObject private var downloads = Downloads.shared
 
     @Namespace private var pill
@@ -20,6 +20,8 @@ struct TabBar: View {
     @State private var plussed = false
     /// How wide the doors at the far end are, extension buttons included.
     @State private var doors: CGFloat = 0
+    /// Fork (polish r5): which ends of a scrolling run have tabs out of view.
+    @State private var hidden = StripEdges()
 
     var body: some View {
         // A GeometryReader is only here to measure the width. Its content is
@@ -52,12 +54,12 @@ struct TabBar: View {
                                     // among titles: each has its own stride.
                                     let step = (tab.pin != nil ? Metrics.pinWidth : width(in: geo.size.width)) + Metrics.tabGap
                                     let held = dragging == tab.id
+                                    let live = tab.id == browser.activeID
                                     TabPill(
                                         browser: browser,
-                                        prefs: browser.prefs,
                                         tab: tab,
-                                        live: tab.id == browser.activeID,
-                                        width: width(in: geo.size.width),
+                                        live: live,
+                                        width: live ? liveWidth(in: geo.size.width) : width(in: geo.size.width), // Fork (uib)
                                         room: geo.size.width - Metrics.lights - 12,
                                         pill: pill,
                                         close: { Sections.shared.remove(tab, in: browser) } // Fork (saved-close): the pill's cross takes a Saved tab out; ⌘W puts it down
@@ -75,6 +77,11 @@ struct TabBar: View {
                             .frame(height: Metrics.strip)
                         }
                         .scrollDisabled(!overflowing(in: geo.size.width))
+                        .stripEdges($hidden)
+                        // Fork (polish r5): a run that scrolls fades out at the
+                        // ends that hide tabs, the way the spaces strip does (SpaceStrip.fade) —
+                        // it used to stop dead at a cut tab.
+                        .mask(edgeFade(in: geo.size.width))
                         .frame(width: run(in: geo.size.width))
                         .onAppear { reveal(reader, in: geo.size.width) }
                         .onChange(of: overflowing(in: geo.size.width)) { _, _ in reveal(reader, in: geo.size.width) }
@@ -143,6 +150,9 @@ struct TabBar: View {
         }
         .frame(height: Metrics.strip)
         .onHover { nearby = $0 }
+        // Fork (polish r5): as the sidebar does — every site's real icon asked
+        // for, once per host per launch, rows asleep included.
+        .task(id: Spaces.shared.current(in: browser)) { Marks.warm(browser.tabs) }
         // A link dragged onto the row opens there.
         .onDrop(of: [.url, .text], isTargeted: $landing) { providers in
             browser.take(providers)
@@ -156,6 +166,11 @@ struct TabBar: View {
         .animation(Motion.glide, value: browser.editingTab)
         .animation(Motion.settle, value: browser.tabs.map(\.id))
         .animation(Motion.settle, value: downloads.doorShowing)
+    }
+
+    private func edgeFade(in strip: CGFloat) -> some View {
+        let over = overflowing(in: strip)
+        return StripFade(leading: over && hidden.leading, trailing: over && hidden.trailing)
     }
 
     /// Pick a tab up and the others get out of its way as it passes them.
@@ -214,8 +229,9 @@ struct TabBar: View {
         let loose = CGFloat(browser.tabs.count) - pinned
         var total = pinned * Metrics.pinWidth + loose * each
             + CGFloat(max(0, browser.tabs.count - 1)) * Metrics.tabGap
+            + (liveLoose ? liveWidth(in: strip) - each : 0) // Fork (uib)
         if let id = browser.editingTab, let tab = browser.tabs.first(where: { $0.id == id }) {
-            total += min(340, strip - Metrics.lights - 12) - (tab.pin != nil ? Metrics.pinWidth : each)
+            total += min(340, strip - Metrics.lights - 12) - (tab.pin != nil ? Metrics.pinWidth : (tab.id == browser.activeID ? liveWidth(in: strip) : each))
         }
         return total
     }
@@ -228,19 +244,48 @@ struct TabBar: View {
         return max(0, strip - Metrics.lights - 12 - Metrics.plusWidth - far - 3 * Metrics.tabGap)
     }
 
-    /// Every loose tab is the same width, so the cross is always in the same
-    /// place. Past a dozen or so they start giving ground; too narrow for a
-    /// title they show their mark alone (Metrics.tabTitled), down to the
-    /// mark and its air. Past that, the run scrolls. The pinned squares take
-    /// their room off the top.
+    /// Every loose tab but the live one is the same width, so the cross is
+    /// always in the same place (the next tab slides in under it and, once
+    /// live, grows from that same left edge). Past a dozen or so they start
+    /// giving ground; too narrow for a title they show their mark alone
+    /// (Metrics.tabTitled), down to the mark and its air. Past that, the run
+    /// scrolls. The pinned squares take their room off the top.
     private func width(in strip: CGFloat) -> CGFloat {
-        let pinned = CGFloat(browser.pinnedCount)
-        let loose = CGFloat(browser.tabs.count) - pinned
+        let (loose, room) = share(in: strip)
         guard loose > 0 else { return Metrics.tabWidth }
+        guard liveLoose, loose > 1 else { return clamp(room / loose) }
+        return clamp((room - liveWidth(in: strip)) / (loose - 1))
+    }
+
+    /// Fork (uib): the tab you are on takes the strip's spare width first —
+    /// half again its share, up to the full width — so its title and host
+    /// read; never so much that the others lose their titles.
+    private func liveWidth(in strip: CGFloat) -> CGFloat {
+        let (loose, room) = share(in: strip)
+        guard loose > 0 else { return Metrics.tabWidth }
+        let equal = room / loose
+        var live = min(Metrics.tabWidth, max(equal * 1.5, Metrics.tabTitled + 40))
+        if equal >= Metrics.tabTitled { live = min(live, room - (loose - 1) * Metrics.tabTitled) }
+        // Fork (uichrome): no wider than its title and host need — the rest
+        // of the spare width goes back to the other tabs' titles.
+        if let tab = browser.active { live = min(live, TabPill.wants(tab)) }
+        return clamp(max(equal, live))
+    }
+
+    /// How many loose tabs there are and the room they share.
+    private func share(in strip: CGFloat) -> (loose: CGFloat, room: CGFloat) {
+        let pinned = CGFloat(browser.pinnedCount)
         let spent = pinned * Metrics.pinWidth
             + CGFloat(max(0, browser.tabs.count - 1)) * Metrics.tabGap
-        return max(Metrics.tabMinWidth, min(Metrics.tabWidth, (room(in: strip) - spent) / loose))
+        return (CGFloat(browser.tabs.count) - pinned, room(in: strip) - spent)
     }
+
+    private func clamp(_ width: CGFloat) -> CGFloat {
+        max(Metrics.tabMinWidth, min(Metrics.tabWidth, width))
+    }
+
+    /// Whether the tab you are on is a loose one (a pinned square stays a square).
+    private var liveLoose: Bool { browser.active.map { $0.pin == nil } ?? false }
 }
 
 /// Back, forward, reload. They watch the live tab, not the window: whether
@@ -248,7 +293,7 @@ struct TabBar: View {
 /// every page. Used here and, beside the traffic lights instead of at the
 /// far end of the row, in the sidebar.
 struct Helm: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     /// Fork: the sidebar's own, larger doors in the column's ink.
     var size: CGFloat = 26
     var glyph: CGFloat = 11
@@ -310,8 +355,7 @@ struct Helm: View {
 }
 
 private struct TabPill: View {
-    @ObservedObject var browser: Browser
-    @ObservedObject var prefs: Preferences
+    let browser: Browser
     @ObservedObject var tab: Tab
     let live: Bool
     let width: CGFloat
@@ -344,14 +388,9 @@ private struct TabPill: View {
                 Group {
                     if browser.editingPin == tab.id {
                         PinField(browser: browser, tab: tab)
-                    } else if prefs.glyph == .icons, let icon = tab.icon {
-                        Mark(icon: icon, letter: tab.pin ?? "", size: 16, dim: tab.asleep)
                     } else {
-                        Text(tab.pin ?? "")
-                            .font(.system(size: 12, weight: .medium))
-                            // A pin holding no page is still there and still
-                            // yours; it just isn't costing anything.
-                            .foregroundStyle(colour.opacity(tab.asleep ? 0.45 : 1))
+                        // Fork (polish r5): always the pinned site's own mark (or a globe), never its letter.
+                        Mark(icon: tab.pinMark, size: 16, dim: tab.asleep)
                     }
                 }
                 .frame(width: 16, height: 16)
@@ -385,6 +424,7 @@ private struct TabPill: View {
                 browser.select(tab)
             }
         })
+        .modifier(Pressable(radius: 9)) // Fork (motion): the shared pressed state
         .onHover { hovering = $0 }
         .contextMenu { TabMenu(browser: browser, tab: tab, close: close) }
         .help(pinned || compact ? tab.label : "")
@@ -407,7 +447,7 @@ private struct TabPill: View {
                 if tab.loading {
                     Ring()
                 } else {
-                    Mark(icon: prefs.glyph == .icons ? tab.icon : nil, letter: tab.monogram, size: 15, dim: tab.asleep)
+                    Mark(icon: tab.icon, size: 15, dim: tab.asleep)
                 }
             }
             .frame(width: 16, height: 16)
@@ -425,75 +465,135 @@ private struct TabPill: View {
                 TabAddressField(browser: browser)
                     .frame(height: 16)
             } else {
-                if prefs.glyph == .icons, !tab.isBlank {
-                    Mark(icon: tab.icon, letter: tab.monogram, size: 15)
+                if !tab.isBlank {
+                    Mark(icon: tab.icon, size: 15)
                 }
                 if tab.bench {
                     // A script's tab, not yours.
                     Image(systemName: "flask")
-                        .font(.system(size: 9))
+                        .font(.system(size: 10)) // Fork (uib): the 10 pt floor
                         .foregroundStyle(colour.opacity(0.7))
                 }
                 if tab.shy {
                     // Quiet, and only on the tabs that keep nothing.
                     Image(systemName: "eye.slash")
-                        .font(.system(size: 9))
+                        .font(.system(size: 10))
                         .foregroundStyle(colour.opacity(0.7))
                 }
-                Text(tab.label)
+                FadingTitle(text: Text(shownTitle) // Fork (motion): a long title fades out, no "…"
                     .font(.system(size: 12.5, weight: live ? .semibold : .regular))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .foregroundStyle(colour)
+                    .foregroundStyle(colour))
+                    .layoutPriority(1)
+                // Fork (uib): the live tab says whose page it is, after its
+                // title. Fork (uichrome): the host yields first — it shows
+                // only while the title keeps its words (all of them, or 140 pt
+                // fading out 8 pt before the host); the address has it anyway.
+                if let host = liveHost, roomForHost(host) {
+                    Text(host)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Palette.muted)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .padding(.leading, 2)
+                }
             }
 
             Spacer(minLength: 2)
 
             if !editing, !compact { HandBadges(tab: tab.id, size: 13) } // Fork: agents' hands (Hands.swift)
-
-            // Pinned to the right-hand end of the pill, not trailing the title.
-            // One slot doing two jobs: the cross when the pointer is here, the
-            // ring while the page is still coming, never both.
-            ZStack {
-                if hovering {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(Palette.muted)
-                        .frame(width: 15, height: 15)
-                        .background(Palette.ink.opacity(0.07), in: Circle())
-                        .transition(.opacity)
-                } else if tab.loading {
-                    Ring().transition(.opacity)
-                } else if tab.noisy {
-                    // Which tab the noise is coming from. ⌘⇧M stops it.
-                    Image(systemName: "speaker.wave.2.fill")
-                        .font(.system(size: 8))
-                        .foregroundStyle(Palette.muted)
-                        .transition(.opacity)
-                }
-            }
-            .frame(width: editing ? 0 : 15, height: 15)
-            .opacity(editing ? 0 : 1)
-            // The cross is 15 points across because that is how big it should
-            // look. What you have to hit is the whole right-hand end of the
-            // tab: an overlay is not laid out, so it can reach past its own
-            // frame without moving anything that is.
-            .overlay {
-                if !editing {
-                    Color.clear
-                        .frame(width: 30, height: 28)
-                        .contentShape(Rectangle())
-                        .onTapGesture { if hovering { close() } }
-                }
-            }
-            .animation(Motion.quick, value: hovering)
-            .animation(Motion.quick, value: tab.loading)
-            .animation(Motion.quick, value: tab.noisy)
         }
         .padding(.leading, 11)
         .padding(.trailing, editing ? 11 : 7)
+        // Fork (uitype): the cross and the ring take no room at rest; they are
+        // drawn over the title's end, which fades out under them (Side.swift).
+        .modifier(RowEndFade(on: !editing && slotShown, clear: 7 + 15 + 3))
+        .overlay(alignment: .trailing) {
+            if !editing { slot.padding(.trailing, 7) }
+        }
         .padding(.vertical, 6)
         .frame(width: span, alignment: .leading)
+    }
+
+    private var slotShown: Bool { hovering || tab.loading || tab.noisy }
+
+    /// Fork (polish r5): the title, tidied; in a pill too narrow for all of
+    /// it, only the part before its first separator — "Copper — Wikipedia"
+    /// read "Copper -" with the dash fading out.
+    private var shownTitle: String {
+        let title = CommandPalette.tidy(tab.label)
+        let room = span - 11 - 7 - 15 - 6 - 2
+        guard TabPill.measure(title, size: 12.5, weight: live ? .semibold : .regular) > room else { return title }
+        return CommandPalette.head(title)
+    }
+
+    /// Fork (uichrome): the width the live tab's words take: its title, 8 pt,
+    /// its host — and the mark, the padding and the cross's slot around them.
+    /// The strip gives the live tab no more than this.
+    static func wants(_ tab: Tab) -> CGFloat {
+        let title = TabPill.measure(tab.label, size: 12.5, weight: .semibold)
+        let host = TabPill.host(of: tab).map { 8 + TabPill.measure($0, size: 12, weight: .regular) } ?? 0
+        return ceil(11 + 15 + 6 + title + host + 2 + 7 + 15 + 3)
+    }
+
+    private static func measure(_ text: String, size: CGFloat, weight: NSFont.Weight) -> CGFloat {
+        (text as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: size, weight: weight)]).width
+    }
+
+    /// Whether the host fits beside a title that still reads.
+    private func roomForHost(_ host: String) -> Bool {
+        let words = span - 11 - 7 - 15 - 6 - 2 - (slotShown ? 25 : 0)
+        let hostWidth = 8 + TabPill.measure(host, size: 12, weight: .regular)
+        let title = TabPill.measure(tab.label, size: 12.5, weight: .semibold)
+        return words - hostWidth >= min(title, 140)
+    }
+
+    /// Fork (uib): the host shown in the live tab, unless the title already
+    /// is it or it is too long to leave the title room (the address has it).
+    private var liveHost: String? { live ? TabPill.host(of: tab) : nil }
+
+    fileprivate static func host(of tab: Tab) -> String? {
+        guard !tab.isBlank, let url = tab.address else { return nil }
+        let host = SideAddress.host(url)
+        return host == tab.label || host.count > 22 ? nil : host
+    }
+
+    /// Pinned to the right-hand end of the pill, not trailing the title.
+    /// One slot doing two jobs: the cross when the pointer is here, the
+    /// ring while the page is still coming, never both.
+    private var slot: some View {
+        ZStack {
+            if hovering {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Palette.muted)
+                    .frame(width: 15, height: 15)
+                    .background(Palette.ink.opacity(0.07), in: Circle())
+                    .transition(.opacity)
+            } else if tab.loading {
+                Ring().transition(.opacity)
+            } else if tab.noisy {
+                // Which tab the noise is coming from. ⌘⇧M stops it.
+                Image(systemName: "speaker.wave.2.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Palette.muted)
+                    .transition(.opacity)
+            }
+        }
+        .frame(width: 15, height: 15)
+        // The cross is 15 points across because that is how big it should
+        // look. What you have to hit is the whole right-hand end of the
+        // tab: an overlay is not laid out, so it can reach past its own
+        // frame without moving anything that is.
+        .overlay {
+            Color.clear
+                .frame(width: 30, height: 28)
+                .contentShape(Rectangle())
+                .onTapGesture { if hovering { close() } }
+                .allowsHitTesting(hovering)
+        }
+        .animation(Motion.quick, value: hovering)
+        .animation(Motion.quick, value: tab.loading)
+        .animation(Motion.quick, value: tab.noisy)
     }
 
     @ViewBuilder
@@ -543,8 +643,29 @@ private struct TabPill: View {
 /// A field of its own rather than SwiftUI's, for one reason: the system paints
 /// selected text as a solid block of accent colour, which over a pale grey pill
 /// this size is the loudest thing in the window. Here it is a tenth of the ink.
-struct TabAddressField: NSViewRepresentable {
-    @ObservedObject var browser: Browser
+///
+/// Fork (uib): the field draws no system ring (it would be cut square by the
+/// pill), so it wears the keyboard's ring itself — the accent, just outside
+/// its text, for as long as it is being edited, which is as long as it has
+/// the keyboard.
+struct TabAddressField: View {
+    let browser: Browser
+
+    var body: some View {
+        TabAddressEditor(browser: browser)
+            .background {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .strokeBorder(Palette.accent, lineWidth: 1.5)
+                    .padding(.vertical, -5)
+                    .padding(.horizontal, -7)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+    }
+}
+
+private struct TabAddressEditor: NSViewRepresentable {
+    let browser: Browser
 
     func makeCoordinator() -> Coordinator { Coordinator(browser: browser) }
 
@@ -624,7 +745,7 @@ struct TabAddressField: NSViewRepresentable {
 
 /// What a right-click on any tab offers, wherever the tab is drawn.
 struct TabMenu: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var tab: Tab
     let close: () -> Void
 
@@ -757,7 +878,7 @@ final class RingView: NSView {
 /// in a tab: the system paints selected text as a solid block of accent colour,
 /// and over a thirty-point grey square that is the loudest thing on screen.
 struct PinField: NSViewRepresentable {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var tab: Tab
 
     func makeCoordinator() -> Coordinator { Coordinator(browser: browser, tab: tab) }
@@ -838,6 +959,30 @@ struct PinField: NSViewRepresentable {
         func controlTextDidEndEditing(_ note: Notification) {
             let browser = browser
             DispatchQueue.main.async { browser.endPinEdit() }
+        }
+    }
+}
+
+/// Fork (polish r5): whether a horizontal run has content past either end.
+struct StripEdges: Equatable {
+    var leading = false
+    var trailing = true
+}
+
+private extension View {
+    /// macOS 15 reads the run's offset; before it, both ends of an
+    /// overflowing run fade (the tab in view is kept centred-ish anyway).
+    @ViewBuilder
+    func stripEdges(_ edges: Binding<StripEdges>) -> some View {
+        if #available(macOS 15, *) {
+            onScrollGeometryChange(for: StripEdges.self) { geometry in
+                StripEdges(leading: geometry.contentOffset.x > 1,
+                           trailing: geometry.contentOffset.x + geometry.containerSize.width < geometry.contentSize.width - 1)
+            } action: { _, now in
+                edges.wrappedValue = now
+            }
+        } else {
+            onAppear { edges.wrappedValue = StripEdges(leading: true, trailing: true) }
         }
     }
 }

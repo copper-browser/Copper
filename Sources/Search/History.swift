@@ -393,7 +393,7 @@ final class History: ObservableObject {
     /// Somewhere to start on the first day, before there is any history to go
     /// on. Ranked below anything actually visited, and dropped from the list
     /// the moment you have been there yourself.
-    private static let known: [(String, String)] = [
+    static let known: [(String, String)] = [ // Fork (command-bar-hooks): ⌘K reads it too
         ("google.com", "Google"), ("mail.google.com", "Gmail"),
         ("drive.google.com", "Google Drive"), ("calendar.google.com", "Google Calendar"),
         ("maps.google.com", "Google Maps"), ("youtube.com", "YouTube"),

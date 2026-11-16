@@ -134,7 +134,12 @@ final class Spaces: ObservableObject {
     /// next launch has to build it with the same one or it comes back signed
     /// out. Written as the pin's `space` in session.json; nothing else reads it.
     private var pinHome: [Tab.ID: UUID] = [:]
-    private var currentByBrowser: [ObjectIdentifier: UUID] = [:]
+    private var currentByBrowser: [ObjectIdentifier: UUID] = [:] {
+        // Fork (observe): a window that turned to another space says so on its
+        // own (Browser.spaceTurns), so views drawing `current(in:)` hear it
+        // without observing every change of Spaces.
+        didSet { for b in browsers where oldValue[ObjectIdentifier(b)] != currentByBrowser[ObjectIdentifier(b)] { b.spaceTurns &+= 1 } }
+    }
     private var activeByBrowserSpace: [ObjectIdentifier: [UUID: Tab.ID]] = [:]
     private var updating = 0
     private weak var mainBrowser: Browser?
@@ -153,7 +158,7 @@ final class Spaces: ObservableObject {
     /// The projection a window draws: global pins first, then that space's
     /// loose tabs. Callers should use this rather than assembling the row.
     func projection(_ id: UUID) -> [Tab] { pins + row(id) }
-    func current(in browser: Browser) -> UUID { currentByBrowser[ObjectIdentifier(browser)] ?? current }
+    func current(in browser: Browser) -> UUID { _ = browser.spaceTurns; return currentByBrowser[ObjectIdentifier(browser)] ?? current }
     func space(in browser: Browser) -> Space { all.first { $0.id == current(in: browser) } ?? all[0] }
     func spaceID(of tab: Tab) -> UUID? {
         guard tab.pin == nil else { return nil }
@@ -467,6 +472,7 @@ final class Spaces: ObservableObject {
     }
 
     private func swap(to id: UUID, in browser: Browser, landing: Tab.ID? = nil) {
+        Pace.step("swap") // Fork (switch): where a switch's pass goes (`bench pace` steps)
         let key = ObjectIdentifier(browser)
         let old = current(in: browser)
         if let active = browser.activeID { activeByBrowserSpace[key, default: [:]][old] = active }
@@ -478,10 +484,11 @@ final class Spaces: ObservableObject {
         browser.active?.touch()
         objectWillChange.send() // `current(in:)` is read by views, and is not @Published
         currentByBrowser[key] = id
-        if browser.primary { current = id }
+        if browser.primary { current = id; SpaceWarm.left(old) } // Fork (idle-memory): the space warmed at the next launch
         browser.taken = nil
         let next = projection(id)
         setProjection(next, in: browser)
+        Pace.step("swap.projection")
         // The tab asked for; else the one this window last looked at here,
         // unless another window is showing it now — then the most recent one
         // that is free; with none free (or none at all), a new tab, as Arc
@@ -500,10 +507,14 @@ final class Spaces: ObservableObject {
             browser.activeID = nil
             browser.newTab()
         }
+        Pace.step("swap.selected")
         Recent.shared.rebuild(from: browser.tabs)
         Sections.shared.sweep(in: browser)
         Windows.keep(browser)
         keep()
+        Pace.step("swap.done")
+        // The pass ends with SwiftUI's update of the rows; the next one starts after that frame's commit.
+        DispatchQueue.main.async { Pace.step("swap.committed") }
     }
 
     /// The tab some window will land on when it comes back to one of its
@@ -1049,7 +1060,8 @@ final class Spaces: ObservableObject {
         }
         for tab in pins {
             let made = pinHome[tab.id].flatMap { id in all.contains { $0.id == id } ? id : nil }
-            guard let entry = written(tab, space: made, active: mainActive) else { continue }
+            guard var entry = written(tab, space: made, active: mainActive) else { continue }
+            PinsAwake.write(tab, into: &entry) // Fork (covers): weight + dozed, for the next launch
             pinEntries.append(entry)
         }
         return .init(tabs: entries, active: activeIndex, spaces: all, space: mainSpace, pins: pinEntries)
@@ -1112,6 +1124,7 @@ final class Spaces: ObservableObject {
             tab.restore(url: url, title: CanvasTabs.rowTitle(for: url, kept: entry.title))
             tab.pin = entry.pin ?? (tab.monogram.isEmpty ? "•" : tab.monogram)
             Sections.shared.restore(tab, saved: true, seen: entry.seen)
+            PinsAwake.restored(tab, from: entry) // Fork (covers): a big pin left asleep stays asleep
             Groups.shared.restore(tab, group: entry.group)
             if let token = entry.split { splits[token, default: []].append(tab.id) }
             pins.append(tab)
@@ -1200,7 +1213,7 @@ extension Session.Entry {
 /// Everything Copper adds to the menu bar, in one Commands so upstream's
 /// `.commands {}` gains a single line (the builder takes ten at most).
 struct ForkCommands: Commands {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var spaces = Spaces.shared
     @ObservedObject var split = Split.shared
     @ObservedObject var agent = Agent.shared
@@ -1286,6 +1299,10 @@ extension Spaces {
         let key = words.dropLast().joined(separator: " ")
         switch request["op"] as? String ?? "" {
         case "new": add(named: arg, in: browser)
+        case "warm": // Fork (switch): `spaces warm N|NAME` as the pointer resting on its chip, `spaces warm sides` as ⌃ held
+            if arg == "sides" { SpaceWarm.sides(of: browser); return ["warming": "sides"] }
+            guard let id = find(arg) else { return ["error": "no space \(arg)"] }
+            return ["warming": SpaceWarm.warm(space: id, in: browser)]
         case "next": step(1, in: browser)
         case "prev": step(-1, in: browser)
         case "select": guard let id = find(arg) else { return ["error": "no space \(arg)"] }; select(id, in: browser)

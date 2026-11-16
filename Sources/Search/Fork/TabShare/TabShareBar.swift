@@ -10,7 +10,7 @@ import SwiftUI
 // sit on them, and that page has its own way to stop. Everywhere else —
 // above all on the shared tab itself — it is there.
 struct ShareBar: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var share = TabShare.shared
 
     var body: some View {
@@ -56,10 +56,10 @@ struct ShareCapsule: View {
             Button(action: stop) {
                 Text("Stop")
                     .font(.system(size: 12))
-                    .foregroundStyle(Palette.ground)
+                    .foregroundStyle(Palette.onAccent)
                     .padding(.horizontal, 11)
                     .padding(.vertical, 5)
-                    .background(Palette.ink, in: Capsule())
+                    .background(Palette.accent, in: Capsule()) // Fork (ui-system)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Stop sharing")

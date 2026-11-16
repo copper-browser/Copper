@@ -40,21 +40,35 @@ enum When {
 }
 
 struct HistoryPanel: View {
-    @ObservedObject var browser: Browser
+    @Bindable var browser: Browser
 
     @FocusState private var hunting: Bool
     @State private var traces: [History.Trace] = []
     @State private var clearing = false
+    /// Fork (polish r5): a site's mark asked for (`Marks.want`) lands here.
+    @ObservedObject private var marks = Marks.ticker
 
     var body: some View {
-        Plate("History", width: 600, close: { browser.recalling = false }) {
+        // Fork (ui-system): empty is a state (symbol, line, one way to fill
+        // it) with no search, count or Clear; the list is as tall as it is.
+        let none = traces.isEmpty && browser.recallHunt.isEmpty
+        Plate("History", width: 600, footed: !traces.isEmpty || clearing, close: { browser.recalling = false }) {
             VStack(alignment: .leading, spacing: 14) {
-                Hunt(text: $browser.recallHunt, prompt: "Search everywhere you have been", focus: $hunting)
+                if none && !clearing {
+                    EmptyState("clock", "No history yet", "Pages you visit show up here, by day.") {
+                        Pill("Move in from another browser…") {
+                            browser.recalling = false
+                            Flow.shared.present(from: browser, via: .menu)
+                        }
+                    }
+                } else {
+                    Hunt(text: $browser.recallHunt, prompt: "Search everywhere you have been", focus: $hunting)
+                }
 
                 if traces.isEmpty {
-                    Card { Nothing(browser.recallHunt.isEmpty ? "Nothing yet." : "Nothing matches.") }
+                    if !none { EmptyState("magnifyingglass", "No matches", "Nothing you have visited matches “\(browser.recallHunt)”.") }
                 } else {
-                    ScrollView(showsIndicators: false) {
+                    Fitted {
                         VStack(alignment: .leading, spacing: 14) {
                             ForEach(days, id: \.0) { day, rows in
                                 VStack(alignment: .leading, spacing: 6) {
@@ -81,7 +95,6 @@ struct HistoryPanel: View {
                         }
                         .padding(.bottom, 2)
                     }
-                    .frame(maxHeight: 420)
                 }
             }
         } foot: {
@@ -103,6 +116,7 @@ struct HistoryPanel: View {
             refresh()
         }
         .onChange(of: browser.recallHunt) { _, _ in refresh() }
+        .onChange(of: traces.map(\.url)) { _, urls in Marks.want(urls) } // Fork (polish r5): a site's real icon, not a globe, wherever it can be had
     }
 
     /// Three separate things, worded so nobody has to guess which one signs
@@ -154,28 +168,31 @@ struct HistoryPanel: View {
         let forget: () -> Void
 
         @State private var hovering = false
+        @Environment(\.colorScheme) private var scheme // Fork (ui-flows)
 
         var body: some View {
             HStack(spacing: 12) {
-                Mark(icon: Favicons.shared.cached(trace.url.host()?.lowercased() ?? ""),
-                     letter: trace.key.first.map { String($0).uppercased() } ?? "•", size: 16)
+                // Fork (ui-flows): in the panel's own look's ink — a one-colour
+                // mark (GitHub's) inked for the app's look vanished on a panel
+                // drawn in the other one.
+                Mark(icon: Favicons.shared.cached(trace.url.host()?.lowercased() ?? "").map { IconInk.legible($0, dark: scheme == .dark) },
+                     size: 16)
+                // Fork (uiflows r4): the title said once, as ⌘K says it, and
+                // both lines fade out at the end instead of ending in "…".
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(trace.title.isEmpty ? trace.key : trace.title)
+                    FadingTitle(text: Text(trace.title.isEmpty ? trace.key : CommandPalette.tidy(trace.title))
                         .font(.system(size: 13))
-                        .foregroundStyle(Palette.ink)
-                        .lineLimit(1)
-                    Text(trace.key)
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(Palette.muted)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                        .foregroundStyle(Palette.ink))
+                    FadingTitle(text: Text(trace.key)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Palette.muted))
                 }
                 Spacer(minLength: 8)
                 if hovering {
-                    Quick("Remove", tint: .red.opacity(0.75), act: forget)
+                    Quick("Remove", tint: Palette.danger, act: forget)
                 } else {
                     Text(When.clock(trace.last))
-                        .font(.system(size: 11.5))
+                        .font(.system(size: 12))
                         .foregroundStyle(Palette.muted)
                         .monospacedDigit()
                 }
@@ -192,7 +209,7 @@ struct HistoryPanel: View {
 }
 
 struct DownloadsPanel: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var loot: Loot
     @ObservedObject var downloads: Downloads
 
@@ -206,11 +223,17 @@ struct DownloadsPanel: View {
     }
 
     var body: some View {
-        Plate("Downloads", width: 560, close: { browser.hoarding = false }) {
-            if session.isEmpty && older.isEmpty {
-                Card { Nothing("Nothing downloaded yet.") }
+        let none = session.isEmpty && older.isEmpty
+        let folder = browser.prefs.downloads.lastPathComponent
+        // Fork (ui-system): empty is a state with one way out (the folder),
+        // and no foot; a short list is short.
+        Plate("Downloads", width: 600, footed: !none, close: { browser.hoarding = false }) {
+            if none {
+                EmptyState("arrow.down.circle", "No downloads yet", "Files you download land in \(folder).") {
+                    Pill("Open \(folder)") { browser.openDownloadsFolder() }
+                }
             } else {
-                ScrollView(showsIndicators: false) {
+                Fitted {
                     Card {
                         ForEach(session) { item in
                             DownloadRow(item: item, browser: browser, downloads: downloads)
@@ -223,24 +246,17 @@ struct DownloadsPanel: View {
                     }
                     .padding(.bottom, 2)
                 }
-                .frame(maxHeight: 420)
             }
         } foot: {
             HStack {
-                Text(session.isEmpty && loot.kept.isEmpty ? "Files land in \(browser.prefs.downloads.lastPathComponent)"
-                     : "Clearing the list leaves the files where they are")
+                Text("Clearing the list leaves the files where they are")
                     .font(.system(size: 12))
                     .foregroundStyle(Palette.muted)
                 Spacer()
-                Button("Open Folder") { browser.openDownloadsFolder() }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Palette.muted)
-                if !loot.kept.isEmpty || !session.isEmpty {
-                    Pill("Clear list") {
-                        downloads.clearFinished()
-                        loot.forgetAll()
-                    }
+                Pill("Open Folder") { browser.openDownloadsFolder() }
+                Pill("Clear list") {
+                    downloads.clearFinished()
+                    loot.forgetAll()
                 }
             }
         }

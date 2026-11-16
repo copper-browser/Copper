@@ -12,7 +12,7 @@ import UserNotifications
 /// "<who> mentioned you in “<canvas>” — ‘<excerpt>’  Open  ×" (or "assigned you", with the row as the excerpt).
 struct CanvasMentionPill: View {
     let mention: CanvasChat.Mention
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @State private var opening = false
 
     var body: some View {
@@ -45,10 +45,10 @@ struct CanvasMentionPill: View {
             Button("Open") { open() }
                 .buttonStyle(.plain)
                 .font(.system(size: 12))
-                .foregroundStyle(Palette.ground)
+                .foregroundStyle(Palette.onAccent)
                 .padding(.horizontal, 11)
                 .padding(.vertical, 5)
-                .background(Palette.ink, in: Capsule())
+                .background(Palette.accent, in: Capsule()) // Fork (ui-system)
                 .disabled(opening)
                 .help("Open “\(mention.canvasName)” at \(mention.isAssignment ? "the checklist" : "the message")")
             Button {
@@ -93,7 +93,7 @@ struct CanvasMentionPill: View {
 
 /// The mention pill in the invite pill's stack (over the panels), or its room in `bars`, unseen.
 struct CanvasMentionStack: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     var placeholder = false
     @ObservedObject private var chat = CanvasChat.shared
 
@@ -220,9 +220,9 @@ extension CanvasChat {
 
     nonisolated static var tool: [String: Any] {
         ["name": toolName,
-         "description": "Post a message in a shared canvas's chat as the signed-in user (needs Copper Cloud; Personal and local canvases have no chat). mentions: people on the canvas by name or email — each is @mentioned (and notified on copper-cloud 0.6.0+). canvas_read returns recent chat under `chat`.",
+         "description": "Post in a shared canvas's chat as the user, @mentioning people by name or email. canvas_read shows recent chat.",
          "inputSchema": ["type": "object", "properties": [
-             "id": ["type": "string", "description": "Canvas id or name (from canvas_list); omit for the canvas tab in front"],
+             "id": ["type": "string", "description": "Canvas id or name; default the one in front"],
              "text": ["type": "string", "description": "The message (at most 4000 characters)"],
              "mentions": ["type": "array", "items": ["type": "string"], "description": "Names or emails of people on the canvas to @mention"],
              "reason": Tools.reasonProperty,

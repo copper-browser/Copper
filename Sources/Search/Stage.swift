@@ -11,6 +11,7 @@ import WebKit
 /// what turns that into a redraw.
 struct Page: View {
     @ObservedObject var tab: Tab
+    @Environment(\.pageCorners) private var corners // Fork (page-frame): the card's corners, for what is drawn over the page
 
     var body: some View {
         ZStack {
@@ -38,6 +39,7 @@ struct Page: View {
                 // seen the moment the tab is picked, not faded in over the
                 // window's ground — it is the page as it already was.
                 Cover(picture: cover, ground: tab.coverGround)
+                    .clipShape(corners.shape)
                     .allowsHitTesting(false)
                     .transition(.asymmetric(insertion: .identity, removal: .opacity))
             }
@@ -50,11 +52,13 @@ struct Page: View {
                     .foregroundStyle(Palette.muted)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Palette.ground)
+                    .clipShape(corners.shape)
                     .transition(.opacity)
             }
 
             if let failure = tab.failure {
-                Trouble(message: failure) { tab.reload() }
+                Trouble(message: failure, host: tab.failureHost, detail: tab.failureDetail) { tab.reload() }
+                    .clipShape(corners.shape)
                     .transition(.opacity)
             }
 
@@ -157,6 +161,7 @@ struct WebStage: NSViewRepresentable {
 
     func updateNSView(_ view: StageView, context: Context) {
         view.show(page)
+        view.round(context.environment.pageCorners) // Fork (page-frame)
     }
 }
 
@@ -173,6 +178,14 @@ final class StageView: NSView {
     /// Now there is one fact and one rule: show `wanted`, and put that right on
     /// every layout. Nothing to fall out of step with.
     private weak var wanted: NSView?
+    /// Fork (page-frame): the corners `round` last cut (Fork/PageFrame.swift).
+    var cut: PageCorners?
+    /// Fork (page-hold): the page that was on this stage, kept under the one
+    /// coming in until that one has drawn. A web view back in a window after
+    /// a while out of one is white for a few frames before WebKit gives it
+    /// its picture again — a blank card in the middle of a space switch.
+    private weak var leaving: NSView?
+    private var holding = 0
 
     override func layout() {
         super.layout()
@@ -185,16 +198,27 @@ final class StageView: NSView {
     }
 
     private func settle() {
+        // Fork (page-hold): a page coming in keeps the one on screen under it
+        // — only when it may come back white (`StageView.holds`).
+        if let wanted, window != nil, wanted.superview !== self, leaving?.superview !== self, StageView.holds(wanted) {
+            leaving = subviews.last { $0 !== wanted && $0.alphaValue > 0 && ($0 as? PageView)?.unpainted == false }
+        }
+        if wanted == nil || window == nil || leaving === wanted {
+            leaving = nil
+            holding += 1
+        }
         // Anything here that isn't wanted, out. Only ever what is actually
         // ours: a page may be somewhere else on purpose.
-        for view in subviews where view !== wanted {
+        for view in subviews where view !== wanted && view !== leaving {
             view.removeFromSuperview()
         }
 
         guard let wanted, window != nil else { return }
+        leaving?.frame = bounds
         if wanted.superview !== self {
             // A web view can have only one superview, so taking it back is how
             // it is taken back.
+            Pace.step("page.attach") // Fork (switch)
             wanted.removeFromSuperview()
             // Seen — unless it has yet to draw, and would be seen white.
             wanted.alphaValue = (wanted as? PageView)?.unpainted == true ? 0 : 1
@@ -205,27 +229,124 @@ final class StageView: NSView {
             wanted.needsLayout = true
             wanted.needsDisplay = true
             wanted.layer?.setNeedsDisplay()
+            if leaving != nil { hold(wanted) } // Fork (page-hold)
         }
         wanted.frame = bounds
     }
+
+    /// Fork (page-hold): whether a page coming onto the stage keeps the one
+    /// there under it until it has drawn. Only a page that has drawn before
+    /// and has been out of a window a while (≥1 s) or comes in with a space
+    /// switch: WebKit gives such a view back white for a few frames. A page
+    /// that has never drawn (a new tab, a woken one) never does — its own
+    /// last picture (`Page`'s cover) or its ground shows until its first
+    /// frame, and two pages of text are never faded over each other. A tab
+    /// switch back and forth inside a second swaps in one frame.
+    static func holds(_ page: NSView) -> Bool {
+        guard let web = page as? PageView, !web.unpainted else { return false }
+        return SpaceSlide.shared.moving || ProcessInfo.processInfo.systemUptime - web.outSince >= 1
+    }
+
+    /// Fork (page-hold): the page coming in stays unseen over the one going
+    /// out until WebKit has put a frame of it on screen, and then the one
+    /// going out goes — in one frame, never a fade. At most 0.3 s if WebKit
+    /// never says. (A page that has never drawn is not held: `holds`.)
+    private func hold(_ page: NSView) {
+        holding += 1
+        let mine = holding
+        page.alphaValue = 0
+        let done = { [weak self, weak page] in
+            guard let self else { return }
+            // Seen again even if a newer change took over the hold: nothing
+            // else would put it back once it stays on this stage.
+            if let page, page === self.wanted, page.superview === self {
+                page.alphaValue = (page as? PageView)?.unpainted == true ? 0 : 1
+            }
+            guard mine == self.holding else { return }
+            self.holding += 1
+            if let leaving = self.leaving, leaving.superview === self { leaving.removeFromSuperview() }
+            self.leaving = nil
+        }
+        if let web = page as? PageView {
+            web.afterNextPresentation(done)
+        } else {
+            done()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: done)
+    }
 }
 
-/// What there is to say when the page never came. One line, and the only thing
-/// worth offering — another go.
+/// What there is to say when the page never came, and the only thing worth
+/// offering — another go. Fork (ui-system): a symbol, which site, why in one
+/// line, a real button with its key, and WebKit's own words folded away
+/// under Details for whoever needs them.
 private struct Trouble: View {
     let message: String
+    var host: String?
+    var detail: String?
     let retry: () -> Void
+    @State private var details = false
 
     var body: some View {
-        VStack(spacing: 10) {
-            Text(message)
-                .font(.system(size: 14))
-                .foregroundStyle(Palette.ink)
-            Button("Try again", action: retry)
-                .buttonStyle(.plain)
-                .font(.system(size: 12))
+        VStack(spacing: 8) {
+            // Fork (ui-flows): Wi-Fi only when the Mac is offline; a site that
+            // refused or reset the connection is the site's trouble.
+            Image(systemName: message == Browser.offline ? "wifi.exclamationmark" : "exclamationmark.triangle")
+                .font(.system(size: 28, weight: .light))
                 .foregroundStyle(Palette.muted)
+                .padding(.bottom, 6)
+                .accessibilityHidden(true)
+            Text(host.map { "Can’t connect to \($0)" } ?? "This page didn’t load")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Palette.ink)
+                .multilineTextAlignment(.center)
+            Text(message)
+                .font(.system(size: 13))
+                .foregroundStyle(Palette.muted)
+                .multilineTextAlignment(.center)
+            Button(action: retry) {
+                HStack(spacing: 8) {
+                    Text("Try Again")
+                    Text("⌘R").foregroundStyle(Palette.muted)
+                }
+                .font(.system(size: 13))
+                .foregroundStyle(Palette.ink)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 28)
+                .background(Palette.ground, in: Capsule())
+                .overlay(Capsule().strokeBorder(Palette.hairline, lineWidth: 1))
+                .contentShape(Capsule())
+            }
+            .buttonStyle(PillPress())
+            .padding(.top, 10)
+            .accessibilityLabel("Try Again")
+            if let detail {
+                Button { withAnimation(Motion.quick) { details.toggle() } } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .rotationEffect(.degrees(details ? 90 : 0))
+                        Text("Details")
+                    }
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.muted)
+                    .frame(minHeight: 24)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 6)
+                if details {
+                    Text(detail)
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundStyle(Palette.muted)
+                        .multilineTextAlignment(.center)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: 420)
+                        .transition(.opacity)
+                }
+            }
         }
+        .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Palette.ground)
     }

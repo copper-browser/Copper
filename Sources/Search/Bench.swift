@@ -142,13 +142,23 @@ final class Bench {
     // MARK: - one connection
 
     /// Reads until a newline, hands the line up, writes the answer, closes.
-    private final class Client {
+    // Unchecked: everything here runs on main but the answer's write, which
+    // touches only the descriptor and the bytes, and hands back to main.
+    private final class Client: @unchecked Sendable {
         let fd: Int32
         private var bytes = Data()
         private let source: DispatchSourceRead
         private let handle: ([String: Any], @escaping ([String: Any]) -> Void) -> Void
         private let gone: (Int32) -> Void
         private var answered = false
+        private var dropped = false
+        /// Fork (bench-io): where answers are written. A long one (the tab
+        /// list, a page's text) fills the socket before a busy script reads
+        /// it, and the main thread used to wait out the script in 2 ms naps —
+        /// stretched to ~100 ms each once macOS put a covered window's app to
+        /// background priority — all of it counted as the app's own work by
+        /// `bench pace`, inside the very switch being timed.
+        private static let writer = DispatchQueue(label: "copper.bench.write")
 
         init(
             fd: Int32,
@@ -193,21 +203,28 @@ final class Bench {
             answered = true
             var out = (try? JSONSerialization.data(withJSONObject: answer)) ?? Data("{\"error\":\"unwritable answer\"}".utf8)
             out.append(0x0A)
-            out.withUnsafeBytes { raw in
-                var sent = 0
-                while sent < raw.count {
-                    let n = write(fd, raw.baseAddress! + sent, raw.count - sent)
-                    if n <= 0 {
-                        if errno == EAGAIN { usleep(2000); continue }
-                        break
+            let fd = self.fd
+            Client.writer.async {
+                out.withUnsafeBytes { raw in
+                    var sent = 0
+                    while sent < raw.count {
+                        let n = write(fd, raw.baseAddress! + sent, raw.count - sent)
+                        if n <= 0 {
+                            if errno == EAGAIN { usleep(2000); continue }
+                            break
+                        }
+                        sent += n
                     }
-                    sent += n
                 }
+                DispatchQueue.main.async { self.drop() }
             }
-            drop()
         }
 
+        /// Closes the connection, once: `stop` may get here while an answer
+        /// is still being written, and the write's own drop follows.
         func drop() {
+            guard !dropped else { return }
+            dropped = true
             if !source.isCancelled { source.cancel() }
             close(fd)
             gone(fd)
@@ -234,7 +251,14 @@ final class Bench {
         let verb = request["do"] as? String ?? ""
 
         switch verb {
-        case "spaces", "bar", "split", "summon", "window", "groups", "sections", "passkeys", "passwords", "privacy", "about", "agent", "ai", "swipe", "mouse", "heat", "downloads", "updates", "bw", "op", "flow", "history", "drive", "render", "ext-manager", "storage", "windows", "flight", "trails", "pace", "stage", "calendar", "pins":
+        case "wheel", "keylat":
+            // Fork (bench-hooks): input replayed and timed, answered when done (Fork/BenchHooks.swift).
+            BenchHooks.handle(verb, request, in: browser, answer: answer)
+
+        case "mouse" where (request["arg"] as? String)?.hasPrefix("double") == true:
+            BenchHooks.handle(verb, request, in: browser, answer: answer) // Fork (bench-hooks)
+
+        case "spaces", "bar", "split", "summon", "window", "groups", "sections", "passkeys", "passwords", "privacy", "about", "agent", "ai", "swipe", "mouse", "heat", "downloads", "updates", "bw", "op", "flow", "history", "drive", "render", "ext-manager", "storage", "windows", "flight", "trails", "pace", "stage", "calendar", "pins", "covers":
             answer(Fork.bench(verb, request, in: browser))
 
         case "settings": // Fork (settings-revamp): open/search/pick/index check — Fork/SettingsBench.swift
@@ -331,9 +355,11 @@ final class Bench {
                 answer(["error": "open needs a url"])
                 return
             }
+            // When the app started on it (epoch ms): the load clock starts here, as a bare web view's does (perf/perf.py).
+            let t0 = (Date().timeIntervalSince1970 * 1000).rounded()
             let tab = browser.benchOpen(url)
             house(tab)
-            answer(describe(tab))
+            answer(describe(tab).merging(["t0": t0]) { a, _ in a })
 
         case "go":
             guard let tab = find(request, in: browser) else { answer(missing(request)); return }
@@ -410,10 +436,22 @@ final class Bench {
             guard let tab = find(request, in: browser) else { answer(missing(request)); return }
             guard let js = request["js"] as? String else { answer(["error": "eval needs js"]); return }
             house(tab)
-            tab.web.evaluateJavaScript(js) { value, error in
+            // Fork (agent-world): `copper` runs it where Copper's own page scripts live (Fork/MCP/Frames.swift).
+            guard request["copper"] as? Bool == true else {
+                tab.web.evaluateJavaScript(js) { value, error in
+                    MainActor.assumeIsolated {
+                        if let error { answer(["error": error.localizedDescription]); return }
+                        answer(["value": Bench.plain(value)])
+                    }
+                }
+                return
+            }
+            tab.web.evaluateJavaScript(js, in: nil, in: .copper) { result in
                 MainActor.assumeIsolated {
-                    if let error { answer(["error": error.localizedDescription]); return }
-                    answer(["value": Bench.plain(value)])
+                    switch result {
+                    case .success(let value): answer(["value": Bench.plain(value as? NSObject)])
+                    case .failure(let error): answer(["error": error.localizedDescription])
+                    }
                 }
             }
 
@@ -452,7 +490,7 @@ final class Bench {
                 "welcome": browser.welcoming,
                 "passwords": browser.managing,
                 "history": browser.recalling,
-                "downloads": browser.hoarding,
+                "downloads": browser.hoarding || Downloads.shared.showsDoor(in: browser), // Fork (uiflows r4): the popover too
                 "bookmarks": browser.bookmarking,
                 "field": browser.editing,
                 // Fork (new-tab-launcher): the ⌘T card, its question, and its rows.
@@ -638,9 +676,12 @@ final class Bench {
             // did without a person.
             if let on = request["settings"] as? Bool { browser.tuning = on }
             if let on = request["passwords"] as? Bool { browser.managing = on }
-            if let on = request["welcome"] as? Bool { browser.welcoming = on }
+            if let on = request["welcome"] as? Bool { Headless.benchWelcome = on; browser.welcoming = on } // Fork (bench-hooks)
             if let on = request["history"] as? Bool { browser.recalling = on }
-            if let on = request["downloads"] as? Bool { browser.hoarding = on }
+            // Fork (uiflows r4): as ⌘⇧J opens it — the popover from the glyph where there is one.
+            if let on = request["downloads"] as? Bool {
+                if on { browser.showDownloads() } else { browser.hoarding = false; Downloads.shared.popoverOpen = false }
+            }
             if let on = request["bookmarks"] as? Bool { browser.bookmarking = on }
             if let on = request["hidden"] as? Bool { browser.reviewing = on }
             if let look = (request["look"] as? String).flatMap(Look.init) { browser.prefs.look = look }

@@ -128,14 +128,15 @@ extension CanvasTools {
             guard let path = words.first, let window = Windows.window(of: browser) ?? Links.window else {
                 return answer(["error": "canvas picture PATH"])
             }
-            var extras = NSApp.windows.filter { $0 !== window && $0.isVisible && ($0.sheetParent === window || $0.className.contains("Popover")) }
+            var extras = NSApp.windows.filter { $0 !== window && $0.isVisible && ($0.sheetParent === window || $0.parent === window || $0.className.contains("Popover")) } // a child window too: Move in's card (Fork/Flow/FlowPresenter)
             // A sheet held open for the bench (CanvasSheets) is drawn where it would hang.
             for held in [CanvasDelete.asking, CanvasRenameSheet.asking].compactMap({ $0 }) where !held.window.isVisible {
                 held.layout()
                 extras.append(held.window)
             }
             let anchor = CanvasRenaming.shared.target.flatMap { CanvasRenaming.shared.rows[$0] }
-            guard let image = CanvasBench.composite(window, with: extras, anchor: anchor) else { return answer(["error": "no image"]) }
+            let door = Downloads.shared.showsDoor(in: browser) ? Downloads.shared.doorSpot : nil // Fork (uiflows r4)
+            guard let image = CanvasBench.composite(window, with: extras, anchor: anchor, under: door) else { return answer(["error": "no image"]) }
             answer(["path": CanvasBench.write(image, to: path) ? path : "", "size": [image.width, image.height], "extras": extras.map(\.className)])
         case "import":
             CanvasImport.bench(words.first ?? "status", answer: answer)
@@ -337,10 +338,22 @@ enum CanvasBench {
           scroll: !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.\(ScrollRelay.name)) })
         """
         web.evaluateJavaScript(js) { value, _ in
-            MainActor.assumeIsolated {
-                let page = (value as? String).flatMap { $0.data(using: .utf8) }.flatMap { try? JSONSerialization.jsonObject(with: $0) }
-                answer(["lean": CanvasHost.lean, "board": web.board, "magnifies": web.allowsMagnification, "userScripts": scripts,
-                        "ready": CanvasHost.host(for: tab)?.isReady ?? false, "page": page ?? NSNull()])
+            // The typing script and the forms script live in Copper's own world (Fork/MCP/Frames.swift).
+            // So do the swipe, veil, image and scroll relays (Fork: agent-world, Tab.copperRelays).
+            let mine = "[!!window.__copperBoardKeys, !!window.__officeForms, !!window.__officeSwipe, !!window.__officeVeil, !!window.__officeImages, !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.\(ScrollRelay.name))]"
+            web.evaluateJavaScript(mine, in: nil, in: .copper) { ours in
+                MainActor.assumeIsolated {
+                    var page = (value as? String).flatMap { $0.data(using: .utf8) }.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]
+                    if let ours = (try? ours.get()) as? [Bool], ours.count == 6 {
+                        page?["keys"] = ours[0]; page?["forms"] = ours[1]
+                        for (i, key) in ["swipe", "veil", "images", "scroll"].enumerated() {
+                            let there = (page?[key] as? Bool) ?? false
+                            page?[key] = there || ours[i + 2]
+                        }
+                    }
+                    answer(["lean": CanvasHost.lean, "board": web.board, "magnifies": web.allowsMagnification, "userScripts": scripts,
+                            "ready": CanvasHost.host(for: tab)?.isReady ?? false, "page": page ?? NSNull()])
+                }
             }
         }
     }
@@ -357,7 +370,8 @@ enum CanvasBench {
     /// popover on one: a popover that is nowhere near its window is laid
     /// beside `anchor` (window points, top left — the row it hangs from),
     /// where it would be on a window somebody could see.
-    static func composite(_ window: NSWindow, with extras: [NSWindow], anchor: CGRect? = nil) -> CGImage? {
+    /// `under`: a glyph the popover hangs below (the Downloads door), as AppKit would put it.
+    static func composite(_ window: NSWindow, with extras: [NSWindow], anchor: CGRect? = nil, under: CGRect? = nil) -> CGImage? {
         guard let base = Fork.layered([CGWindowID(window.windowNumber)]) else { return nil }
         let scale = CGFloat(base.width) / max(1, window.frame.width)
         func spot(_ extra: NSWindow) -> NSRect {
@@ -365,10 +379,15 @@ enum CanvasBench {
             if !extra.className.contains("Popover") {
                 // A sheet: AppKit's place for a real one; from the top of the
                 // window, centred, for one held open for the bench.
-                guard extra.sheetParent !== window else { return extra.frame }
+                guard extra.sheetParent !== window, extra.parent !== window else { return extra.frame } // a child window: where it is
                 return NSRect(x: window.frame.midX - size.width / 2, y: window.frame.maxY - 28 - size.height, width: size.width, height: size.height)
             }
             guard !extra.frame.intersects(window.frame) else { return extra.frame }
+            if let under {
+                // Its frame has a 13 pt margin round the card; the arrow tip meets the glyph's foot.
+                return NSRect(x: window.frame.minX + under.midX - size.width / 2, y: window.frame.maxY - under.maxY - size.height + 4,
+                              width: size.width, height: size.height)
+            }
             guard let anchor else {
                 return NSRect(x: window.frame.midX - size.width / 2, y: window.frame.midY - size.height / 2, width: size.width, height: size.height)
             }
@@ -387,7 +406,8 @@ enum CanvasBench {
         }
         context.draw(base, in: place(window.frame))
         for (extra, at) in zip(extras, spots) {
-            guard let view = extra.contentView?.superview ?? extra.contentView,
+            // A borderless child window's frame view draws nothing of its content.
+            guard let view = (extra.parent === window ? extra.contentView : nil) ?? extra.contentView?.superview ?? extra.contentView,
                   let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
             view.cacheDisplay(in: view.bounds, to: rep)
             guard let drawn = rep.cgImage else { continue }

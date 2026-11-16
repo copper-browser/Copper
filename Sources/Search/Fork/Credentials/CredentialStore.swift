@@ -123,10 +123,12 @@ enum Credentials {
         }
     }
 
-    static func save(host: String, user: String, password: String) async throws {
+    /// `origin`: the page's (`location.origin`) the login was saved from, so
+    /// an agent fills it there and nowhere else (Fork: origin-save).
+    static func save(host: String, user: String, password: String, origin: String? = nil) async throws {
         switch saveTarget {
         case .keychain:
-            guard Vault.save(host: host, user: user, password: password) else {
+            guard Vault.save(host: host, user: user, password: password, origin: origin) else {
                 throw Failure(message: "Could not save the credential to the keychain")
             }
         case .bitwarden:
@@ -136,7 +138,7 @@ enum Credentials {
                case .bitwarden(let id) = existing.id {
                 try await Bitwarden.shared.update(id: id, password: password)
             } else {
-                _ = try await Bitwarden.shared.create(host: host, user: user, password: password)
+                _ = try await Bitwarden.shared.create(host: host, user: user, password: password, origin: origin)
             }
         case .onePassword:
             // The same account already in 1Password for this site: a new
@@ -145,7 +147,7 @@ enum Credentials {
                case .onePassword(let id) = existing.id {
                 try await OnePassword.shared.update(id: id, password: password)
             } else {
-                _ = try await OnePassword.shared.create(host: host, user: user, password: password)
+                _ = try await OnePassword.shared.create(host: host, user: user, password: password, origin: origin)
             }
         }
     }
@@ -159,7 +161,7 @@ enum Credentials {
     /// `KeychainCodes.accounts()`, read once per list rather than per row.
     private static func keychainCredential(_ login: Login, codes: Set<String>) -> Credential {
         Credential(id: .keychain(host: login.host, user: login.user), source: .keychain,
-                   host: login.host, user: login.user, sites: [login.host], name: login.user,
+                   host: login.host, user: login.user, sites: [login.origin ?? login.host], name: login.user, // Fork (origin-save)
                    hasTOTP: codes.contains(KeychainCodes.account(host: login.host, user: login.user)),
                    used: login.used, folder: nil, agentHint: .none)
     }
@@ -197,6 +199,21 @@ enum Credentials {
         return Credential(id: .onePassword(item.id), source: .onePassword, host: host,
                           user: item.username, sites: item.urls, name: item.title,
                           hasTOTP: item.hasTOTP, used: nil, folder: item.vaultName, agentHint: hint)
+    }
+
+    /// Fork (agent-cards): the Agents folder / vault, tag and deny field of
+    /// any vault item — a card or identity as well as a login — by its
+    /// autofill id (`op:<id>` or a bare Bitwarden id). Nil when the item
+    /// isn't in an open vault's index.
+    static func agentHint(autofillID id: String) -> Credential.AgentHint? {
+        if id.hasPrefix("op:") {
+            let raw = String(id.dropFirst(3))
+            guard isOnePasswordUnlocked, let item = OnePassword.shared.cachedItems.first(where: { $0.id == raw }) else { return nil }
+            return credential(for: item).agentHint
+        }
+        guard isBitwardenUnlocked, let item = Bitwarden.shared.cachedItems.first(where: { $0.id == id }) else { return nil }
+        let folders = Dictionary(uniqueKeysWithValues: Bitwarden.shared.cachedFolders.map { ($0.id, $0.name) })
+        return credential(for: item, folders: folders).agentHint
     }
 
     static func onePasswordItemsMatching(host: String) -> [OnePassword.Item] {

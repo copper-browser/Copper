@@ -12,7 +12,7 @@ import SwiftUI
 /// or — with none, with it turned off on this Mac, or when its page
 /// couldn't be shown — Copper's own agent pane.
 struct AgentSlot: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var sync = AddonSync.shared
 
     var body: some View {
@@ -28,7 +28,7 @@ struct AgentSlot: View {
 /// same 340–620 range and the same drag on the leading edge as AgentPane,
 /// so switching between the two never moves the page.
 struct AddonSlotFrame: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var host: AddonSlotHost
     let entry: AddonInstalled
     @ObservedObject private var agent = Agent.shared
@@ -131,7 +131,7 @@ extension AddonSlotHost {
 /// place (contract §6.3): in the column it sits under it, in the toolbar
 /// after it. One click installs; no relaunch.
 struct AddonPillSlot: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     var compact = false
     @ObservedObject private var sync = AddonSync.shared
     @ObservedObject private var spaces = Spaces.shared
@@ -169,7 +169,7 @@ struct AddonPillSlot: View {
 }
 
 struct AddonPill: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     let entry: AddonInstalled
     let tint: SpaceTint
     let compact: Bool
@@ -264,7 +264,7 @@ enum AddonCommands {
 /// Settings › Extensions › Addons: what the cloud assigned, what waits to be installed,
 /// the per-addon "Use in Agent sidebar" switch, Remove, and the check.
 struct AddonsPage: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var sync = AddonSync.shared
     @ObservedObject private var cloud = Cloud.shared
 
@@ -363,7 +363,7 @@ struct AddonsPage: View {
 /// On Settings › About › Updates, under Copper's own: an addon that waits for its
 /// Install, said the same way the pill says it.
 struct AddonUpdatesSection: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var sync = AddonSync.shared
 
     var body: some View {

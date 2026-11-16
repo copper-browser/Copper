@@ -20,8 +20,20 @@
     ./bench pins kill ID               a test world: end a tab's web process, as macOS does under memory
                                        pressure (a pin loads itself again in the background)
     ./bench pins close|others ID       a test world: ⌘W on a tab in its window / Close Other Tabs
+    ./bench covers [flush|clear]       pages' last pictures kept on disk (covers/): count and bytes;
+                                       flush = quit's pass now; clear = a test world's, all gone
     ./bench select ID                  bring a tab to the front — --test runs only
     ./bench resize W H [STEPS]         take the window to W×H in steps, like a drag — --test runs only
+    ./bench wheel DY [--steps N] [--hz H] [--at X,Y] [--window N]
+                                       a trackpad scroll of DY points (+ is down) in N events (60), one per
+                                       display-link tick at H Hz (120; the display may give less): began,
+                                       changed…, ended; at window point X,Y (the page's centre) — --test
+                                       runs only; → events, hz, tick_ms/send_ms p50 p90 max, missed_ticks,
+                                       clock (display link, or "timer" while the display is asleep)
+    ./bench keylat KEY [--window N]    one press of ⌘t, ⌘k, ⎋ or a letter in at the app, timed in ms from
+                                       just before it: handled, the next Core Animation commit, the display
+                                       tick after that (key→pixel; none while the display is asleep) —
+                                       --test runs only
     ./bench key ID TEXT [--app] [--hold] press keys on a tab as real key events — --test runs only;
                                        ⌘ ⇧ ⌥ ⌃ hold for the next key, ⇥ is Tab, ← → ↑ ↓ ⎋ ↩ are
                                        arrows/Escape/Return; --app sends through the app's own key monitor;
@@ -29,7 +41,8 @@
     ./bench hardreload [ID]            clear the active page's cache-only records and reload from origin
     ./bench inspect [ID]               open Web Inspector's element picker and report its state
     ./bench text ID                    the page's text
-    ./bench eval ID JS                 run JavaScript, print what it returns
+    ./bench eval ID JS [--copper]      run JavaScript, print what it returns (--copper: in Copper's own
+                                       content world, where its page scripts live, not the page's)
     ./bench click ID SELECTOR
     ./bench type ID SELECTOR TEXT
     ./bench submit ID SELECTOR         the form around SELECTOR
@@ -392,10 +405,18 @@
                                        over the sidebar, back/forward switches the previous/next space
                                        (with more than one space), while over a page it navigates
                                        the pane under the pointer
-    ./bench bar TEXT [--go]          what ⌘K offers for TEXT; --go takes the first row
+    ./bench mouse double X Y [--window N]
+                                       a left double-click at window point X Y, the whole way a click goes
+                                       (the title bar's zoom included) — --test runs only; → frameBefore,
+                                       frameAfter, zoomed, miniaturized, hit (the view under it)
+    ./bench bar TEXT [--go]          what ⌘K offers for TEXT; --go takes the first row (history lands a beat
+                                       later, off the main thread: `summon TEXT` and look again for it)
+    ./bench bar TEXT --type [--every S] [--settle S]
+                                       ⌘K, then TEXT a letter every S seconds (0.08): the same meter as newtab --type
     ./bench summon [TEXT] [--keys KEYS]
                                        ⌘K left open on TEXT (for `window`), its rows by section; with --keys and
-                                       the bar already up on TEXT, KEYS pressed in its field (⇥ ⇧⇥ ↑ ↓ → ↩)
+                                       the bar already up on TEXT, KEYS pressed in its field (⇥ ⇧⇥ ↑ ↓ → ↩ ⎋),
+                                       each step and the answer saying whether the bar is still up (summoning)
     ./bench newtab [TEXT] [--keys KEYS] [--go [--pick N] [--how open|background|split]] [--keep] [--settle S] [--json]
                                        what ⌘T's card offers for TEXT, by section, after S seconds (0.8) for
                                        Google's completions and history; --keys presses KEYS in the field
@@ -431,7 +452,7 @@
                                        extension, a dialog) — held for the bench in a headless test run;
                                        answer it by button number, title, or the start of its title;
                                        selftest puts up a SwiftUI dialog and answers it end to end
-    ./bench settings browse folder PATH|ask [PATH|cancel|folder|reset]|prefs|glyph letters|icons
+    ./bench settings browse folder PATH|ask [PATH|cancel|folder|reset]|prefs
                                        Downloads' Change… as a pick of PATH; how "Ask where to save" is
                                        answered in a test run, and the names it was asked about; the
                                        Browsing pages' values (test runs only)
@@ -441,7 +462,8 @@
     ./bench settings browse picture spaces|extensions|voice|cloud|updates|intelligence|agents|addons PATH [WIDTH] [light|dark]
                                        the whole page as a PNG, laid out at a page-column WIDTH
                                        (345 is Settings' narrowest), not scrolled
-    ./bench ui KEY VALUE               settings/passwords/welcome/history/downloads/bookmarks/hidden on|off,
+    ./bench ui KEY VALUE               settings/passwords/welcome/history/downloads/bookmarks/hidden on|off
+                                       (welcome stays up in a headless test world too),
                                        look light|dark|system, sidebar on|off, folded on|off, peek on|off,
                                        tabswitch row|recent, page general|tabs (which Settings page), focus none (the keyboard to the window itself), width N (the sidebar),
                                        addressHover on|off (the sidebar's address pill as under the pointer), clearHover on|off (force the Clear divider visible)
@@ -510,7 +532,10 @@ def main(argv):
         elif len(args) != 1: sys.exit(f"usage: bench {verb} ID")
         request["id"] = args[0]
     elif verb == "eval":
-        if len(args) != 2: sys.exit("usage: bench eval ID JS")
+        if "--copper" in args:
+            args.remove("--copper")
+            request["copper"] = True
+        if len(args) != 2: sys.exit("usage: bench eval ID JS [--copper]")
         request["id"], request["js"] = args
     elif verb in ("click", "submit"):
         if len(args) != 2: sys.exit(f"usage: bench {verb} ID SELECTOR")
@@ -546,6 +571,12 @@ def main(argv):
     elif verb == "bar":
         request["text"] = args[0] if args else ""
         request["go"] = "--go" in args
+        if "--type" in args:
+            # ⌘K typed a letter at a time: Launcher's typing meter, opened with summon.
+            request.update({"do": "newtab", "summon": True, "type": True})
+            for flag in ("--every", "--settle"):
+                if flag in args and args.index(flag) + 1 < len(args):
+                    request[flag[2:]] = float(args[args.index(flag) + 1])
     elif verb == "summon":
         if "--keys" in args:
             at = args.index("--keys")
@@ -630,8 +661,8 @@ def main(argv):
         words = [a for a in args if a != "--table"]
         request["op"] = words[0] if words else "state"
         request["arg"] = " ".join(words[1:]) if len(words) > 1 else ""
-    elif verb in ("spaces", "groups", "sections", "agent", "ai", "updates", "bw", "op", "downloads", "drive", "ext-manager", "windows", "pace", "calendar", "pins"):
-        request["op"] = args[0] if args else ("status" if verb in ("updates", "bw", "op", "drive", "pace") else "state" if verb == "calendar" else "list")
+    elif verb in ("spaces", "groups", "sections", "agent", "ai", "updates", "bw", "op", "downloads", "drive", "ext-manager", "windows", "pace", "calendar", "pins", "covers"):
+        request["op"] = args[0] if args else ("status" if verb in ("updates", "bw", "op", "drive", "pace", "covers") else "state" if verb == "calendar" else "list")
         request["arg"] = " ".join(args[1:]) if len(args) > 1 else ""
     elif verb == "history":
         if not args or args[0] != "import" or len(args) < 2:
@@ -756,6 +787,29 @@ def main(argv):
         if len(args) not in (2, 3): sys.exit("usage: bench resize WIDTH HEIGHT [STEPS]")
         request["width"], request["height"] = float(args[0]), float(args[1])
         if len(args) == 3: request["steps"] = int(args[2])
+    elif verb in ("wheel", "keylat"):
+        if "--window" in args:
+            at = args.index("--window")
+            if at + 1 >= len(args) or not args[at + 1].isdigit(): sys.exit(f"usage: bench {verb} … --window N")
+            request["window"] = int(args[at + 1])
+            args = args[:at] + args[at + 2:]
+        if verb == "keylat":
+            if len(args) != 1: sys.exit("usage: bench keylat ⌘t|⌘k|⎋|LETTER [--window N]")
+            request["key"] = args[0]
+        else:
+            usage = "usage: bench wheel DY [--steps N] [--hz H] [--at X,Y] [--window N]"
+            flags = {"--steps": ("steps", int), "--hz": ("hz", float), "--at": ("at", lambda v: [float(n) for n in v.split(",")])}
+            rest = []
+            while args:
+                a = args.pop(0)
+                if a in flags:
+                    if not args: sys.exit(usage)
+                    key, kind = flags[a]
+                    request[key] = kind(args.pop(0))
+                else:
+                    rest.append(a)
+            if len(rest) != 1: sys.exit(usage)
+            request["dy"] = float(rest[0])
     elif verb in ("pin", "unpin", "reorder"):
         if "--window" in args:
             at = args.index("--window")
@@ -856,7 +910,7 @@ def main(argv):
             print(f"{r['rank']:>2}  {r['score']:>6}  {r['page']:<12} {r['marked']}")
     elif verb == "cloud":
         print(json.dumps(answer, ensure_ascii=False, sort_keys=True, indent=2))
-    elif verb == "newtab" and request.get("type"):
+    elif request.get("do") == "newtab" and request.get("type"):
         if request.get("json"):
             print(json.dumps(answer, ensure_ascii=False, indent=2))
             return 0

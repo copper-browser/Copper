@@ -362,7 +362,6 @@ enum CloudSettingsKeys {
     static let allowed: [String] = [
         "look",             // light / dark / system
         "sidebar",          // tabs down the left
-        "glyph",            // letters or site icons
         "tabs.switching",   // ⌃Tab: the row or most recent
         "tabs.sleep",       // put idle tabs to sleep
         "spaces.swipe",     // which way a swipe moves the column
@@ -377,7 +376,6 @@ enum CloudSettingsKeys {
             guard allowed.contains(key) else { return false }
             switch key {
             case "look": return ["light", "dark", "system"].contains(value)
-            case "glyph": return ["letters", "icons"].contains(value)
             case "tabs.switching": return ["row", "recent"].contains(value)
             case "spaces.swipe": return ["system", "natural", "inverted"].contains(value)
             case "sections.archive": return ["h12", "h24", "h48", "never"].contains(value)

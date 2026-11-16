@@ -13,3 +13,4 @@ build/
 
 # Gauntlet shots are regenerated every round.
 .gauntlet/shots/
+__pycache__/

@@ -42,7 +42,7 @@ extension EnvironmentValues {
 }
 
 /// The keyboard's ring around a focused control: the control's own shape,
-/// a little outside it, in ink. Nothing at all while it isn't focused.
+/// a little outside it, in the accent. Nothing at all while it isn't focused.
 struct SettingsFocusRing<S: InsettableShape>: ViewModifier {
     let on: Bool
     let shape: S
@@ -51,7 +51,7 @@ struct SettingsFocusRing<S: InsettableShape>: ViewModifier {
         content.overlay {
             shape
                 .inset(by: -3)
-                .strokeBorder(Palette.ink.opacity(0.42), lineWidth: 1.75)
+                .strokeBorder(Palette.accent, lineWidth: 1.75) // Fork (ui-system): the accent marks where the keyboard is
                 .opacity(on ? 1 : 0)
                 .animation(Motion.quick, value: on)
                 .allowsHitTesting(false)

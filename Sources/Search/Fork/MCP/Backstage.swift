@@ -11,9 +11,12 @@ import WebKit
 // key, stable across a thread's CLI calls and MCP requests) can hold a tab of
 // its own: the one it opened with browser_tabs new / jev_run newTab, or chose
 // with browser_tabs select. Its calls land there wherever you are; an agent
-// with no tab of its own still works on the one you are looking at, as
-// before. Any call can name a tab outright with `tab` (an id from
-// browser_tabs list, or an index).
+// that never had a tab of its own still works on the one you are looking
+// at, as before. One whose tab is gone does not: a call that would change a
+// page is refused until it opens or picks another (reading still reads the
+// tab on screen), so a closed tab never moves an agent onto yours. Any call
+// can name a tab outright with `tab` (an id from browser_tabs list, or an
+// index).
 //
 // Backstage is how a tab nobody is looking at can still be seen. A page in a
 // tab off screen has no window: WebKit stops painting it, rAF stops,
@@ -31,6 +34,14 @@ import WebKit
 // agent too. A few minutes after the agent's
 // last call the page lets go and is an ordinary background tab again — free
 // to sleep.
+//
+// Fork (idle-memory): between calls the window does not stay up. Ordered in,
+// its pages counted as on screen for those few minutes: timers at full speed,
+// rAF running, for a page nobody was looking at and no agent was touching.
+// Thirty seconds after the last call (`quiet`) the window is ordered out —
+// its pages turn hidden and WebKit throttles them — and the next call
+// orders it in again and gives the page its turn to see it, as a first
+// call does.
 
 @MainActor
 enum AgentTabs {
@@ -40,6 +51,9 @@ enum AgentTabs {
     /// The call being booked opens a tab behind the user's: nothing about it
     /// is announced over, or opens a pane beside, the page on screen.
     @TaskLocal static var behind = false
+
+    /// The call being served only reads its page (Tools.reads).
+    @TaskLocal static var reading = false
 
     /// browser_tabs new and jev_run newTab, unless asked to show the tab.
     nonisolated static func opensBehind(_ name: String, _ args: [String: Any]) -> Bool {
@@ -53,6 +67,12 @@ enum AgentTabs {
 
     /// Each agent session's own tab, by `Drive.Who.key`.
     private(set) static var bound: [String: UUID] = [:]
+
+    /// Callers whose own tab went away (closed by the user, by the agent,
+    /// or with its window). Lost is not the same as never bound: those
+    /// callers' page-changing calls are refused instead of landing on the
+    /// tab on screen.
+    private(set) static var lost = Set<String>()
 
     /// Fork (tab-memory): the tabs an agent opened for itself (browser_tabs
     /// new, jev_run newTab). Once the agent is done and nobody has looked for
@@ -124,11 +144,27 @@ enum AgentTabs {
     }
 
     /// The tab a call works on: the one it named, else the caller's own,
-    /// else the one on screen. Nil only when there is none of those.
+    /// else the one on screen — unless the caller's own tab is gone and the
+    /// call would change the page (`missing` says why). Nil also when there
+    /// is no tab at all. A call that named a tab gets that tab or nothing:
+    /// closed while the call waited (staging it, a frame, the page), it
+    /// never moves on to the caller's own tab or the one on screen.
     static func target(in browser: Browser, caller: String? = callerKey) -> Tab? {
-        if let tab = find(pinned) { return tab }
+        if let pinned { return find(pinned) }
         if let tab = own(caller) { return tab }
+        if let caller, lost.contains(caller), !reading { return nil }
         return browser.active
+    }
+
+    /// Why `target` came back empty, in words the agent can act on.
+    static func missing(_ caller: String? = callerKey) -> String {
+        if pinned != nil, find(pinned) == nil {
+            return "the tab you named was closed during the call — nothing was done in any other tab; browser_tabs list shows the tabs there are"
+        }
+        if let caller, lost.contains(caller) {
+            return "your tab was closed — open one with browser_tabs new (or name one with tab); the user's tab was not touched"
+        }
+        return "no active tab"
     }
 
     /// The caller's own tab, while it still exists.
@@ -136,12 +172,14 @@ enum AgentTabs {
         guard let caller, let id = bound[caller] else { return nil }
         if let tab = find(id) { return tab }
         bound[caller] = nil
+        lost.insert(caller)
         return nil
     }
 
     /// Without throwing, for the bookkeeping around a call (the tab badges).
     static func peek(_ args: [String: Any], in browser: Browser, caller: String?) -> Tab? {
-        if let named = try? resolve(args["tab"], in: browser) { return named }
+        // A named tab that is gone is no tab: not the caller's own, not the user's.
+        do { if let named = try resolve(args["tab"], in: browser) { return named } } catch { return nil }
         if let tab = own(caller) { return tab }
         return browser.active
     }
@@ -150,12 +188,14 @@ enum AgentTabs {
     static func bind(_ tab: Tab, for caller: String? = callerKey) {
         guard binds(caller), let caller else { return }
         bound[caller] = tab.id
+        lost.remove(caller)
     }
 
     /// Back to working on whatever is on screen.
     static func unbind(_ caller: String? = callerKey) {
         guard let caller else { return }
         bound[caller] = nil
+        lost.remove(caller)
     }
 
     /// Showing in some window right now: a window's stage or the side pane.
@@ -171,14 +211,18 @@ enum AgentTabs {
     @discardableResult
     static func prepare(_ tab: Tab) -> Bool {
         if tab.asleep { _ = tab.wake() } else if tab.hollow { tab.revive() }
+        defer { NetLog.watch(tab) } // the page's requests from here on (NetLog.swift)
         return Backstage.shared.stage(tab)
     }
 
     /// Before a call reads or drives its tab: stage it, and when that just
-    /// made the page visible, let WebKit tell the page before the call goes in.
+    /// made the page visible, let WebKit tell the page before the call goes
+    /// in — one painted frame (at most 100 ms), not the fixed 120 ms it was.
     static func ready(in browser: Browser) async {
-        guard let tab = target(in: browser), prepare(tab) else { return }
-        try? await Task.sleep(for: .milliseconds(120))
+        let began = Date()
+        defer { Tools.phases?.add("ready", since: began) }
+        guard let tab = target(in: browser), prepare(tab), let web = tab.built else { return }
+        await Tools.Page.frame(web)
     }
 
     /// The window a tab belongs to — the row that holds it, else whoever
@@ -240,7 +284,8 @@ final class Backstage {
     /// on its next turn, so a caller about to read it should give it one.
     @discardableResult
     func stage(_ tab: Tab) -> Bool {
-        let fresh = held[tab.id] == nil || tab.built?.window == nil
+        // Fork (idle-memory): hung in a window ordered out between calls, it was hidden too.
+        let fresh = held[tab.id] == nil || tab.built?.window == nil || tab.built?.window?.isVisible == false
         held[tab.id] = Date()
         settle(tab, focus: true)
         if timer == nil {
@@ -279,6 +324,8 @@ final class Backstage {
         tabsIgnoring.insert(tab.id)
         if let window = web.window {
             if window === self.window {
+                // Fork (idle-memory): ordered out between calls; a call brings it back.
+                if focus, !window.isVisible { _ = ensureWindow() }
                 // Already here; keep it the size of the stage it would be on,
                 // and the one the keyboard goes to inside this window.
                 if let bounds = window.contentView?.bounds, web.frame != bounds { web.frame = bounds }
@@ -302,6 +349,7 @@ final class Backstage {
         // Before it joins the window: WebKit works out the page's visibility
         // as the view arrives.
         Backstage.ignoreOcclusion(web, true)
+        Backstage.probeScale(web)
         web.removeFromSuperview()
         web.frame = content.bounds
         web.isHidden = false
@@ -345,6 +393,17 @@ final class Backstage {
         }
         resize()
         idleIfEmpty()
+        // Fork (idle-memory): no call for a while — let the pages here turn hidden.
+        if let window, window.isVisible, let latest = held.values.max(), now.timeIntervalSince(latest) > Backstage.quiet {
+            window.orderOut(nil)
+        }
+    }
+
+    /// How long after an agent's last call its page stays drawn backstage:
+    /// thirty seconds, or `agents.quiet` in seconds — for the bench.
+    static var quiet: TimeInterval {
+        let set = Store.settings.double(forKey: "agents.quiet")
+        return set > 0 ? set : 30
     }
 
     private func idleIfEmpty() {
@@ -364,8 +423,17 @@ final class Backstage {
             if let web = browser.active?.built, let window = web.window, !(window is Window),
                web.bounds.width > 200, web.bounds.height > 200 { return web.bounds.size }
         }
-        return NSSize(width: 1280, height: 800)
+        return Backstage.unstaged
     }
+
+    /// With no stage to match (headless, or nothing loaded in front): a
+    /// laptop's worth, or SEARCH_BACKSTAGE_SIZE=WxH — a benchmark runs at
+    /// the other side's viewport (perf/hillclimb/agentbench: 1120x780).
+    private static let unstaged: NSSize = {
+        let parts = (ProcessInfo.processInfo.environment["SEARCH_BACKSTAGE_SIZE"] ?? "").lowercased().split(separator: "x").compactMap { Double($0) }
+        if parts.count == 2, parts[0] >= 320, parts[1] >= 240 { return NSSize(width: parts[0], height: parts[1]) }
+        return NSSize(width: 1280, height: 800)
+    }()
 
     private func ensureWindow() -> Window {
         let size = Backstage.stageSize
@@ -431,6 +499,19 @@ final class Backstage {
         if let window = web.window, !(window is Window) {
             NotificationCenter.default.post(name: NSWindow.didChangeOcclusionStateNotification, object: window)
         }
+    }
+
+    /// A probe world started with SEARCH_PROBE_DPR=2 draws its agents' pages
+    /// at that device pixel ratio, as a Retina screen does, even on a 1×
+    /// headless Mac (the hill-climb's c6.canvas_dpr2). Test worlds only.
+    private static let probeDPR: CGFloat? = Store.testing
+        ? Double(ProcessInfo.processInfo.environment["SEARCH_PROBE_DPR"] ?? "").map { CGFloat($0) }.flatMap { $0 >= 1 && $0 <= 3 ? $0 : nil }
+        : nil
+    private static let scaleSetter = NSSelectorFromString("_setOverrideDeviceScaleFactor:")
+    static func probeScale(_ web: WKWebView) {
+        guard let dpr = probeDPR, web.responds(to: scaleSetter) else { return }
+        typealias Setter = @convention(c) (AnyObject, Selector, CGFloat) -> Void
+        unsafeBitCast(web.method(for: scaleSetter), to: Setter.self)(web, scaleSetter, dpr)
     }
 
     /// For the bench and `copper tabs`.

@@ -83,6 +83,18 @@ final class Launcher: ObservableObject {
 
     // MARK: - asking
 
+    /// Fork (perf): `body` in the main run loop's next pass, once this pass's
+    /// Core Animation commit has gone out. A block queued with
+    /// `DispatchQueue.main.async` still runs in this pass (the run loop drains
+    /// the queue before it commits), so its redraw would join this one's.
+    static func afterCommit(_ body: @escaping () -> Void) {
+        // Ordered after Core Animation's own before-waiting observer (2,000,000).
+        let after = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, false, CFIndex.max) { _, _ in
+            DispatchQueue.main.async(execute: body)
+        }
+        CFRunLoopAddObserver(CFRunLoopGetMain(), after, .commonModes)
+    }
+
     /// A fresh card. The last question's leftovers are not this one's.
     func begin() {
         waiting?.cancel()
@@ -93,6 +105,7 @@ final class Launcher: ObservableObject {
         CardSections.shared.show([:])
         shelved = nil
         standing = nil
+        verbs = nil
     }
 
     /// The rows for what is in the field, now — from what is at hand — with
@@ -193,7 +206,7 @@ final class Launcher: ObservableObject {
         let commandNeedle = commanding ? String(needle.dropFirst()) : needle
         var doing: [Suggestion] = []
         if !commandNeedle.isEmpty {
-            for command in CommandBar.commands(browser) where command.name.lowercased().contains(commandNeedle) {
+            for command in commands(browser) where command.name.lowercased().contains(commandNeedle) {
                 var row = Suggestion(key: command.name, title: "", url: URL(string: "copper://command/\(command.id)")!, kind: .command)
                 row.glyph = command.glyph
                 row.hint = "Run"
@@ -327,24 +340,28 @@ final class Launcher: ObservableObject {
     /// a tab's published properties goes through Combine and is slow enough
     /// that two hundred tabs read afresh on every keystroke — and again on
     /// every answer that landed — were most of what a letter cost.
-    private struct Open {
+    struct Open {
         let tab: Tab
         let current: Bool
         let address: String
         let title: String
         let canonical: String
         let touched: Date
+        /// Pinned or Saved: ⌘K lifts these a little over a loose tab.
+        let kept: Bool
     }
 
     private var standing: [Open]?
 
-    private func openTabs(_ browser: Browser) -> [Open] {
+    /// Every open tab but the one in front, read once a card (⌘T's or ⌘K's).
+    func openTabs(_ browser: Browser) -> [Open] {
         if let standing { return standing }
         var list: [Open] = []
         func add(_ tab: Tab, current: Bool) {
             guard tab.id != browser.activeID, !tab.isBlank, let url = tab.address else { return }
             list.append(Open(tab: tab, current: current, address: Launcher.strip(Address.pretty(url)),
-                             title: tab.label.lowercased(), canonical: Launcher.canonical(url), touched: tab.touched))
+                             title: tab.label.lowercased(), canonical: Launcher.canonical(url), touched: tab.touched,
+                             kept: tab.pin != nil || Sections.shared.isSaved(tab)))
         }
         browser.tabs.forEach { add($0, current: true) }
         Spaces.shared.parkedTabs.forEach { add($0, current: false) }
@@ -390,6 +407,21 @@ final class Launcher: ObservableObject {
 
     private let ranker = Ranker()
 
+    /// ⌘K's history: this query's ranked places if they are in, else the
+    /// last query's that still match, with the ranking sent for. When it
+    /// lands, `refresh` lays ⌘K's card out again — so a keystroke on ⌘K, as
+    /// on ⌘T, never ranks history on the main thread.
+    func history(for typed: String, in browser: Browser) -> [Hit] {
+        self.browser = browser
+        let query = typed.trimmingCharacters(in: .whitespaces)
+        asked = query
+        let needle = query.lowercased()
+        guard let probe = Needle(needle) else { return [] }
+        rank(query, in: browser)
+        return visited.query == needle ? visited.rows
+            : visited.rows.filter { probe.score(key: $0.key, title: $0.title.lowercased()) != nil }
+    }
+
     private func rank(_ query: String, in browser: Browser) {
         let needle = query.lowercased()
         guard visited.query != needle else { return }
@@ -408,7 +440,9 @@ final class Launcher: ObservableObject {
                 // A ranking for an older question is no use to this one.
                 guard self.asked.lowercased() == needle else { return }
                 self.visited = (needle, rows)
-                self.refresh()
+                // Fork (perf): drawn in a pass of its own, not on top of the
+                // keystroke's (whose rows are being drawn as it lands).
+                Launcher.afterCommit { self.refresh() }
             }
         }
     }
@@ -524,7 +558,10 @@ final class Launcher: ObservableObject {
                     if Needle.starts(key, with: bytes, at: start, before: host) { return 85 }
                 }
             }
-            if Needle.starts(title, with: bytes) { return 75 }
+            // Fork (polish r5): a title that starts with what was typed is
+            // the page meant — level with an address that does, ahead of a
+            // host label or a later word.
+            if Needle.starts(title, with: bytes) { return 100 }
             var from = 0
             while let at = Needle.find(bytes, in: title, from: from) {
                 if at > 0, title[at - 1] == Needle.space { return 75 }
@@ -609,10 +646,11 @@ final class Launcher: ObservableObject {
         refresh()
     }
 
-    /// Something landed for the question on screen: lay the card out again.
+    /// Something landed for the question on screen: lay the card out again —
+    /// ⌘T's, or ⌘K's when it was ⌘K that asked.
     private func refresh() {
-        guard let browser, browser.launching, !asked.isEmpty else { return }
-        browser.relaunch(assemble(asked, in: browser))
+        guard let browser, browser.summoning, !asked.isEmpty else { return }
+        browser.relaunch(browser.launching ? assemble(asked, in: browser) : CommandBar.offers(for: browser.typed, in: browser))
     }
 
     // MARK: - picking
@@ -695,9 +733,8 @@ final class Launcher: ObservableObject {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         switch event.keyCode {
         case 53:
-            // One press, all the way out. ⌘K's first Escape lets go of the
-            // row; here nothing has happened yet, so there is nothing to undo
-            // step by step.
+            // One press, all the way out, as on ⌘K's card: nothing has
+            // happened yet, so there is nothing to undo step by step.
             browser.dismiss()
             return true
         case 36, 76:
@@ -753,7 +790,7 @@ final class Launcher: ObservableObject {
     /// lands: bookmarks do not change while the card is up.
     private var shelved: [(title: String, lowered: String, url: URL, address: String)]?
 
-    private func shelf(_ browser: Browser) -> [(title: String, lowered: String, url: URL, address: String)] {
+    func shelf(_ browser: Browser) -> [(title: String, lowered: String, url: URL, address: String)] {
         if let shelved { return shelved }
         let flat = Launcher.bookmarks(browser.bookmarks.roots).map { title, url in
             (title: title, lowered: title.lowercased(), url: url, address: Launcher.strip(Address.pretty(url)))
@@ -768,6 +805,17 @@ final class Launcher: ObservableObject {
             guard let url = node.url.flatMap(URL.init(string:)) else { return [] }
             return [(node.title, url)]
         }
+    }
+
+    /// The browser's commands, built once a card: building them checks
+    /// files and walks the spaces, and none of it changes while the card is up.
+    private var verbs: [CommandBar.Command]?
+
+    func commands(_ browser: Browser) -> [CommandBar.Command] {
+        if let verbs { return verbs }
+        let list = CommandBar.commands(browser)
+        verbs = list
+        return list
     }
 
     // MARK: - bench
@@ -809,6 +857,7 @@ final class Launcher: ObservableObject {
             if request["go"] as? Bool == true {
                 let how = How(rawValue: request["how"] as? String ?? "") ?? .open
                 let index = request["pick"] as? Int ?? browser.picked ?? 0
+                out["t0"] = (Date().timeIntervalSince1970 * 1000).rounded() // the load clock (perf/perf.py), as `open`'s
                 if browser.offers.indices.contains(index) { take(browser.offers[index], in: browser, how: how) }
                 out["tookIndex"] = index
             } else if request["keep"] as? Bool != true {
@@ -822,7 +871,7 @@ final class Launcher: ObservableObject {
         }
     }
 
-    /// `bench newtab TEXT --type`: ⌘T, then TEXT a letter at a time, `every`
+    /// `bench newtab TEXT --type`: ⌘T (⌘K with `summon`, `bench bar TEXT --type`), then TEXT a letter at a time, `every`
     /// seconds apart, the way a person types it. What it reports is what
     /// "slow" means here: how long the main thread was too busy to draw —
     /// in all, and at worst in one go — and how long after the last letter
@@ -833,7 +882,8 @@ final class Launcher: ObservableObject {
         let settle = request["settle"] as? Double ?? 3
         let meter = Meter()
         meter.start()
-        let opening = Launcher.clock { browser.launch() }
+        let summon = request["summon"] as? Bool == true
+        let opening = Launcher.clock { summon ? browser.summon() : browser.launch() }
         var keys: [Double] = []
         var lastKey: UInt64 = 0
         var landed: UInt64?
@@ -886,6 +936,9 @@ final class Launcher: ObservableObject {
         private var stretches: [Double] = []
 
         func start() {
+            // The turn that starts the meter is the one that opens the card:
+            // counted from here, or the open's own pass never reaches `take`.
+            woke = DispatchTime.now().uptimeNanoseconds
             let activities = CFRunLoopActivity.afterWaiting.rawValue | CFRunLoopActivity.beforeWaiting.rawValue
             observer = CFRunLoopObserverCreateWithHandler(nil, activities, true, 0) { [weak self] _, activity in
                 guard let self else { return }

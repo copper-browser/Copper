@@ -175,16 +175,20 @@ enum Headless {
         }
     }
 
+    /// `bench ui welcome on` in a probe world: the panel stays up, for a picture of it.
+    @MainActor static var benchWelcome = false
+
     /// Nothing the browser would put in front of a person stays up.
     @MainActor static func start(for browser: Browser) {
         guard on else { return }
         // First-run welcome: not for a Mac nobody sits at.
-        browser.$welcoming
+        browser.feed(\.welcoming)
             .removeDuplicates()
             .filter { $0 }
             .receive(on: DispatchQueue.main)
             .sink { [weak browser] _ in
                 MainActor.assumeIsolated {
+                    guard !(Store.testing && benchWelcome) else { return }
                     browser?.welcoming = false
                     log("welcome panel suppressed")
                 }

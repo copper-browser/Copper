@@ -51,11 +51,12 @@ headless or test-world Copper instead of yours; that probe passes it on to the m
 Copper by pid (docs/headless.md). `.html`, `.webloc` and `.url` files opened with
 Copper open their page (`Fork/LinkRelay.swift`).
 
-## Pinned tabs never unload
+## Pinned tabs stay loaded
 
 A pinned tab (a favourite, in the grid every space shows) keeps its page loaded from the
-moment it is pinned, or from launch, until it is unpinned. There is no setting for it
-(`Fork/PinsAwake.swift`).
+moment it is pinned, or from launch, until it is unpinned — except under Settings › Tabs ›
+Let big pins sleep (on by default), which lets a pin over 300 MB you haven't looked at for
+two hours sleep under its picture (`Fork/PinsAwake.swift`).
 
 - **Nothing puts one to sleep.** The idle sweep and memory pressure pass over pins
   (`Browser.awake(because:)` says "pinned"), and `Tab.sleep(picture:)` and `Tab.rest()`

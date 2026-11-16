@@ -3,7 +3,7 @@ import SwiftUI
 /// Looking for a word on the page. A pill in the top corner, the same white and
 /// hairline as everything else that floats, and gone the moment it isn't wanted.
 struct FindBar: View {
-    @ObservedObject var browser: Browser
+    @Bindable var browser: Browser
 
     @FocusState private var focused: Bool
 

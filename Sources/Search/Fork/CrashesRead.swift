@@ -72,7 +72,7 @@ extension Crashes {
 
     static let tool: [String: Any] = [
         "name": "browser_crashes",
-        "description": "Copper's own crash history on this Mac, newest first: time, version, exception and the first frame in Copper's code. index=N returns crash N in full — how it ended, the crashed thread's frames and the breadcrumbs (tool calls, page-process exits, memory) of that run before it. Read-only; nothing is sent anywhere.",
+        "description": "Copper's own crashes on this Mac, newest first; index=N gives one in full (frames, breadcrumbs). Read-only.",
         "inputSchema": [
             "type": "object",
             "properties": [

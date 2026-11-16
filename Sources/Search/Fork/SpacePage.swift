@@ -19,7 +19,7 @@ import UniformTypeIdentifiers
 
 /// The page: the spaces to pick from, and the picked one's controls.
 struct SpacesSettingsPage: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var editing = SpaceEditing.shared
     @ObservedObject private var spaces = Spaces.shared
     @Environment(\.colorScheme) private var scheme
@@ -135,7 +135,7 @@ private struct SpaceChipDrop: DropDelegate {
 
 /// One space's controls, as Settings › Spaces shows them under the picker.
 struct SpacePage: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     let id: UUID
 
     @ObservedObject private var spaces = Spaces.shared
@@ -265,15 +265,11 @@ struct SpacePage: View {
                 // A picture of the column, not tabs to read out one by one.
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Preview of the column")
-            Picker("", selection: Binding(get: { shown }, set: { previewNight = $0 == night ? nil : $0 })) {
-                Text("Light").tag(false)
-                Text("Dark").tag(true)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .controlSize(.small)
-            .frame(width: 120)
-            .accessibilityLabel("Preview in")
+            // Fork (ui-flows r3): the house choices (Look's own), not the
+            // system's segmented control, which read 3.9:1 in dark.
+            Segmented(options: [(false, "Light"), (true, "Dark")],
+                      selection: Binding(get: { shown }, set: { previewNight = $0 == night ? nil : $0 }),
+                      label: "Preview in")
         }
         .frame(width: SpacePage.rail)
     }
@@ -627,7 +623,7 @@ struct SpacePage: View {
                     Spacer()
                     Text("Bright")
                 }
-                .font(.system(size: 10.5))
+                .font(.system(size: 11)) // Fork (uitype): 11 pt floor for labels
                 .foregroundStyle(Palette.muted)
             }
             Text(look.tone == 0 ? "—" : String(format: "%@%d", look.tone < 0 ? "−" : "+", Int((abs(look.tone) * 100).rounded())))
@@ -688,21 +684,35 @@ struct SpacePage: View {
     /// Shared, one of the names in use, or a new one.
     private func profile(_ space: Space) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Picker("Profile", selection: Binding(
-                get: { namingProfile ? "\u{0}new" : (space.profile ?? "") },
-                set: { value in
-                    if value == "\u{0}new" { namingProfile = true; profileDraft = ""; focus = .profile }
-                    else { namingProfile = false; spaces.profile(id, named: value.isEmpty ? nil : value) }
+            // Fork (ui-flows): a 28 pt capsule, like the space's other
+            // choices, not the system's pop-up button.
+            Menu {
+                Button("Shared") { namingProfile = false; spaces.profile(id, named: nil) }
+                ForEach(spaces.profiles, id: \.self) { name in
+                    Button(name) { namingProfile = false; spaces.profile(id, named: name) }
                 }
-            )) {
-                Text("Shared").tag("")
-                ForEach(spaces.profiles, id: \.self) { Text($0).tag($0) }
                 Divider()
-                Text("New Profile…").tag("\u{0}new")
+                Button("New Profile…") { namingProfile = true; profileDraft = ""; focus = .profile }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(namingProfile ? "New Profile…" : (space.profile ?? "Shared"))
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Palette.ink)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Palette.muted)
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 28)
+                .background(Palette.wash, in: Capsule())
+                .contentShape(Capsule())
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .frame(maxWidth: 200, alignment: .leading)
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel("Profile")
             if namingProfile {
                 TextField("Profile name", text: $profileDraft)
                     .textFieldStyle(.plain)
@@ -733,7 +743,7 @@ struct SpacePage: View {
         if spaces.all.count > 1 {
             Card {
                 Line("Delete this space", "Asks first, and can move its tabs to the space beside it") {
-                    Pill("Delete Space…", tint: .red) { SpaceDelete.ask(id, in: browser) }
+                    Pill("Delete Space…", tint: Palette.danger) { SpaceDelete.ask(id, in: browser) }
                 }
             }
             .settingsAnchor("spaces.delete", card: true)
@@ -825,13 +835,13 @@ struct SpaceColumnPreview: View {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(i == 0 ? tint.pill : tint.square)
                         .frame(height: 30)
-                        .overlay { RowMark(icon: nil, letter: ["M", "C", "G"][i], tint: tint, size: 14) }
+                        .overlay { RowMark(icon: nil, tint: tint, size: 14) }
                 }
             }
             .padding(8)
 
             HStack(spacing: 8) {
-                SpaceGlyph(space: space, size: 13, dark: night, ink: tint.muted, bare: true)
+                SpaceGlyph(space: space, size: 13, dark: night, ink: tint.mark, bare: true)
                 Text(space.title)
                     .font(.system(size: 12.5, weight: .semibold))
                     .foregroundStyle(tint.muted)
@@ -858,7 +868,8 @@ struct SpaceColumnPreview: View {
                 Image(systemName: "books.vertical").font(.system(size: 11)).foregroundStyle(tint.ink.opacity(0.72))
                 Spacer(minLength: 2)
                 ForEach(all.prefix(5)) { other in
-                    SpaceChip(space: other, current: other.id == space.id, dark: night, over: false, ink: tint.ink)
+                    SpaceChip(space: other, current: other.id == space.id, dark: night, over: false,
+                              ink: SpaceTint(space: other, dark: night).mark(on: tint), plate: tint.pill)
                         .scaleEffect(0.78)
                         .frame(width: 22, height: 22)
                 }
@@ -877,7 +888,7 @@ struct SpaceColumnPreview: View {
 
     private func row(_ title: String, _ letter: String, tint: SpaceTint, live: Bool = false) -> some View {
         HStack(spacing: 8) {
-            RowMark(icon: nil, letter: letter, tint: tint, size: 14)
+            RowMark(icon: nil, tint: tint, size: 14)
             Text(title)
                 .font(.system(size: 12, weight: live ? .semibold : .regular))
                 .foregroundStyle(live ? tint.ink : tint.ink.opacity(0.85))

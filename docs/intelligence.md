@@ -68,7 +68,7 @@ Field by field:
 |---|---|
 | Lane | the API-key lane while the cloud provides a gateway key; else the one chosen on this Mac |
 | API key | the cloud's, whenever it provides one; else a non-empty key typed on this Mac |
-| Gateway address | the cloud's while the cloud's key is the one in use; else an address other than the default typed on this Mac; else the default (a key typed here is never sent to an address the cloud chose) |
+| Gateway address | the cloud's while the cloud's key is the one in use; else the address typed on this Mac; else none — the field starts empty, and a key saved before the address had a field keeps the address it was used with (a key typed here is never sent to an address the cloud chose) |
 | Model names (Haiku / Sonnet / Opus) | this Mac's names for the lane in force — the gateway's (`haiku`, `sonnet`, `opus`) on the cloud's key; `/v1/intelligence` ships none |
 | Jev key | a non-empty key typed on this Mac; else the cloud's |
 | Jev model | a name other than the default `jev-latest` typed on this Mac; else the cloud's; else the default |

@@ -16,11 +16,11 @@ enum SettingsInk {
     static let content = Color(nsColor: pair(0.976, 0.108))
     static let card = Color(nsColor: pair(1.0, 0.150))
     static let cardEdge = Color(nsColor: pair(0.905, 0.205))
-    /// Secondary text: darker than `Palette.muted` in light (5:1 on white
-    /// rather than 3.4:1), the same in dark.
-    static let detail = Color(nsColor: pair(0.40, 0.64))
+    /// Secondary text: `Palette.muted`'s strength (Fork, uitype: 0.40 drew
+    /// under 4.5:1 once antialiased at 11–12 pt).
+    static let detail = Color(nsColor: pair(0.28, 0.66))
     /// Section titles: between the ink and the detail.
-    static let heading = Color(nsColor: pair(0.26, 0.80))
+    static let heading = Color(nsColor: pair(0.18, 0.80)) // Fork (uitype): stays between ink and the darker detail
     /// The field at the top of the rail.
     static let field = Color(nsColor: pair(0.905, 0.185))
     /// A row chosen in the results, or a page in the rail.
@@ -85,19 +85,29 @@ extension EnvironmentValues {
 struct SettingsAdvanced<Content: View>: View {
     let anchor: String
     let holds: Set<String>
+    /// Fork (polish r5): folded even when it holds one setting — model
+    /// identifiers and an endpoint are not for the first look.
+    var folds = false
     @ViewBuilder let content: () -> Content
     @State private var open = false
     @Environment(\.settingsPending) private var pending
 
-    init(_ anchor: String, holds: Set<String>, @ViewBuilder content: @escaping () -> Content) {
+    init(_ anchor: String, holds: Set<String>, folds: Bool = false, @ViewBuilder content: @escaping () -> Content) {
         self.anchor = anchor
         self.holds = holds
+        self.folds = folds
         self.content = content
     }
 
     var body: some View {
+        // Fork (ui-flows): one setting is shown, not folded behind a row that
+        // costs as much room as it does.
+        if holds.count == 1 && !folds { content() } else { fold }
+    }
+
+    @ViewBuilder private var fold: some View {
         Rule()
-        Line("Advanced", open ? "" : "\(holds.count) more setting\(holds.count == 1 ? "" : "s")") {
+        Line("Advanced", open ? "" : holds.count == 1 ? "1 more setting" : "\(holds.count) more settings") {
             Pill(open ? "Hide" : "Show") { withAnimation(Motion.settle) { open.toggle() } }
                 .accessibilityLabel(open ? "Hide advanced settings" : "Show advanced settings")
         }
@@ -111,12 +121,12 @@ struct SettingsAdvanced<Content: View>: View {
 /// Plate.swift carries only the reads.
 enum SettingsMetrics {
     static func detailInk(_ on: Bool) -> Color { on ? SettingsInk.detail : Palette.muted }
-    static func detailSize(_ on: Bool) -> CGFloat { on ? 12 : 11.5 }
+    static func detailSize(_ on: Bool) -> CGFloat { 12 } // Fork (uichrome): secondary words ≥ 12 pt in either look
     static func lineInset(_ on: Bool) -> CGFloat { on ? 16 : 14 }
     static func lineHeight(_ on: Bool) -> CGFloat { on ? 12 : 11 }
     static func cardFill(_ on: Bool) -> Color { on ? SettingsInk.card : Palette.ground }
     static func cardEdge(_ on: Bool) -> Color { on ? SettingsInk.cardEdge : Palette.hairline }
-    static func captionFont(_ on: Bool) -> Font { on ? .system(size: 12.5, weight: .semibold) : .system(size: 11.5, weight: .medium) }
+    static func captionFont(_ on: Bool) -> Font { on ? .system(size: 12.5, weight: .semibold) : .system(size: 12, weight: .medium) }
     static func captionInk(_ on: Bool) -> Color { on ? SettingsInk.heading : Palette.muted }
 }
 

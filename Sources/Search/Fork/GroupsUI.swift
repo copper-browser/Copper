@@ -9,9 +9,10 @@ import SwiftUI
 // in each one starts.
 
 struct GroupedRows: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var prefs: Preferences
     @ObservedObject var groups = Groups.shared
+    @ObservedObject private var heat = Heat.shared // Fork (space-perf): once for the block, not once a row
     let pill: Namespace.ID
     let tint: SpaceTint
     /// The sidebar draws the loose list as two blocks (Saved, Today); each
@@ -36,7 +37,7 @@ struct GroupedRows: View {
 
     private var drag: SideDrag { SideDrag.of(browser) }
 
-    static let row: CGFloat = 37
+    static let row: CGFloat = 34 // Fork (uitype): Arc's ~34 with 14 pt titles (was 37 with 15)
     static let gap: CGFloat = 4
 
     private var loose: [Tab] {
@@ -58,7 +59,31 @@ struct GroupedRows: View {
         return FolderTree.plan(loose).count - loose.count
     }
 
+    /// Fork (polish r5): a kept split whose halves sit next to each other is
+    /// one row — the upper half's — and the lower half's row is not drawn.
+    @ObservedObject private var paired = SplitPairs.shared
+
+    /// The upper half of each adjacent pair, by id, with its partner.
+    private static func merged(_ rows: [FolderRow], pairs: [Tab.ID: Tab.ID]) -> [Tab.ID: Tab] {
+        guard !pairs.isEmpty else { return [:] }
+        var found: [Tab.ID: Tab] = [:]
+        var above: Tab?
+        for row in rows {
+            guard case .tab(let tab, _, _, _) = row else { above = nil; continue }
+            if let up = above, pairs[up.id] == tab.id, found[up.id] == nil {
+                found[up.id] = tab
+                above = nil
+            } else {
+                above = tab
+            }
+        }
+        return found
+    }
+
     var body: some View {
+        let rows = self.rows
+        let merged = paired.ids.isEmpty ? [:] : GroupedRows.merged(rows, pairs: Split.shared.pairs)
+        let hidden = Set(merged.values.map(\.id))
         VStack(spacing: GroupedRows.gap) {
             ForEach(rows) { row in
                 switch row {
@@ -71,24 +96,35 @@ struct GroupedRows: View {
                         }
                     // Onto the folder: its first place opens under it, open or shut.
                     if block == .saved { SavedDropGap(drag: drag, anchor: .into(group.id), tint: tint) }
+                case .tab(let tab, _, _, _) where hidden.contains(tab.id):
+                    // shortcut: a drag past a merged pair counts its hidden row, so the
+                    // held row jumps one row there; fold pairs into FolderTree if it matters.
+                    EmptyView()
                 case .tab(let tab, let index, let group, let depth):
                     let step = GroupedRows.row + GroupedRows.gap
+                    let pair = merged[tab.id]
                     let held = dragging == tab.id
                     if block == .saved { SavedDropGap(drag: drag, anchor: .before(tab.id), tint: tint) }
                     VStack(spacing: GroupedRows.gap) {
+                        let editing = browser.editingTab == tab.id
                         SideRow(
                             browser: browser,
                             tab: tab,
-                            live: tab.id == browser.activeID,
+                            live: tab.id == browser.activeID || (pair != nil && pair?.id == browser.activeID),
+                            editing: editing,
+                            hot: heat.isHot(tab),
+                            refusals: editing ? browser.refusals : 0,
                             tint: tint,
                             pill: pill,
                             // Fork (saved-close): the cross (and Close Tab on the
                             // row's menu) is the one close that takes a Saved row
                             // out of Saved; ⌘W only puts it down.
-                            close: { Sections.shared.remove(tab, in: browser) }
+                            close: { Sections.shared.remove(tab, in: browser) },
+                            pair: pair,
+                            pairLive: pair != nil && pair?.id == browser.activeID
                         )
+                        .equatable() // Fork (space-perf): only the rows whose values changed draw again
                         .padding(.leading, CGFloat(depth) * Folders.step)
-                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { SideHand.frames[tab.id] = $0 }
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SavedDrop.space)) } action: { frame in
                             if dragging != tab.id { drag.rows[tab.id] = frame } // in the hand its frame rides the offset: its home stays put
                         }
@@ -116,7 +152,7 @@ struct GroupedRows: View {
                     .modifier(SideDragHidden(drag: drag, held: held))
                     .offset(y: held ? travel - CGFloat(index - from) * step : 0)
                     .zIndex(held ? 1 : 0)
-                    .shadow(color: .black.opacity(held ? 0.14 : 0), radius: 12, y: 4)
+                    .modifier(SideDragLift(held: held)) // Fork (motion): scale 1.02, shadow .12 r8 y3
                     .gesture(reorder(tab: tab, index: index, step: step))
                     if block == .saved { SavedDropGap(drag: drag, anchor: .after(tab.id), tint: tint) }
                 }
@@ -164,7 +200,7 @@ struct GroupedRows: View {
                 let moved = Int((travel / step).rounded())
                 let target = min(max(0, from + moved), loose.count - 1)
                 if target != index {
-                    withAnimation(Motion.settle) {
+                    withAnimation(Motion.pickup) {
                         browser.move(tab, to: offset + target + browser.pinnedCount)
                     }
                 }
@@ -172,13 +208,13 @@ struct GroupedRows: View {
             .onEnded { _ in
                 let target = drag.target
                 drag.end()
-                withAnimation(Motion.settle) {
+                withAnimation(Motion.pickup) {
                     dragging = nil
                     travel = 0
                 }
                 holding?(false)
                 if let target {
-                    withAnimation(Motion.settle) { drag.drop(tab, at: target, in: browser) }
+                    withAnimation(Motion.pickup) { drag.drop(tab, at: target, in: browser) }
                 } else {
                     groups.settle(tab, in: browser)
                 }
@@ -197,7 +233,7 @@ struct GroupedRows: View {
 /// width at all: it takes the glyph's place under the pointer, which is
 /// where Arc keeps its own, and rotates as the folder opens.
 struct GroupHead: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var groups = Groups.shared
     let group: TabGroup
     let count: Int
@@ -262,8 +298,7 @@ struct GroupHead: View {
         HStack(spacing: 0) {
             mark
                 .padding(.trailing, 10)
-            Text(label ?? group.name)
-                .font(.system(size: 15, weight: .semibold))
+            Folders.title(label ?? group.name)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .foregroundStyle(tint.ink)
@@ -273,7 +308,7 @@ struct GroupHead: View {
             if group.collapsed, count > 0, hovering {
                 Text("\(count)")
                     .font(.system(size: 11))
-                    .foregroundStyle(tint.faint)
+                    .foregroundStyle(tint.muted) // Fork (uitype): words never in faint
                     .padding(.trailing, 9)
                     .transition(.opacity)
             }
@@ -334,7 +369,7 @@ struct GroupHead: View {
 
 /// The Group submenu on a tab's context menu, in both layouts.
 struct GroupMenu: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var tab: Tab
     @ObservedObject var groups = Groups.shared
 
@@ -365,7 +400,7 @@ struct GroupMenu: View {
 
 /// The Groups menu in the menu bar; ⌃G is the one key to learn.
 struct GroupCommands: Commands {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var groups = Groups.shared
 
     var body: some Commands {

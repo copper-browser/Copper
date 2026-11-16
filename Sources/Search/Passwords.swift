@@ -4,7 +4,7 @@ import SwiftUI
 /// rest, and the same rule: a password is never shown until you have proved
 /// you are you, and never for longer than it takes to read it.
 struct PasswordsPanel: View {
-    @ObservedObject var browser: Browser
+    @Bindable var browser: Browser
 
     @FocusState private var hunting: Bool
     @State private var open: String?
@@ -12,7 +12,7 @@ struct PasswordsPanel: View {
     @State private var importing: String?
 
     var body: some View {
-        Plate("Passwords", width: 620, close: { browser.managing = false }) {
+        Plate("Passwords", width: 600, close: { browser.managing = false }) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 10) {
                     Hunt(text: $browser.hunting, prompt: "Search sites and accounts", focus: $hunting)
@@ -24,14 +24,15 @@ struct PasswordsPanel: View {
                         .transition(.opacity)
                 }
 
+                // Fork (ui-system): empty is a state; a list of one is one row tall.
                 if browser.shownSites.isEmpty {
-                    Card {
-                        Nothing(browser.saved.isEmpty
-                                ? "Nothing kept yet. Sign in somewhere and say yes, or bring yours in below."
-                                : "Nothing matches.")
+                    if browser.saved.isEmpty {
+                        EmptyState("key", "No passwords yet", "Say Save when you sign in somewhere, or bring yours in below.")
+                    } else {
+                        EmptyState("magnifyingglass", "No matches", "No site or account matches “\(browser.hunting)”.")
                     }
                 } else {
-                    ScrollView(showsIndicators: false) {
+                    Fitted {
                         Card {
                             ForEach(Array(browser.shownSites.enumerated()), id: \.element.host) { index, site in
                                 if index > 0 { Rule() }
@@ -47,7 +48,6 @@ struct PasswordsPanel: View {
                         }
                         .padding(.bottom, 2)
                     }
-                    .frame(maxHeight: 400)
                 }
             }
         } foot: {
@@ -56,9 +56,14 @@ struct PasswordsPanel: View {
                     Text("Bring in from")
                         .font(.system(size: 12))
                         .foregroundStyle(Palette.muted)
-                    // Only the browsers actually on this Mac.
-                    ForEach(Chromium.installed()) { source in
-                        Pill(source.name) {
+                    // Fork (ui-flows): the one list of browsers (Fork/StartCard.swift
+                    // `MoveFrom`), with their icons. A Chromium browser's passwords
+                    // come straight in, as before; any other opens Move in on it.
+                    ForEach(MoveFrom.found, id: \.name) { found in
+                        BrowserPill(name: found.name, icon: found.icon, help: "Bring your passwords over from \(found.name)") {
+                            guard let source = Chromium.installed().first(where: { $0.name == found.name }) else {
+                                return Flow.shared.present(from: browser, via: .passwords, prefer: found.name)
+                            }
                             importing = source.name
                             // Off the main thread: four hundred passwords is a
                             // moment of arithmetic, and the panel stays alive.
@@ -78,19 +83,17 @@ struct PasswordsPanel: View {
                     if let importing {
                         Ring(size: 10)
                         Text("Reading \(importing)…")
-                            .font(.system(size: 11.5))
+                            .font(.system(size: 12))
                             .foregroundStyle(Palette.muted)
-                    } else {
+                    } else if !browser.saved.isEmpty { // Fork (ui-system): no count of nought
                         Text(browser.saved.count == 1 ? "1 password" : "\(browser.saved.count) passwords")
                             .font(.system(size: 12))
                             .foregroundStyle(Palette.muted)
-                        if !browser.saved.isEmpty { // Fork (password-csv): out as well as in
-                            Pill("Export…") { browser.exportPasswordsCSV() }
-                        }
+                        Pill("Export…") { browser.exportPasswordsCSV() } // Fork (password-csv): out as well as in
                     }
                 }
-                Text("macOS asks once for that browser's keychain key. Nothing is changed there; everything lands in your own keychain, under \(Fork.name).")
-                    .font(.system(size: 11.5))
+                Text("Passwords from \(MoveFrom.names) land in your own keychain, under \(Fork.name); nothing changes there. macOS asks once for that browser's key.") // Fork (ui-flows)
+                    .font(.system(size: 12))
                     .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -114,23 +117,29 @@ struct PasswordsPanel: View {
         var body: some View {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
-                    Mark(icon: Favicons.shared.cached(host), letter: host.first.map { String($0).uppercased() } ?? "•", size: 16)
+                    Mark(icon: Favicons.shared.cached(host), size: 16)
                     Text(host)
                         .font(.system(size: 13))
                         .foregroundStyle(Palette.ink)
                         .lineLimit(1)
                     if logins.count > 1 {
                         Text("\(logins.count) accounts")
-                            .font(.system(size: 11.5))
+                            .font(.system(size: 12))
                             .foregroundStyle(Palette.muted)
                     } else if let only = logins.first, !only.user.isEmpty, !open {
                         Text(only.user)
-                            .font(.system(size: 11.5))
+                            .font(.system(size: 12))
                             .foregroundStyle(Palette.muted)
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
                     Spacer(minLength: 8)
+                    // Fork (ui-flows): one account, its two copies under the
+                    // pointer without opening the row.
+                    if hovering, !open, logins.count == 1, let only = logins.first {
+                        if !only.user.isEmpty { Quick("Copy username") { SettingsActions.copy(only.user) } }
+                        Quick("Copy password") { copy(only) }
+                    }
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(Palette.muted)
@@ -182,7 +191,7 @@ struct PasswordsPanel: View {
                 HStack(spacing: 10) {
                     Text(login.user.isEmpty ? "No username" : login.user)
                         .font(.system(size: 12))
-                        .foregroundStyle(login.user.isEmpty ? Palette.faint : Palette.ink)
+                        .foregroundStyle(login.user.isEmpty ? Palette.muted : Palette.ink)
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .frame(minWidth: 120, alignment: .leading)
@@ -197,15 +206,15 @@ struct PasswordsPanel: View {
 
                     if hovering || shown {
                         Quick(shown ? "Hide" : "Show") { shown ? conceal() : reveal() }
-                        Quick("Copy", act: copy)
+                        Quick("Copy password", act: copy) // Fork (ui-flows): says which
                         // Fork (keychain-codes)
                         if hasCode {
                             Quick("Copy code", act: copyCode)
-                            Quick("Remove code", tint: .red.opacity(0.75), act: removeCode)
+                            Quick("Remove code", tint: Palette.danger, act: removeCode)
                         } else {
                             Quick("Add code") { addingCode.toggle() }
                         }
-                        Quick("Remove", tint: .red.opacity(0.75), act: forget)
+                        Quick("Remove", tint: Palette.danger, act: forget)
                     }
                 }
                 if addingCode { codeForm } // Fork (keychain-codes)
@@ -241,7 +250,7 @@ struct PasswordsPanel: View {
                      ? "That key doesn't make a code — copy it again from the site's two-step setup"
                      : "Copper fills the code on the page that asks for it, right after you sign in")
                     .font(.system(size: 11))
-                    .foregroundStyle(seedRefused ? Color.red.opacity(0.75) : Palette.muted)
+                    .foregroundStyle(seedRefused ? Palette.danger : Palette.muted)
             }
         }
 
@@ -288,7 +297,7 @@ struct PasswordsPanel: View {
 
     /// Typing one in by hand. The site, the name, the password, and Save.
     private struct AddForm: View {
-        @ObservedObject var browser: Browser
+        let browser: Browser
         let done: () -> Void
 
         @State private var site = ""

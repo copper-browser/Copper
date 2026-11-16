@@ -255,7 +255,8 @@ struct SpacePreview: View, Equatable {
                         .font(.system(size: 14, weight: .regular))
                         .frame(width: 16)
                     Text("New Tab")
-                        .font(.system(size: 15))
+                        .font(.system(size: SideBar.title))
+                        .foregroundStyle(tint.heading)
                     Spacer(minLength: 0)
                 }
                 .foregroundStyle(tint.muted.opacity(0.82))
@@ -275,14 +276,14 @@ struct SpacePreview: View, Equatable {
 
         var body: some View {
             HStack(spacing: 0) {
-                SpaceGlyph(space: space, size: 16, dark: dark, ink: tint.muted, bare: true)
+                SpaceGlyph(space: space, size: 16, dark: dark, ink: tint.mark, bare: true) // Fork (switch): on its plate, as SpaceHeader draws it
                     .frame(width: 24, height: 24)
                     .padding(.leading, -4)
                     .padding(.trailing, 6)
                 HStack(spacing: 10) {
                     Text(space.title)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(tint.muted)
+                        .font(.system(size: SideBar.heading, weight: .semibold))
+                        .foregroundStyle(tint.heading)
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Spacer(minLength: 4)
@@ -331,8 +332,7 @@ struct SpacePreview: View, Equatable {
                 .font(.system(size: 15))
                 .frame(width: 16, height: 16)
                 .padding(.trailing, 10)
-                Text(label)
-                    .font(.system(size: 15, weight: .semibold))
+                Folders.title(label)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .foregroundStyle(tint.ink)
@@ -355,7 +355,7 @@ struct SpacePreview: View, Equatable {
             HStack(spacing: 10) {
                 if !tab.isBlank {
                     // As the column draws it: Tabs show Letters / Site icons.
-                    SideGlyphMark(prefs: Windows.main.prefs, icon: tab.icon, letter: tab.monogram, tint: tint, size: 16)
+                    RowMark(icon: tab.icon, tint: tint, size: 16)
                         .opacity(live ? 1 : 0.9)
                 }
                 if tab.bench {
@@ -368,23 +368,24 @@ struct SpacePreview: View, Equatable {
                         .font(.system(size: 9))
                         .foregroundStyle(tint.ink.opacity(0.7))
                 }
-                Text(tab.label)
-                    .font(.system(size: 15, weight: live ? .semibold : .regular))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .foregroundStyle(tint.ink)
+                FadingTitle(text: Text(tab.label) // Fork (switch): as SideRow's, a long title fades, not "…"
+                    .font(.system(size: SideBar.title, weight: live ? .semibold : .regular))
+                    .foregroundStyle(tint.ink))
                 Spacer(minLength: 2)
-                ZStack {
-                    if tab.noisy {
-                        Image(systemName: "speaker.wave.2.fill")
-                            .font(.system(size: 8))
-                            .foregroundStyle(tint.muted)
-                    }
+            }
+            // As `SideRow`: the sound over the title's faded end, no slot kept.
+            .padding(.trailing, 8)
+            .modifier(RowEndFade(on: tab.noisy))
+            .overlay(alignment: .trailing) {
+                if tab.noisy {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .font(.system(size: 8))
+                        .foregroundStyle(tint.muted)
+                        .frame(width: 15, height: 15)
+                        .padding(.trailing, 8)
                 }
-                .frame(width: 15, height: 15)
             }
             .padding(.leading, SpacePreviewModel.rowInset)
-            .padding(.trailing, 8)
             .frame(height: SpacePreviewModel.row)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {

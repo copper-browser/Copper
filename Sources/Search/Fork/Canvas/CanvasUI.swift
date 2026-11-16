@@ -144,7 +144,7 @@ final class CanvasUI: ObservableObject {
 
 /// The door. A dot on it while any canvas has someone else in it.
 struct CanvasDoor: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     let tint: SpaceTint
     @ObservedObject private var ui = CanvasUI.shared
     @ObservedObject private var presence = CanvasPresence.shared
@@ -188,7 +188,7 @@ struct CanvasDoor: View {
 
 /// The card.
 struct CanvasPopover: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var canvases = Canvases.shared
     @ObservedObject private var ui = CanvasUI.shared
     @ObservedObject private var presence = CanvasPresence.shared
@@ -230,7 +230,7 @@ struct CanvasPopover: View {
             if ui.mode != .list && ui.mode != .new {
                 Button { ui.mode = .list } label: {
                     Image(systemName: "chevron.left").font(.system(size: 11, weight: .semibold))
-                        .frame(width: 22, height: 22).contentShape(Rectangle())
+                        .frame(width: 24, height: 24).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Palette.muted)
@@ -356,10 +356,10 @@ struct CanvasButtonStyle: ButtonStyle {
             .font(.system(size: 11.5, weight: kind == .plain ? .regular : .semibold))
             .lineLimit(1)
             .fixedSize()
-            .foregroundStyle(kind == .plain ? Palette.ink : kind == .primary ? Palette.ground : Color.white)
+            .foregroundStyle(kind == .plain ? Palette.ink : kind == .primary ? Palette.onAccent : Color.white) // Fork (ui-system)
             .padding(.horizontal, 11)
             .padding(.vertical, 4.5)
-            .background(Capsule().fill(kind == .plain ? Palette.ground : kind == .primary ? Palette.ink : Color(nsColor: .systemRed)))
+            .background(Capsule().fill(kind == .plain ? Palette.ground : kind == .primary ? Palette.accent : Color(nsColor: .systemRed)))
             .overlay(Capsule().strokeBorder(kind == .plain ? Palette.faint : .clear, lineWidth: 1))
             .opacity(enabled ? (configuration.isPressed ? 0.7 : 1) : 0.45)
             .contentShape(Capsule())
@@ -412,7 +412,7 @@ private struct CanvasSection: View {
     let title: String
     var body: some View {
         Text(title.uppercased())
-            .font(.system(size: 10, weight: .semibold))
+            .font(.system(size: 11, weight: .semibold)) // Fork (uitype): 11 pt floor for labels
             .tracking(0.4)
             .foregroundStyle(Palette.muted)
             .padding(.horizontal, 14)
@@ -425,7 +425,7 @@ private struct CanvasSection: View {
 /// One canvas: a click opens it (switching to its tab if it has one).
 struct CanvasRow: View {
     let entry: Canvases.Entry
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var presence = CanvasPresence.shared
     @ObservedObject private var canvases = Canvases.shared
     @ObservedObject private var ui = CanvasUI.shared
@@ -573,7 +573,7 @@ struct CanvasRow: View {
 /// pill only puts the pill away.
 private struct CanvasInviteRow: View {
     let invite: Canvases.Invite
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var ui = CanvasUI.shared
     /// Which answer is on its way, if one is.
     @State private var working: Bool?
@@ -802,7 +802,7 @@ private struct CanvasMembers: View {
                                     }
                                 }
                                 Spacer(minLength: 4)
-                                Text(member.role.capitalized).font(.system(size: 11)).foregroundStyle(Palette.faint)
+                                Text(member.role.capitalized).font(.system(size: 11)).foregroundStyle(Palette.muted)
                             }
                             .padding(.horizontal, 14).padding(.vertical, 5)
                         }
@@ -822,7 +822,7 @@ private struct CanvasMembers: View {
 
 private struct CanvasDeleteConfirm: View {
     let entry: Canvases.Entry
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var ui = CanvasUI.shared
     @State private var working = false
     @State private var failure: String?

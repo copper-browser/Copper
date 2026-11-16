@@ -116,7 +116,7 @@ struct SettingsPanel: View {
             Task { await Bitwarden.shared.refreshStatus() }
             CloudIntelligence.shared.settingsOpened() // Fork (cloud-intelligence)
         }
-        .onReceive(browser.$settingsPage.removeDuplicates()) { now in // Fork (settings-perf)
+        .onReceive(browser.feed(\.settingsPage).removeDuplicates()) { now in // Fork (settings-perf)
             guard now != page else { return }
             page = now
             Store.settings.set(now.rawValue, forKey: "settings.page")
@@ -126,7 +126,7 @@ struct SettingsPanel: View {
         // Fork (settings-browse): opened again before the last close had
         // faded, the panel is the same view, so onAppear doesn't come round —
         // start fresh all the same, not on the old query.
-        .onReceive(browser.$tuning.removeDuplicates().dropFirst().filter { $0 }) { _ in finder.opened() }
+        .onReceive(browser.feed(\.tuning).removeDuplicates().dropFirst().filter { $0 }) { _ in finder.opened() }
     }
 
     // MARK: - the rail
@@ -247,6 +247,7 @@ struct SettingsPanel: View {
                     if edge.scrolled != now { edge.scrolled = now }
                 }
             }
+            .mask(SettingsRailFade(fade: 12)) // Fork (hc6): a row under the foot runs out under a soft edge, not a hard cut
             .onPreferenceChange(SettingsAnchorsKey.self) { finder.drawn[page] = $0 }
             .task(id: finder.pending?.token) {
                 guard let target = finder.pending else { return }
@@ -332,12 +333,6 @@ struct SettingsPanel: View {
                     ))
                 }
                 .settingsAnchor("tabs.sidebar")
-                Rule()
-                // Fork (settings-browse): the sidebar honours it too (Side.swift).
-                Line("Tabs show", "Beside the title, and on a pinned square") {
-                    Segmented(options: Glyph.allCases.map { ($0, $0.title) }, selection: $prefs.glyph)
-                }
-                .settingsAnchor("tabs.glyph")
             }
             SettingsSection("Switching") {
                 Line("⌃Tab switches to", "The next tab in the row, or the one you used last") {
@@ -358,10 +353,13 @@ struct SettingsPanel: View {
                 }
             }
             SettingsSection("Tabs you leave") {
-                Line("Sleep tabs you aren't using",  "When many pages are open, a page is heavy or memory runs short, the tabs you left longest sleep and come back where you were. Pinned tabs, sound, calls and anything typed stay awake.") {
+                Line("Sleep tabs you aren't using",  "When many pages are open, a page is heavy or memory runs short, the tabs you left longest sleep and come back where you were. Sound, calls and anything typed stay awake; pins follow the setting below.") {
                     Switch(on: $prefs.sleepsTabs)
                 }
                 .settingsAnchor("tabs.sleep")
+                Rule()
+                BigPinsLine() // Fork (covers): off by default, Fork/PinsAwake.swift
+                    .settingsAnchor("tabs.pins")
                 Rule()
                 ArchiveLine() // Fork: sections
                     .settingsAnchor("tabs.archive")
@@ -382,7 +380,7 @@ struct SettingsPanel: View {
     private var passwords: some View {
         Group {
             SettingsSection("Saved passwords") {
-                Line("Your passwords", "In the macOS keychain, shown with Touch ID — bring yours in from Dia, Chrome, Arc, Brave or Edge there") { // Fork (settings-merge): was also an Import… row that opened the same window
+                Line("Your passwords", "In the macOS keychain, shown with Touch ID — bring yours in from \(MoveFrom.names) there") { // Fork (ui-flows): the one list of browsers // Fork (settings-merge): was also an Import… row that opened the same window
                     Pill("Open…") {
                         browser.tuning = false
                         browser.managing = true
@@ -395,7 +393,7 @@ struct SettingsPanel: View {
                 }
                 .settingsAnchor("passwords.save")
                 Rule()
-                Line("Fill in sign-ins", "Click a sign-in box and the accounts kept for the site hang from it") {
+                Line("Fill in sign-ins", "Click a sign-in box to see the accounts saved for that site") { // Fork (ui-flows): plain words
                     Switch(on: $prefs.fillsPasswords)
                 }
                 .settingsAnchor("passwords.fill")
@@ -406,7 +404,7 @@ struct SettingsPanel: View {
                 }
                 .settingsAnchor("passwords.codes")
                 Rule()
-                Line("Fill addresses and cards", "Click into a checkout or address form and your Bitwarden and 1Password identities and cards hang from it") { // Fork: 1Password
+                Line("Fill addresses and cards", "Click into a checkout or address form to see your Bitwarden and 1Password identities and cards") { // Fork: 1Password; (ui-flows) plain words
                     Switch(on: $prefs.fillsEverything)
                 }
                 .settingsAnchor("passwords.everything")
@@ -512,7 +510,7 @@ struct SettingsPanel: View {
                     Text(Fork.name)
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(Palette.ink)
-                    Text(verbatim: "by Collin and Felipe") // Fork (settings-merge): the version is the Updates row below
+                    Text(verbatim: "Version \(Updater.version) (\(Updater.build)) · by Collin and Felipe") // Fork (settings-plain): icon, name, version
                         .font(.system(size: 12.5))
                         .foregroundStyle(SettingsInk.detail)
                         .textSelection(.enabled)
@@ -676,7 +674,7 @@ struct Segmented<Option: Hashable>: View {
     }
 }
 
-/// On or off, in ink rather than in blue.
+/// On or off, in Copper's accent rather than the system's blue.
 struct Switch: View {
     @Binding var on: Bool
     /// Fork (settings-a11y): what VoiceOver calls it; a `Line` hands its
@@ -702,7 +700,7 @@ struct Switch: View {
         let _ = SettingsControlLedger.note("switch", page: pageName, name: SettingsControlRules.name(given: label, row: rowLabel),
                                            value: on ? "On" : "Off", keyboard: enabled, disabled: !enabled, focused: focused) // Fork (settings-a11y)
         Capsule()
-            .fill(on ? Palette.ink : Palette.faint)
+            .fill(on ? Palette.accent : Palette.faint) // Fork (ui-system)
             .frame(width: 30, height: 18)
             .overlay(alignment: on ? .trailing : .leading) {
                 Circle()
@@ -728,8 +726,10 @@ struct Switch: View {
     }
 }
 
-/// A small capsule that does one thing. Outlined by default; filled in ink
-/// when it is the thing you came here to press.
+/// A small capsule that does one thing. Outlined by default; filled in the
+/// accent when it is the thing you came here to press. Fork (ui-system,
+/// uitype): a disabled one is flat — a 6% ink fill, no outline, its word in
+/// muted ink, no hover — still readable, plainly not a button to press now.
 struct Pill: View {
     let title: String
     var filled = false
@@ -751,23 +751,32 @@ struct Pill: View {
     var body: some View {
         let _ = SettingsPerf.tick("pill") // Fork (settings-perf)
         let _ = SettingsControlLedger.note("button", page: pageName, name: title, keyboard: enabled, disabled: !enabled, focused: focused) // Fork (settings-a11y)
+        let primary = filled && enabled // Fork (ui-system)
         Button(action: action) {
             Text(title)
-                .font(.system(size: 11.5))
+                .font(.system(size: 11.5, weight: primary ? .medium : .regular))
                 .lineLimit(1)
                 // A pill is as wide as its word, never a tall wrapped column.
                 .fixedSize()
-                .foregroundStyle(filled ? Palette.ground : tint)
+                .foregroundStyle(primary ? Palette.onAccent : (enabled ? tint : Palette.muted))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .background(filled ? Palette.ink : (hovering ? Palette.hover : Palette.ground), in: Capsule())
-                .overlay(Capsule().strokeBorder(filled ? .clear : Palette.hairline, lineWidth: 1))
+                .background(primary ? Palette.accent : (!enabled ? Palette.ink.opacity(0.06) : (hovering ? Palette.hover : Palette.ground)), in: Capsule())
+                .overlay(Capsule().strokeBorder(primary || !enabled ? .clear : Palette.hairline, lineWidth: 1))
                 .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PillPress()) // Fork (ui-system): .plain halves a disabled pill's word to ~2:1
         .onHover { hovering = $0 }
         .animation(Motion.quick, value: hovering)
         .settingsFocusRing($focused, shape: Capsule()) // Fork (settings-a11y)
+    }
+}
+
+/// Fork (ui-system): a press dims the pill a little; being disabled is the
+/// pill's own business (above), not a second fade on top.
+struct PillPress: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.opacity(configuration.isPressed ? 0.75 : 1)
     }
 }
 

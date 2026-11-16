@@ -15,7 +15,7 @@ import SwiftUI
 // chat app pasted in. No JSON reaches it.
 
 struct AgentPane: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     /// A width that isn't the dragged one: the bench's pictures at 340–620 pt.
     var fixedWidth: CGFloat? = nil
     @ObservedObject var agent = Agent.shared
@@ -35,11 +35,20 @@ struct AgentPane: View {
     /// Whether the transcript is scrolled to its end. New content follows
     /// only then; scrolled up to read, the reader keeps their place.
     @State private var atBottom = true
+    /// How many blocks the transcript draws: the newest `AgentPane.recent`,
+    /// more each time the reader asks for earlier ones.
+    @State private var shownBlocks = AgentPane.recent
     /// Dragged by the pane's leading edge; kept between launches.
     @AppStorage("agent.paneWidth") private var stored: Double = Double(AgentPane.width)
     @State private var dragFrom: Double?
+    /// Fork (ui-flows): the notes whose Details are open.
+    @State private var noteDetails: Set<UUID> = []
 
     static let width: CGFloat = 400
+    /// Every block is laid out again on each change a driver makes, so an
+    /// hour of agent sessions (a card each) made every tool call wait on the
+    /// main thread: 120 cards took browser_snapshot from 3 to 35 ms.
+    static let recent = 30
     static let widths: ClosedRange<Double> = 340...620
 
     private var width: CGFloat { fixedWidth ?? CGFloat(min(max(stored, AgentPane.widths.lowerBound), AgentPane.widths.upperBound)) }
@@ -91,7 +100,7 @@ struct AgentPane: View {
     private var header: some View {
         HStack(spacing: 8) {
             Text("Agent").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.ink)
-            model
+            if agent.ready { model } // Fork (uib): no tier to pick until a model can answer
             Spacer(minLength: 4)
             if servers.readyTools > 0 {
                 HStack(spacing: 3) {
@@ -247,6 +256,8 @@ struct AgentPane: View {
             case .assistant:
                 current = nil
                 out.append(.answer(item))
+            case .note where item.text == Agent.tooLong && current != nil:
+                fold(item) // Fork (hc6): the turn goes on after a split; one activity, red only if it ends failed
             case .note:
                 current = nil
                 out.append(.note(item))
@@ -281,7 +292,15 @@ struct AgentPane: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        ForEach(AgentPane.blocks(agent.items, busy: agent.busy)) { block in
+                        let blocks = AgentPane.blocks(agent.items, busy: agent.busy)
+                        if blocks.count > shownBlocks {
+                            Button("Show earlier (\(blocks.count - shownBlocks))") { shownBlocks += AgentPane.recent }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 11.5, weight: .medium))
+                                .foregroundStyle(Palette.muted)
+                                .frame(maxWidth: .infinity)
+                        }
+                        ForEach(blocks.suffix(shownBlocks)) { block in
                             view(block).id(block.id)
                         }
                         Color.clear.frame(height: 1).id("bottom")
@@ -390,7 +409,29 @@ struct AgentPane: View {
     /// quietly in the middle; a failure is a callout you cannot miss.
     @ViewBuilder
     private func note(_ item: Agent.Item) -> some View {
-        if item.ok {
+        if item.text == Agent.tooLong {
+            // Fork (hc6): Copper split the ask and went on — not a failure. One muted line;
+            // the sentence and the model's numbers wait behind Details.
+            let shown = noteDetails.contains(item.id)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle").font(.system(size: 11))
+                    Text("· split into smaller pieces").font(.system(size: 12))
+                    Button(shown ? "Hide details" : "Details") {
+                        withAnimation(Motion.quick) { if shown { noteDetails.remove(item.id) } else { noteDetails.insert(item.id) } }
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11.5, weight: .medium))
+                }
+                .foregroundStyle(Palette.muted)
+                if shown {
+                    Text(item.detail.isEmpty ? item.text : "\(item.text) \(item.detail)")
+                        .font(.system(size: 11.5)).foregroundStyle(Palette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                }
+            }
+        } else if item.ok {
             HStack(spacing: 8) {
                 Rectangle().fill(Palette.hairline).frame(height: 1)
                 Text(item.text)
@@ -404,11 +445,29 @@ struct AgentPane: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 11))
                     .foregroundStyle(Color.orange)
-                Text(item.text)
-                    .font(.system(size: 12)).foregroundStyle(Palette.ink)
-                    .lineSpacing(1.5)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.text)
+                        .font(.system(size: 12)).foregroundStyle(Palette.ink)
+                        .lineSpacing(1.5)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                    // Fork (ui-flows): the model's own numbers, for whoever wants them.
+                    if !item.detail.isEmpty {
+                        let shown = noteDetails.contains(item.id)
+                        Button(shown ? "Hide details" : "Details") {
+                            withAnimation(Motion.quick) { if shown { noteDetails.remove(item.id) } else { noteDetails.insert(item.id) } }
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(Palette.ink)
+                        if shown {
+                            Text(item.detail)
+                                .font(.system(size: 11.5)).foregroundStyle(Palette.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 12).padding(.vertical, 9)
@@ -488,7 +547,7 @@ struct AgentPane: View {
                 }
                 Pill("Cancel") { account.cancel() }
             case .failed(let why):
-                Text(why).font(.system(size: 12)).foregroundStyle(Color.red.opacity(0.85))
+                Text(why).font(.system(size: 12)).foregroundStyle(Palette.danger)
                     .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 24)
                 buttons
@@ -509,12 +568,18 @@ struct AgentPane: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 8) {
-            TextField("", text: $agent.draft, prompt: Text(placeholder).foregroundColor(Palette.muted), axis: .vertical)
+            TextField("", text: $agent.draft, axis: .vertical)
                 .textFieldStyle(.plain)
-                .font(.system(size: 13))
                 .lineLimit(1...8)
                 .focused($focused)
                 .disabled(!agent.ready)
+                // Fork (ui-system): the prompt drawn in muted ink — a plain
+                // field ignores a prompt's colour and showed it at ~1.7:1.
+                .background(alignment: .topLeading) {
+                    if agent.draft.isEmpty { Text(placeholder).foregroundStyle(Palette.muted).allowsHitTesting(false).accessibilityHidden(true) }
+                }
+                .accessibilityLabel(placeholder)
+                .font(.system(size: 13))
                 // What the field shows is what goes (Fork/Voice/ComposerInsert.swift).
                 .onSubmit { ComposerInsert.syncDraft(in: Windows.window(of: browser)); agent.send(in: browser) }
                 // Return sends (the field's submit); ⇧Return is a new line,
@@ -552,7 +617,7 @@ struct AgentPane: View {
     }
 
     private var placeholder: String {
-        guard agent.ready else { return "Sign in with Claude or add a key to start" }
+        // Fork (uib): sign-in is asked once, in the middle; the disabled field says what it is for.
         guard let tab = browser.active, !tab.isBlank else { return "Ask anything, or say what to do…" }
         return tab.address.flatMap(CanvasLinks.id(from:)) != nil ? "Ask about this canvas…" : "Ask about this page…"
     }
@@ -568,10 +633,9 @@ struct AgentPane: View {
                 HStack(spacing: 5) {
                     Image(systemName: on ? (canvas != nil ? "rectangle.on.rectangle" : "doc.text") : "eye.slash")
                         .font(.system(size: 9.5))
-                    Text(canvas ?? (tab.title.isEmpty ? (tab.address?.host ?? "This page") : tab.title))
+                    FadingTitle(text: Text(canvas ?? (tab.title.isEmpty ? (tab.address?.host ?? "This page") : CommandPalette.tidy(tab.title))) // Fork (polish r5): fades, no "…"
                         .font(.system(size: 11))
-                        .lineLimit(1).truncationMode(.tail)
-                        .strikethrough(!on, color: Palette.muted)
+                        .strikethrough(!on, color: Palette.muted))
                 }
                 .foregroundStyle(on ? Palette.ink.opacity(0.75) : Palette.muted)
                 .padding(.horizontal, 8).frame(height: 22)
@@ -666,9 +730,8 @@ private struct SuggestionRow: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Palette.muted)
                     .frame(width: 16)
-                Text(text)
-                    .font(.system(size: 12.5)).foregroundStyle(Palette.ink)
-                    .lineLimit(1).truncationMode(.tail)
+                FadingTitle(text: Text(text) // Fork (polish r5): fades, no "…"
+                    .font(.system(size: 12.5)).foregroundStyle(Palette.ink))
                 Spacer(minLength: 0)
                 Image(systemName: "arrow.up.right")
                     .font(.system(size: 9, weight: .semibold))

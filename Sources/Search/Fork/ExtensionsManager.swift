@@ -160,7 +160,7 @@ enum ExtensionsPicture {
 /// The page itself, inside Settings' own scroll.
 @available(macOS 15.4, *)
 struct ExtensionsSettings: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var extensions: Extensions
 
     @ObservedObject private var manager = ExtensionManager.shared
@@ -280,7 +280,7 @@ struct ExtensionsSettings: View {
             HStack(spacing: 8) {
                 ZStack(alignment: .leading) {
                     if link.isEmpty {
-                        Text("Paste a Chrome Web Store link or an id").foregroundStyle(Palette.muted.opacity(0.8))
+                        Text("Paste a Chrome Web Store link or an id").foregroundStyle(Palette.muted) // Fork (ui-system)
                     }
                     TextField("", text: $link)
                         .textFieldStyle(.plain)
@@ -315,7 +315,7 @@ struct ExtensionsSettings: View {
 private struct ExtensionCardRow: View {
     let item: Installed
     @ObservedObject var extensions: Extensions
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var manager = ExtensionManager.shared
     @ObservedObject private var facts = ExtensionFacts.shared
     /// The view the popup hangs from when it is opened from here.
@@ -388,7 +388,7 @@ private struct ExtensionCardRow: View {
                     }
                     Quick("Reload") { extensions.reload(item.id) }
                         .accessibilityLabel("Reload \(item.name)")
-                    Quick("Remove", tint: .red.opacity(0.8)) { ExtensionRemoval.ask(item.id, name: item.name, icon: found?.icon(for: CGSize(width: 64, height: 64))) }
+                    Quick("Remove", tint: Palette.danger) { ExtensionRemoval.ask(item.id, name: item.name, icon: found?.icon(for: CGSize(width: 64, height: 64))) }
                         .accessibilityLabel("Remove \(item.name)")
                 }
                 .padding(.top, 2)
@@ -455,7 +455,7 @@ private struct ExtensionCardRow: View {
 private struct ExtensionDetails: View {
     let item: Installed
     @ObservedObject var extensions: Extensions
-    @ObservedObject var browser: Browser
+    let browser: Browser
     let problems: [String]
     let spot: ExtensionPopupSpot
     @ObservedObject private var manager = ExtensionManager.shared
@@ -598,7 +598,7 @@ private struct ExtensionDetails: View {
                     // Granted later, when it asked and was told yes.
                     ForEach(extra, id: \.string) { pattern in
                         row(Extensions.site(pattern), detail: "Allowed when it asked") {
-                            Quick("Revoke", tint: .red.opacity(0.8)) {
+                            Quick("Revoke", tint: Palette.danger) {
                                 context?.grantedPermissionMatchPatterns.removeValue(forKey: pattern)
                                 manager.noteChange()
                             }
@@ -629,7 +629,7 @@ private struct ExtensionDetails: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.system(size: 12)).foregroundStyle(Palette.ink).lineLimit(1)
                 if let detail {
-                    Text(detail).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Palette.muted).lineLimit(1).truncationMode(.middle)
+                    Text(detail).font(.system(size: 11, design: .monospaced)).foregroundStyle(Palette.muted).lineLimit(1).truncationMode(.middle)
                 }
             }
             Spacer(minLength: 8)
@@ -675,7 +675,7 @@ private struct ExtensionDetails: View {
                     VStack(spacing: 0) {
                         ForEach(later, id: \.rawValue) { permission in
                             row(permission.rawValue, detail: "Allowed when it asked") {
-                                Quick("Revoke", tint: .red.opacity(0.8)) {
+                                Quick("Revoke", tint: Palette.danger) {
                                     context?.grantedPermissions.removeValue(forKey: permission)
                                     manager.noteChange()
                                 }
@@ -683,7 +683,7 @@ private struct ExtensionDetails: View {
                         }
                         ForEach(ours, id: \.self) { name in
                             row(name, detail: "Allowed when it asked") {
-                                Quick("Revoke", tint: .red.opacity(0.8)) {
+                                Quick("Revoke", tint: Palette.danger) {
                                     Store.settings.set(ours.filter { $0 != name }, forKey: "extensions.granted.\(item.id)")
                                     manager.noteChange()
                                 }
@@ -833,7 +833,7 @@ private struct ExtensionTag: View {
     init(_ text: String, warn: Bool = false) { self.text = text; self.warn = warn }
     var body: some View {
         Text(text)
-            .font(.system(size: 10, weight: .medium))
+            .font(.system(size: 11, weight: .medium)) // Fork (uitype): 11 pt floor for labels
             .foregroundStyle(warn ? Color.orange : Palette.muted)
             .padding(.horizontal, 6)
             .padding(.vertical, 1.5)
@@ -848,7 +848,7 @@ private struct PermissionChips: View {
         Wrap(spacing: 4) {
             ForEach(names, id: \.self) { name in
                 Text(name)
-                    .font(.system(size: 10.5, design: .monospaced))
+                    .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(Palette.muted)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)

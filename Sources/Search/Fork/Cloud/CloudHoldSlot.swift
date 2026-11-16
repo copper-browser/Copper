@@ -9,7 +9,7 @@ import SwiftUI
 // the same card sits in the window's bottom-left corner (`CloudHoldCorner`).
 
 struct CloudHoldSlot: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var sync = CloudSync.shared
     @Environment(\.accessibilityReduceMotion) private var still
 
@@ -78,7 +78,7 @@ private struct CloudHoldCard: View {
 
 /// The card where the column would be, while the column isn't showing.
 struct CloudHoldCorner: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var prefs: Preferences
     @ObservedObject private var sync = CloudSync.shared
     @ObservedObject private var spaces = Spaces.shared

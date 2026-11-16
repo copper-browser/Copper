@@ -12,9 +12,14 @@ import WebKit
 // keeps what it takes to come back exactly where it was.
 
 enum Web {
-    /// Modern WebKit pools processes by data store on its own — every tab
-    /// asking for the same one is what gets the second tab a warm process, and
-    /// the old WKProcessPool knob does nothing now.
+    /// Fork (navperf): one process pool for every tab. A configuration left
+    /// alone makes a pool of its own (WebKit 27 still does, whatever the
+    /// deprecation note says), and each new pool cost a new tab ~40 ms of
+    /// main thread before its request left — the pool built, every installed
+    /// font listed again for its first process — against ~6 ms in a shared
+    /// one. Set by key, the property being deprecated, not gone.
+    @MainActor static let pool = WKWebViewConfiguration().value(forKey: "processPool") // Fork (agent-permissions): read by Permissions.GeoProvider
+
     /// What every view says it is after "AppleWebKit … (KHTML, like Gecko)"
     /// — web tabs and extension views alike (see Extensions.init).
     static let userAgentName = "Version/26.5 Safari/605.1.15"
@@ -28,6 +33,7 @@ enum Web {
         // (Fork (perf): `store` is the one the tab was made for — its space's
         // profile — when the configuration is built later than the tab.)
         config.websiteDataStore = shy ? .nonPersistent() : store ?? Store.websites
+        MainActor.assumeIsolated { if let pool = Web.pool { config.setValue(pool, forKey: "processPool") } }
         // Chrome extensions see every page but a private one. The controller
         // has to be there when the view is made; it can't be added after.
         if #available(macOS 15.4, *), !shy { MainActor.assumeIsolated { Extensions.attach(config) } }
@@ -50,9 +56,24 @@ enum Web {
         // Off by default on macOS, which is why a full-screen button on a video
         // did nothing at all: the page asks, and WebKit refuses without a word.
         config.preferences.isElementFullscreenEnabled = true
+        // Fork (ui-system): Tab reaches links and buttons, as in Chrome and
+        // Arc. WebKit's own default (Safari's) stops only at text fields
+        // unless the Mac's Keyboard navigation is on, so Tab from a password
+        // box never reached Sign in. ⌥Tab still walks fields alone.
+        config.preferences.tabFocusesLinks = true
         config.mediaTypesRequiringUserActionForPlayback = .audio
         TabShare.configure(config) // Fork (tab-share): getDisplayMedia's way back to Copper (Fork/TabShare/)
         if Store.testing, !Store.measuring { config.preferences.inactiveSchedulingPolicy = .none }
+        // Fork (idle-memory): a page out of sight runs its timers further
+        // apart the longer it stays hidden, as Safari's do (WebKit's own
+        // switch, private: asked for only when this WebKit has it). Pins
+        // never sleep (Fork/PinsAwake.swift), so this is what keeps eight of
+        // them from waking the Mac all day. A page on screen, playing sound
+        // or hung for an agent (Backstage) is not throttled; nor are a test
+        // world's, which want their pace (the line above).
+        if !(Store.testing && !Store.measuring), config.preferences.responds(to: NSSelectorFromString("_setHiddenPageDOMTimerThrottlingAutoIncreases:")) {
+            config.preferences.setValue(true, forKey: "hiddenPageDOMTimerThrottlingAutoIncreases")
+        }
         CapturePreferences.configure(config) // Fork (page-capture): a hidden page keeps its microphone; test worlds' stand-in devices
         return config
     }
@@ -114,7 +135,15 @@ final class Tab: ObservableObject, Identifiable {
     @Published private(set) var canGoForward = false
     /// Set when the page never arrived — no host, no network, a refused
     /// connection. Shown in place of the page rather than in a dialog.
-    @Published var failure: String?
+    @Published var failure: String? {
+        didSet { if failure == nil { failureHost = nil; failureDetail = nil } } // Fork (ui-system)
+    }
+    /// Fork (ui-system): the host that couldn't be reached and the error as
+    /// WebKit gave it, for the error page's title and its Details. Set
+    /// before `failure`, which is what redraws; nil for a failure that isn't
+    /// the network's (a refused download, a missing canvas).
+    var failureHost: String?
+    var failureDetail: String?
     /// How far down the page you are, nought to one. The tab's own pill fills
     /// with it.
     @Published var reading: Double = 0
@@ -231,7 +260,7 @@ final class Tab: ObservableObject, Identifiable {
     /// The site the sign-in was sent from — not the one it landed on —
     /// then the name and the password, and whether it came from a form that
     /// makes a new password (Fork: new-password).
-    var onCredentials: ((Tab, String, String, String, Bool) -> Void)?
+    var onCredentials: ((Tab, String, String, String, Bool, String?) -> Void)? // Fork (origin-save): last, the page's origin
     /// Fork (auto-codes): a box for a two-step code has just appeared.
     var onCodeBox: ((Tab) -> Void)?
     var onPickEnd: ((Tab) -> Void)?
@@ -277,7 +306,13 @@ final class Tab: ObservableObject, Identifiable {
     /// Fork (pins-awake): and open they stay — a pin keeps its page loaded
     /// until it is unpinned; nothing sleeps it or puts it down
     /// (Fork/PinsAwake.swift).
-    @Published var pin: String?
+    @Published var pin: String? {
+        didSet { if pin == nil { home = nil } else if home == nil { home = pending ?? address } } // Fork (polish r5): see `home`
+    }
+    /// Fork (polish r5): where a pin was pinned (or brought back) — its
+    /// square wears that site's mark (`pinMark`), not that of the sign-in
+    /// page the site sent it on to.
+    private(set) var home: URL?
 
     /// When you last looked at it. The summon lists pages by this, because
     /// what you were just reading is what you are most likely to want back.
@@ -368,19 +403,21 @@ final class Tab: ObservableObject, Identifiable {
         // included, so each name is cleared before being claimed — registering
         // one twice is a hard crash rather than an error.
         let controller = web.configuration.userContentController
-        controller.removeScriptMessageHandler(forName: ScrollRelay.name)
-        controller.removeScriptMessageHandler(forName: VeilRelay.name)
-        controller.removeScriptMessageHandler(forName: FormRelay.name)
+        // Fork (agent-world): the scroll, veil, image and store relays are
+        // heard from Copper's own content world only, where their scripts
+        // run — a page's script has nothing of them to post to or call.
+        // Page voice stays in the page's: it is an API the page calls.
+        for name in Tab.copperRelays { controller.removeScriptMessageHandler(forName: name, contentWorld: .copper) }
+        controller.removeScriptMessageHandler(forName: FormRelay.name, contentWorld: .copper)
         controller.removeScriptMessageHandler(forName: Passkeys.name, contentWorld: .page)
-        controller.removeScriptMessageHandler(forName: ImageRelay.name)
-        controller.removeScriptMessageHandler(forName: StoreRelay.name)
         controller.removeScriptMessageHandler(forName: PageVoiceRelay.name, contentWorld: .page) // Fork (page-voice)
         controller.addScriptMessageHandler(PageVoiceRelay.shared, contentWorld: .page, name: PageVoiceRelay.name)
-        controller.add(relay, name: ScrollRelay.name)
-        controller.add(veils_, name: VeilRelay.name)
-        controller.add(images, name: ImageRelay.name)
-        controller.add(shop, name: StoreRelay.name)
-        controller.add(forms, name: FormRelay.name)
+        controller.add(relay, contentWorld: .copper, name: ScrollRelay.name)
+        controller.add(veils_, contentWorld: .copper, name: VeilRelay.name)
+        controller.add(images, contentWorld: .copper, name: ImageRelay.name)
+        controller.add(shop, contentWorld: .copper, name: StoreRelay.name)
+        // Fork (agent-world): heard from Copper's own content world only — a page's script has no such handler to post to.
+        controller.add(forms, contentWorld: .copper, name: FormRelay.name)
         CaptureHook.listen(controller) // Fork (page-capture): what the page asks for and hears back (Fork/Capture/CaptureHook.swift)
         passkeysListening = false
         listenForPasskeys(controller) // Fork (passkeys-hooks): only while Copper is the authenticator
@@ -464,40 +501,55 @@ final class Tab: ObservableObject, Identifiable {
     func arm(hiding css: String) {
         veils = css
         guard let built else { return }
-        if CanvasHost.arm(built) { return } // Fork (canvas-hooks): a board gets one small script, not every page's
         let controller = built.configuration.userContentController
+        if CanvasHost.arm(built) { Tab.armed.removeObject(forKey: controller); return } // Fork (canvas-hooks): a board gets one small script, not every page's
+        // Fork (navperf): every main-frame navigation asks, and laying the
+        // same dozen scripts down again is IPC to the page's process for
+        // nothing; only a change in what goes in re-arms. Kept per controller,
+        // which a tab shares with the tabs its page opened.
+        let inputs = [css, "\(Passkeys.active)", "\(FormRelay.passkeysOffered)", PageVoice.script, "\(Tools.Page.armsConsole(id))"].joined(separator: "\u{1}")
+        guard Tab.armed.object(forKey: controller) as String? != inputs else { return }
+        Tab.armed.setObject(inputs as NSString, forKey: controller)
         controller.removeAllUserScripts()
         TabShare.arm(controller) // Fork (tab-share): getDisplayMedia offers a tab (Fork/TabShare/TabShareScript.swift)
         listenForPasskeys(controller) // Fork (passkeys-hooks): follows Settings › Passwords
         controller.addUserScript(
-            WKUserScript(source: ScrollRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
+            WKUserScript(source: ScrollRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .copper) // Fork (agent-world)
         )
         controller.addUserScript(
-            WKUserScript(source: Veiling.picker, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+            WKUserScript(source: Veiling.picker, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .copper) // Fork (agent-world)
         )
         controller.addUserScript(
             // Every frame: a sign-in can be served inside one (Fork: frame-autofill).
-            WKUserScript(source: FormRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: false)
+            // In Copper's own world, out of the page's reach (Fork: agent-world).
+            WKUserScript(source: FormRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .copper)
+        )
+        controller.addUserScript(
+            // Fork (frame-stub): embedded frames get the whole script once they hold a field (Forms.swift).
+            WKUserScript(source: FormRelay.frameStub, injectionTime: .atDocumentEnd, forMainFrameOnly: false, in: .copper)
+        )
+        controller.addUserScript(
+            WKUserScript(source: FormRelay.early, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
         )
         controller.addUserScript(
             WKUserScript(source: Swipe.calm, injectionTime: .atDocumentStart, forMainFrameOnly: true)
         )
         // Every frame: a swipe over an embedded map is the map's, and only the
-        // map's own document can say so.
+        // map's own document can say so; an image in an ad is still an image.
+        // Fork (loadmem): one script, after the document has been read — two
+        // listeners need nothing earlier, and every frame's start is the page's.
         controller.addUserScript(
-            WKUserScript(source: Swipe.watch, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+            WKUserScript(source: Swipe.watch + ImageRelay.watch, injectionTime: .atDocumentEnd, forMainFrameOnly: false, in: .copper) // Fork (agent-world)
         )
         controller.addUserScript(
-            WKUserScript(source: ImageRelay.watch, injectionTime: .atDocumentStart, forMainFrameOnly: false)
-        )
-        controller.addUserScript(
-            WKUserScript(source: StoreRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
+            WKUserScript(source: StoreRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .copper) // Fork (agent-world)
         )
         // Fork (page-voice): window.copper.voice on the sites that may ask (Fork/Voice/PageVoice.swift).
         controller.addUserScript(
             WKUserScript(source: PageVoice.script, injectionTime: .atDocumentStart, forMainFrameOnly: true)
         )
         CaptureHook.arm(controller) // Fork (page-capture): every frame
+        Tools.Page.arm(controller, tab: id) // Fork (agent-console): load-time console for agent-opened tabs (Fork/MCP/Page.swift)
         if Passkeys.active {
             controller.addUserScript(
                 WKUserScript(source: Passkeys.script, injectionTime: .atDocumentStart, forMainFrameOnly: false)
@@ -517,6 +569,9 @@ final class Tab: ObservableObject, Identifiable {
         )
     }
 
+    /// Fork (navperf): what each controller was last armed with (`arm(hiding:)`).
+    private static let armed = NSMapTable<WKUserContentController, NSString>.weakToStrongObjects()
+
     /// Fork (passkeys-hooks): the handler is the gate for the copy of the
     /// authenticator that rides in extensions' MAIN-world scripts, so it is
     /// registered exactly while `Passkeys.active`. Changed only when that
@@ -533,8 +588,11 @@ final class Tab: ObservableObject, Identifiable {
         built?.evaluateJavaScript(Veiling.style(css))
     }
 
-    func startPicking() { web.evaluateJavaScript("window.__officeVeil && window.__officeVeil.on()") }
-    func stopPicking() { web.evaluateJavaScript("window.__officeVeil && window.__officeVeil.off()") }
+    func startPicking() { web.evaluateJavaScript("window.__officeVeil && window.__officeVeil.on()", in: nil, in: .copper) }
+    func stopPicking() { web.evaluateJavaScript("window.__officeVeil && window.__officeVeil.off()", in: nil, in: .copper) }
+
+    /// Fork (agent-world): the handlers whose scripts run in Copper's own world.
+    static let copperRelays = [ScrollRelay.name, VeilRelay.name, ImageRelay.name, StoreRelay.name]
 
     func foundSignIn() { onSignIn?(self) }
 
@@ -554,7 +612,30 @@ final class Tab: ObservableObject, Identifiable {
     /// frame's site while the caret is in one, else the page's.
     var formHost: String? { Self.bare(formFrame.map(\.securityOrigin.host) ?? address?.host()) }
 
-    private static func bare(_ host: String?) -> String? {
+    /// Fork (form-target): where a fill goes, fixed when the account is
+    /// chosen — the frame with the caret then (nil: the page), its site, and
+    /// its origin (scheme, host and port, as `location.origin` says it). A
+    /// fill never follows the caret later: it goes into this frame, and only
+    /// while the document there is still of this origin (form-origin).
+    struct FormTarget {
+        let frame: WKFrameInfo?
+        let host: String
+        let origin: String
+    }
+
+    var formTarget: FormTarget? {
+        let origin = formFrame.map { Credentials.origin(of: $0.securityOrigin) } ?? address.map { Credentials.origin(of: $0) }
+        guard let host = formHost, let origin = origin ?? nil else { return nil }
+        return FormTarget(frame: formFrame, host: host, origin: origin)
+    }
+
+    /// Fork (agent-frames): the page itself as a target, whatever has the caret.
+    var pageTarget: FormTarget? {
+        guard let address, let host = Self.bare(address.host()), let origin = Credentials.origin(of: address) else { return nil }
+        return FormTarget(frame: nil, host: host, origin: origin)
+    }
+
+    static func bare(_ host: String?) -> String? {
         guard let host = host?.lowercased(), !host.isEmpty else { return nil }
         return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
@@ -565,29 +646,51 @@ final class Tab: ObservableObject, Identifiable {
             && a.securityOrigin.port == b.securityOrigin.port && a.request.url == b.request.url
     }
 
+    /// Fork (form-origin): which of the page's frames the page itself says
+    /// has the caret (its place among the page's frames), and a frame's
+    /// claim to the caret that the page hasn't confirmed yet.
+    private var frameAt: Int?
+    private var claim: (frame: WKFrameInfo, at: Int, body: [String: Any])?
+
     /// Whether a focus message from `frame` speaks for the caret. The page
     /// always does — it says "in a frame" another way (`frameMoved`). An
-    /// embedded frame does when it has the caret (`holding`), or lets go
-    /// after having it; every other frame on the page (ads, embeds) is
+    /// embedded frame does when it has the caret (`holding`) and the page
+    /// has said the caret is in that very frame (`at`); until then its word
+    /// is held (`claim`) and the page is asked. A frame letting go after
+    /// having it speaks too; every other frame on the page (ads, embeds) is
     /// talking about nothing.
-    func focusFrom(_ frame: WKFrameInfo, holding: Bool) -> Bool {
+    func focusFrom(_ frame: WKFrameInfo, holding: Bool, at: Int? = nil, body: [String: Any] = [:]) -> Bool {
         if frame.isMainFrame {
-            formFrame = nil; frameOrigin = nil; frameField = nil
+            formFrame = nil; frameOrigin = nil; frameField = nil; frameAt = nil; claim = nil
             return true
         }
         if holding {
+            guard let at, at >= 0, at == frameAt else {
+                claim = at.flatMap { $0 >= 0 ? (frame, $0, body) : nil }
+                // The page hears nothing when the caret goes into a frame; asked, it says which (`frameMoved`).
+                if claim != nil { page("window.__officeForms && window.__officeForms.caret()") }
+                return false
+            }
             if let held = formFrame, Self.same(held, frame) { formFrame = frame; return true }
-            formFrame = frame; frameOrigin = nil; frameField = nil
+            formFrame = frame; frameField = nil
             return true
         }
+        if let held = claim, Self.same(held.frame, frame) { claim = nil }
         return formFrame.map { Self.same($0, frame) } ?? false
     }
 
-    /// The page says the caret is in one of its frames, and where that
-    /// frame's content starts. The frame itself says which box.
-    // shortcut: one level of frames only — a sign-in nested two iframes deep is placed against the outer frame; walk frame parents if one turns up.
-    func frameMoved(_ origin: CGPoint) {
+    /// The page says the caret is in one of its frames (`at`: which), and
+    /// where that frame's content starts. The frame itself says which box.
+    // shortcut: the page vouches for its own frames only — a sign-in nested two iframes deep is believed with the outer frame and placed against it; walk frame parents if one turns up.
+    func frameMoved(_ origin: CGPoint, at: Int) {
+        if frameAt != at { formFrame = nil; frameField = nil }
+        frameAt = at
         frameOrigin = origin
+        if let held = claim {
+            claim = nil
+            // The frame the page vouches for is heard; any other's word is dropped.
+            if held.at == at { forms.focus(held.body, from: held.frame); return }
+        }
         guard formFrame != nil else {
             // A frame that hasn't spoken (yet, or has no box): as before, nothing to hang from.
             typing = false
@@ -605,10 +708,8 @@ final class Tab: ObservableObject, Identifiable {
         if let frame, !frame.isMainFrame {
             frameField = rect
             guard let rect else { onField?(self, nil); return }
-            if frameOrigin != nil { place(rect); return }
-            // The page hears nothing when the caret goes into a frame; asked,
-            // it says where the frame is (`frameMoved`), and the list is placed then.
-            web.evaluateJavaScript("window.__officeForms && window.__officeForms.caret()")
+            // Believed only after the page said where the frame is (`focusFrom`).
+            if frameOrigin != nil { place(rect) }
             return
         }
         guard let rect else {
@@ -631,7 +732,7 @@ final class Tab: ObservableObject, Identifiable {
     /// Whether the sign-in worked is only known afterwards: a page that
     /// comes back without a password box took it, one that still has the
     /// box refused it, and only the first is worth remembering.
-    private var sent: (host: String, user: String, password: String, fresh: Bool, frame: WKFrameInfo?, at: Date)?
+    private var sent: (host: String, user: String, password: String, fresh: Bool, frame: WKFrameInfo?, at: Date, origin: String?)?
 
     func sentSignIn(user: String, password: String, fresh: Bool = false, frame: WKFrameInfo? = nil) {
         // The host now, while the page is still the sign-in page: a moment
@@ -640,7 +741,8 @@ final class Tab: ObservableObject, Identifiable {
         // the frame's site.
         let embedded = frame.flatMap { $0.isMainFrame ? nil : $0 }
         guard let bare = Self.bare(embedded.map(\.securityOrigin.host) ?? address?.host()) else { return }
-        sent = (bare, user, password, fresh, embedded, Date())
+        let origin = embedded.map { Credentials.origin(of: $0.securityOrigin) } ?? address.map { Credentials.origin(of: $0) } // Fork (origin-save)
+        sent = (bare, user, password, fresh, embedded, Date(), origin ?? nil)
     }
 
     /// The page has moved on — a new document has loaded, or the sign-in
@@ -678,19 +780,31 @@ final class Tab: ObservableObject, Identifiable {
                 // still on its way.
                 if (still as? Bool) == true { return }
                 self.sent = nil
-                self.onCredentials?(self, sent.host, sent.user, sent.password, sent.fresh)
+                self.onCredentials?(self, sent.host, sent.user, sent.password, sent.fresh, sent.origin)
             }
         }
     }
 
     /// The forms script, run where the sign-in is: in `frame`, else the
-    /// embedded frame the caret is in, else the page.
-    private func forms(_ js: String, in frame: WKFrameInfo? = nil, done: ((Any?) -> Void)? = nil) {
-        guard let frame = frame ?? formFrame else {
-            web.evaluateJavaScript(js) { result, _ in done?(result) }
+    /// embedded frame the caret is in, else the page. Always in Copper's own
+    /// content world, where the script lives (Fork: agent-world).
+    /// With `target` (form-target): in exactly that frame, and only if the
+    /// document there is still of the target's origin — else it answers false.
+    private func forms(_ js: String, in frame: WKFrameInfo? = nil, at target: FormTarget? = nil, done: ((Any?) -> Void)? = nil) {
+        if let target {
+            guard let origin = jsonLiteral(target.origin) else { done?(false); return }
+            // Copper's world has its own `location`; nothing the page defines reaches it.
+            let guarded = "(location.origin === \(origin) ? (\(js)) : false)"
+            web.evaluateJavaScript(guarded, in: target.frame, in: .copper) { done?((try? $0.get()) as? NSObject) }
             return
         }
-        web.evaluateJavaScript(js, in: frame, in: .page) { done?(try? $0.get()) }
+        web.evaluateJavaScript(js, in: frame ?? formFrame, in: .copper) { done?((try? $0.get()) as? NSObject) }
+    }
+
+    /// The forms script in the page itself, whatever frame has the caret.
+    private func page(_ js: String) {
+        guard let built else { return }
+        built.evaluateJavaScript(js, in: nil, in: .copper)
     }
 
     /// Puts a remembered name and password where a person would have typed
@@ -698,17 +812,19 @@ final class Tab: ObservableObject, Identifiable {
     /// `done`, when given, hears back `false` for the one case worth saying
     /// something about: the sign-in fields that were there a moment ago,
     /// when this was offered, are gone by the time it actually runs.
-    func fill(user: String, password: String, done: ((Bool) -> Void)? = nil) {
+    func fill(user: String, password: String, at target: FormTarget? = nil, done: ((Bool) -> Void)? = nil) {
         forms(
-            "window.__officeForms && window.__officeForms.fill(`\(escape(user))`, `\(escape(password))`)"
+            "window.__officeForms && window.__officeForms.fill(`\(escape(user))`, `\(escape(password))`)",
+            at: target
         ) { result in
             done?((result as? Bool) ?? false)
         }
     }
 
-    func submitSignIn(done: ((Bool) -> Void)? = nil) {
+    func submitSignIn(at target: FormTarget? = nil, done: ((Bool) -> Void)? = nil) {
         forms(
-            "window.__officeForms && window.__officeForms.submit()"
+            "window.__officeForms && window.__officeForms.submit()",
+            at: target
         ) { result in
             done?((result as? Bool) ?? false)
         }
@@ -721,9 +837,21 @@ final class Tab: ObservableObject, Identifiable {
         forms("window.__officeForms && window.__officeForms.caret()")
     }
 
-    func fillOTP(_ code: String, done: ((Bool) -> Void)? = nil) {
+    /// Fork (otp-submit): sends the form the code box is in — a code page
+    /// has no password box for `submitSignIn` to send from.
+    func submitOTP(at target: FormTarget? = nil, done: ((Bool) -> Void)? = nil) {
         forms(
-            "window.__officeForms && window.__officeForms.fillOTP(`\(escape(code))`)"
+            "!!(window.__officeForms && window.__officeForms.submitOTP && window.__officeForms.submitOTP())",
+            at: target
+        ) { result in
+            done?((result as? Bool) ?? false)
+        }
+    }
+
+    func fillOTP(_ code: String, at target: FormTarget? = nil, done: ((Bool) -> Void)? = nil) {
+        forms(
+            "window.__officeForms && window.__officeForms.fillOTP(`\(escape(code))`)",
+            at: target
         ) { result in
             done?((result as? Bool) ?? false)
         }
@@ -731,7 +859,7 @@ final class Tab: ObservableObject, Identifiable {
 
     /// Fills every recognised box in the focused form without putting values
     /// into the JavaScript source itself.
-    func fillValues(_ values: [FieldKind: String], done: ((Int) -> Void)? = nil) {
+    func fillValues(_ values: [FieldKind: String], at target: FormTarget? = nil, done: ((Int) -> Void)? = nil) {
         let object = Dictionary(uniqueKeysWithValues: values.map { ($0.key.rawValue, $0.value) })
         guard let data = try? JSONSerialization.data(withJSONObject: object),
               let json = String(data: data, encoding: .utf8)
@@ -740,7 +868,8 @@ final class Tab: ObservableObject, Identifiable {
             return
         }
         forms(
-            "window.__officeForms && window.__officeForms.fillValues(\(json))"
+            "window.__officeForms && window.__officeForms.fillValues(\(json))",
+            at: target
         ) { result in
             done?((result as? NSNumber)?.intValue ?? (result as? Int) ?? 0)
         }
@@ -748,13 +877,14 @@ final class Tab: ObservableObject, Identifiable {
 
     /// Fills the page's active input, including a custom field that has no
     /// recognised kind.
-    func fillFocused(_ value: String, done: ((Bool) -> Void)? = nil) {
+    func fillFocused(_ value: String, at target: FormTarget? = nil, done: ((Bool) -> Void)? = nil) {
         guard let json = jsonLiteral(value) else {
             done?(false)
             return
         }
         forms(
-            "window.__officeForms && window.__officeForms.fillFocused(\(json))"
+            "window.__officeForms && window.__officeForms.fillFocused(\(json))",
+            at: target
         ) { result in
             done?((result as? Bool) ?? false)
         }
@@ -762,13 +892,14 @@ final class Tab: ObservableObject, Identifiable {
 
     /// Fills the first visible field whose label names the requested custom
     /// field.
-    func fillField(label: String, value: String, done: ((Bool) -> Void)? = nil) {
+    func fillField(label: String, value: String, at target: FormTarget? = nil, done: ((Bool) -> Void)? = nil) {
         guard let label = jsonLiteral(label), let value = jsonLiteral(value) else {
             done?(false)
             return
         }
         forms(
-            "window.__officeForms && window.__officeForms.fillField(\(label), \(value))"
+            "window.__officeForms && window.__officeForms.fillField(\(label), \(value))",
+            at: target
         ) { result in
             done?((result as? Bool) ?? false)
         }
@@ -776,10 +907,11 @@ final class Tab: ObservableObject, Identifiable {
 
     /// Fork (new-password): the page's new-password form — whose it is and
     /// its rules — or nil when there is none.
-    func newPasswordPage() async -> NewPasswordPage? {
+    func newPasswordPage(at target: FormTarget? = nil) async -> NewPasswordPage? {
         await withCheckedContinuation { (continuation: CheckedContinuation<NewPasswordPage?, Never>) in
             forms(
-                "(window.__officeForms && window.__officeForms.newPasswordInfo()) || null"
+                "(window.__officeForms && window.__officeForms.newPasswordInfo()) || null",
+                at: target
             ) { result in
                 continuation.resume(returning: NewPasswordPage(result))
             }
@@ -790,23 +922,25 @@ final class Tab: ObservableObject, Identifiable {
     /// `current` into an empty current-password box. Passed as JSON
     /// arguments, never spliced into the source; answers how many new boxes
     /// took it.
-    func fillNewPassword(_ password: String, current: String?) async -> Int {
+    func fillNewPassword(_ password: String, current: String?, at target: FormTarget? = nil) async -> Int {
         guard let password = jsonLiteral(password) else { return 0 }
         let old = current.flatMap(jsonLiteral) ?? "null"
         return await withCheckedContinuation { (continuation: CheckedContinuation<Int, Never>) in
             forms(
-                "(window.__officeForms && window.__officeForms.fillNewPassword(\(password), \(old))) || 0"
+                "(window.__officeForms && window.__officeForms.fillNewPassword(\(password), \(old))) || 0",
+                at: target
             ) { result in
                 continuation.resume(returning: (result as? NSNumber)?.intValue ?? 0)
             }
         }
     }
 
-    func hasFields(_ group: FieldKind.Group) async -> Bool {
+    func hasFields(_ group: FieldKind.Group, at target: FormTarget? = nil) async -> Bool {
         guard let group = jsonLiteral(group.rawValue) else { return false }
         return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             forms(
-                "!!(window.__officeForms && window.__officeForms.hasFields(\(group)))"
+                "!!(window.__officeForms && window.__officeForms.hasFields(\(group)))",
+                at: target
             ) { result in
                 continuation.resume(returning: (result as? Bool) ?? false)
             }
@@ -824,20 +958,22 @@ final class Tab: ObservableObject, Identifiable {
         }
     }
 
-    func hasOTPField() async -> Bool {
+    func hasOTPField(at target: FormTarget? = nil) async -> Bool {
         await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             forms(
-                "!!(window.__officeForms && window.__officeForms.hasOTP())"
+                "!!(window.__officeForms && window.__officeForms.hasOTP())",
+                at: target
             ) { result in
                 continuation.resume(returning: (result as? Bool) ?? false)
             }
         }
     }
 
-    func hasPasswordField() async -> Bool {
+    func hasPasswordField(at target: FormTarget? = nil) async -> Bool {
         await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             forms(
-                "!!(window.__officeForms && window.__officeForms.hasPassword())"
+                "!!(window.__officeForms && window.__officeForms.hasPassword())",
+                at: target
             ) { result in
                 continuation.resume(returning: (result as? Bool) ?? false)
             }
@@ -851,12 +987,12 @@ final class Tab: ObservableObject, Identifiable {
     /// Show one hidden thing while the pointer rests on its row in the list.
     func peek(_ selector: String, keeping css: String) {
         web.evaluateJavaScript(
-            "window.__officeVeil && window.__officeVeil.peek(`\(escape(css))`, `\(escape(selector))`)"
+            "window.__officeVeil && window.__officeVeil.peek(`\(escape(css))`, `\(escape(selector))`)", in: nil, in: .copper
         )
     }
 
     func unpeek(_ css: String) {
-        web.evaluateJavaScript("window.__officeVeil && window.__officeVeil.unpeek(`\(escape(css))`)")
+        web.evaluateJavaScript("window.__officeVeil && window.__officeVeil.unpeek(`\(escape(css))`)", in: nil, in: .copper)
     }
 
     private func jsonLiteral(_ text: String) -> String? {
@@ -909,6 +1045,7 @@ final class Tab: ObservableObject, Identifiable {
         memory = nil
         picture = nil
         cover = nil
+        dozed = false // Fork (covers)
         adoptIcon()
         web.load(URLRequest(url: url))
     }
@@ -985,16 +1122,61 @@ final class Tab: ObservableObject, Identifiable {
     /// view built to wake it opens the same page, at the same place, with
     /// Back still going back. What was typed and not sent is the one thing
     /// that can't come back, which is why the browser asks `unsaved` first.
-    func sleep(picture: Data?) {
-        // Fork (pins-awake): a pin never sleeps, whoever asks.
-        guard PinRule.mayUnload(pinned: pin != nil, .sleep) else { return }
+    func sleep(picture: Data?, doze: Bool = false) {
+        // Fork (pins-awake): a pin never sleeps, whoever asks — unless it is
+        // a big one left for hours and you let big pins sleep (`doze`,
+        // Fork/PinsAwake.swift `mayDoze`; the caller has checked).
+        guard PinRule.mayUnload(pinned: pin != nil, doze ? .doze : .sleep) else { return }
         guard let url = address, let built else { return }
         memory = built.interactionState
         self.picture = picture
+        // Fork (covers): and on disk, so it outlives the launch (Fork/Covers.swift).
+        if let picture, Covers.keeps(self), let jar { Covers.save(picture, size: pictureSize, ground: pictureGround, for: url, jar: jar) }
+        dozed = pin != nil
         pending = url
         stale = false
         pull = nil
         discard()
+    }
+
+    /// Fork (covers, council R6 privacy): the cookie jar this page signs in
+    /// with — the shared one or a space's profile — which a kept picture is
+    /// filed under, so a profile signed in as someone else never opens on
+    /// your page's picture. Nil for a jar that keeps nothing (private tabs).
+    var jar: String? {
+        guard !shy, let jar = given?.websiteDataStore ?? store, jar.isPersistent else { return nil }
+        return jar.identifier?.uuidString ?? "default"
+    }
+
+    /// Fork (covers): a pin put to sleep by "Let big pins sleep": the
+    /// background loader leaves it asleep until you go to it (PinsAwake).
+    private(set) var dozed = false
+
+    /// Fork (covers, council R6): what this pin's page last weighed, kept in
+    /// the session so a launch knows a big pin before it loads it.
+    var weighed: UInt64?
+
+    /// Fork (covers, council R6): a pin brought back by a launch — when you
+    /// last looked at it (the session's, not the launch's: a pin loaded in
+    /// the background isn't looked at) and whether it stays asleep under its
+    /// picture until you do (PinsAwake.restored).
+    func restorePin(seen: Date?, weighed: UInt64?, dozed: Bool) {
+        if let seen { touched = min(seen, Date()) }
+        self.weighed = weighed
+        self.dozed = dozed && asleep
+    }
+
+    /// Fork (covers): the page's picture now, kept on disk for the next
+    /// launch (Covers.flush, at quit). `done` once WebKit has answered and
+    /// the write is queued — no hop through the main queue, which a quit's
+    /// wait (a nested run loop) may not drain.
+    func keepCover(_ done: @escaping () -> Void) {
+        guard Covers.keeps(self), let jar, let url = address, let built else { return done() }
+        let size = built.bounds.size
+        built.takeSnapshot(with: nil) { image, _ in
+            if let cg = image?.cgImage(forProposedRect: nil, context: nil, hints: nil) { Covers.save(cg, size: size, for: url, jar: jar) }
+            done()
+        }
     }
 
     /// Whether the page holds something typed and not yet sent — a draft, a
@@ -1003,9 +1185,10 @@ final class Tab: ObservableObject, Identifiable {
     func unsaved(_ done: @escaping (Bool) -> Void) {
         guard let built else { return done(false) }
         built.evaluateJavaScript(
-            "!!(window.__officeForms && window.__officeForms.unsaved && window.__officeForms.unsaved())"
-        ) { value, _ in
-            MainActor.assumeIsolated { done((value as? Bool) == true) }
+            "!!(window.__officeForms && window.__officeForms.unsaved && window.__officeForms.unsaved())",
+            in: nil, in: .copper // Fork (agent-world)
+        ) { result in
+            MainActor.assumeIsolated { done((try? result.get()) as? Bool == true) }
         }
     }
 
@@ -1042,7 +1225,7 @@ final class Tab: ObservableObject, Identifiable {
     /// the commonest colour rather than the average, because a scrollbar or a
     /// line of text on the edge would muddy an average into a grey no page
     /// is. Sixty-four samples, each the mean of a short run of edge pixels.
-    nonisolated private static func ground(of image: CGImage) -> NSColor? {
+    nonisolated static func ground(of image: CGImage) -> NSColor? { // Fork (covers): also Covers'
         let width = image.width, height = image.height
         guard width > 2, height > 2 else { return nil }
         let runs = 32
@@ -1091,7 +1274,7 @@ final class Tab: ObservableObject, Identifiable {
               let data = try? JSONSerialization.data(withJSONObject: ["installed": installed, "busy": busy.map { $0 as Any } ?? NSNull()]),
               let json = String(data: data, encoding: .utf8)
         else { return }
-        built.evaluateJavaScript("window.__officeStore && window.__officeStore.state(\(json))")
+        built.evaluateJavaScript("window.__officeStore && window.__officeStore.state(\(json))", in: nil, in: .copper)
     }
 
     /// The picture comes off the moment there is something better under it
@@ -1255,6 +1438,7 @@ final class Tab: ObservableObject, Identifiable {
         immersed = false
         let state = memory
         memory = nil
+        dozed = false // Fork (covers)
         if let picture, let image = NSImage(data: picture) {
             // Fork (wake-cover): back to the size it was taken at, so it is
             // drawn 1:1 over the page it stands in for — not at the pixel
@@ -1264,6 +1448,18 @@ final class Tab: ObservableObject, Identifiable {
             cover = image
             // Whatever happens to the page, the picture doesn't outstay it.
             uncover(after: 4)
+        } else if Covers.keeps(self), let jar {
+            // Fork (covers): none in memory — a tab brought back by a launch,
+            // a pin — so the one it left on disk (Fork/Covers.swift), read and
+            // decoded off the main thread (council R6: +15 ms a wake on main)
+            // and put up only if the page hasn't painted in the meantime.
+            Covers.load(for: url, jar: jar) { [weak self] kept in
+                guard let self, let kept, self.cover == nil, self.pending == nil, self.address == url,
+                      self.built?.unpainted ?? true else { return }
+                coverGround = kept.ground
+                cover = kept.image
+                uncover(after: 4)
+            }
         }
         picture = nil
         pictureGround = nil
@@ -1371,6 +1567,7 @@ final class Tab: ObservableObject, Identifiable {
         onField = nil
         onCredentials = nil
         onCodeBox = nil // Fork (auto-codes)
+        Covers.closed(self) // Fork (covers): its picture goes with it
         discard()
     }
 
@@ -1385,14 +1582,12 @@ final class Tab: ObservableObject, Identifiable {
         guard let web = built else { return }
         built = nil
         let controller = web.configuration.userContentController
-        controller.removeScriptMessageHandler(forName: ScrollRelay.name)
-        controller.removeScriptMessageHandler(forName: VeilRelay.name)
-        controller.removeScriptMessageHandler(forName: FormRelay.name)
+        for name in Tab.copperRelays { controller.removeScriptMessageHandler(forName: name, contentWorld: .copper) } // Fork (agent-world)
+        controller.removeScriptMessageHandler(forName: FormRelay.name, contentWorld: .copper)
         controller.removeScriptMessageHandler(forName: Passkeys.name, contentWorld: .page)
         Passkeys.drop(self) // Fork (passkey-picker): the page waiting on a passkey is gone
-        controller.removeScriptMessageHandler(forName: ImageRelay.name)
-        controller.removeScriptMessageHandler(forName: StoreRelay.name)
         controller.removeAllUserScripts()
+        Tab.armed.removeObject(forKey: controller) // Fork (navperf)
         passkeysListening = false
         web.onPull = nil
         web.onTouch = nil
@@ -1512,14 +1707,18 @@ final class PageView: WKWebView {
     /// so a fresh view starts unseen, over the window's own ground, and comes
     /// in once WebKit says there is something on it worth seeing.
     private(set) var unpainted = false
+    /// Fork (page-hold): what waits for that first frame (`whenPainted`).
+    private var painted: [() -> Void] = []
     /// Fork (restore-attachment-lease): a waking tab's load, run once the
     /// stage has put this view in a window — AppKit says so, nobody polls.
     var onStage: (() -> Void)?
+    /// Fork (page-hold): when this view last left a window (StageView.holds).
+    private(set) var outSince: TimeInterval = 0
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         Room.moved(self) // Fork (launch, space-warm): out of the room, WebKit judges visibility again
-        guard window != nil else { return }
+        guard window != nil else { outSince = ProcessInfo.processInfo.systemUptime; return }
         // The representable finishes sizing the view in this turn.
         DispatchQueue.main.async { [weak self] in
             guard let self, self.window != nil else { return }
@@ -1548,6 +1747,15 @@ final class PageView: WKWebView {
             context.duration = 0.12
             animator().alphaValue = 1
         }
+        let waiting = painted
+        painted = []
+        waiting.forEach { $0() }
+    }
+
+    /// Fork (page-hold): `done` once this page has a first frame worth
+    /// seeing and has started fading it in — at once if it has one already.
+    func whenPainted(_ done: @escaping () -> Void) {
+        if unpainted { painted.append(done) } else { done() }
     }
 
     /// _WKRenderingProgressEventFirstVisuallyNonEmptyLayout — the moment

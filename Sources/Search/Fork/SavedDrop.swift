@@ -253,6 +253,19 @@ final class SideDrag: ObservableObject {
     /// in the column's space whether it has gone up over the favourites.
     var pinLine: CGFloat = 0
     var contentTop: CGFloat = 0
+    var contentLeft: CGFloat = 0
+
+    /// Fork (space-perf): a row's frame in SwiftUI's global space — its
+    /// place in the column moved by where the column's content is. The
+    /// rows used to report a global frame each, and during a space slide
+    /// that was every row's action on every frame.
+    func global(_ id: Tab.ID) -> CGRect? { rows[id]?.offsetBy(dx: contentLeft, dy: contentTop) }
+
+    /// The row of `tabs` under a point in SwiftUI's global space.
+    func row(at point: CGPoint, among tabs: [Tab]) -> Tab.ID? {
+        let local = CGPoint(x: point.x - contentLeft, y: point.y - contentTop)
+        return tabs.first { $0.pin == nil && rows[$0.id]?.contains(local) == true }?.id
+    }
 
     private var closing: DispatchWorkItem?
 
@@ -448,7 +461,7 @@ struct SavedDropMark: View {
 struct SideDragCard: View {
     @ObservedObject var drag: SideDrag
     @ObservedObject var hand: SideDrag.Hand
-    @ObservedObject var browser: Browser
+    let browser: Browser
     let tint: SpaceTint
 
     init(drag: SideDrag, browser: Browser, tint: SpaceTint) {
@@ -469,6 +482,7 @@ struct SideDragCard: View {
                 SideDragCardRow(browser: browser, tab: tab, tint: tint)
                     .frame(width: max(40, drag.picked.width - inset), height: drag.picked.height)
                     .offset(x: drag.picked.minX + inset, y: hand.y - drag.grip)
+                    .transition(.identity) // Fork (motion): there at once, as the row goes
             }
         }
         .allowsHitTesting(false)
@@ -479,25 +493,23 @@ struct SideDragCard: View {
 /// The card itself: the row's mark and title on the column's paper, with
 /// the lift the live row wears and a shadow a step deeper.
 struct SideDragCardRow: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var tab: Tab
     let tint: SpaceTint
 
     var body: some View {
         HStack(spacing: 10) {
-            SideGlyphMark(prefs: browser.prefs, icon: tab.icon, letter: tab.monogram, tint: tint, size: 16)
-            Text(tab.label)
-                .font(.system(size: 15))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .foregroundStyle(tint.ink)
+            RowMark(icon: tab.icon, tint: tint, size: 16)
+            FadingTitle(text: Text(tab.label) // Fork (motion): the row's own title, as on the row
+                .font(.system(size: SideBar.title))
+                .foregroundStyle(tint.ink))
             Spacer(minLength: 2)
         }
         .padding(.leading, SideBar.rowInset)
         .padding(.trailing, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(SideDragCardGround(tint: tint))
-        .shadow(color: .black.opacity(0.14), radius: 12, y: 4)
+        .modifier(SideDragLift.on)
     }
 }
 
@@ -519,8 +531,27 @@ struct SideDragHidden: ViewModifier {
     @ObservedObject var drag: SideDrag
     let held: Bool
 
+    // Fork (motion): at once, never faded — the target changes inside the
+    // gaps' spring, and a fade left the row and its card both on screen for
+    // ~3 frames.
     func body(content: Content) -> some View {
-        content.opacity(held && drag.target != nil ? 0 : 1)
+        let hidden = held && drag.target != nil
+        content.opacity(hidden ? 0 : 1).animation(nil, value: hidden)
+    }
+}
+
+/// Fork (motion): a row in the hand — a hair bigger than the column's rows,
+/// on a short soft shadow (the same on the row and on its card).
+struct SideDragLift: ViewModifier {
+    let held: Bool
+    static let on = SideDragLift(held: true)
+    @Environment(\.accessibilityReduceMotion) private var still
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(held && !still ? 1.02 : 1)
+            .shadow(color: .black.opacity(held ? 0.12 : 0), radius: 8, y: 3)
+            .animation(still ? nil : Motion.pickup, value: held) // Fork (polish r5): the lift lands in ~200 ms
     }
 }
 

@@ -15,7 +15,7 @@ import SwiftUI
 // fades at the bottom edge while there is more below.
 
 struct CloudPage: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     /// What the Connect field starts with (the bench's `cloud picture … CODE`).
     var draft = ""
     @ObservedObject private var cloud = Cloud.shared
@@ -179,7 +179,7 @@ private struct CloudConnectCard: View {
         if Cloud.isBarePairingCode(typed) {
             return "That's the pairing code without its address — copy the whole code, from copper-cloud:// to the end"
         }
-        return "That isn't a link code, a join link or a pairing code — all start copper-cloud://, then #k=, #sso= or #p="
+        return "That isn't a Copper Cloud code. Copy the whole code, from copper-cloud:// to the end."
     }
 
     /// The last single sign-on's refusal, while that link is still the one pasted.
@@ -192,6 +192,11 @@ private struct CloudConnectCard: View {
             Caption("1 · Connect to an instance")
             Card {
                 if advanced {
+                    Text("Running your own server? `copper-cloud link-code` prints a code to paste instead.")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Palette.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 14).padding(.top, 10)
                     Line("Address", "host:port, or https://…") {
                         field("cloud.example.com:443", text: $host, width: 200).focused($focus, equals: .host)
                     }
@@ -208,27 +213,35 @@ private struct CloudConnectCard: View {
                     .cloudAnchor("cloud.connect.fingerprint")
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Paste the link code or join link from your Copper Cloud administrator — or a pairing code from a Mac that is already signed in.")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Palette.ink)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text("Running your own server? `copper-cloud link-code` prints one.")
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(Palette.muted)
-                            .fixedSize(horizontal: false, vertical: true)
+                        // Fork (settings-plain): a picture and one sentence; the code formats
+                        // are for "Enter it by hand" and the problem line.
+                        HStack(alignment: .center, spacing: 12) {
+                            Image(systemName: "icloud")
+                                .font(.system(size: 26, weight: .regular))
+                                .foregroundStyle(Palette.muted)
+                                .accessibilityHidden(true)
+                            Text("Paste the code from whoever runs your Copper Cloud, or from a Mac that's already signed in.")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Palette.ink)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.bottom, 2)
                         HStack(spacing: 6) {
-                            TextField("copper-cloud://host:port/#k=…, #sso=… or #p=…", text: $code, axis: .vertical)
+                            TextField("", text: $code, axis: .vertical)
                                 .textFieldStyle(.plain)
                                 .font(.system(size: 11.5, design: .monospaced))
                                 .lineLimit(1...3)
                                 .autocorrectionDisabled()
                                 .focused($focus, equals: .code)
+                                // Fork (ui-system): the prompt in muted ink; a plain field ignores a prompt's colour.
+                                .background(alignment: .topLeading) {
+                                    if code.isEmpty { Text("copper-cloud://…").font(.system(size: 11.5, design: .monospaced)).foregroundStyle(Palette.muted).allowsHitTesting(false).accessibilityHidden(true) }
+                                }
+                                .accessibilityLabel("Link code")
                                 .padding(.horizontal, 8).padding(.vertical, 6)
                                 .settingsField() // SB-04
                                 .onSubmit(go)
-                            Button {
-                                if let pasted = SettingsActions.pasteboard.string(forType: .string) { code = pasted.trimmingCharacters(in: .whitespacesAndNewlines) }
-                            } label: {
+                            Button(action: paste) {
                                 Image(systemName: "doc.on.clipboard").font(.system(size: 11)).foregroundStyle(Palette.muted)
                             }
                             .buttonStyle(.plain)
@@ -258,7 +271,7 @@ private struct CloudConnectCard: View {
                             .font(.system(size: 11.5)).foregroundStyle(Palette.muted)
                             .fixedSize(horizontal: false, vertical: true)
                         Text(cloudPairLines(Cloud.pairs(seen)))
-                            .font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Palette.ink)
+                            .font(.system(size: 11, design: .monospaced)).foregroundStyle(Palette.ink)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                         Text("Compare it with `copper-cloud doctor` on the server. Trusting it pins this instance to that certificate from now on.")
@@ -282,9 +295,14 @@ private struct CloudConnectCard: View {
                             .foregroundStyle(Palette.muted)
                             Spacer()
                             if connecting { ProgressView().controlSize(.small) }
+                            // Fork (settings-plain): with nothing typed yet, the one thing to
+                            // press is Paste, not a Connect that can't.
+                            if parsed == nil, !advanced, code.isEmpty {
+                                Pill("Paste code", filled: true, action: paste)
+                            } else {
                             Pill(buttonTitle, filled: parsed != nil && !connecting, action: go)
                                 .disabled(parsed == nil || connecting)
-                                .opacity(parsed == nil ? 0.5 : 1)
+                            }
                         }
                     }
                 }
@@ -319,6 +337,10 @@ private struct CloudConnectCard: View {
         // copper://cloud/join brought a code: it is the one in the field.
         .onAppear { take(sso.offer) }
         .onChange(of: sso.offer) { _, offer in take(offer) }
+    }
+
+    private func paste() {
+        if let pasted = SettingsActions.pasteboard.string(forType: .string) { code = pasted.trimmingCharacters(in: .whitespacesAndNewlines) }
     }
 
     private func take(_ offer: CloudSSO.Offer?) {
@@ -502,7 +524,7 @@ private struct CloudOfferNotice: View {
 
 private func fingerprintText(_ pairs: String) -> some View {
     Text(cloudPairLines(pairs))
-        .font(.system(size: 10.5, design: .monospaced))
+        .font(.system(size: 11, design: .monospaced))
         .foregroundStyle(Palette.muted)
         .textSelection(.enabled)
         .fixedSize(horizontal: false, vertical: true)
@@ -653,7 +675,6 @@ private struct CloudAccountForm: View {
             if working { ProgressView().controlSize(.small) }
             Pill(working ? "…" : (mode == .create ? "Create account" : "Sign in"), filled: ready && !working, action: go)
                 .disabled(!ready || working)
-                .opacity(ready ? 1 : 0.5)
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
         .cloudAnchor("cloud.account.submit")
@@ -839,7 +860,7 @@ private struct CloudSyncCard: View {
         case .idle: return Color.green.opacity(0.8)
         case .syncing: return Color.yellow.opacity(0.85)
         case .offline: return Color.orange.opacity(0.85)
-        case .error: return Color.red.opacity(0.8)
+        case .error: return Palette.danger
         }
     }
 }
@@ -941,7 +962,8 @@ private struct CloudAccountCard: View {
                 }
                 Rule()
                 Line("This Mac", "The name your other devices see it by") {
-                    TextField("Device name", text: $name)
+                    TextField("", text: $name).fieldExample("Device name", when: name.isEmpty)
+                        .accessibilityLabel("Device name") // Fork (polish r5): our own example; the system prompt was 1.7:1
                         .textFieldStyle(.plain)
                         .font(.system(size: 12))
                         .frame(width: 170)
@@ -1046,7 +1068,7 @@ private struct CloudPairCard: View {
                         .foregroundStyle(left < 60 ? Color.orange.opacity(0.95) : Palette.muted)
                     Spacer()
                     if pairing.working { ProgressView().controlSize(.small) }
-                    CloudQuietButton("Revoke", tint: Color.red.opacity(0.85)) { confirmRevoke = true }
+                    CloudQuietButton("Revoke", tint: Palette.danger) { confirmRevoke = true }
                         .disabled(pairing.working)
                     Pill(pairing.copied ? "Copied" : "Copy", filled: true, action: pairing.copy)
                 }
@@ -1093,7 +1115,7 @@ private struct CloudCodeBox: View {
             + Text("\n")
             + Text(link[range]).font(.system(size: 15, weight: .semibold, design: .monospaced)).foregroundColor(Palette.ink)
         if !tail.isEmpty {
-            text = text + Text("\n") + Text(tail).font(.system(size: 10.5, design: .monospaced)).foregroundColor(Palette.muted)
+            text = text + Text("\n") + Text(tail).font(.system(size: 11, design: .monospaced)).foregroundColor(Palette.muted)
         }
         return text
     }
@@ -1145,7 +1167,7 @@ private struct CloudConnection: View {
                     Text(trust).font(.system(size: 11.5)).foregroundStyle(Palette.ink)
                     if let pairs = cloud.link?.fingerprintPairs {
                         Text(cloudPairLines(pairs))
-                            .font(.system(size: 10.5, design: .monospaced))
+                            .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(Palette.muted)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
@@ -1157,7 +1179,7 @@ private struct CloudConnection: View {
                 .padding(.horizontal, 14).padding(.vertical, 10)
                 Rule()
                 Line("Disconnect", "Signs out and forgets this instance, to connect to another. Nothing is deleted.") {
-                    Pill("Disconnect", tint: Color.red.opacity(0.85)) { confirm = true }
+                    Pill("Disconnect", tint: Palette.danger) { confirm = true }
                 }
                 .confirmationDialog("Disconnect from \(cloud.link?.host ?? "this instance")?", isPresented: $confirm) {
                     Button("Disconnect", role: .destructive) {
@@ -1187,7 +1209,7 @@ private struct CloudTrustPill: View {
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: symbol).font(.system(size: 8.5, weight: .semibold))
-            Text(label).font(.system(size: 10.5, design: link.fingerprint == nil ? .default : .monospaced))
+            Text(label).font(.system(size: 11, design: link.fingerprint == nil ? .default : .monospaced))
         }
         .foregroundStyle(Palette.muted)
         .lineLimit(1)
@@ -1246,7 +1268,7 @@ private struct CloudLogCard: View {
                         ForEach(sync.log.suffix(60).reversed()) { entry in
                             HStack(alignment: .firstTextBaseline, spacing: 8) {
                                 Text(entry.at, format: .dateTime.hour().minute().second())
-                                    .font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Palette.muted)
+                                    .font(.system(size: 11, design: .monospaced)).foregroundStyle(Palette.muted)
                                 Text(entry.text).font(.system(size: 11.5)).foregroundStyle(Palette.ink)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
@@ -1417,7 +1439,7 @@ private struct CloudProblem: View {
             Image(systemName: "exclamationmark.circle").font(.system(size: 11))
             Text(text).font(.system(size: 11.5)).fixedSize(horizontal: false, vertical: true)
         }
-        .foregroundStyle(Color.red.opacity(0.85))
+        .foregroundStyle(Palette.danger)
         .padding(.leading, 2)
     }
 }

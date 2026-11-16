@@ -38,6 +38,8 @@ enum ProbeKeychain {
         var user: String
         var password: String
         var used: Double?
+        /// Fork (origin-save): where it was saved from, when the save knew.
+        var origin: String?
     }
 
     struct Passkey: Codable, Equatable {
@@ -76,6 +78,7 @@ enum ProbeKeychain {
             .map { item in
                 var row: [String: Any] = [kSecAttrServer as String: item.host, kSecAttrAccount as String: item.user]
                 if let used = item.used { row[kSecAttrComment as String] = String(used) }
+                row.merge(Vault.place(item.origin)) { _, new in new } // Fork (origin-save): as the keychain keeps it
                 return row
             }
     }
@@ -85,14 +88,15 @@ enum ProbeKeychain {
         return read().passwords.first { $0.host == host && $0.user == user }?.password
     }
 
-    nonisolated static func save(host: String, user: String, password: String, used: Date?) -> Bool {
+    nonisolated static func save(host: String, user: String, password: String, used: Date?, origin: String? = nil) -> Bool {
         lock.lock(); defer { lock.unlock() }
         var disk = read()
         if let at = disk.passwords.firstIndex(where: { $0.host == host && $0.user == user }) {
             disk.passwords[at].password = password
             if let used { disk.passwords[at].used = used.timeIntervalSince1970 }
+            if let origin { disk.passwords[at].origin = origin }
         } else {
-            disk.passwords.append(Item(host: host, user: user, password: password, used: used?.timeIntervalSince1970))
+            disk.passwords.append(Item(host: host, user: user, password: password, used: used?.timeIntervalSince1970, origin: origin))
         }
         write(disk)
         return true

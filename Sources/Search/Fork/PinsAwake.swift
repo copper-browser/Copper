@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import WebKit
 
 // Pinned tabs never unload.
@@ -42,15 +43,35 @@ enum PinRule {
         case putDown
         /// Gone for good: closed, or unpinned first and then anything.
         case close
+        /// Fork (covers): a big pin left for hours, with "Let big pins
+        /// sleep" on (`mayDoze` said so).
+        case doze
     }
 
-    /// A pin keeps its page until it is closed for good; any other tab may
-    /// let it go for any reason.
+    /// A pin keeps its page until it is closed for good — or, when you let
+    /// big pins sleep, dozes; any other tab may let it go for any reason.
     static func mayUnload(pinned: Bool, _ why: Unload) -> Bool {
         switch why {
-        case .close: return true
+        case .close, .doze: return true
         case .sleep, .putDown: return !pinned
         }
+    }
+
+    /// Fork (covers): Settings › Tabs › "Let big pins sleep". On by
+    /// default; off, pins never sleep. On, a pin whose page holds at least
+    /// `least` bytes and that nobody has looked at for `after` seconds
+    /// sleeps like any tab, and wakes under its last picture.
+    static func mayDoze(on: Bool, hidden: TimeInterval, bytes: UInt64, after: TimeInterval, least: UInt64) -> Bool {
+        on && hidden >= after && bytes >= least
+    }
+
+    /// Fork (covers, council R6): at launch, whether a pin stays asleep under
+    /// its kept picture until it is looked at: it was asleep when the
+    /// session was written, or it is big and was left long enough — and
+    /// there is a picture to show. Off, never.
+    static func asleepAtLaunch(on: Bool, covered: Bool, dozed: Bool, hidden: TimeInterval, bytes: UInt64,
+                               after: TimeInterval, least: UInt64) -> Bool {
+        on && covered && (dozed || mayDoze(on: true, hidden: hidden, bytes: bytes, after: after, least: least))
     }
 
     /// A pin with somewhere to be and no page there: asleep, or with no view
@@ -139,7 +160,58 @@ final class PinsAwake {
     }
 
     static func needsPage(_ tab: Tab) -> Bool {
-        PinRule.needsPage(pinned: tab.pin != nil, blank: tab.isBlank, asleep: tab.asleep, built: tab.built != nil)
+        // Fork (covers): a pin that dozed waits for you, as any tab asleep does.
+        !tab.dozed && PinRule.needsPage(pinned: tab.pin != nil, blank: tab.isBlank, asleep: tab.asleep, built: tab.built != nil)
+    }
+
+    // MARK: - big pins may sleep (Fork: covers)
+
+    /// "Let big pins sleep" (`copper pins sleep on|off`). On unless you
+    /// turn it off (owner, r5); off: pins never sleep.
+    nonisolated static var bigPinsSleep: Bool { bigPinsSleep(stored: Store.settings.object(forKey: "pins.sleep")) }
+
+    /// What the stored setting means: nothing stored is on.
+    nonisolated static func bigPinsSleep(stored: Any?) -> Bool { stored as? Bool ?? true }
+
+    /// Two hours unlooked-at, or `pins.sleep.after` seconds (the bench).
+    nonisolated static var dozeAfter: TimeInterval {
+        let set = Store.settings.double(forKey: "pins.sleep.after")
+        return set > 0 ? set : 2 * 3600
+    }
+
+    /// 300 MB, or `pins.sleep.mb` (the bench).
+    nonisolated static var dozeBytes: UInt64 {
+        let set = Store.settings.integer(forKey: "pins.sleep.mb")
+        return UInt64(set > 0 ? set : 300) * 1_048_576
+    }
+
+    /// The session's line for a pin: its weight now (or the last known, for
+    /// a page not loaded) and whether it dozed.
+    static func write(_ tab: Tab, into entry: inout Session.Entry) {
+        if let now = Heat.shared.weight(of: tab)?.bytes { tab.weighed = now }
+        entry.mb = tab.weighed.map { Int($0 / 1_048_576) }
+        entry.dozed = tab.dozed ? true : nil
+    }
+
+    /// A pin brought back from the session (Spaces.restore).
+    static func restored(_ tab: Tab, from entry: Session.Entry, now: Date = Date()) {
+        let seen = entry.seen.map { Date(timeIntervalSince1970: $0) }
+        let bytes = entry.mb.map { UInt64(max(0, $0)) * 1_048_576 }
+        var covered = false
+        if Covers.keeps(tab), let jar = tab.jar, let url = tab.pending ?? tab.address {
+            covered = FileManager.default.fileExists(atPath: Covers.store.file(for: url, jar: jar).path)
+        }
+        let asleep = PinRule.asleepAtLaunch(on: bigPinsSleep, covered: covered, dozed: entry.dozed == true,
+                                            hidden: seen.map { now.timeIntervalSince($0) } ?? 0, bytes: bytes ?? 0,
+                                            after: dozeAfter, least: dozeBytes)
+        tab.restorePin(seen: seen, weighed: bytes, dozed: asleep)
+    }
+
+    /// Whether this pin may sleep now (Browser.awake(because:)).
+    static func mayDoze(_ tab: Tab, now: Date = Date()) -> Bool {
+        guard bigPinsSleep, now.timeIntervalSince(tab.touched) >= dozeAfter else { return false }
+        return PinRule.mayDoze(on: true, hidden: now.timeIntervalSince(tab.touched), bytes: Heat.shared.weight(of: tab)?.bytes ?? 0,
+                               after: dozeAfter, least: dozeBytes)
     }
 
     /// WebKit says a page's process went away while the page was not the one
@@ -267,6 +339,7 @@ final class PinsAwake {
                 "url": (tab.pending ?? tab.address)?.absoluteString ?? "",
                 "built": tab.built != nil,
                 "asleep": tab.asleep,
+                "dozed": tab.dozed,
                 "stale": tab.stale,
                 "loading": tab.loading,
                 "failure": tab.failure ?? "",
@@ -283,6 +356,7 @@ final class PinsAwake {
             "looseLoaded": loose.filter { $0.built != nil && !$0.asleep }.count,
             "looseAsleep": loose.filter(\.asleep).count,
             "waiting": shared.waiting.count + (shared.loading == nil ? 0 : 1),
+            "bigPinsSleep": bigPinsSleep,
         ]
     }
 
@@ -290,5 +364,36 @@ final class PinsAwake {
         let name = "_webProcessIdentifier"
         guard web.responds(to: NSSelectorFromString(name)), let value = web.value(forKey: name) as? NSNumber else { return nil }
         return value.int32Value > 0 ? value.int32Value : nil
+    }
+}
+
+/// Fork (covers): Settings › Tabs › "Let big pins sleep" — on unless you
+/// turn it off (`copper pins sleep on|off` says the same).
+struct BigPinsLine: View {
+    @AppStorage("pins.sleep", store: Store.settings) private var on = true
+
+    var body: some View {
+        Line("Let big pins sleep", "A pinned page over 300 MB that you haven't looked at for two hours sleeps, and comes back under its last picture. Turn it off and pins never sleep.") {
+            Switch(on: $on)
+        }
+    }
+}
+
+extension Tab {
+    /// Fork (polish r5): a pin's mark is its own site's (Gmail's M, not the
+    /// Google G of the page it was redirected to to sign in), when Copper
+    /// has that site's icon; otherwise the page's.
+    var pinMark: NSImage? {
+        guard let host = home?.host()?.lowercased(), host != address?.host()?.lowercased(),
+              let own = Favicons.shared.cached(host) else { return icon }
+        return own
+    }
+
+    /// Fork (hc6): a pin sent away from its site (Calendar to a Google sign-in
+    /// page) is called by its own site in ⌘K, as its square shows that site's mark.
+    var pinName: String? {
+        guard pin != nil, let home, let host = home.host()?.lowercased(), host != address?.host()?.lowercased() else { return nil }
+        let bare = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+        return History.known.first { $0.0 == bare }?.1 ?? Address.pretty(home)
     }
 }

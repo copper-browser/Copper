@@ -9,7 +9,7 @@ import SwiftUI
 /// Fill is offered only for accounts this page (or the frame with the caret)
 /// would offer anyway, so a password never goes to a site it isn't for.
 struct VaultPopup: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var bitwarden = Bitwarden.shared
     @ObservedObject private var onePassword = OnePassword.shared
 
@@ -185,7 +185,7 @@ struct VaultPopup: View {
                         .foregroundStyle(Palette.ink)
                         .lineLimit(1)
                     Text(credential.user.isEmpty ? credential.host : "\(credential.user) · \(credential.host)")
-                        .font(.system(size: 10.5))
+                        .font(.system(size: 11))
                         .foregroundStyle(Palette.muted)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -202,8 +202,8 @@ struct VaultPopup: View {
                     .fixedSize()
                 } else if fills {
                     Text("This site")
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(Palette.faint)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Palette.muted)
                 }
             }
             .padding(.horizontal, 10)

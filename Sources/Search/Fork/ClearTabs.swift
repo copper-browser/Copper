@@ -134,7 +134,7 @@ final class ClearTabsDividerHover: ObservableObject {
 /// switch. Hovering it shows a small round button at its end, drawn over
 /// the seam rather than beside it, so nothing moves.
 struct ClearTabsDivider: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     let tint: SpaceTint
     let count: Int
     @ObservedObject private var hover = ClearTabsDividerHover.shared
@@ -176,7 +176,7 @@ struct ClearTabsDivider: View {
 /// The action pill uses the same ground, hairline and motion as Copper's
 /// existing announcements, with the one extra affordance Arc requires.
 struct ClearTabsToast: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var clearTabs = ClearTabs.shared
 
     var body: some View {

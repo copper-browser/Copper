@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 /// not a badge bolted onto the toolbar: when there is nothing to say, there is
 /// nothing to look at.
 struct DownloadsDoor: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var downloads = Downloads.shared
     var size: CGFloat = 26
     var arrowEdge: Edge = .bottom
@@ -78,6 +78,7 @@ struct DownloadsDoor: View {
         .popover(isPresented: downloads.door(in: browser), arrowEdge: arrowEdge) {
             DownloadsPopover(browser: browser, downloads: downloads)
         }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { downloads.doorSpot = $0 }
         .animation(Motion.quick, value: hovering)
         .animation(Motion.settle, value: downloads.popoverOpen)
         .animation(Motion.settle, value: downloads.pulsing)
@@ -119,7 +120,7 @@ private struct DownloadRing: View {
 /// The anchored list is intentionally narrower and quieter than the full
 /// Downloads panel. It answers "what is happening?" before "what happened?".
 struct DownloadsPopover: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var downloads: Downloads
 
     private var session: [Downloads.Item] { downloads.shown }
@@ -132,20 +133,17 @@ struct DownloadsPopover: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if session.isEmpty && browser.loot.kept.isEmpty {
-                Text("Nothing downloaded yet.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Palette.muted)
-                    .padding(18)
+                EmptyState("arrow.down.circle", "No downloads yet", "Files you download show up here.") // Fork (ui-system)
             } else {
                 let rows = Array(session.prefix(8))
                 ForEach(rows) { item in
                     DownloadRow(item: item, browser: browser, downloads: downloads)
-                    if item.id != rows.last?.id { Rectangle().fill(Palette.hairline).frame(height: 1).padding(.leading, 48) }
+                    if item.id != rows.last?.id { Rectangle().fill(Palette.hairline).frame(height: 1).padding(.leading, 56) }
                 }
                 if rows.count < 8 {
                     ForEach(Array(older.prefix(8 - rows.count))) { keep in
                         if rows.count > 0 || keep.id != older.first?.id {
-                            Rectangle().fill(Palette.hairline).frame(height: 1).padding(.leading, 48)
+                            Rectangle().fill(Palette.hairline).frame(height: 1).padding(.leading, 56)
                         }
                         DownloadRow(keep: keep, browser: browser, downloads: downloads)
                     }
@@ -158,24 +156,24 @@ struct DownloadsPopover: View {
                     NSWorkspace.shared.open(browser.prefs.downloads)
                 }
                 .buttonStyle(.plain)
-                .font(.system(size: 11.5))
+                .font(.system(size: 12, weight: .medium)) // Fork (polish r5): 12 pt, the footer's one primary
                 .foregroundStyle(Palette.ink)
                 Spacer(minLength: 0)
                 if hasFinished {
                     Button("Clear") { downloads.clearFinished() }
                         .buttonStyle(.plain)
-                        .font(.system(size: 11.5))
+                        .font(.system(size: 12))
                         .foregroundStyle(Palette.muted)
                 }
                 Button("Show All…") { browser.hoarding = true; downloads.popoverOpen = false }
                     .buttonStyle(.plain)
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(Palette.muted)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.ink) // Fork (polish r5): a way on, in ink; Clear stays muted
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
         }
-        .frame(width: 340)
+        .frame(width: 320) // Fork (uiflows r4): Arc's ~320 pt
         .background(Palette.ground, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         .onAppear { downloads.seen() }
     }
@@ -193,7 +191,7 @@ struct DownloadsPopover: View {
 struct DownloadRow: View {
     var item: Downloads.Item?
     var keep: Keep?
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var downloads: Downloads
 
     init(item: Downloads.Item, browser: Browser, downloads: Downloads) {
@@ -212,12 +210,12 @@ struct DownloadRow: View {
     private var exists: Bool { file.map { FileManager.default.fileExists(atPath: $0.path) } ?? false }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .center, spacing: 10) {
             DownloadIcon(file: file, name: name, exists: exists)
             VStack(alignment: .leading, spacing: 3) {
                 Text(name)
                     .font(.system(size: 12.5))
-                    .foregroundStyle(exists || item != nil ? Palette.ink : Palette.faint)
+                    .foregroundStyle(exists || item != nil ? Palette.ink : Palette.muted)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 // Digits that hold still as they count, in the row's own type
@@ -241,6 +239,7 @@ struct DownloadRow: View {
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .onTapGesture { open() }
+        .help(exists ? "Open \(name)" : "") // Fork (ui-system)
         .animation(Motion.quick, value: hovering)
     }
 
@@ -250,7 +249,8 @@ struct DownloadRow: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(Palette.muted)
-                    .frame(width: 20, height: 20)
+                    .frame(width: 24, height: 24) // Fork (ui-system): 24 pt to hit
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("Cancel download")
@@ -264,12 +264,12 @@ struct DownloadRow: View {
                     .padding(.vertical, 4)
                     .background(Palette.wash, in: Capsule())
             }
-            if hovering {
-                if item.file != nil, exists { FinderDoor(icon: "magnifyingglass", help: "Show in Finder") { reveal(item.file!) } }
-                FinderDoor(icon: "xmark", help: "Remove from list") { downloads.remove(item) }
-            }
+            // Fork (ui-system): Show in Finder on every file that's there, not
+            // only under the pointer; the row itself opens it.
+            if let file = item.file, exists { FinderDoor(icon: "folder", help: "Show in Finder") { reveal(file) } }
+            if hovering { FinderDoor(icon: "xmark", help: "Remove from list") { downloads.remove(item) } }
         } else if let keep {
-            if hovering, exists { FinderDoor(icon: "magnifyingglass", help: "Show in Finder") { browser.loot.reveal(keep) } }
+            if exists { FinderDoor(icon: "folder", help: "Show in Finder") { browser.loot.reveal(keep) } }
             if hovering { FinderDoor(icon: "xmark", help: "Remove from list") { browser.loot.forget(keep) } }
         }
     }
@@ -338,12 +338,12 @@ private struct DownloadIcon: View {
                     .interpolation(.high)
             } else {
                 Image(systemName: "doc")
-                    .font(.system(size: 14))
+                    .font(.system(size: 18))
                     .foregroundStyle(Palette.muted)
             }
         }
-        .frame(width: 24, height: 24)
-        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+        .frame(width: 32, height: 32) // Fork (ui-system): the file's own icon, big enough to tell a zip from a PDF
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 }
 
@@ -380,12 +380,14 @@ private struct FinderDoor: View {
     var body: some View {
         Button(action: act) {
             Image(systemName: icon)
-                .font(.system(size: 10, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(Palette.muted)
-                .frame(width: 20, height: 20)
+                .frame(width: 24, height: 24) // Fork (ui-system): 24 pt to hit
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(help)
+        .accessibilityLabel(help)
     }
 }
 
@@ -397,4 +399,25 @@ private enum DownloadFormat {
         formatter.includesCount = true
         return formatter
     }()
+}
+
+extension Browser {
+    /// Fork (ui-flows r3): Downloads as Arc has them — the list hanging from
+    /// the column's download glyph (⌘⇧J, the menu, ⌘K), not a panel over the
+    /// page. Without a column, or for "Show All…", the full panel.
+    /// Fork (uiflows r4): in the top-tab layout too, once the strip has its
+    /// glyph (a first download).
+    func showDownloads(toggling: Bool = false) {
+        let downloads = Downloads.shared
+        let door = prefs.sidebar ? !folded : downloads.doorShowing
+        guard door, active?.immersed != true else {
+            if toggling { hoarding.toggle() } else { hoarding = true }
+            return
+        }
+        if downloads.showsDoor(in: self) {
+            if toggling { downloads.popoverOpen = false }
+        } else {
+            downloads.toggleDoor(in: self)
+        }
+    }
 }

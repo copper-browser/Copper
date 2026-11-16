@@ -19,7 +19,12 @@ import WebKit
 
 extension Tools {
 enum Page {
-    struct Failure: Error { let text: String }
+    /// LocalizedError so whoever shows it (MCP.handle, the CLI, the pane)
+    /// shows the text, not "Page.Failure error 1".
+    struct Failure: LocalizedError {
+        let text: String
+        var errorDescription: String? { text }
+    }
 
     // MARK: - JavaScript
 
@@ -33,26 +38,118 @@ enum Page {
     }
 
     /// Run in the page, with the helper installed first if it isn't yet.
+    /// `script` is an expression. One round trip when the helper is already
+    /// in this document, which is every call but the first.
+    ///
+    /// In Copper's own content world (Frames.swift): `window.__copper` there
+    /// is the helper and nothing else — whatever the page calls by that name
+    /// is in another world. `frame`: one of the page's frames instead of the
+    /// page itself (Frames).
     @MainActor
-    static func js(_ web: WKWebView, _ script: String) async throws -> Any? {
-        let installed = try await raw(web, "typeof window.__copper === 'object'") as? Bool ?? false
-        if !installed { _ = try await raw(web, helper) }
-        return try await raw(web, script)
+    static func js(_ web: WKWebView, _ script: String, in frame: WKFrameInfo? = nil) async throws -> Any? {
+        let missing = "__copper:missing"
+        let result = try await raw(web, "typeof window.__copper === 'object' ? (\(script)) : \(quote(missing))", in: frame)
+        guard result as? String == missing else { return result }
+        _ = try await raw(web, helper, in: frame)
+        // The console recorder wraps the page's own console, so it lives in the page's world.
+        if frame == nil { _ = try? await raw(web, consoleShim, world: .page) }
+        return try await raw(web, script, in: frame)
     }
 
     @MainActor
-    static func raw(_ web: WKWebView, _ script: String) async throws -> Any? {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any?, Error>) in
-            web.evaluateJavaScript(script) { value, error in
-                if let error {
-                    let ns = error as NSError
-                    let detail = (ns.userInfo["WKJavaScriptExceptionMessage"] as? String) ?? ns.localizedDescription
-                    continuation.resume(throwing: Failure(text: "JavaScript: \(detail)"))
-                } else {
-                    continuation.resume(returning: value)
+    static func js(_ web: WKWebView, at target: Tools.Locator, _ script: String) async throws -> Any? {
+        try await js(web, script, in: target.info(web))
+    }
+
+    /// Scripts of Copper's in flight, per web view: a page stopped in an
+    /// alert can't finish them, so AgentDialogs never holds one open then.
+    @MainActor static var waiting: [ObjectIdentifier: Int] = [:]
+
+    @MainActor
+    static func raw(_ web: WKWebView, _ script: String, counted: Bool = true, in frame: WKFrameInfo? = nil, world: WKContentWorld = .copper) async throws -> Any? {
+        // Not counted: decoration (Trail) that nothing waits on, so a click's alert stays open for the agent.
+        let key = ObjectIdentifier(web)
+        if counted { waiting[key, default: 0] += 1 }
+        let began = Date()
+        defer {
+            if counted { let left = (waiting[key] ?? 1) - 1; waiting[key] = left > 0 ? left : nil }
+            Tools.phases?.add("js", since: began)
+        }
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any?, Error>) in
+            web.evaluateJavaScript(script, in: frame, in: world) { result in
+                switch result {
+                // `undefined` comes boxed as an Any holding nil; only real values are objects.
+                case .success(let value): continuation.resume(returning: value as? NSObject)
+                case .failure(let error): continuation.resume(throwing: Failure(text: "JavaScript: \(detail(error))"))
                 }
             }
         }
+    }
+
+    /// An async function body run in the page (callAsyncJavaScript), so a
+    /// Promise it returns is awaited. `timeout` caps the wait: a Promise that
+    /// never settles, or a document torn down mid-call, answers nothing.
+    @MainActor
+    static func call(_ web: WKWebView, _ body: String, _ arguments: [String: Any] = [:], timeout: TimeInterval, late: String, counted: Bool = true, in frame: WKFrameInfo? = nil, world: WKContentWorld = .copper) async throws -> Any? {
+        // Counted like `raw`, so an alert inside browser_evaluate is answered at once (AgentDialogs).
+        // `frame` isn't: an alert a click raises during settle stays open for browser_handle_dialog.
+        let key = ObjectIdentifier(web)
+        if counted { waiting[key, default: 0] += 1 }
+        let began = Date()
+        defer {
+            if counted { let left = (waiting[key] ?? 1) - 1; waiting[key] = left > 0 ? left : nil }
+            Tools.phases?.add("js", since: began)
+        }
+        let once = Once()
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any?, Error>) in
+            let timer = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                guard !Task.isCancelled, once.take() else { return }
+                continuation.resume(throwing: Failure(text: late))
+            }
+            web.callAsyncJavaScript(body, arguments: arguments, in: frame, in: world) { result in
+                guard once.take() else { return }
+                timer.cancel()
+                switch result {
+                case .success(let value): continuation.resume(returning: value)
+                case .failure(let error): continuation.resume(throwing: Failure(text: "JavaScript: \(detail(error))"))
+                }
+            }
+        }
+    }
+
+    /// One animation frame of the page, or 50 ms, whichever comes first.
+    @MainActor
+    static func frame(_ web: WKWebView) async {
+        _ = try? await call(web, "return await new Promise(r => { requestAnimationFrame(() => r(true)); setTimeout(() => r(true), 50); });", timeout: 0.1, late: "", counted: false)
+    }
+
+    /// Whichever of an answer and a timeout comes first wins.
+    private final class Once: @unchecked Sendable {
+        private var used = false
+        func take() -> Bool {
+            if used { return false }
+            used = true
+            return true
+        }
+    }
+
+    private static func detail(_ error: Error) -> String {
+        let ns = error as NSError
+        return (ns.userInfo["WKJavaScriptExceptionMessage"] as? String) ?? ns.localizedDescription
+    }
+
+    /// A helper's answer as a result: its failures ("no element for …",
+    /// "not editable: DIV", "no option matched …") thrown, so they reach the
+    /// agent as errors and never as a quiet success.
+    @MainActor
+    @discardableResult
+    static func act(_ web: WKWebView, at target: Tools.Locator? = nil, _ script: String) async throws -> String {
+        let said = render(try await js(web, script, in: target?.info(web)))
+        if said.hasPrefix("no ") || said.hasPrefix("not ") {
+            throw Failure(text: "\(said). Take a fresh browser_snapshot and use a ref from it.")
+        }
+        return said
     }
 
     /// A JavaScript value as text for the agent.
@@ -69,23 +166,52 @@ enum Page {
     // MARK: - what the tools ask
 
     @MainActor
-    static func snapshot(_ web: WKWebView, selector: String?, interactive: Bool, limit: Int) async throws -> String {
-        let result = try await js(web, "window.__copper.snapshot(\(quote(selector ?? "")), \(interactive), \(limit))")
-        guard let text = result as? String else { throw Failure(text: "snapshot gave nothing") }
-        return text
+    static func snapshot(_ web: WKWebView, selector: String?, interactive: Bool, limit: Int, frame: Int? = nil) async throws -> String {
+        if let frame {
+            // One frame alone, in full: for a frame too big for its share of the page's snapshot.
+            let result = try await js(web, "window.__copper.snapshot(\(quote(selector ?? "")), \(interactive), \(limit), 'f\(frame):')", in: Frames.frame(frame, in: web).info) as? [String: Any]
+            guard let text = result?["text"] as? String else { throw Failure(text: "snapshot gave nothing") }
+            return text
+        }
+        // The page and its frames at once; each frame's part goes under its iframe line (Frames.stitch).
+        // A frame gets a share of the nodes, so a page of embeds stays readable.
+        async let frames = Frames.parts(web, interactive: interactive, limit: min(limit, 200))
+        let result = try await js(web, "window.__copper.snapshot(\(quote(selector ?? "")), \(interactive), \(limit), '')") as? [String: Any]
+        guard let text = result?["text"] as? String else { _ = await frames; throw Failure(text: "snapshot gave nothing") }
+        return Frames.stitch(text, result?["frames"] as? [[String: Any]] ?? [], await frames)
     }
 
     /// Scroll the target into view and answer its rectangle in viewport
-    /// CSS pixels — the space clicks are posted in.
+    /// CSS pixels — the space clicks are posted in. With `hit` (anything
+    /// about to be clicked or typed into), the point at its middle must be
+    /// the element's own: a cookie wall or a hidden field is an error naming
+    /// it, never a click that lands on something else. A cover that is on its
+    /// way out (a fading toast, a closing sheet) gets three tries.
     @MainActor
-    static func prepare(_ web: WKWebView, _ target: Tools.Locator) async throws -> CGRect {
-        let result = try await js(web, "window.__copper.rect(\(quote(target.script)))")
+    static func prepare(_ web: WKWebView, _ target: Tools.Locator, hit: Bool = true) async throws -> CGRect {
+        let frame = try target.info(web)
+        var result = try await js(web, "window.__copper.rect(\(quote(target.script)), \(hit))", in: frame)
+        for _ in 0..<3 where (result as? [String: Any])?["blocked"] as? Bool == true {
+            try await Task.sleep(nanoseconds: 100_000_000)
+            result = try await js(web, "window.__copper.rect(\(quote(target.script)), \(hit))", in: frame)
+        }
         guard let dict = result as? [String: Any],
-              let x = (dict["x"] as? NSNumber)?.doubleValue, let y = (dict["y"] as? NSNumber)?.doubleValue,
+              var x = (dict["x"] as? NSNumber)?.doubleValue, var y = (dict["y"] as? NSNumber)?.doubleValue,
               let w = (dict["width"] as? NSNumber)?.doubleValue, let h = (dict["height"] as? NSNumber)?.doubleValue
         else {
-            let why = (result as? [String: Any])?["error"] as? String ?? "not found"
-            throw Tools.Failure(text: "\(target.script): \(why). Take a fresh browser_snapshot — refs change when the page does.")
+            let dict = result as? [String: Any]
+            let why = dict?["error"] as? String ?? "not found"
+            let next = dict?["cover"] != nil
+                ? "Close or dismiss what covers it first (find its button with browser_snapshot), then try again."
+                : dict?["blocked"] as? Bool == true
+                ? "Open or scroll to whatever reveals it first, or pick another ref from a fresh browser_snapshot."
+                : "Take a fresh browser_snapshot — refs change when the page does."
+            throw Tools.Failure(text: "\(target.label): \(why). \(next)")
+        }
+        // In a frame: the box is in the frame's own viewport, and the frame is somewhere on the page.
+        if frame != nil, let path = (dict["at"] as? [NSNumber])?.map(\.intValue), !path.isEmpty {
+            let offset = try await Frames.offset(path, in: web, point: CGPoint(x: x + w / 2, y: y + h / 2), hit: hit)
+            x += offset.x; y += offset.y
         }
         // The page's CSS pixels to the view's points: page zoom is the only
         // scale between them.
@@ -106,8 +232,11 @@ enum Page {
         }
         if fullPage {
             // WebKit snapshots the viewport; the whole document is had by
-            // growing the view for one frame. Only when asked.
-            let height = try await raw(web, "Math.min(document.documentElement.scrollHeight, 20000)") as? NSNumber
+            // growing the view for one frame. Only when asked. A lazy page
+            // draws a section when it scrolls into view, so the page is
+            // walked a screen at a time first, and put back where it was.
+            var height = (try? await call(web, walk, timeout: 10, late: "")) as? NSNumber
+            if height == nil { height = try await raw(web, "Math.min(document.documentElement.scrollHeight, 20000)") as? NSNumber }
             if let height, height.doubleValue > web.bounds.height {
                 let before = web.frame
                 web.frame = CGRect(origin: before.origin, size: CGSize(width: before.width, height: height.doubleValue))
@@ -127,19 +256,52 @@ enum Page {
                 else { continuation.resume(throwing: Failure(text: error?.localizedDescription ?? "no picture")) }
             }
         }
-        guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
-              let data = rep.representation(using: jpeg ? .jpeg : .png, properties: jpeg ? [.compressionFactor: 0.8] : [:])
+        guard let tiff = image.tiffRepresentation, var rep = NSBitmapImageRep(data: tiff) else { throw Failure(text: "couldn't encode the picture") }
+        // A Retina screen (or a page at another device pixel ratio) snapshots
+        // at 2× its points: drawn down to one pixel per point, so the
+        // picture's coordinates are the ones browser_mouse_click_xy takes.
+        let size = image.size
+        if rep.pixelsWide != Int(size.width.rounded()), size.width >= 1, size.height >= 1,
+           let one = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width.rounded()), pixelsHigh: Int(size.height.rounded()),
+                                      bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                      colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+           let context = NSGraphicsContext(bitmapImageRep: one) {
+            one.size = size
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = context
+            context.imageInterpolation = .high
+            rep.draw(in: NSRect(origin: .zero, size: size))
+            NSGraphicsContext.restoreGraphicsState()
+            rep = one
+        }
+        guard let data = rep.representation(using: jpeg ? .jpeg : .png, properties: jpeg ? [.compressionFactor: 0.8] : [:])
         else { throw Failure(text: "couldn't encode the picture") }
         return data
     }
 
+    /// The full-page walk: a screen at a time to the bottom (a frame and
+    /// 40 ms on each), then back. Answers the height to draw.
+    static let walk = """
+    const tall = () => Math.min(document.documentElement.scrollHeight, 20000);
+    const x = scrollX, y = scrollY, step = Math.max(innerHeight * 0.9, 200);
+    const beat = () => new Promise(r => { requestAnimationFrame(() => setTimeout(r, 40)); setTimeout(r, 120); });
+    for (let top = step; top < tall(); top += step) { scrollTo({ left: x, top, behavior: 'instant' }); await beat(); }
+    scrollTo({ left: x, top: y, behavior: 'instant' });
+    await beat();
+    return tall();
+    """
+
     // MARK: - the helper
 
-    static let helper = #"""
+    /// The console, kept for browser_console_messages. Put in at document
+    /// start for a tab an agent opened (Tab.arm → `arm`), so what a page logs
+    /// while it loads is there; in any other tab, when the helper first goes in.
+    /// In the page's world — it is the page's `console` being wrapped — so
+    /// what it holds is the page's word, read as such (`console`, below).
+    static let consoleShim = #"""
     (function () {
-      if (window.__copper) return true;
-      var refs = new Map(), byRef = new Map(), next = 1;
-      var logs = [];
+      if (window.__copperLogs) return;
+      var logs = window.__copperLogs = [];
       ['log', 'warn', 'error', 'info'].forEach(function (level) {
         var original = console[level];
         console[level] = function () {
@@ -148,6 +310,52 @@ enum Page {
         };
       });
       window.addEventListener('error', function (e) { logs.push({ level: 'error', text: String(e.message) }); });
+      // Fork (C8, r4): short timers, so a click's settle can wait for the
+      // navigation one of them sets off (Tools.settle → late).
+      var timers = [], start = window.setTimeout;
+      window.setTimeout = function (f, d) {
+        try { d = Number(d) || 0; if (d <= 1000) { timers.push([performance.now(), d]); if (timers.length > 50) timers.shift(); } } catch (e) {}
+        return start.apply(window, arguments);
+      };
+      // How long until the last of the short timers started in the last `ms` fires.
+      window.__copperDue = function (ms) {
+        var now = performance.now(), due = 0;
+        timers.forEach(function (t) { if (now - t[0] <= ms) due = Math.max(due, t[0] + t[1] - now); });
+        return due;
+      };
+    })();
+    """#
+
+    /// Part of `Tab.arm`'s inputs (navperf), so a tab an agent opens after its first arm is armed again.
+    @MainActor
+    static func armsConsole(_ tab: UUID) -> Bool { AgentTabs.opened.contains(tab) }
+
+    /// Tab.arm(hiding:): the console shim for the next document of a tab an
+    /// agent opened. Tabs the user opened are left alone.
+    @MainActor
+    static func arm(_ controller: WKUserContentController, tab: UUID) {
+        guard armsConsole(tab) else { return }
+        controller.addUserScript(WKUserScript(source: consoleShim, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+    }
+
+    /// What the recorder holds, as JSON text. Read defensively: the list
+    /// sits in the page's world, where the page can put anything in it.
+    @MainActor
+    static func console(_ web: WKWebView) async throws -> String {
+        let read = """
+        (function () { try {
+          var logs = window.__copperLogs; if (!Array.isArray(logs)) return '[]';
+          return JSON.stringify(Array.prototype.slice.call(logs, -200).map(function (l) {
+            return { level: String(l && l.level).slice(0, 10), text: String(l && l.text).slice(0, 4000) }; }));
+        } catch (e) { return '[]'; } })()
+        """
+        return try await raw(web, read, world: .page) as? String ?? "[]"
+    }
+
+    static let helper = #"""
+    (function () {
+      if (window.__copper) return true;
+      var refs = new Map(), byRef = new Map(), next = 1;
 
       function ref(el) {
         var r = refs.get(el);
@@ -156,6 +364,8 @@ enum Page {
       }
       function find(spec) {
         if (!spec) return null;
+        // An element in hand (a field inside a label, the focused one): itself, shadow root or not.
+        if (typeof spec !== 'string') return spec instanceof Element && spec.isConnected ? spec : null;
         if (spec.indexOf('ref:') === 0) {
           var el = byRef.get(spec.slice(4));
           return el && el.isConnected ? el : null;
@@ -250,10 +460,14 @@ enum Page {
         if (document.activeElement === el) out.push('[active]');
         return out.join(' ');
       }
-      function snapshot(selector, interactiveOnly, limit) {
+      // `prefix`: the frame's name on every ref (f2:e7), '' in the page itself.
+      // Answers the text and which of its lines are frames (`at`: the place
+      // among this document's frames), so each frame's own snapshot can go
+      // under its line (Frames.stitch).
+      function snapshot(selector, interactiveOnly, limit, prefix) {
         var root = selector ? find(selector.indexOf(':') > 0 ? selector : 'css:' + selector) : document.body;
-        if (!root) return 'nothing matches ' + selector;
-        var lines = [], count = 0;
+        if (!root) return { text: 'nothing matches ' + selector, frames: [] };
+        var lines = [], count = 0, frames = [], named = [];
         function walk(el, depth) {
           if (count >= limit) return;
           if (!(el instanceof Element)) return;
@@ -268,12 +482,23 @@ enum Page {
           for (var i = 0; i < el.childNodes.length; i++) { var n = el.childNodes[i]; if (n.nodeType === 3) ownText += n.textContent; }
           ownText = ownText.replace(/\s+/g, ' ').trim();
           var landmark = /navigation|main|banner|contentinfo|complementary|form|dialog|region|article|list|table|heading/.test(r);
+          var framed = shown && (tag === 'IFRAME' || tag === 'FRAME') ? frameIndex(el) : -1;
+          // A frame too small to show anything is a tracker or a bridge, not part of the page.
+          if (framed >= 0) { var box = el.getBoundingClientRect(); if (box.width < 8 || box.height < 8) return; }
+          if (framed >= 0) {
+            var title = el.getAttribute('title') || el.getAttribute('aria-label') || el.getAttribute('name') || '';
+            frames.push({ line: lines.length, at: framed });
+            lines.push('  '.repeat(Math.min(depth, 12)) + '- iframe' + (title ? ' ' + JSON.stringify(title.slice(0, 120)) : ''));
+            count++;
+            return;
+          }
           var emit = inter || (!interactiveOnly && shown && (landmark || (ownText && r === 'text') || (r === 'img' && nm)));
           if (emit) {
             var line = '  '.repeat(Math.min(depth, 12)) + '- ' + (r || 'generic');
             var label = inter || r === 'heading' || r === 'img' ? nm : landmark ? (el.getAttribute('aria-label') || '') : ownText;
             if (label) line += ' ' + JSON.stringify(label.length > 120 ? label.slice(0, 117) + '…' : label);
-            if (inter) line += ' [ref=' + ref(el) + ']';
+            if (inter) line += ' [ref=' + (prefix || '') + ref(el) + ']';
+            if (inter && interactiveOnly && label) named.push({ i: lines.length, el: el, r: r, nm: nm, quoted: JSON.stringify(label.length > 120 ? label.slice(0, 117) + '…' : label) });
             var a = attrs(el); if (a) line += ' ' + a;
             if (!inter && r === 'text' && !landmark && lines.length && lines[lines.length - 1].endsWith(line.trim())) { /* skip duplicate */ } else { lines.push(line); count++; }
           }
@@ -282,22 +507,141 @@ enum Page {
           for (var k = 0; k < kids.length; k++) walk(kids[k], emit ? depth + 1 : depth);
         }
         walk(root, 0);
+        if (interactiveOnly) rowNames(lines, named);
         if (count >= limit) lines.push('… (truncated at ' + limit + ' nodes; pass a selector or interactive: true for less)');
-        return lines.join('\n');
+        return { text: lines.join('\n'), frames: frames };
       }
-      function rect(spec) {
+      // interactive: true leaves the rows' text out, so a table of "Approve"
+      // buttons read as eight alike. Controls by one name that go to
+      // different places each say their row (Jev's table does the same).
+      function rowNames(lines, named) {
+        var groups = {}, told = 0;
+        named.forEach(function (n) { var k = n.r + '|' + n.nm.toLowerCase(); (groups[k] = groups[k] || []).push(n); });
+        Object.keys(groups).forEach(function (k) {
+          var g = groups[k], places = {};
+          g.forEach(function (n) { places[n.el.href || n.i] = 1; });
+          if (g.length < 2 || Object.keys(places).length < 2) return;
+          g.forEach(function (n) {
+            var row = n.el.closest('tr,li,[role="row"],[role="listitem"],article,[role="article"]');
+            if (!row || told >= 40) return;
+            var said = (row.innerText || '').replace(/\s+/g, ' ').replace(n.nm, '').trim().slice(0, 60);
+            if (!said) return;
+            lines[n.i] = lines[n.i].replace(n.quoted, JSON.stringify(n.nm.slice(0, 117) + ' · ' + said));
+            told++;
+          });
+        });
+      }
+      // Frames. Windows compare across origins, so a frame can say where it
+      // is and its parent which element holds it without reading each other.
+      function frameIndex(el) {
+        try { for (var i = 0; i < window.length; i++) if (window[i] === el.contentWindow) return i; } catch (e) {}
+        return -1;
+      }
+      // This document's place: its index among its parent's frames, at each level from the top. [] for the page.
+      function where() {
+        var path = [];
+        try {
+          for (var w = window; w !== w.parent; w = w.parent) {
+            var at = -1;
+            for (var i = 0; i < w.parent.length; i++) if (w.parent[i] === w) { at = i; break; }
+            if (at < 0) return [];
+            path.unshift(at);
+          }
+        } catch (e) { return []; }
+        return path;
+      }
+      // Where frame `at`'s viewport starts in this one's, after bringing the
+      // point (x, y of the frame's viewport) into view; with `hitTest`, the
+      // frame must be what is at that point here.
+      function frameBox(at, x, y, hitTest) {
+        var el = null;
+        // Through open shadow roots too: a component can hold the frame.
+        (function look(root) {
+          var all = root.querySelectorAll('iframe, frame');
+          for (var i = 0; i < all.length && !el; i++) if (frameIndex(all[i]) === at) el = all[i];
+          if (el) return;
+          var every = root.querySelectorAll('*');
+          for (var j = 0; j < every.length && !el; j++) if (every[j].shadowRoot) look(every[j].shadowRoot);
+        })(document);
+        if (!el) return { error: 'its frame is not on the page any more' };
+        function box() {
+          var r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+          return { x: r.left + el.clientLeft + (parseFloat(cs.paddingLeft) || 0), y: r.top + el.clientTop + (parseFloat(cs.paddingTop) || 0) };
+        }
+        var b = box(), px = b.x + x, py = b.y + y;
+        if (px < 0 || py < 0 || px >= innerWidth || py >= innerHeight) {
+          el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+          b = box(); px = b.x + x; py = b.y + y;
+          if (px < 0 || py < 0 || px >= innerWidth || py >= innerHeight) { window.scrollBy(px - innerWidth / 2, py - innerHeight / 2); b = box(); px = b.x + x; py = b.y + y; }
+        }
+        if (!hitTest) return b;
+        var hit = px >= 0 && py >= 0 && px < innerWidth && py < innerHeight ? deepAt(px, py) : null;
+        if (hit === el) return b;
+        if (!hit) return { error: 'its frame is outside the visible page', blocked: true };
+        return { error: 'covered by ' + describe(hit) + ' (it is on top of the frame, and would get the click)', blocked: true, cover: describe(hit) };
+      }
+      // browser_evaluate runs in the page's world, which has no refs: the
+      // element is handed over by an attribute the function's wrapper takes
+      // off again.
+      function mark(spec, token) {
+        var el = find(spec);
+        if (!el) return false;
+        el.setAttribute('data-copper-eval', token);
+        return true;
+      }
+      // The element at a point, through open shadow roots.
+      function deepAt(x, y) {
+        var hit = document.elementFromPoint(x, y);
+        while (hit && hit.shadowRoot) { var inner = hit.shadowRoot.elementFromPoint(x, y); if (!inner || inner === hit) break; hit = inner; }
+        return hit;
+      }
+      function inside(node, el) {
+        for (var n = node; n; n = n.parentNode || (n instanceof ShadowRoot ? n.host : null)) if (n === el) return true;
+        return false;
+      }
+      function describe(el) {
+        var s = el.tagName.toLowerCase() + (el.id ? '#' + el.id : '');
+        if (!el.id && typeof el.className === 'string' && el.className.trim()) s += '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.');
+        var t = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+        return t ? s + ' ' + JSON.stringify(t.length > 60 ? t.slice(0, 57) + '…' : t) : s;
+      }
+      function hidden(el) {
+        var s = getComputedStyle(el);
+        if (s.display === 'none') return 'display: none';
+        if (s.visibility === 'hidden') return 'visibility: hidden';
+        if (s.opacity === '0') return 'opacity: 0';
+        var r = el.getBoundingClientRect();
+        return r.width === 0 && r.height === 0 ? 'no size' : '';
+      }
+      function rect(spec, hitTest) {
         var el = find(spec);
         if (!el) return { error: 'no element for ' + spec };
         if (el.scrollIntoView) el.scrollIntoView({ block: 'center', inline: 'center' });
         var r = el.getBoundingClientRect();
         // A tiny or offscreen box means a wrapper; the first sized child is the thing.
         if ((r.width < 2 || r.height < 2) && el.firstElementChild) r = el.firstElementChild.getBoundingClientRect();
-        return { x: r.left, y: r.top, width: r.width, height: r.height };
+        var out = { x: r.left, y: r.top, width: r.width, height: r.height, at: where() };
+        if (!hitTest || el.tagName === 'OPTION') return out;
+        var x = r.left + r.width / 2, y = r.top + r.height / 2;
+        var hit = x >= 0 && y >= 0 && x < innerWidth && y < innerHeight ? deepAt(x, y) : null;
+        // Its own, or its label's (a styled checkbox is often only its label).
+        if (hit && (inside(hit, el) || Array.prototype.some.call(el.labels || [], function (l) { return inside(hit, l); }))) return out;
+        var why = hidden(el);
+        if (why) return { error: 'not visible (' + why + ')', blocked: true };
+        if (!hit) return { error: 'outside the visible page, at ' + Math.round(x) + ',' + Math.round(y), blocked: true };
+        return { error: 'covered by ' + describe(hit) + ' (it is on top, and would get the click)', blocked: true, cover: describe(hit) };
       }
       function fire(el, type, init) { el.dispatchEvent(new (type.indexOf('key') === 0 ? KeyboardEvent : type.indexOf('mouse') === 0 || type === 'click' || type === 'dblclick' || type === 'contextmenu' ? MouseEvent : Event)(type, Object.assign({ bubbles: true, cancelable: true, composed: true }, init || {}))); }
+      // A field the user can't change either: an error, never a quiet write.
+      function locked(el) {
+        if (el.disabled || el.getAttribute('aria-disabled') === 'true') return 'not editable: ' + el.tagName + ' is disabled';
+        if (el.readOnly && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return 'not editable: ' + el.tagName + ' is read-only (a picker may open when you click it)';
+        return '';
+      }
       function setValue(spec, value) {
         var el = find(spec);
         if (!el) return 'no element for ' + spec;
+        if (locked(el)) return locked(el);
         el.focus && el.focus();
         if (el.isContentEditable) {
           el.textContent = value;
@@ -306,7 +650,7 @@ enum Page {
         }
         if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') {
           var inner = el.querySelector('input, textarea, [contenteditable]');
-          if (inner) return setValue('css:' + cssPath(inner), value);
+          if (inner) return setValue(inner, value);
           return 'not editable: ' + el.tagName;
         }
         var proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -315,22 +659,12 @@ enum Page {
         fire(el, 'input'); fire(el, 'change');
         return 'ok';
       }
-      function cssPath(el) {
-        if (el.id) return '#' + CSS.escape(el.id);
-        var path = [];
-        while (el && el.nodeType === 1 && el !== document.body) {
-          var i = 1, s = el.previousElementSibling;
-          while (s) { if (s.tagName === el.tagName) i++; s = s.previousElementSibling; }
-          path.unshift(el.tagName.toLowerCase() + ':nth-of-type(' + i + ')');
-          el = el.parentElement;
-        }
-        return 'body > ' + path.join(' > ');
-      }
       function select(spec, values) {
         var el = find(spec);
         if (!el) return 'no element for ' + spec;
         if (el.tagName !== 'SELECT') { el = el.querySelector('select') || el; }
         if (el.tagName !== 'SELECT') return 'not a select';
+        if (locked(el)) return locked(el);
         var hit = 0;
         for (var i = 0; i < el.options.length; i++) {
           var o = el.options[i];
@@ -344,6 +678,7 @@ enum Page {
       function fill(spec, kind, value) {
         var el = find(spec);
         if (!el) return 'no element for ' + spec;
+        if (locked(el)) return locked(el);
         if (kind === 'checkbox' || kind === 'radio') {
           var want = value === 'true' || value === 'on' || value === '1' || value === 'checked';
           if (el.checked !== want) el.click();
@@ -366,25 +701,129 @@ enum Page {
         return 'ok';
       }
       function hover(spec) { var el = find(spec); if (!el) return 'no element for ' + spec; var r = el.getBoundingClientRect(); var init = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; fire(el, 'pointerover', init); fire(el, 'mouseover', init); fire(el, 'mouseenter', init); fire(el, 'mousemove', init); return 'ok'; }
-      function focus(spec) { var el = find(spec); if (el && el.focus) el.focus(); return el ? 'ok' : 'no element'; }
+      function focus(spec) { var el = find(spec); if (!el) return 'no element for ' + spec; if (locked(el)) return locked(el); if (el.focus) el.focus(); return 'ok'; }
       function submit(spec) { var el = find(spec); if (!el) return 'no element'; var f = el.tagName === 'FORM' ? el : el.form || el.closest('form'); if (!f) { fire(el, 'keydown', { key: 'Enter', code: 'Enter', keyCode: 13 }); fire(el, 'keyup', { key: 'Enter', code: 'Enter', keyCode: 13 }); return 'enter'; } if (f.requestSubmit) f.requestSubmit(); else f.submit(); return 'ok'; }
-      function key(k) { var el = document.activeElement || document.body; var init = { key: k, code: k.length === 1 ? 'Key' + k.toUpperCase() : k, keyCode: k === 'Enter' ? 13 : k === 'Escape' ? 27 : k === 'Tab' ? 9 : k.length === 1 ? k.charCodeAt(0) : 0 }; fire(el, 'keydown', init); if (k.length === 1 && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) { setValue('css:' + cssPath(el), el.value + k); } fire(el, 'keyup', init); if (k === 'Enter') submit('css:' + cssPath(el)); return 'ok'; }
+      // Without a window to press keys in: a keydown of the same shape, the
+      // modifiers on it, and when the page leaves a ⌘/⌃ shortcut alone, the
+      // editing command it stands for — as the Edit and Format menus would.
+      function key(k, mods) {
+        mods = mods || {};
+        var el = document.activeElement || document.body;
+        while (el.shadowRoot && el.shadowRoot.activeElement) el = el.shadowRoot.activeElement; // the box inside a widget, not its host
+        var init = { key: k, code: k.length === 1 ? 'Key' + k.toUpperCase() : k, keyCode: k === 'Enter' ? 13 : k === 'Escape' ? 27 : k === 'Tab' ? 9 : k.length === 1 ? k.toUpperCase().charCodeAt(0) : 0,
+                     metaKey: !!mods.meta, ctrlKey: !!mods.ctrl, altKey: !!mods.alt, shiftKey: !!mods.shift };
+        var down = new KeyboardEvent('keydown', Object.assign({ bubbles: true, cancelable: true, composed: true }, init));
+        var used = !el.dispatchEvent(down);
+        var shortcut = mods.meta || mods.ctrl;
+        if (!used && shortcut) {
+          var c = { a: 'selectAll', b: 'bold', i: 'italic', u: 'underline', c: 'copy', x: 'cut', z: mods.shift ? 'redo' : 'undo' }[k.toLowerCase()];
+          if (c) document.execCommand(c);
+        } else if (!used && k.length === 1 && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+          setValue(el, el.value + k);
+        }
+        fire(el, 'keyup', init);
+        if (!used && !shortcut && k === 'Enter') submit(el);
+        return 'ok';
+      }
+      // An HTML5 drag (a draggable="true" source) the way WebKit runs one,
+      // in the page: one DataTransfer from dragstart to drop. A real press on
+      // such a source would start a system drag session, which a page off
+      // screen can't have. Says whether the target took the drop.
       function drag(a, b) {
         var from = find(a), to = find(b);
-        if (!from || !to) return 'no element';
+        if (!from) return { error: 'no element for ' + a };
+        if (!to) return { error: 'no element for ' + b };
+        var src = from.closest('[draggable="true"]') || from;
         var dt = new DataTransfer();
-        var fr = from.getBoundingClientRect(), tr = to.getBoundingClientRect();
-        from.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt, clientX: fr.left + fr.width / 2, clientY: fr.top + fr.height / 2 }));
-        to.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt, clientX: tr.left + tr.width / 2, clientY: tr.top + tr.height / 2 }));
-        to.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt, clientX: tr.left + tr.width / 2, clientY: tr.top + tr.height / 2 }));
-        to.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt, clientX: tr.left + tr.width / 2, clientY: tr.top + tr.height / 2 }));
-        from.dispatchEvent(new DragEvent('dragend', { bubbles: true, cancelable: true, dataTransfer: dt }));
-        return 'ok';
+        function send(el, type) {
+          var r = el.getBoundingClientRect();
+          var ev = new DragEvent(type, { bubbles: true, cancelable: type !== 'dragleave' && type !== 'dragend' && type !== 'drag', composed: true, dataTransfer: dt,
+                                         clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 });
+          el.dispatchEvent(ev);
+          return ev;
+        }
+        if (send(src, 'dragstart').defaultPrevented) return { refused: 'the page cancelled the dragstart' };
+        send(src, 'drag');
+        var tr = to.getBoundingClientRect();
+        var hit = document.elementFromPoint(tr.left + tr.width / 2, tr.top + tr.height / 2);
+        var over = hit && to.contains(hit) ? hit : to;
+        send(over, 'dragenter');
+        // Per the spec the drop only fires on a target whose dragover was cancelled.
+        var accepted = send(over, 'dragover').defaultPrevented;
+        if (accepted) { send(over, 'drop'); } else { send(over, 'dragleave'); }
+        send(src, 'dragend');
+        return { accepted: accepted };
+      }
+      // Files dropped as from Finder (browser_file_upload ref): real File
+      // objects in one DataTransfer, dragenter → dragover → drop.
+      function drop(spec, files) {
+        var el = find(spec);
+        if (!el) return { error: 'no element for ' + spec };
+        if (el.scrollIntoView) el.scrollIntoView({ block: 'center', inline: 'center' });
+        var dt = new DataTransfer();
+        files.forEach(function (f) {
+          var bin = atob(f.data), bytes = new Uint8Array(bin.length);
+          for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          dt.items.add(new File([bytes], f.name, { type: f.type }));
+        });
+        var r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+        var hit = document.elementFromPoint(x, y), over = hit && el.contains(hit) ? hit : el;
+        function send(type) {
+          var ev = new DragEvent(type, { bubbles: true, cancelable: type !== 'dragleave', composed: true, dataTransfer: dt, clientX: x, clientY: y });
+          over.dispatchEvent(ev);
+          return ev;
+        }
+        send('dragenter');
+        var accepted = send('dragover').defaultPrevented;
+        send(accepted ? 'drop' : 'dragleave');
+        return { accepted: accepted };
+      }
+      function draggable(spec) { var el = find(spec); return !!(el && el.closest('[draggable="true"]')); }
+      // What a pointer at the centre of spec would be over, and whether the
+      // page now says it is hovered.
+      function hovered(spec) {
+        var el = find(spec);
+        if (!el) return { error: 'no element for ' + spec };
+        var r = el.getBoundingClientRect();
+        var top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        var tops = top ? top.tagName.toLowerCase() + (top.id ? '#' + top.id : '') + (top.className && typeof top.className === 'string' ? '.' + top.className.trim().split(/\s+/).join('.') : '') : 'nothing';
+        return { hover: el.matches(':hover'), covered: !!top && top !== el && !el.contains(top), top: tops };
+      }
+      // Changes to the page while an action runs, Copper's own trail left out.
+      var watching = null, changed = 0;
+      function watch() {
+        if (watching) watching.disconnect();
+        changed = 0;
+        watching = new MutationObserver(function (list) { count(list); });
+        watching.observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
+        return true;
+      }
+      function count(list) {
+        for (var i = 0; i < list.length; i++) {
+          var n = list[i].target; var el = n.nodeType === 1 ? n : n.parentElement;
+          if (el && el.closest && el.closest('#__jev-trail')) continue;
+          if (list[i].addedNodes && list[i].addedNodes.length === 1 && list[i].addedNodes[0].id === '__jev-trail') continue;
+          changed++;
+        }
+      }
+      function changes() {
+        if (!watching) return -1;
+        count(watching.takeRecords()); watching.disconnect(); watching = null;
+        return changed;
+      }
+      // The nearest box around el that scrolls the way asked; null for the page.
+      function scroller(el, dx, dy) {
+        for (var n = el; n && n !== document.body && n !== document.documentElement; n = n.parentElement || (n.getRootNode().host || null)) {
+          var s = getComputedStyle(n);
+          if (dy && /auto|scroll|overlay/.test(s.overflowY) && n.scrollHeight > n.clientHeight) return n;
+          if (dx && /auto|scroll|overlay/.test(s.overflowX) && n.scrollWidth > n.clientWidth) return n;
+        }
+        return null;
       }
       function scroll(spec, dx, dy) {
         var el = spec ? find(spec) : null;
-        if (el) { el.scrollBy(dx, dy); return 'ok'; }
-        window.scrollBy(dx, dy);
+        if (spec && !el) return 'no element for ' + spec;
+        (el && scroller(el, dx, dy) || window).scrollBy({ left: dx, top: dy, behavior: 'instant' });
         return 'ok';
       }
       function text(spec) {
@@ -407,7 +846,8 @@ enum Page {
         }
         return out.length ? out.join('\n') : 'no visible text matches ' + JSON.stringify(needle);
       }
-      window.__copper = { snapshot: snapshot, find: find, rect: rect, setValue: setValue, select: select, fill: fill, click: click, hover: hover, focus: focus, submit: submit, key: key, drag: drag, scroll: scroll, text: text, findText: findText, console: function () { return logs; } };
+      window.__copper = { doc: function () { return (window.__officeForms || window.__officeFormsStub || { doc: '' }).doc; }, where: where, frameBox: frameBox, mark: mark,
+        snapshot: snapshot, find: find, rect: rect, setValue: setValue, select: select, fill: fill, click: click, hover: hover, focus: focus, submit: submit, key: key, drag: drag, drop: drop, draggable: draggable, hovered: hovered, watch: watch, changes: changes, scroll: scroll, text: text, findText: findText };
       return true;
     })();
     """#

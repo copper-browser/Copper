@@ -8,21 +8,6 @@ import SwiftUI
 // redraw when one changes. Defaults are chosen so that a browser nobody has
 // configured behaves the way it always did.
 
-/// What a tab wears beside its title, and what a pinned one is reduced to: a
-/// letter, or the site's own icon.
-enum Glyph: String, CaseIterable, Identifiable {
-    case letters, icons
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .letters: return "Letters"
-        case .icons: return "Site icons"
-        }
-    }
-}
-
 /// What holding Control while pressing Tab should choose.
 enum TabSwitching: String, CaseIterable, Identifiable {
     case row, recent
@@ -60,9 +45,6 @@ final class Preferences: ObservableObject {
     /// How wide the column is. Pulled by its edge, and remembered.
     @Published var sideWidth: CGFloat {
         didSet { store.set(Double(sideWidth), forKey: "sidebar.width") }
-    }
-    @Published var glyph: Glyph {
-        didSet { store.set(glyph.rawValue, forKey: "glyph") }
     }
     /// Whether Control-Tab follows the row or the tabs used most recently.
     @Published var tabSwitching: TabSwitching {
@@ -157,9 +139,18 @@ final class Preferences: ObservableObject {
         NSApp.appearance = chosen.appearance
         sidebar = store.object(forKey: "sidebar") as? Bool
             ?? (store.string(forKey: "manner") == "side")
+        // Fork (first-run): a fresh profile starts in the sidebar, Arc's way;
+        // written down so it stays once the welcome has been walked through.
+        if Preferences.freshProfile(store) {
+            sidebar = true
+            store.set(true, forKey: "sidebar")
+            store.set(true, forKey: "start.offer") // Fork (first-run): the start card, Fork/StartCard.swift
+        }
         let width = store.object(forKey: "sidebar.width") as? Double ?? Double(Metrics.side)
         sideWidth = min(Metrics.sideMax, max(Metrics.sideMin, CGFloat(width)))
-        glyph = store.string(forKey: "glyph").flatMap(Glyph.init) ?? .icons
+        // Fork (polish r5): tabs always wear the site's icon; the old
+        // "glyph" choice (letters or icons) is gone, and a stored "letters"
+        // is simply not read. The key itself still marks an older install (below).
         tabSwitching = store.string(forKey: "tabs.switching").flatMap(TabSwitching.init) ?? .row
         swipeDirection = store.string(forKey: "spaces.swipe").flatMap(SwipeDirection.init) ?? .system
         sleepsTabs = store.object(forKey: "tabs.sleep") as? Bool ?? true

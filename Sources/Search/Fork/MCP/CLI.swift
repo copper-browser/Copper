@@ -102,6 +102,10 @@ enum CLI {
         if command == "crashes" {
             return Crashes.cli(Array(args.dropFirst()), json: json)
         }
+        // Fork (covers): a setting, written where Copper reads it; works with Copper down.
+        if command == "pins" {
+            return runPins(Array(args.dropFirst()))
+        }
 
         guard var spec = makeRequest(command, Array(args.dropFirst())) else { return 2 }
         if let tabRef, var request = spec.request, var params = request["params"] as? [String: Any],
@@ -253,7 +257,7 @@ enum CLI {
                     arguments["model"] = value
                 case "--json-run": arguments["json"] = true
                 case "--strategy":
-                    guard let value = next(&args, &i), Tools.Ultrafast.Strategy.parse(value) != nil else { return bad("run --strategy takes classic, fast, literal, burst, lean, paste, watch, turbo, llm or llm=<model>, comma-separated") }
+                    guard let value = next(&args, &i), Tools.Ultrafast.Strategy.parse(value) != nil else { return bad("run --strategy takes classic, fast, literal, burst, lean, paste, watch, near, reach, calm, deep, turbo, llm or llm=<model>, comma-separated") }
                     arguments["strategy"] = value
                 default:
                     if args[i].hasPrefix("-") { return bad("unknown run option: \(args[i])") }
@@ -397,6 +401,64 @@ enum CLI {
             if !pages.isEmpty { arguments["page"] = pages }
             guard !arguments.isEmpty else { return bad("say what to delete (--since, --until, --host, --page, --device), or --all for everything") }
             return call("cloud_history_delete", arguments)
+        // The everyday page verbs, each one tool with its MCP arguments
+        // (Tools.swift, StateTools.swift); paths are made absolute here,
+        // where the shell's working directory is known.
+        case "back", "forward":
+            guard args.isEmpty else { return bad("\(command) takes no arguments") }
+            return call(command == "back" ? "browser_navigate_back" : "browser_navigate_forward")
+        case "hover":
+            if args.first == "--selector" {
+                guard args.count == 2 else { return bad("hover --selector needs CSS") }
+                return call("browser_hover", ["selector": args[1]])
+            }
+            guard args.count == 1 else { return bad("hover takes one REF or --selector CSS") }
+            return call("browser_hover", ["ref": args[0]])
+        case "select":
+            guard args.count >= 2 else { return bad("select needs REF VALUE...") }
+            return call("browser_select_option", ["ref": args[0], "values": Array(args.dropFirst())])
+        case "scroll":
+            var arguments: [String: Any] = [:]
+            var i = 0
+            while i < args.count {
+                if args[i] == "--ref" {
+                    guard let value = next(&args, &i), !value.isEmpty else { return bad("scroll --ref needs REF") }
+                    arguments["ref"] = value
+                } else if let dy = Double(args[i]) {
+                    arguments["deltaY"] = dy
+                } else {
+                    return bad("scroll takes [PIXELS] [--ref REF]")
+                }
+                i += 1
+            }
+            return call("browser_scroll", arguments)
+        case "wait":
+            if args.first == "--time" {
+                guard args.count == 2, let seconds = Double(args[1]) else { return bad("wait --time needs SECONDS") }
+                return call("browser_wait_for", ["time": seconds])
+            }
+            let gone = args.first == "--gone"
+            let text = (gone ? Array(args.dropFirst()) : args).joined(separator: " ")
+            guard !text.isEmpty else { return bad("wait needs TEXT, --gone TEXT or --time SECONDS") }
+            return call("browser_wait_for", [gone ? "textGone" : "text": text])
+        case "upload":
+            if args == ["--cancel"] { return call("browser_file_upload") }
+            guard !args.isEmpty, !args.contains(where: { $0.hasPrefix("-") }) else { return bad("upload needs PATH... or --cancel") }
+            return call("browser_file_upload", ["paths": args.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath).standardizedFileURL.path }])
+        case "dialog":
+            guard let answer = args.first, ["accept", "dismiss"].contains(answer) else { return bad("dialog needs accept [TEXT] or dismiss") }
+            var arguments: [String: Any] = ["accept": answer == "accept"]
+            if args.count > 1 { arguments["promptText"] = args.dropFirst().joined(separator: " ") }
+            return call("browser_handle_dialog", arguments)
+        case "pdf":
+            guard args.count <= 1 else { return bad("pdf takes one optional PATH") }
+            var arguments: [String: Any] = [:]
+            if let path = args.first { arguments["filename"] = URL(fileURLWithPath: (path as NSString).expandingTildeInPath).standardizedFileURL.path }
+            return call("browser_pdf_save", arguments)
+        case "downloads":
+            if args.isEmpty { return call("browser_downloads") }
+            guard args.count == 2, args[0] == "--wait", let seconds = Double(args[1]) else { return bad("downloads takes [--wait SECONDS]") }
+            return call("browser_downloads", ["wait": seconds])
         // EXTENSION POINT: the ship agent will add `copper setup …` here.
         default:
             return bad("unknown command: \(command)")
@@ -762,6 +824,26 @@ enum CLI {
         let grants = result["grants"] as? [[String: Any]] ?? []
         print("bots with access: \(grants.count)")
         if let trouble = result["lastError"] as? String, !trouble.isEmpty, result["status"] as? String == "online" { print("last error: \(trouble)") }
+    }
+
+    // MARK: - pins (Fork: covers)
+
+    /// `copper pins [status]` / `copper pins sleep on|off`: Settings › Tabs ›
+    /// "Let big pins sleep", read and written in Copper's settings directly
+    /// (the running app reads it at each idle sweep). JSON out.
+    private static func runPins(_ args: [String]) -> Int {
+        switch args {
+        case [], ["status"]:
+            break
+        case ["sleep", "on"], ["sleep", "off"]:
+            Store.settings.set(args[1] == "on", forKey: "pins.sleep")
+        default:
+            error("usage: copper pins [status] | copper pins sleep on|off")
+            return 2
+        }
+        printJSON(["bigPinsSleep": PinsAwake.bigPinsSleep, "afterSeconds": Int(PinsAwake.dozeAfter),
+                   "overMB": Int(PinsAwake.dozeBytes / 1_048_576)])
+        return 0
     }
 
     // MARK: - intelligence keys
@@ -1622,6 +1704,15 @@ enum CLI {
       click REF | --selector CSS                click an element
       type REF TEXT [--submit]                  type into an element
       key KEY                                   press a key
+      hover REF | --selector CSS                hover over an element
+      select REF VALUE...                       choose options in a <select>
+      scroll [PIXELS] [--ref REF]               scroll the page (or within REF); --ref alone brings it into view
+      wait TEXT | --gone TEXT | --time SECONDS  wait for text to appear or go, or for a time
+      back | forward                            go back or forward in your tab
+      upload PATH... | --cancel                 answer the file chooser your click opened (or arm the next one)
+      dialog accept [TEXT] | dismiss            answer the page's alert, confirm or prompt
+      pdf [PATH]                                save the page as a PDF (default: the downloads folder)
+      downloads [--wait SECONDS]                downloads your tab started, and where the files are
       tools                                     list available tools
       health                                    check the agent server and Jev mode
       session list                              list session files and tab counts
@@ -1637,6 +1728,8 @@ enum CLI {
       bitwarden [status|login -|cancel|lock|logout|sync|policy|save -|note -]
                                                 the Bitwarden vault; JSON only, login/save/note read stdin
                                                 (copper bitwarden --help)
+      pins [status] | pins sleep on|off      whether big pins may sleep (Settings › Tabs › Let big pins
+                                                sleep; on by default, off: pins never sleep)
       crashes [list|show [N] [--symbolicate]|path]
                                                 Copper's crash history on this Mac; works with Copper down
                                                 (copper crashes help)

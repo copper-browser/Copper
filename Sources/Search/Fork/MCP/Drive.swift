@@ -111,7 +111,7 @@ final class Drive: ObservableObject {
         var thoughtAt: Date?
     }
 
-    enum Status: String { case running, done, blocked, budget, error, stopped, ended }
+    enum Status: String { case running, done, blocked, budget, error, stopped, ended, unsure }
 
     struct Cycle: Identifiable {
         let id: UUID
@@ -130,7 +130,7 @@ final class Drive: ObservableObject {
         let started: Date
         var ended: Date?
         var ms: Int? { ended.map { Int($0.timeIntervalSince(started) * 1000) } }
-        enum Kind: String { case observe, ask, write, act, settle }
+        enum Kind: String { case observe, ask, write, act, settle, wait }
     }
 
     struct Outcome {
@@ -501,6 +501,10 @@ final class Drive: ObservableObject {
             return ("Filling \(n) field\(n == 1 ? "" : "s")", detail)
         case "browser_press_key": return ("Pressing \((args["key"] as? String) ?? "a key")", detail)
         case "browser_hover": return (sentence("Hovering"), detail)
+        case "browser_mouse_click_xy": return (named.isEmpty ? "Clicking a point on the page" : "Clicking \(named)", detail)
+        case "browser_handoff": return ("Waiting for you to finish a step", (args["message"] as? String) ?? detail)
+        case "browser_permissions": return ("Changing what a site may use", detail)
+        case "browser_handle_dialog": return ((args["accept"] as? Bool) == true ? "Readying to accept the page's next dialog" : "Readying to dismiss the page's next dialog", detail)
         case "browser_select_option":
             let values = ((args["values"] as? [String]) ?? []).joined(separator: ", ")
             return (named.isEmpty ? "Choosing \(values)" : "Choosing \(values) in \(named)", detail)
@@ -513,7 +517,7 @@ final class Drive: ObservableObject {
         case "browser_wait_for":
             if let text = args["text"] as? String, !text.isEmpty { return ("Waiting for “\(text.prefix(40))”", detail) }
             if let gone = args["textGone"] as? String, !gone.isEmpty { return ("Waiting for “\(gone.prefix(40))” to go", detail) }
-            if let t = (args["time"] as? NSNumber)?.doubleValue { return ("Waiting \(t.rounded() == t ? String(Int(t)) : String(format: "%.1f", t)) s", detail) }
+            if let t = (args["time"] as? NSNumber)?.doubleValue, t.isFinite, abs(t) < 1e6 { return ("Waiting \(t.rounded() == t ? String(Int(t)) : String(format: "%.1f", t)) s", detail) }
             return ("Waiting", detail)
         case "browser_scroll":
             if let dy = (args["deltaY"] as? NSNumber)?.doubleValue { return (dy < 0 ? "Scrolling up" : "Scrolling down", detail) }
@@ -564,6 +568,8 @@ final class Drive: ObservableObject {
         case "browser_type", "browser_fill_form": return "TYPE"
         case "browser_press_key": return "KEY"
         case "browser_hover": return "HOVER"
+        case "browser_mouse_click_xy": return "CLICK"
+        case "browser_handle_dialog": return "DIALOG"
         case "browser_select_option": return "SELECT"
         case "browser_drag": return "DRAG"
         case "browser_navigate", "browser_navigate_back", "browser_navigate_forward": return "GO"
@@ -593,7 +599,7 @@ final class Drive: ObservableObject {
     static func mayChange(_ tool: String) -> Bool {
         switch tool {
         case "browser_snapshot", "browser_get_text", "browser_console_messages", "browser_find", "browser_take_screenshot",
-             "browser_hover", "browser_perf_probe", "jev_observe", "jev_extract", "browser_resize", "browser_groups", "browser_wait_for",
+             "browser_hover", "browser_handle_dialog", "browser_perf_probe", "jev_observe", "jev_extract", "browser_resize", "browser_groups", "browser_wait_for",
              "browser_crashes", "cloud_history_delete", "browser_vault_save", "browser_vault_note":
             return false
         // The canvas tools change a board, not the page: their result is

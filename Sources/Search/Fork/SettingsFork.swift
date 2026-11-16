@@ -50,22 +50,22 @@ struct IntelligencePage: View {
                     }
                 }
                 .settingsAnchor("intelligence.check")
-                SettingsAdvanced("intelligence.more", holds: ["intelligence.names"]) { // Fork (settings-merge)
+                SettingsAdvanced("intelligence.more", holds: ["intelligence.names"], folds: true) { // Fork (settings-merge)
                 Rule()
                 Line("Model names", brain.lane == .claude
                      ? "What Haiku, Sonnet and Opus are called for your Claude account. Leave one empty for Copper's own."
-                     : "What Haiku, Sonnet and Opus are called on your gateway. Leave one empty for the plain name.") {
+                     : "What Haiku, Sonnet and Opus are called on your gateway. Leave one empty for the plain name. The gateway must speak /\u{2060}v1/\u{2060}chat/\u{2060}completions.") {
                     modelNames
                 }
                 .settingsAnchor("intelligence.names")
                 }
             }
 
-            SettingsSection("Jev", note: footnote) {
+            SettingsSection("Jev, Copper's fast clicker", note: footnote) { // Fork (ui-flows r3): Jev explained once, in plain words
                 Line("Jev key", brain.cloudLine("jevKey", brain.cloud?.jev?.key) ?? jevDetail) {
                     SettingsFlow(spacing: 8) { // Fork (settings-merge): the pill goes above the field in a narrow column
                         if !brain.jevReady { JevKeyPagePill() }
-                        KeyField(text: $brain.keys.jevKey, placeholder: brain.cloudPlaceholder("jevKey", brain.cloud?.jev?.key, otherwise: "ts-…"),
+                        KeyField(text: $brain.keys.jevKey, placeholder: brain.cloudPlaceholder("jevKey", brain.cloud?.jev?.key, otherwise: "Paste a key: ts-…"),
                                  ready: brain.jevReady, refused: check.refused("jev"), label: "Jev key")
                     }
                 }
@@ -75,8 +75,8 @@ struct IntelligencePage: View {
     }
 
     private var jevDetail: String {
-        let speed = "Quick decisions for agents, in about a fifth of a second."
-        return brain.jevReady ? speed : speed + " Needs a key from your TypeSafe account."
+        let speed = "It clicks and types on pages for agents, a few times a second."
+        return brain.jevReady ? speed : speed + " Get a key to turn it on."
     }
 
     private var footnote: String {
@@ -103,17 +103,18 @@ struct IntelligencePage: View {
             }
             .settingsAnchor("intelligence.account")
         } else {
-            Line("API key", brain.cloudLine("routerKey", brain.cloud?.router?.key) ?? "From your gateway — anything that speaks /\u{2060}v1/\u{2060}chat/\u{2060}completions.") {
+            Line("API key", brain.cloudLine("routerKey", brain.cloud?.router?.key) ?? "The key your model gateway gave you.") {
                 KeyField(text: brain.cloudLane ? .constant("") : $brain.keys.routerKey,
-                         placeholder: brain.cloudPlaceholder("routerKey", brain.cloud?.router?.key, otherwise: "sk-…"),
+                         placeholder: brain.cloudPlaceholder("routerKey", brain.cloud?.router?.key, otherwise: "Paste a key: sk-…"),
                          ready: brain.routerReady, refused: check.refused("router"), label: "Gateway API key")
                     .disabled(brain.cloudLane)
             }
             .settingsAnchor("intelligence.key")
             Rule()
             Line("Gateway address", gatewayDetail) {
-                TextField(brain.sources["routerURL"] == "cloud" || brain.cloudLane ? brain.effective.routerURL : "https://…",
-                          text: brain.cloudLane ? .constant("") : routerURLBinding)
+                TextField("", text: brain.cloudLane ? .constant("") : routerURLBinding)
+                    .fieldExample(brain.sources["routerURL"] == "cloud" || brain.cloudLane ? brain.effective.routerURL : "e.g. https://gateway.example.com/v1",
+                                  when: brain.cloudLane || routerURLBinding.wrappedValue.isEmpty)
                     .disabled(brain.cloudLane)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12, design: .monospaced))
@@ -130,6 +131,7 @@ struct IntelligencePage: View {
     /// it should look like, before a check has to fail to say so.
     private var gatewayDetail: String {
         if brain.sources["routerURL"] == "cloud" { return "Provided by Copper Cloud (\(brain.cloud?.host ?? "your cloud"))" }
+        if brain.effective.routerURL.trimmingCharacters(in: .whitespaces).isEmpty { return "Its web address, from whoever gave you the key" }
         if !Self.isWebAddress(brain.effective.routerURL) { return "That isn't a web address — it should start with https://" }
         return "Where the gateway lives"
     }
@@ -193,7 +195,7 @@ struct IntelligencePage: View {
             case .waiting:
                 HStack(spacing: 6) {
                     Ring(size: 12)
-                    TextField("Paste the code", text: $pasted)
+                    TextField("", text: $pasted).fieldExample("Paste the code", when: pasted.isEmpty)
                         .textFieldStyle(.plain)
                         .font(.system(size: 11.5, design: .monospaced))
                         .frame(width: 150)
@@ -293,11 +295,12 @@ struct KeyField: View {
                 .accessibilityHidden(true)
             Group {
                 if shown {
-                    TextField(placeholder, text: $text)
+                    TextField("", text: $text)
                 } else {
-                    SecureField(placeholder, text: $text)
+                    SecureField("", text: $text)
                 }
             }
+            .fieldExample(placeholder, when: text.isEmpty) // Fork (ui-system, uitype)
             .textFieldStyle(.plain)
             .font(.system(size: 12, design: .monospaced))
             .frame(width: 200)
@@ -331,7 +334,7 @@ struct KeyField: View {
         // plain fields draw none, and Tab has to land somewhere visible.
         .overlay {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder(Palette.ink.opacity(0.35), lineWidth: 1.5)
+                .strokeBorder(Palette.accent, lineWidth: 1.5) // Fork (ui-system)
                 .opacity(focused ? 1 : 0)
                 .animation(Motion.quick, value: focused)
                 .allowsHitTesting(false)
@@ -343,16 +346,16 @@ struct KeyField: View {
 // MARK: - Updates
 
 struct UpdatesPage: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var updates = Updates.shared
 
     private var isDevBuild: Bool {
         Fork.version == "dev" || Fork.version.split(separator: ".").count == 2
     }
 
-    private var currentLine: String {
-        "You have \(Updater.version) (build \(Updater.build))" + (isDevBuild ? " · dev build" : "")
-    }
+    /// Fork (ui-flows): the version is About's header; this row says only
+    /// what that header can't.
+    private var currentLine: String? { isDevBuild ? "This is a dev build" : nil }
 
     /// What the feed said, in the words of the one next step. Before the
     /// first answer it says so, not "Couldn't check".
@@ -367,6 +370,23 @@ struct UpdatesPage: View {
         if let error = updates.error { return error }
         guard updates.latest != nil else { return "Not checked yet — Copper looks every six hours on its own" }
         return "Up to date"
+    }
+
+    /// "Released Nov 14, 2026", with a failed re-check said beside it.
+    private var releasedLine: String {
+        let date = updates.latest.map { "Released " + Self.publishedDate($0.publishedAt) } ?? ""
+        return updates.error == nil ? date : date + " · couldn’t check again just now"
+    }
+
+    /// Fork (ui-flows r3): Check now, as a word. The same width while it
+    /// reads the feed, so the row doesn't jump.
+    private var checkWord: some View {
+        Button(updates.checking ? "Checking…" : "Check now") { updates.check(force: true) }
+            .buttonStyle(.plain)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(updates.checking ? Palette.muted : Palette.ink)
+            .disabled(updates.checking)
+            .fixedSize()
     }
 
     private var installLine: String {
@@ -386,44 +406,46 @@ struct UpdatesPage: View {
         let _ = SettingsPerf.tick("updatesPage") // Fork (settings-perf)
         VStack(alignment: .leading, spacing: 10) {
             SettingsSection("Updates") {
-                Line(currentLine, latestLine) {
-                    // One pill in both states: the row neither jumps nor
-                    // loses its button while the feed is read.
-                    Pill(updates.checking ? "Checking…" : "Check now") { updates.check(force: true) }
-                        .disabled(updates.checking)
-                }
-                .settingsAnchor("updates.check")
+                // Fork (ui-flows r3): one row — the version once (About's
+                // header is this Copper's), what to do next, and Check now as
+                // a quiet word beside it rather than a third pill.
                 if updates.available, let version = updates.latest?.version {
-                    Rule()
-                    // The three states of a newer release: on its way, ready
-                    // (the only one with an Update button), or not obtained —
-                    // with the reason, and a way to try again.
                     Group {
                     if updates.downloading {
-                        Line("Getting Copper \(version) ready", "Downloading from \(updates.feedHost) and verifying the bundle") {
+                        Line("Getting \(version) ready", "Downloading from \(updates.feedHost) and verifying it") {
                             Ring(size: 12)
                         }
                     } else if updates.ready {
-                        Line("Copper \(version) is ready", "Downloaded and verified. Update backs up your tabs, swaps in the new Copper and relaunches — a few seconds.") {
-                            Pill(updates.state == .upgrading ? "Updating…" : "Update", filled: true) {
-                                updates.upgrade()
+                        Line("Update ready: \(version)", "Update backs up your tabs, swaps in the new Copper and relaunches — a few seconds") {
+                            HStack(spacing: 12) {
+                                checkWord
+                                Pill(updates.state == .upgrading ? "Updating…" : "Update", filled: true) {
+                                    updates.upgrade()
+                                }
+                                .disabled(updates.state == .upgrading)
                             }
-                            .disabled(updates.state == .upgrading)
                         }
                     } else {
-                        Line("Copper \(version) isn’t downloaded yet", updates.stageError ?? "It downloads on its own after a check; Download gets it now.") {
-                            Pill(updates.stageError == nil ? "Download" : "Retry") { updates.stage(force: true) }
+                        Line("Update ready: \(version)", updates.stageError ?? releasedLine) {
+                            HStack(spacing: 12) {
+                                checkWord
+                                Pill(updates.stageError == nil ? "Download" : "Retry") { updates.stage(force: true) }
+                            }
                         }
                     }
                     }
-                    .settingsAnchor("updates.install")
+                    .settingsAnchor("updates.check") // install falls back here (SettingsIndex)
                     // What the release says it brings, before anyone presses
                     // Update — the same paragraph as the pill's What's New.
                     if let notes = updates.latest?.notes {
                         Rule()
-                        Line("What’s new in \(version)", notes) { EmptyView() }
+                        // Fork (settings-plain): three lines, not a paragraph; the rest is one click on.
+                        WhatsNew(version: version, notes: notes)
                             .settingsAnchor("updates.notes")
                     }
+                } else {
+                    Line(latestLine, currentLine) { checkWord }
+                        .settingsAnchor("updates.check")
                 }
                 if let outcome = outcomeLine, updates.outcome?.ok == false {
                     Rule()
@@ -450,6 +472,29 @@ struct UpdatesPage: View {
             }
             .settingsAnchor("updates.source")
         }
+    }
+
+    /// Fork (settings-plain): the notes' first three sentences, for bullets —
+    /// each cut at its first colon, semicolon or dash (ui-flows), so a bullet
+    /// is one line that ends where its thought does, not mid-word.
+    static func bullets(_ notes: String, count: Int = 3) -> [String] {
+        var out: [String] = []
+        var current = ""
+        for char in notes.replacingOccurrences(of: "\n", with: " ") {
+            current.append(char)
+            if ".!?".contains(char) {
+                var line = current.trimmingCharacters(in: .whitespaces)
+                if let cut = [": ", "; ", " — "].compactMap({ line.range(of: $0)?.lowerBound }).min() {
+                    line = String(line[..<cut]) + "."
+                }
+                if !line.isEmpty { out.append(line) }
+                current = ""
+                if out.count == count { return out }
+            }
+        }
+        let rest = current.trimmingCharacters(in: .whitespaces)
+        if !rest.isEmpty, out.count < count { out.append(rest) }
+        return out
     }
 
     static func publishedDate(_ raw: String) -> String {
@@ -486,8 +531,8 @@ private struct AgentsServerSection: View {
     @ObservedObject var mcp = MCP.shared
 
     var body: some View {
-        SettingsSection("MCP server", note: note) {
-            Line("Let agents drive this window", "An MCP server on this Mac only (127.0.0.1). Agents in your terminal or editor see your tabs and act in them, signed in as you.") {
+        SettingsSection("Outside agents", note: note) { // Fork (ui-flows): plain words; "MCP" only under Advanced
+            Line("Let agents drive this window", "Agents in your terminal or editor can see your tabs and act in them, signed in as you. Only apps on this Mac can reach it.") {
                 Switch(on: $mcp.config.enabled)
             }
             .settingsAnchor("agents.server")
@@ -523,7 +568,7 @@ private struct AgentsServerSection: View {
         if let trouble = mcp.trouble {
             return MCP.portOverride == nil ? trouble + " — choose another port below." : trouble
         }
-        if mcp.running { return "Listening at \(mcp.endpoint)" }
+        if mcp.running { return "On — apps on this Mac can connect" }
         return mcp.config.enabled ? "Starting…" : "Off — no agent can reach this browser."
     }
 
@@ -535,8 +580,9 @@ private struct AgentsServerSection: View {
             // 0 would mean "any port", which no client could be told.
             if let valid = UInt16(exactly: value), valid > 0 { mcp.config.port = valid }
         })
-        return Line("Port", pinned.map { "This run listens on \($0), set by SEARCH_MCP_PORT." }
-                    ?? "Change it if another app already uses \(mcp.config.port).") {
+        let at = mcp.running ? "The MCP server listens at \(mcp.endpoint). " : ""
+        return Line("Port", at + (pinned.map { "This run listens on \($0), set by SEARCH_MCP_PORT." }
+                    ?? "Change it if another app already uses \(mcp.config.port).")) {
             TextField("4123", value: port, format: .number.grouping(.never))
                 .textFieldStyle(.plain)
                 .font(.system(size: 12, design: .monospaced))
@@ -563,16 +609,17 @@ private struct AgentsJevSection: View {
     }
 
     var body: some View {
-        SettingsSection("Jev mode") {
-            Line("Let the agent hand Copper a goal", "Adds jev_run, jev_step, jev_observe and jev_extract: Jev clicks and types in this window about every 200 ms until the goal is done.") {
+        SettingsSection("Jev") { // Fork (ui-flows r3): explained once, in Intelligence
+            Line("Let the agent hand Copper a goal", "An agent can hand over a whole task; Jev clicks and types in this window, a few times a second, until it's done.") {
                 Switch(on: $mcp.config.jev)
             }
             .settingsAnchor("agents.jev")
             // Fork (settings-merge): the key has one home, Intelligence › Jev; this only points there.
             if mcp.config.jev, !brain.jevReady {
                 Rule()
-                Line("Jev key", "Jev mode needs a key from your TypeSafe account. It goes in Intelligence › Jev.") {
-                    Pill("Add key", filled: true) { browser.openSettings(.intelligence, at: "intelligence.jev") }
+                Line("Jev key", "Jev needs its own key. Add it in Intelligence.") {
+                    // Fork (uichrome): bordered — a pointer to another page, not this page's action
+                    Pill("Add key") { browser.openSettings(.intelligence, at: "intelligence.jev") }
                 }
                 .settingsAnchor("agents.jevkey")
             }
@@ -583,7 +630,9 @@ private struct AgentsJevSection: View {
             if mcp.config.jev {
               SettingsAdvanced("agents.jev.more", holds: ["agents.textmodel", "agents.jevfast", "agents.jevvision"]) { // Fork (settings-merge)
                 Rule()
-                Line("Text model", brain.modelReady ? "Writes what Jev types and answers jev_extract. Small and fast is the point; empty uses \(brain.modelName)." : "Typing text and jev_extract need a model — set one up in Intelligence.") {
+                Line("Tools it adds", "jev_run, jev_step, jev_observe and jev_extract, about every 200 ms per step") { EmptyView() }
+                Rule()
+                Line("Text model", brain.modelReady ? "Writes what Jev types and answers jev_extract. Small and fast is the point; empty types with a fast small model (\(Tools.Ultrafast.fastTextModel), else haiku) and reads with \(brain.modelName)." : "Typing text and jev_extract need a model — set one up in Intelligence.") {
                     HStack(spacing: 8) {
                         Circle().fill(brain.modelReady ? Color.green.opacity(0.8) : Color.orange.opacity(0.8)).frame(width: 8, height: 8)
                             .help(brain.modelReady ? "A model is set up" : "No model is set up")
@@ -604,7 +653,7 @@ private struct AgentsJevSection: View {
                 }
                 .settingsAnchor("agents.jevfast")
                 Rule()
-                Line("What Jev sees", "Auto sends the element table, and a numbered picture of the page only when the table can't tell controls apart. Pictures are a TypeSafe preview.") {
+                Line("What Jev sees", "Auto sends the element table, and a numbered picture of the page only when the table can't tell controls apart. Pictures are still a preview.") {
                     Segmented(options: Tools.Ultrafast.Vision.offered.map { ($0, $0.title) }, selection: jevVision)
                 }
                 .settingsAnchor("agents.jevvision")
@@ -619,12 +668,12 @@ private struct AgentsLinksSection: View {
     @ObservedObject var links = AgentLinks.shared
 
     var body: some View {
-        SettingsSection("Agents apps", carded: false) {
+        SettingsSection("Agent apps", carded: false) {
             ForEach(links.all) { link in
                 LinkCard(link: link)
             }
             Card {
-                Line("Add an agents app", "Paste its address and a personal token") {
+                Line("Add an agent app", "Paste its address and a personal token") {
                     Pill("Add…", filled: links.all.isEmpty) { links.addEmpty() }
                 }
                 .settingsAnchor("agents.add")
@@ -648,7 +697,7 @@ private struct AgentsPaneSection: View {
             }
             .settingsAnchor("agents.context")
             Rule()
-            Line("Your other MCP servers", serversLine) {
+            Line("Your other tool servers", serversLine) {
                 HStack(spacing: 8) {
                     Pill("Open mcp.json") {
                         if !FileManager.default.fileExists(atPath: Servers.file.path) {
@@ -732,7 +781,7 @@ private struct AgentsTerminalSection: View {
             Rule()
             // Fork (settings-merge): the four copies were four rows.
             VStack(alignment: .leading, spacing: 0) {
-                Line("Copy for another agent", "A /jev command, a prompt with the address and token, the MCP config, or the line that installs the copper CLI on another Mac") { EmptyView() }
+                Line("Copy for another agent", "A /jev command, a prompt with the address and token, the config, or the line that installs the copper CLI on another Mac") { EmptyView() }
                 SettingsFlow(spacing: 8) {
                     Pill(copied == "jev" ? "Copied" : "Copy /jev") { copy(MCP.jevCommand(goal: nil), "jev") }
                     Pill(copied == "prompt" ? "Copied" : "Copy prompt") { copy(mcp.config.jev ? mcp.jevPrompt : mcp.agentPrompt, "prompt") }
@@ -951,7 +1000,8 @@ struct LinkCard: View {
             }
             Rule()
             Line("App address", "Shown at Agents › Connect in your agents app") {
-                TextField("https://…", text: $link.config.api)
+                TextField("", text: $link.config.api)
+                    .fieldExample("e.g. https://agents.example.com", when: link.config.api.isEmpty)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12, design: .monospaced))
                     .frame(width: 220)
@@ -961,7 +1011,7 @@ struct LinkCard: View {
             }
             Rule()
             Line("App name", "Optional nickname used in announcements") {
-                TextField("optional", text: $link.config.label)
+                TextField("", text: $link.config.label).fieldExample("optional", when: link.config.label.isEmpty)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
                     .frame(width: 140)
@@ -1027,7 +1077,7 @@ struct LinkCard: View {
                                 ForEach(link.recentCalls.prefix(8)) { call in
                                     Text("@\(call.handle) · \(call.tool) · \(LinkWire.duration(call.ms)) · \(LinkWire.ago(context.date.timeIntervalSince(call.at)))")
                                         .font(.system(size: 11.5))
-                                        .foregroundStyle(call.ok ? Palette.muted : Color.red.opacity(0.85))
+                                        .foregroundStyle(call.ok ? Palette.muted : Palette.danger)
                                         .lineLimit(1).truncationMode(.middle)
                                         .help(call.error ?? "")
                                 }
@@ -1039,7 +1089,7 @@ struct LinkCard: View {
                 }
                 Rule()
                 Line("Revoke link", "Every bot loses these tools now; Copper disconnects.") {
-                    Pill("Revoke link", tint: Color.red.opacity(0.85)) { confirmRevoke = true }
+                    Pill("Revoke link", tint: Palette.danger) { confirmRevoke = true }
                 }
                 .confirmationDialog("Revoke this link?", isPresented: $confirmRevoke) {
                     Button("Revoke link", role: .destructive) { Task { try? await link.revokeLink() } }
@@ -1050,7 +1100,7 @@ struct LinkCard: View {
             }
             Rule()
             Line("Remove this app", "Forget this app and its connection") {
-                Pill("Remove", tint: Color.red.opacity(0.7)) { confirmRemove = true }
+                Pill("Remove", tint: Palette.danger) { confirmRemove = true }
             }
             .confirmationDialog("Remove this app?", isPresented: $confirmRemove) {
                 Button("Remove", role: .destructive) { Task { await AgentLinks.shared.remove(link) } }
@@ -1112,7 +1162,7 @@ struct ServerRow: View {
             Circle().fill(colour).frame(width: 6, height: 6)
             VStack(alignment: .leading, spacing: 2) {
                 Text(server.name).font(.system(size: 12, design: .monospaced)).foregroundStyle(Palette.ink)
-                Text(server.spec.line).font(.system(size: 10.5)).foregroundStyle(Palette.muted).lineLimit(1).truncationMode(.middle)
+                Text(server.spec.line).font(.system(size: 11)).foregroundStyle(Palette.muted).lineLimit(1).truncationMode(.middle)
             }
             Spacer()
             Text(server.ready ? "\(server.tools.count) tool\(server.tools.count == 1 ? "" : "s")" : server.state)
@@ -1133,11 +1183,11 @@ struct ServerRow: View {
 
 /// The small Settings doorway to the full Flow sheet.
 struct FlowSettingsLine: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
 
     var body: some View {
-        Line("Move in from another browser", "Tabs, spaces, bookmarks, history and passwords from Chrome, Safari or Arc") {
-            Pill("Move in…", filled: true) { Flow.presentFromSettings(browser) }
+        Line("Move in from another browser", "Tabs, spaces, bookmarks, history and passwords from \(MoveFrom.names)") { // Fork (ui-flows): the one list
+            Pill("Move in…") { Flow.presentFromSettings(browser) } // Fork (ui-flows r3): bordered; filled is for one primary per page
         }
     }
 }
@@ -1145,7 +1195,7 @@ struct FlowSettingsLine: View {
 /// A small, direct doorway for the part of Flow the address field can use on
 /// its own. The read is off-main; this line only reports its quiet progress.
 struct HistorySettingsLine: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject private var flow = Flow.shared
 
     var body: some View {
@@ -1155,7 +1205,7 @@ struct HistorySettingsLine: View {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Palette.muted)
             } else {
-                Pill("Bring in", filled: true) {
+                Pill("Bring in") { // Fork (ui-system): Move in above is the page's one primary
                     flow.importHistory(preferred: "Arc", in: browser)
                 }
             }
@@ -1219,5 +1269,35 @@ private struct JevKeyPagePill: View {
             if let url = URL(string: Jev.keyPage) { NSWorkspace.shared.open(url) }
         }
         .help(Jev.keyPage)
+    }
+}
+
+/// Fork (settings-plain): what a release brings, as three short lines and a
+/// link to the whole of it — the paragraph it was read as a wall of text.
+private struct WhatsNew: View {
+    let version: String
+    let notes: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("What’s new")
+                .font(.system(size: 13)).foregroundStyle(Palette.ink)
+            ForEach(UpdatesPage.bullets(notes), id: \.self) { line in
+                HStack(alignment: .firstTextBaseline, spacing: 7) {
+                    Text("•").foregroundStyle(Palette.muted)
+                    Text(line).foregroundStyle(Palette.muted)
+                        .lineLimit(1).truncationMode(.tail)
+                }
+                .font(.system(size: 12))
+            }
+            if let url = URL(string: "https://github.com/copper-browser/Copper/releases/tag/v\(version)") {
+                Link("Read the release notes", destination: url)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Palette.ink)
+                    .padding(.top, 2)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, SettingsMetrics.lineInset(true)).padding(.vertical, 10) // Fork (ui-flows r3): on the rows' own edge
     }
 }

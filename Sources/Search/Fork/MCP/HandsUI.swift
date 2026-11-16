@@ -107,7 +107,7 @@ struct HandCard: View {
                     Text(hand.who.agent + (hand.who.via.isEmpty ? "" : "  ·  for \(hand.who.via)"))
                         .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Palette.ink).lineLimit(1)
                     Text(hand.who.thread.isEmpty ? "No thread named" : hand.who.thread)
-                        .font(.system(size: 11)).foregroundStyle(Palette.muted).lineLimit(2)
+                        .font(.system(size: 11)).foregroundStyle(Palette.muted).lineLimit(4) // Fork (uib): the whole task; the pill fades it
                 }
                 Spacer(minLength: 4)
                 if drive.canStop(hand) {
@@ -131,10 +131,10 @@ struct HandCard: View {
                 }
             }
             Text(timing(now))
-                .font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+                .font(.system(size: 11)).foregroundStyle(Palette.muted)
             if !hand.who.session.isEmpty || !hand.who.project.isEmpty {
                 Text([hand.who.project, hand.who.session.isEmpty ? "" : "session \(hand.who.session)"].filter { !$0.isEmpty }.joined(separator: " · "))
-                    .font(.system(size: 10, design: .monospaced)).foregroundStyle(Palette.muted.opacity(0.8)).lineLimit(1)
+                    .font(.system(size: 11, design: .monospaced)).foregroundStyle(Palette.muted).lineLimit(1)
             }
         }
         .padding(12)
@@ -157,19 +157,59 @@ struct HandCard: View {
 /// pill, in the same small, quiet language.
 struct HandBar: View {
     let tabs: [UUID]
+    /// Fork (ui-flows): one under another, each as wide as the column (DriveSlot).
+    var stacked = false
     @ObservedObject private var drive = Drive.shared
 
     var body: some View {
         let here = Array(Dictionary(tabs.flatMap { drive.hands(on: $0) }.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
             .values.sorted { $0.last > $1.last }.prefix(3))
-        HStack(spacing: 6) {
-            ForEach(here) { hand in HandCapsule(hand: hand) }
+        if stacked {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(here) { hand in HandCapsule(hand: hand, fits: true) }
+            }
+        } else {
+            HStack(spacing: 6) {
+                ForEach(here) { hand in HandCapsule(hand: hand) }
+            }
         }
+    }
+}
+
+/// Fork (ui-flows): the driving pill's place in the sidebar layout — the
+/// column's foot, over the space chips — never the page's top right, where a
+/// site keeps its own Sign in. The top-tab layout and a folded column keep
+/// it on the page (SplitStage.driven).
+struct DriveSlot: View {
+    let browser: Browser
+    /// Passed in so the slot redraws when the tab in front changes.
+    let activeID: Tab.ID?
+    @ObservedObject private var drive = Drive.shared
+    @ObservedObject private var split = Split.shared
+    @ObservedObject private var agent = Agent.shared
+
+    var body: some View {
+        let shown = (activeID.map { [$0] } ?? []) + (split.side.map { [$0] } ?? [])
+        let here = shown.flatMap { drive.hands(on: $0) }
+        let onShown = drive.live && drive.run.map { shown.contains($0.tabID) } == true
+        VStack(spacing: 0) {
+            if agent.open || browser.folded {
+                EmptyView() // the pane's live band has the Stop; folded, the page has the pill
+            } else if !here.isEmpty {
+                HandBar(tabs: shown, stacked: true).padding(.horizontal, SideBar.inset).padding(.top, 6).transition(.opacity)
+            } else if drive.live {
+                DrivePill(browser: browser, elsewhere: !onShown, fits: true).padding(.horizontal, SideBar.inset).padding(.top, 6).transition(.opacity)
+            }
+        }
+        .animation(Motion.quick, value: drive.live)
+        .animation(Motion.quick, value: here.map(\.id))
     }
 }
 
 struct HandCapsule: View {
     let hand: Drive.Hand
+    /// Fork (ui-flows): as wide as the column it sits in, the words cut to fit.
+    var fits = false
     @ObservedObject private var drive = Drive.shared
     @State private var breathing = false
     @State private var hovering = false
@@ -177,43 +217,68 @@ struct HandCapsule: View {
     @State private var shown = false
 
     var body: some View {
+        if fits { stacked } else { capsule }
+    }
+
+    /// Fork (uib): the column's pill, two lines — the agent and Stop, then
+    /// what it is working on, fading out where the column ends; the card on
+    /// hover has all of it and since when.
+    private var stacked: some View {
         let swatch = Drive.colour(for: hand.who)
-        HStack(spacing: 6) {
-            HandSquare(hand: hand, size: 14)
+        let task = hand.who.thread == "this window" ? "" : hand.who.thread
+        return HStack(spacing: 8) {
+            HandSquare(hand: hand, size: 16)
                 .opacity(hand.busy ? 1 : (breathing ? 0.55 : 1))
             Button { Agent.shared.reveal() } label: {
-                (Text(hand.who.agent).fontWeight(.semibold)
-                 + Text(hand.who.thread.isEmpty ? "" : "  ·  \(hand.who.thread)"))
-                    .font(.system(size: 11))
-                    .foregroundStyle(Palette.ink)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: 320, alignment: .leading)
-                    .fixedSize(horizontal: true, vertical: false)
+                SidePillWords(name: hand.who.agent, task: task.isEmpty ? hand.doing : task)
             }
             .buttonStyle(.plain)
             .help("Show what it is doing")
             if drive.canStop(hand) {
-                Button { drive.stop(hand.who.key) } label: {
-                    Image(systemName: "stop.fill")
-                        .font(.system(size: 8))
-                        .foregroundStyle(swatch.fill)
-                        .frame(width: 16, height: 16)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(hand.driver == .jev ? "Stop the run" : "Take the browser back")
+                DriveStop(help: hand.driver == .jev ? "Stop the run (⎋)" : "Take the browser back (⎋)", compact: true) { drive.stop(hand.who.key) }
             }
         }
-        .padding(.leading, 5)
-        .padding(.trailing, 5)
-        .frame(height: 24)
+        .modifier(SidePillGround(rim: swatch.fill.opacity(0.75), wash: swatch.fill.opacity(0.16)))
+        .onHover { hovering = $0; settle() }
+        .popover(isPresented: $shown, arrowEdge: .trailing) {
+            HandCards(hands: [hand]).onHover { inCard = $0; settle() }
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { breathing = true }
+        }
+    }
+
+    private var capsule: some View {
+        let swatch = Drive.colour(for: hand.who)
+        return HStack(spacing: 6) {
+            HandSquare(hand: hand, size: 14)
+                .opacity(hand.busy ? 1 : (breathing ? 0.55 : 1))
+            Button { Agent.shared.reveal() } label: {
+                // Fork (agent-ux): "<Agent> · <task>", then Stop — the pill's format.
+                (Text(hand.who.agent).fontWeight(.semibold)
+                 + Text(hand.who.thread.isEmpty || hand.who.thread == "this window" ? "" : "  ·  \(hand.who.thread)"))
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Palette.ink)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: fits ? .infinity : 320, alignment: .leading)
+                    .fixedSize(horizontal: !fits, vertical: false)
+            }
+            .buttonStyle(.plain)
+            .help("Show what it is doing")
+            if drive.canStop(hand) {
+                DriveStop(help: hand.driver == .jev ? "Stop the run (⎋)" : "Take the browser back (⎋)", compact: fits) { drive.stop(hand.who.key) }
+            }
+        }
+        .padding(.leading, 6)
+        .padding(.trailing, 3)
+        .frame(height: 30)
         .background(Palette.ground.opacity(0.94), in: Capsule())
         .background(swatch.fill.opacity(0.16), in: Capsule())
         .overlay(Capsule().strokeBorder(swatch.fill.opacity(0.75), lineWidth: 1.25))
         .shadow(color: swatch.fill.opacity(0.25), radius: 6, y: 1)
         .onHover { hovering = $0; settle() }
-        .popover(isPresented: $shown, arrowEdge: .bottom) {
+        .popover(isPresented: $shown, arrowEdge: fits ? .trailing : .bottom) {
             HandCards(hands: [hand]).onHover { inCard = $0; settle() }
         }
         .onAppear {
@@ -227,5 +292,60 @@ struct HandCapsule: View {
         } else {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { if !hovering && !inCard { shown = false } }
         }
+    }
+}
+
+/// Fork (uib): the column's two-line pill words — the agent's name, then its
+/// task in muted ink, faded (not cut with "…") where the column ends.
+struct SidePillWords: View {
+    let name: String
+    let task: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(name)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Palette.ink)
+                .lineLimit(1)
+            if !task.isEmpty {
+                Text(task)
+                    .font(.system(size: 12)) // Fork (uichrome): secondary chrome words ≥ 12 pt
+                    .foregroundStyle(Palette.muted)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    // minWidth 0: without it the task's ideal width becomes the
+                    // pill's, and a long task pushes the whole column left.
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                    .clipped()
+                    .modifier(RowEndFade(on: true, clear: 0))
+            }
+        }
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+}
+
+/// Fork (uib): the ground every pill at the column's foot stands on — the
+/// agent's and the update's: as wide as the column, a 12 pt corner, the
+/// app's paper over a wash of the pill's own colour, a rim of it.
+struct SidePillGround: ViewModifier {
+    static let radius: CGFloat = 12
+    static let height: CGFloat = 34
+    var rim: Color = Palette.hairline
+    var wash: Color = .clear
+    var paper: Color = Palette.ground.opacity(0.94)
+    var lift = true
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: SidePillGround.radius, style: .continuous)
+        content
+            .padding(.leading, 10)
+            .padding(.trailing, 6)
+            .padding(.vertical, 6)
+            .frame(minWidth: 0, maxWidth: .infinity, minHeight: SidePillGround.height, alignment: .leading)
+            .background(paper, in: shape)
+            .background(wash, in: shape)
+            .overlay(shape.strokeBorder(rim, lineWidth: 1.25))
+            .shadow(color: .black.opacity(lift ? 0.1 : 0), radius: 6, y: 1)
     }
 }

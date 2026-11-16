@@ -220,7 +220,6 @@ shape (`CloudSettingsKeys` in `Fork/Cloud/CloudMerge.swift`):
 |---|---|
 | `look` | Light / Dark / System |
 | `sidebar` | Tabs in a sidebar |
-| `glyph` | Letters or site icons |
 | `tabs.switching` | ⌃Tab: next in the row or most recent |
 | `tabs.sleep` | Put idle tabs to sleep |
 | `spaces.swipe` | Swipe between spaces direction |

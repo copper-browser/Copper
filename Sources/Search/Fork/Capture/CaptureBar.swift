@@ -17,7 +17,7 @@ import SwiftUI
 /// - Fork (page-voice): a listed site asking for Copper's on-device speech
 ///   to text (Fork/Voice/PageVoice.swift), Allow / Don't allow as for a device.
 struct CaptureSlot: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var desk: CaptureDesk
 
     /// Nothing at all when there is nothing to say, so the bars stacked above
@@ -111,10 +111,10 @@ struct CaptureBarView: View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 12))
-                .foregroundStyle(Palette.ground)
+                .foregroundStyle(Palette.onAccent)
                 .padding(.horizontal, 11)
                 .padding(.vertical, 5)
-                .background(Palette.ink, in: Capsule())
+                .background(Palette.accent, in: Capsule()) // Fork (ui-system)
         }
         .buttonStyle(.plain)
     }

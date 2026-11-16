@@ -164,3 +164,33 @@ struct FlowEventsTests {
         #expect(log.entries.first?.detail == "50")
     }
 }
+
+@Suite("Flow sheet: the done step")
+struct FlowDoneLinesTests {
+    @Test("The done step lists exactly the switches that were on: kinds the browser had none of never show up as 'none to bring'")
+    func doneMatchesToggles() {
+        // An Arc read: 3 tabs, nothing else counted. Its sheet shows three
+        // switches (tabs, sign-ins, site data); the rest fold into one line.
+        let tab = FlowModel.Tab(url: URL(string: "https://example.com")!, title: "Example")
+        let haul = FlowModel.Haul(spaces: [FlowModel.Space(name: "Home", tabs: [tab, tab, tab])])
+        let choice = FlowModel.Choice().fitted(to: haul)
+        let toggled = FlowStep.steps(for: choice).map(\.category)
+        #expect(toggled == [.tabs, .cookies, .localStorage])
+        // The move runs only those (Flow.move), so the done step's lines are
+        // the summary of the same three.
+        var facts = FlowSummary.Facts(source: "Arc")
+        facts.tabsChosen = choice.tabs; facts.tabsAdded = 3; facts.spacesMade = 1
+        facts.bookmarksChosen = choice.bookmarks; facts.historyChosen = choice.history
+        facts.passwordsChosen = choice.passwords; facts.passkeysChosen = choice.passkeys
+        facts.cookiesChosen = choice.cookies; facts.storageChosen = choice.localStorage
+        facts.extensionsChosen = choice.extensions
+        #expect(FlowSummary.lines(facts).map(\.category) == toggled)
+    }
+
+    @Test("Kinds a browser has none of fold into one sentence")
+    func keepsNone() {
+        #expect(FlowSheet.keepsNone("Arc", ["Bookmarks", "History", "Passwords"]) == "Nothing else in this Arc profile.")
+        #expect(FlowSheet.keepsNone("Arc", ["Extensions"]) == "Nothing else in this Arc profile.")
+        #expect(FlowSheet.keepsNone(nil, ["History", "Passkeys"]) == "Nothing else in this browser.")
+    }
+}

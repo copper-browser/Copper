@@ -4,7 +4,7 @@ import SwiftUI
 /// caret is in. The same white and hairline as everything else that floats
 /// over a page; a click puts one row into the form.
 struct AccountList: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     let asked: Browser.Suggesting
 
     /// Loading and locked controls belong to a login picker, not an empty card
@@ -31,12 +31,12 @@ struct AccountList: View {
             VaultPendingRows(browser: browser, emptyLogin: emptyLogin)
             HStack(spacing: 6) {
                 Image(systemName: "key")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.system(size: 10, weight: .medium))
                 Text(footer)
-                    .font(.system(size: 10.5))
+                    .font(.system(size: 11))
                 Spacer(minLength: 0)
             }
-            .foregroundStyle(Palette.faint)
+            .foregroundStyle(Palette.muted) // Fork (ui-system): it says where the logins come from — words, so muted, not faint
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
             .background(Palette.wash.opacity(0.5))
@@ -108,7 +108,7 @@ struct AccountList: View {
                     Image(systemName: code ? "number" : credential.source.symbol) // Fork: per-source glyph
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Palette.muted)
-                        .frame(width: 22, height: 22)
+                        .frame(width: 24, height: 24)
                         .background(Palette.wash, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                     VStack(alignment: .leading, spacing: 1) {
                         Text(credential.user.isEmpty ? "No name" : credential.user)
@@ -116,7 +116,7 @@ struct AccountList: View {
                             .foregroundStyle(Palette.ink)
                             .lineLimit(1)
                         Text(code ? "Two-step code · \(credential.host)" : credential.host)
-                            .font(.system(size: 10.5))
+                            .font(.system(size: 11))
                             .foregroundStyle(Palette.muted)
                             .lineLimit(1)
                     }
@@ -124,7 +124,7 @@ struct AccountList: View {
                     if fetching {
                         Ring(size: 10)
                         Text("Fetching…")
-                            .font(.system(size: 10.5))
+                            .font(.system(size: 11))
                             .foregroundStyle(Palette.muted)
                     }
                 }
@@ -145,7 +145,7 @@ struct AccountList: View {
                     Image(systemName: icon)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Palette.muted)
-                        .frame(width: 22, height: 22)
+                        .frame(width: 24, height: 24)
                         .background(Palette.wash, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                     VStack(alignment: .leading, spacing: 1) {
                         Text(title)
@@ -153,7 +153,7 @@ struct AccountList: View {
                             .foregroundStyle(Palette.ink)
                             .lineLimit(1)
                         Text(subtitle)
-                            .font(.system(size: 10.5))
+                            .font(.system(size: 11))
                             .foregroundStyle(Palette.muted)
                             .lineLimit(1)
                     }

@@ -31,12 +31,14 @@ struct SettingsRailFade: View {
     /// As tall as the rail's own bottom padding, so the last page, scrolled
     /// to, is never faded.
     static let height: CGFloat = 28
+    /// Fork (hc6): a settings page's foot uses 12 pt (its 36 pt padding keeps the last row clear).
+    var fade: CGFloat = Self.height
 
     var body: some View {
         VStack(spacing: 0) {
             Rectangle().fill(.black)
             LinearGradient(colors: [.black, .black.opacity(0)], startPoint: .top, endPoint: .bottom)
-                .frame(height: Self.height)
+                .frame(height: fade)
         }
     }
 }
@@ -102,10 +104,6 @@ enum SettingsBrowseBench {
             }
             return ["asked": DownloadAsk.asked, "reply": DownloadAsk.reply ?? "folder", "asks": prefs.asksWhereToSave]
         case "prefs": break
-        case "glyph":
-            // glyph letters|icons: Tabs › Tabs show, as the choice would set it.
-            guard words.count == 2, let glyph = Glyph(rawValue: words[1]) else { return ["error": "settings browse glyph letters|icons"] }
-            prefs.glyph = glyph
         case "picture":
             // picture spaces|extensions PATH [WIDTH] [light|dark]: the whole page,
             // laid out at WIDTH (the page column; 345 is Settings' narrowest), not scrolled.
@@ -214,7 +212,6 @@ enum SettingsBrowseBench {
             "webkitAutocorrect": UserDefaults.standard.bool(forKey: "WebAutomaticSpellingCorrectionEnabled"),
             "bench": prefs.bench,
             "sidebar": prefs.sidebar,
-            "glyph": prefs.glyph.rawValue,
             "tabSwitching": prefs.tabSwitching.rawValue,
             "swipeDirection": prefs.swipeDirection.rawValue,
             "sleepsTabs": prefs.sleepsTabs,
@@ -222,21 +219,5 @@ enum SettingsBrowseBench {
             "downloads": prefs.downloads.path,
             "asksWhereToSave": prefs.asksWhereToSave,
         ]
-    }
-}
-
-/// A tab's mark in the sidebar, as Settings › Tabs › "Tabs show" says:
-/// the site's icon, or its letter. The sidebar drew the icon whatever the
-/// choice, so Letters did nothing there (D7). Watching the preferences here
-/// redraws only the marks when the choice changes.
-struct SideGlyphMark: View {
-    @ObservedObject var prefs: Preferences
-    let icon: NSImage?
-    let letter: String
-    let tint: SpaceTint
-    var size: CGFloat = 16
-
-    var body: some View {
-        RowMark(icon: prefs.glyph == .icons ? icon : nil, letter: letter, tint: tint, size: size)
     }
 }

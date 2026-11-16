@@ -434,8 +434,10 @@ final class AddonSlotHost: NSObject, ObservableObject, WKNavigationDelegate, WKU
                 .sink { [weak self] _ in self?.voiceChanged() }
                 .store(in: &watches)
         }
-        if granted.contains(.page) {
-            browser?.objectWillChange
+        if granted.contains(.page), let browser {
+            // The page in front is `active`: the tab list and which one is up.
+            browser.feed(\.tabs).dropFirst().map { _ in () }
+                .merge(with: browser.feed(\.activeID).dropFirst().map { _ in () })
                 .sink { [weak self] _ in DispatchQueue.main.async { self?.pageMaybeChanged() } }
                 .store(in: &watches)
             // A tab's title and address change without the browser saying

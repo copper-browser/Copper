@@ -32,7 +32,7 @@ extension Browser {
 /// Over the window's left edge while the column is folded: the strip of edge
 /// that brings it out, and the column itself while it is out.
 struct Fold: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var prefs: Preferences
 
     /// The column going back in, a moment after the pointer left it.

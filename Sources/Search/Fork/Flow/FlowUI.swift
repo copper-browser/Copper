@@ -10,7 +10,7 @@ import SwiftUI
 /// a footer pinned to the bottom. A change of phase redraws the middle in
 /// place; nothing moves, nothing animates from one layout to the next.
 struct FlowSheet: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
     @ObservedObject var flow = Flow.shared
 
     var body: some View {
@@ -19,20 +19,31 @@ struct FlowSheet: View {
                 .padding(.horizontal, 26)
                 .padding(.top, 24)
                 .padding(.bottom, 16)
+                .measured()
             ScrollView(.vertical) {
                 middle
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 26)
                     .padding(.bottom, 12)
+                    .measured()
             }
             .scrollIndicators(.automatic)
             footer
                 .padding(.horizontal, 26)
                 .padding(.top, 14)
                 .padding(.bottom, 22)
+                .measured()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Palette.ground)
+        // Fork (move-in-polish): the sheet takes its step's height.
+        .onPreferenceChange(FlowSheetHeight.self) { height in
+            MainActor.assumeIsolated { FlowPresenter.shared.want(height) }
+        }
+        // Fork (ui-flows r3): the panels' card (Plate): radius 16 and a
+        // hairline, so it holds its edge on a dark window too.
+        .background(Palette.ground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 1))
         // A sheet that comes up while something else animates (Settings
         // closing) must not animate its own first layout, and a new phase
         // replaces the old one outright: nothing morphs.
@@ -42,28 +53,32 @@ struct FlowSheet: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Move in")
-                    .font(.system(size: 25, weight: .medium))
-                    .foregroundStyle(Palette.ink)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer()
-                Button { flow.close() } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Palette.muted)
-                        .frame(width: 24, height: 24)
-                        .background(Palette.wash, in: Circle())
+                // Fork (uiflows r4): the done step is its result alone — no
+                // panel title over "Moved in from Arc".
+                if flow.phase.name != "done" {
+                    Text("Move in")
+                        .font(.system(size: 25, weight: .medium))
+                        .foregroundStyle(Palette.ink)
+                        .accessibilityAddTraits(.isHeader)
                 }
-                .buttonStyle(.plain)
-                .keyboardShortcut(.cancelAction)
-                .help("Close")
-                .accessibilityLabel("Close")
+                Spacer()
+                // Fork (polish r5): the panels' own close door (Plate), and
+                // none on the done step — Done is the way out there.
+                if flow.phase.name != "done" {
+                    Door(icon: "xmark", help: "Close   esc") { flow.close() }
+                        .keyboardShortcut(.cancelAction)
+                        .accessibilityLabel("Close")
+                }
             }
-            Text("Bring your tabs, bookmarks, history, passwords and sign-ins over from Chrome, Safari or Arc. Nothing in the other browser changes.")
-                .font(.system(size: 13.5))
-                .foregroundStyle(Palette.muted)
-                .lineSpacing(2)
-                .fixedSize(horizontal: false, vertical: true)
+            // Fork (ui-flows): the browsers this Mac has (`MoveFrom`), and
+            // only before the move: the done step is its result alone.
+            if flow.phase.name != "done" {
+                Text("Bring your tabs, bookmarks, history, passwords and sign-ins over from \(MoveFrom.names). Nothing in the other browser changes.")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(Palette.muted)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -176,10 +191,16 @@ struct FlowSheet: View {
 
     private func cardHead(_ source: FlowSource, _ line: String) -> some View {
         HStack(alignment: .top, spacing: 9) {
-            Image(systemName: source.glyph)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(Palette.ink)
-                .frame(width: 18)
+            // Fork (ui-flows): the browser's own app icon, as on the start card.
+            if let icon = MoveFrom.icon(source.name) {
+                Image(nsImage: icon).resizable().frame(width: 20, height: 20)
+                    .accessibilityHidden(true)
+            } else {
+                Image(systemName: source.glyph)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(Palette.ink)
+                    .frame(width: 20)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(source.name).font(.system(size: 13, weight: .medium)).foregroundStyle(Palette.ink)
                 Text(line)
@@ -237,9 +258,9 @@ struct FlowSheet: View {
             .font(.system(size: 12, weight: .medium))
             .lineLimit(1)
             .fixedSize()
-            .foregroundStyle(Palette.ground)
+            .foregroundStyle(Palette.onAccent)
             .padding(.horizontal, 11).padding(.vertical, 6)
-            .background(Palette.ink, in: Capsule())
+            .background(Palette.accent, in: Capsule()) // Fork (ui-system)
             .accessibilityHint(source.isSafari ? "Opens Privacy & Security, Full Disk Access" : "Opens Privacy & Security, Files & Folders")
         Button("Use an export instead…") { flow.showExport(for: source) }
             .buttonStyle(.plain)
@@ -334,29 +355,47 @@ struct FlowSheet: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
+    /// Fork (ui-flows r3): a kind this browser has none of is not a dead
+    /// switch of its own; they fold into one muted line under the list.
     private var checklist: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            row(flow.selected?.isArc == true ? "Tabs and spaces" : "Tabs and windows", hint: tabHint, binding: binding(\.tabs))
-            Rule()
-            row("Bookmarks", hint: count { $0.bookmarkCount == 0 ? "none found" : FlowSummary.plural($0.bookmarkCount, "bookmark") }, binding: binding(\.bookmarks))
-            Rule()
-            row("History", hint: count { $0.placeCount == 0 ? "none found" : FlowSummary.plural($0.placeCount, "place") }, binding: binding(\.history))
-            Rule()
-            row("Passwords", hint: count { $0.loginCount == 0 ? "none saved" : FlowSummary.plural($0.loginCount, "password") }, binding: binding(\.passwords))
-            Rule()
-            row("Passkeys", hint: count { $0.passkeyCount == 0 ? "none found" : FlowSummary.plural($0.passkeyCount, "passkey") }, binding: binding(\.passkeys))
-            Rule()
-            row("Sign-ins", hint: "", binding: binding(\.cookies))
-            Rule()
-            row("Site data", hint: "", binding: binding(\.localStorage))
-            Rule()
-            row("Extensions", hint: count { $0.extensions.isEmpty ? "none found" : FlowSummary.plural($0.extensions.count, "extension") }, binding: binding(\.extensions))
+        let kinds: [(title: String, hint: String, on: Binding<Bool>, n: (FlowModel.Haul) -> Int)] = [
+            (flow.selected?.isArc == true ? "Tabs and spaces" : "Tabs and windows", tabHint, binding(\.tabs), { $0.tabCount }),
+            ("Bookmarks", count { FlowSummary.plural($0.bookmarkCount, "bookmark") }, binding(\.bookmarks), { $0.bookmarkCount }),
+            ("History", count { FlowSummary.plural($0.placeCount, "place") }, binding(\.history), { $0.placeCount }),
+            ("Passwords", count { FlowSummary.plural($0.loginCount, "password") }, binding(\.passwords), { $0.loginCount }),
+            ("Passkeys", count { FlowSummary.plural($0.passkeyCount, "passkey") }, binding(\.passkeys), { $0.passkeyCount }),
+            ("Sign-ins", "Stay signed in to your sites", binding(\.cookies), { _ in 1 }), // Fork (ui-flows)
+            ("Site data", "What sites kept on this Mac, like settings and drafts", binding(\.localStorage), { _ in 1 }),
+            ("Extensions", count { FlowSummary.plural($0.extensions.count, "extension") }, binding(\.extensions), { $0.extensions.count }),
+        ]
+        let live = kinds.filter { has($0.n) }
+        let none = kinds.filter { !has($0.n) }.map(\.title)
+        return VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(live.enumerated()), id: \.offset) { index, kind in
+                    if index > 0 { Rule() }
+                    row(kind.title, hint: kind.hint, binding: kind.on)
+                }
+            }
+            .padding(.horizontal, 13)
+            .background(Palette.wash.opacity(0.38), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 1))
+            if !none.isEmpty {
+                Text(Self.keepsNone(flow.selected?.name, none))
+                    .font(.system(size: 11.5)).foregroundStyle(Palette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 2)
+            }
         }
-        .padding(.horizontal, 13)
-        .background(Palette.wash.opacity(0.38), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 1))
         .disabled(flow.selected == nil)
         .opacity(flow.selected == nil ? 0.5 : 1)
+    }
+
+    /// Fork (uiflows r4, polish r5, hc6): "Nothing else in this Arc profile."
+    /// — it is this profile that has none, not Arc; the kinds it lacks are
+    /// left unsaid. `kinds` is kept for the callers.
+    static func keepsNone(_ source: String?, _ kinds: [String]) -> String {
+        "Nothing else in \(source.map { "this \($0) profile" } ?? "this browser")."
     }
 
     private var safariRows: some View {
@@ -386,7 +425,7 @@ struct FlowSheet: View {
                 if !hint.isEmpty || link != nil {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         if !hint.isEmpty {
-                            Text(hint).font(.system(size: 11)).foregroundStyle(Palette.muted)
+                            Text(hint.prefix(1).uppercased() + hint.dropFirst()).font(.system(size: 11)).foregroundStyle(Palette.muted) // Fork (ui-flows r3): a sentence's capital
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         if let link {
@@ -404,6 +443,7 @@ struct FlowSheet: View {
             // The shared switch says its own name, value and action.
             Switch(on: enabled ? binding : .constant(false), label: title)
                 .disabled(!enabled)
+                .opacity(enabled ? 1 : 0.4)
         }
         .padding(.vertical, 9)
     }
@@ -478,6 +518,13 @@ struct FlowSheet: View {
         return text(haul)
     }
 
+    /// Fork (move-in-polish): a kind the browser has none of is off and
+    /// still; before the counts are in, every switch is the person's.
+    private func has(_ n: (FlowModel.Haul) -> Int) -> Bool {
+        guard let haul = flow.counted else { return true }
+        return n(haul) > 0
+    }
+
     private func binding(_ keyPath: WritableKeyPath<FlowModel.Choice, Bool>) -> Binding<Bool> {
         Binding(get: { flow.choice[keyPath: keyPath] }, set: { flow.choice[keyPath: keyPath] = $0 })
     }
@@ -515,6 +562,18 @@ struct FlowSheet: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// A summary line: the mark, then "Tabs: 3 tabs in 1 space" as one sentence.
+    private func doneRow(_ category: FlowSummary.Category, ok: Bool, _ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            mark(ok ? .arrived : .missed)
+                .frame(width: 12)
+            (Text(category.title + ": ").font(.system(size: 13, weight: .medium)).foregroundColor(Palette.ink)
+                + Text(text).font(.system(size: 13)).foregroundColor(ok ? Palette.ink : Palette.muted))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
     @ViewBuilder
     private func mark(_ state: FlowStep.State) -> some View {
         switch state {
@@ -530,13 +589,32 @@ struct FlowSheet: View {
     }
 
     private func done(_ report: Flow.Report) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .center, spacing: 14) {
+            // Fork (move-in-polish): the result in the middle, a check over it,
+            // and the one thing to do next under it.
+            Image(systemName: report.summary.contains(where: \.ok) ? "checkmark.circle.fill" : "minus.circle")
+                .font(.system(size: 30, weight: .regular))
+                .foregroundStyle(report.summary.contains(where: \.ok) ? Palette.accent : Palette.muted) // Fork (ui-flows): the copper check
+                .accessibilityHidden(true)
             Text(report.title)
                 .font(.system(size: 19, weight: .medium)).foregroundStyle(Palette.ink)
+                .multilineTextAlignment(.center)
+            // Fork (ui-flows r3): every kind the move ran, its value inline
+            // ("✓ Tabs: 3 tabs in 1 space"). Fork (uiflows r4): exactly the
+            // switches that were on — the move's own lines, not the raw
+            // choice, which still held kinds the browser had none of.
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(report.summary, id: \.category) { line in
-                    stepRow(line.category, line.ok ? .arrived : .missed, line.detail)
+                    doneRow(line.category, ok: line.ok, line.detail)
                 }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            if let next = Self.next(report) {
+                Text(next)
+                    .font(.system(size: 12.5)).foregroundStyle(Palette.muted)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 2)
             }
             ForEach(report.stayed, id: \.self) { line in
                 Text(line)
@@ -557,6 +635,22 @@ struct FlowSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 6)
+    }
+
+    /// The one next step after a move, by what came.
+    static func next(_ report: Flow.Report) -> String? {
+        let came = Set(report.summary.filter(\.ok).map(\.category))
+        if came.contains(.tabs) {
+            // Fork (polish r5): one space is "a space", and needs no ⌃1–9.
+            return report.spaces == 1 ? "Your tabs came over as a space of their own."
+                : "Your tabs came over as \(report.spaces) spaces. ⌃1–9 switches between them."
+        }
+        if came.contains(.bookmarks) { return "Your bookmarks are behind the bookmark button. ⌘K finds them too." }
+        if came.contains(.history) { return "Start typing an address: Copper already knows where you go." }
+        if came.contains(.passwords) { return "Sign in anywhere: Copper offers your saved passwords." }
+        return nil
     }
 
     @ViewBuilder
@@ -565,8 +659,7 @@ struct FlowSheet: View {
         case .done(let report):
             HStack(spacing: 16) {
                 if flow.canUndo {
-                    Button("Undo the tabs") { flow.undo() }
-                        .buttonStyle(.plain).font(.system(size: 12.5)).foregroundStyle(Palette.ink)
+                    secondary("Undo the tabs") { flow.undo() } // Fork (move-in-polish): a button, not loose words
                 }
                 if report.guideOffered, flow.guide != .opened {
                     Button(flow.guide == .opening ? "Opening the guide…" : "Open the Chrome guide") {
@@ -577,6 +670,7 @@ struct FlowSheet: View {
                 }
                 Spacer()
                 primary("Done") { flow.finish() }
+                    .background { Button("") { flow.finish() }.keyboardShortcut(.cancelAction).hidden() } // esc too, with no cross on this step
             }
         case .moving:
             Text("You can close this; the move keeps going.")
@@ -619,7 +713,7 @@ struct FlowSheet: View {
                                 .font(.system(size: 12.5)).foregroundStyle(Palette.muted)
                         }
                         Spacer()
-                        primary("Bring it all over", disabled: !flow.canMove) {
+                        primary(flow.selected?.isSafari == true ? "Bring it all over" : flow.effectiveChoice.button(for: flow.counted), disabled: !flow.canMove) {
                             guard let source = flow.selected else { return }
                             Task { await flow.move(source, into: browser) }
                         }
@@ -629,15 +723,64 @@ struct FlowSheet: View {
         }
     }
 
+    /// Fork (move-in-polish): a bordered button beside the primary, the same size.
+    private func secondary(_ title: String, action: @escaping () -> Void) -> some View {
+        Secondary(title: title, act: action)
+    }
+
+    /// Fork (uiflows r4): the capsule's own focus ring (Settings'
+    /// `settingsFocusRing`), not the system halo, in the sheet's key window.
+    private struct Secondary: View {
+        let title: String
+        let act: () -> Void
+        @FocusState private var focused: Bool
+
+        var body: some View {
+            Button(action: act) {
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Palette.ink)
+                    .padding(.horizontal, 17).padding(.vertical, 10)
+                    // The edge is a filled capsule under the ground, 1 pt
+                    // proud of it, not a stroke: the sheet's window drew
+                    // stroked capsules with 1 pt ticks at both ends.
+                    .background {
+                        ZStack {
+                            Capsule().fill(Palette.hairline)
+                            Capsule().fill(Palette.ground).padding(1)
+                        }
+                    }
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(Press(radius: 99))
+            .settingsFocusRing($focused, shape: Capsule())
+        }
+    }
+
     /// The one button Return presses, in every state.
     private func primary(_ title: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(title, action: action)
             .buttonStyle(.plain)
             .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(Palette.ground)
+            // Fork (uitype): disabled is flat — a 6% ink fill and muted words
+            // (white on a 35% accent was ~1.6:1).
+            .foregroundStyle(disabled ? Palette.muted : Palette.onAccent)
             .padding(.horizontal, 17).padding(.vertical, 10)
-            .background(Palette.ink.opacity(disabled ? 0.35 : 1), in: Capsule())
+            .background(disabled ? Palette.ink.opacity(0.06) : Palette.accent, in: Capsule()) // Fork (ui-system)
             .keyboardShortcut(.defaultAction)
             .disabled(disabled)
+    }
+}
+
+/// Fork (move-in-polish): the heights of the sheet's three parts, summed —
+/// what the sheet would be with nothing scrolled.
+struct FlowSheetHeight: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value += nextValue() }
+}
+
+private extension View {
+    func measured() -> some View {
+        background(GeometryReader { Color.clear.preference(key: FlowSheetHeight.self, value: $0.size.height) })
     }
 }

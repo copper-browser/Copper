@@ -23,6 +23,10 @@ enum DriveStyle {
 
     /// A duration as a person reads it: milliseconds until a second, then
     /// one decimal of seconds. No thousands separators anywhere.
+    /// Fork (ui-flows): a step's own time is shown only past this — a row of
+    /// "899 ms" beside every quick step is noise, a slow one is news.
+    static let slow = 2000
+
     static func ms(_ n: Int) -> String {
         n < 1000 ? "\(n) ms" : String(format: "%.1f s", Double(n) / 1000)
     }
@@ -42,7 +46,7 @@ extension Drive.Run {
         let word = driver == .jev ? "action" : "call"
         let count = "\(acted) \(word)\(acted == 1 ? "" : "s")"
         if status == .running {
-            if driver != .jev { return busy ? "Driving · \(count)" : "Thinking · \(count)" }
+            if driver != .jev { return busy ? "Driving" : "Thinking" } // Fork (uib): a count of calls told no one anything
             return "Running · \(count)"
         }
         // The note is already a sentence; the head only says which kind of
@@ -52,8 +56,11 @@ extension Drive.Run {
         case .running: return "Running"
         case .done: return said("Done")
         case .blocked: return said("Blocked")
+        case .unsure: return said("Not sure it worked")
         case .budget: return said("Out of steps")
-        case .error: return said("Error")
+        // Fork (uichrome): a plain outcome; the tool's own words (codes and
+        // all) are behind Details and the foot's help.
+        case .error: return "Didn't finish"
         case .ended: return said("Let go")
         case .stopped: return note.isEmpty ? "Stopped by you" : note
         }
@@ -136,34 +143,22 @@ struct DriveCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             DriveClock(run: run, live: live).fixedSize()
-            if live {
-                Button {
-                    if drive.run?.id == run.id { drive.stop() } else { drive.stop(run.who.key) }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "stop.fill").font(.system(size: 7.5))
-                        Text("Stop").font(.system(size: 11, weight: .medium))
-                    }
-                    .foregroundStyle(Palette.ink)
-                    .padding(.horizontal, 9).frame(height: 22)
-                    .background(Palette.ground, in: Capsule())
-                    .overlay(Capsule().strokeBorder(Palette.hairline, lineWidth: 1))
-                    .contentShape(Capsule())
-                    .fixedSize()
-                }
-                .buttonStyle(.plain)
-                .help(run.driver == .jev ? "Stop the run" : "Take the browser back — its next calls are refused")
-            }
+            // Fork (agent-ux): no Stop here — the live band at the top of the
+            // pane has the one Stop, in view however far this has scrolled.
         }
     }
 
-    /// "driving this tab · Copper" — who asked, and on which page.
+    /// Fork (agent-ux): the task, then the tab — "Booking a table · on
+    /// OpenTable". Who asked for a Jev run only when there is no task.
     private var byline: String {
         var bits: [String] = []
-        if run.driver == .jev, !run.who.via.isEmpty { bits.append("for \(run.who.via)") }
-        if !run.who.thread.isEmpty, run.who.thread != "this window" { bits.append(run.who.thread) }
+        if !run.who.thread.isEmpty, run.who.thread != "this window" {
+            bits.append(run.who.thread)
+        } else if run.driver == .jev, !run.who.via.isEmpty {
+            bits.append("for \(run.who.via)")
+        }
         let page = run.title.isEmpty ? (URL(string: run.url)?.host ?? "") : run.title
-        if !page.isEmpty { bits.append(page) }
+        if !page.isEmpty { bits.append("on \(page)") }
         return bits.isEmpty ? (live ? "is driving" : "drove a tab") : bits.joined(separator: " · ")
     }
 
@@ -176,10 +171,10 @@ struct DriveCard: View {
         } else {
             let shown = run.cycles.suffix(DriveCard.folded)
             VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(shown)) { cycle in DriveStep(cycle: cycle, jev: run.driver == .jev) }
+                ForEach(Array(shown)) { cycle in DriveStep(cycle: cycle, jev: run.driver == .jev, runFailed: run.failed) }
             }
         }
-        if run.cycles.count > DriveCard.folded || run.cycles.contains(where: { !($0.outcome?.candidates.isEmpty ?? true) }) || open {
+        if run.cycles.count > DriveCard.folded || run.cycles.contains(where: { !($0.outcome?.candidates.isEmpty ?? true) || !($0.outcome?.error ?? "").isEmpty }) || open {
             Button {
                 withAnimation(Motion.glide) { agent.toggle(expanded: run.id) }
             } label: {
@@ -202,12 +197,13 @@ struct DriveCard: View {
             } else {
                 Image(systemName: run.failed ? "exclamationmark.circle.fill" : (run.status == .stopped ? "stop.circle" : "checkmark.circle"))
                     .font(.system(size: 10.5))
-                    .foregroundStyle(run.failed ? Color.red.opacity(0.8) : Palette.muted)
+                    .foregroundStyle(run.failed ? Palette.danger : Palette.muted)
             }
             Text(run.statusLine(busy: busy))
-                .font(.system(size: 11)).foregroundStyle(run.failed ? Color.red.opacity(0.85) : Palette.muted)
+                .font(.system(size: 11)).foregroundStyle(run.failed ? Palette.ink : Palette.muted) // Fork (uitype): a sentence in ink, the red on its glyph
                 .lineLimit(2).truncationMode(.tail)
                 .fixedSize(horizontal: false, vertical: true)
+                .help(run.note)
             Spacer(minLength: 6)
             if drive.refusingUntil != nil, run.status == .stopped, drive.run?.id == run.id {
                 Button { drive.resume() } label: {
@@ -224,6 +220,8 @@ struct DriveCard: View {
 struct DriveClock: View {
     let run: Drive.Run
     let live: Bool
+    /// Fork (uichrome): telemetry in the live band reads after the task, in muted ink.
+    var muted = false
 
     var body: some View {
         if live {
@@ -238,7 +236,7 @@ struct DriveClock: View {
     private func label(_ seconds: TimeInterval) -> some View {
         Text(DriveStyle.span(seconds))
             .font(.system(size: 11)).monospacedDigit()
-            .foregroundStyle(live ? Palette.ink : Palette.muted)
+            .foregroundStyle(live && !muted ? Palette.ink : Palette.muted)
     }
 }
 
@@ -271,20 +269,20 @@ struct DriveLiveStrip: View {
         let swatch = Drive.colour(for: run.who)
         HStack(spacing: 8) {
             Button { Agent.shared.reveal() } label: {
+                // Fork (uichrome): who on one line, what it is at under it,
+                // faded where the band ends (was one line cut with "…");
+                // the clock is secondary, after the task.
                 HStack(spacing: 8) {
                     PulseDot(colour: swatch.fill, size: 7)
-                    Text(line)
-                        .font(.system(size: 11.5, weight: .medium))
-                        .foregroundStyle(Palette.ink)
-                        .lineLimit(1).truncationMode(.tail)
-                    Spacer(minLength: 4)
-                    DriveClock(run: run, live: true).fixedSize()
+                    SidePillWords(name: "\(run.who.agent) is driving", task: doing)
+                        .help(doing)
+                    DriveClock(run: run, live: true, muted: true).fixedSize()
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("Show the run")
-            DriveStopPill(help: run.driver == .jev ? "Stop the run" : "Take the browser back — its next calls are refused") {
+            DriveStop(help: run.driver == .jev ? "Stop the run (⎋)" : "Take the browser back — its next calls are refused (⎋)") {
                 drive.stop()
             }
         }
@@ -292,18 +290,12 @@ struct DriveLiveStrip: View {
         .onHover { over = $0 }
     }
 
-    /// "phi is driving · 4 calls · Read 45 shapes", "Jev is driving · 3 actions · Clicking Search".
-    /// The count before the words, which can run long and are cut first.
-    private var line: String {
-        let acted = run.cycles.filter { $0.outcome != nil }.count
-        let word = run.driver == .jev ? "action" : "call"
-        var bits = ["\(run.who.agent) is driving", "\(acted) \(word)\(acted == 1 ? "" : "s")"]
-        if let doing = run.cycles.last, doing.ended == nil, let phase = doing.phases.last {
-            bits.append(phase.title)
-        } else if let thought = run.thought, !thought.isEmpty {
-            bits.append(thought)
-        }
-        return bits.joined(separator: " · ")
+    /// "Read 45 shapes", "Clicking Search" — the band's second line.
+    /// Fork (ui-flows): no call count — the task gets the room (the card
+    /// below still counts).
+    private var doing: String {
+        if let doing = run.cycles.last, doing.ended == nil, let phase = doing.phases.last { return phase.title }
+        return run.thought ?? ""
     }
 }
 
@@ -331,7 +323,7 @@ struct DriveHandStrip: View {
             .buttonStyle(.plain)
             .help("Show its card")
             if drive.canStop(hand) {
-                DriveStopPill(help: "Take the browser back from \(hand.who.agent) — its next calls are refused") {
+                DriveStop(help: "Take the browser back from \(hand.who.agent) — its next calls are refused (⎋)") {
                     drive.stop(hand.who.key)
                 }
             }
@@ -341,26 +333,51 @@ struct DriveHandStrip: View {
     }
 }
 
-/// The small capsule Stop the live bands share.
-private struct DriveStopPill: View {
+/// Fork (agent-ux): the one Stop — the live bands', the pill's over the
+/// page — a labelled 24-point capsule with its key, ⎋ (Panes.escape).
+struct DriveStop: View {
+    /// ⎋ while something drives this window: the run stops, or the agent
+    /// whose hand is on the tab in view is refused, as its Stop would.
+    @MainActor static func escape(in browser: Browser) -> Bool {
+        let drive = Drive.shared
+        if drive.live { drive.stop(); return true }
+        guard let tab = browser.active,
+              let hand = drive.hands(on: tab.id).first(where: drive.canStop) else { return false }
+        drive.stop(hand.who.key)
+        return true
+    }
+
     let help: String
+    /// Fork (ui-flows): the square and the key alone, for the column's
+    /// narrow pill — the words beside it get the room.
+    var compact = false
     let action: () -> Void
+    @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 4) {
-                Image(systemName: "stop.fill").font(.system(size: 7))
-                Text("Stop").font(.system(size: 11, weight: .medium))
+            HStack(spacing: 5) {
+                Image(systemName: "stop.fill").font(.system(size: 8))
+                if !compact { Text("Stop").font(.system(size: 11.5, weight: .medium)) }
+                // Fork (ui-flows): the key as a keycap, not a glyph few can read.
+                Text("esc")
+                    .font(.system(size: 10.5, weight: .medium)) // Fork (uib): the keycaps' 10.5 floor
+                    .foregroundStyle(Palette.muted)
+                    .padding(.horizontal, 4)
+                    .frame(height: 15)
+                    .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 1))
             }
             .foregroundStyle(Palette.ink)
-            .padding(.horizontal, 8).frame(height: 20)
-            .background(Palette.ground, in: Capsule())
+            .padding(.horizontal, compact ? 7 : 10).frame(height: 24)
+            .background(hovering ? Palette.hover : Palette.ground, in: Capsule())
             .overlay(Capsule().strokeBorder(Palette.hairline, lineWidth: 1))
             .contentShape(Capsule())
             .fixedSize()
         }
         .buttonStyle(.plain)
+        .onHover { hovering = $0 }
         .help(help)
+        .accessibilityLabel("Stop")
     }
 }
 
@@ -373,7 +390,8 @@ private struct DriveBand: ViewModifier {
         content
             .padding(.leading, 16)
             .padding(.trailing, 8)
-            .frame(height: 30)
+            .padding(.vertical, 4)
+            .frame(minHeight: 34)
             .background(swatch.fill.opacity(over ? 0.16 : 0.10))
             .overlay(alignment: .bottom) { Rectangle().fill(Palette.hairline).frame(height: 1) }
             .animation(Motion.quick, value: over)
@@ -384,26 +402,30 @@ private struct DriveBand: ViewModifier {
 struct DriveStep: View {
     let cycle: Drive.Cycle
     let jev: Bool
+    /// Fork (uichrome): red only when the run itself failed; a step that went
+    /// wrong in a run that carried on (or is still going) is amber.
+    var runFailed = false
 
     var body: some View {
         let failed = !(cycle.outcome?.error ?? "").isEmpty
         HStack(alignment: .firstTextBaseline, spacing: 7) {
             Image(systemName: DriveStep.icon(cycle.outcome?.operation ?? cycle.phases.last.map { $0.kind.rawValue.uppercased() } ?? ""))
                 .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(failed ? Color.red.opacity(0.8) : Palette.muted)
+                .foregroundStyle(failed ? (runFailed ? Palette.danger : Color.orange) : Palette.muted)
                 .frame(width: 16)
             Text(line)
-                .font(.system(size: 12)).foregroundStyle(failed ? Color.red.opacity(0.85) : Palette.ink)
+                .font(.system(size: 12)).foregroundStyle(Palette.ink) // Fork (uitype): the red is the glyph's; the line says what failed
                 .lineLimit(2).truncationMode(.tail)
                 .fixedSize(horizontal: false, vertical: true)
                 .layoutPriority(1)
             Spacer(minLength: 6)
             if cycle.ended == nil {
                 Ring(size: 9)
-            } else if let started = cycle.phases.first?.started, let ended = cycle.ended {
+            } else if let started = cycle.phases.first?.started, let ended = cycle.ended,
+                      Int(ended.timeIntervalSince(started) * 1000) > DriveStyle.slow { // Fork (ui-flows): only a slow step's time
                 Text(DriveStyle.ms(Int(ended.timeIntervalSince(started) * 1000)))
-                    .font(.system(size: 10.5)).monospacedDigit()
-                    .foregroundStyle(Palette.faint)
+                    .font(.system(size: 11)).monospacedDigit()
+                    .foregroundStyle(Palette.muted) // Fork (agent-ux): was faint, 1.3:1
                     .fixedSize()
             }
         }
@@ -416,8 +438,8 @@ struct DriveStep: View {
             return cycle.phases.last?.title ?? "Starting"
         }
         if let error = outcome.error, !error.isEmpty {
-            let head = cycle.phases.first?.title ?? outcome.operation.capitalized
-            return "\(head) — \(error.split(separator: "\n").first.map(String.init) ?? error)"
+            // Fork (agent-ux): a sentence; the tool's own words are behind Details.
+            return DriveStep.plain(head: cycle.phases.first?.title ?? outcome.operation.capitalized)
         }
         if !jev {
             let head = cycle.phases.first?.title ?? outcome.operation.capitalized
@@ -444,6 +466,13 @@ struct DriveStep: View {
             }
             return outcome.label.isEmpty ? verb : "\(verb) \(outcome.label)"
         }
+    }
+
+    /// "Changing the canvas · 12 ops" → "Changing the canvas didn't work":
+    /// the counts and codes after a "·" are the tool's, behind Details.
+    static func plain(head: String) -> String {
+        let head = (head.components(separatedBy: " · ").first ?? head).trimmingCharacters(in: CharacterSet(charactersIn: " .…"))
+        return head.isEmpty ? "That step didn't work" : "\(head) didn't work"
     }
 
     /// An SF symbol per kind of move.
@@ -508,8 +537,8 @@ struct DriveTimeline: View {
     private func cycleRows(_ cycle: Drive.Cycle) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Text(String(format: "%02d", cycle.number))
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(Palette.faint)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Palette.muted)
                 .frame(width: 16, alignment: .leading)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 5) {
@@ -539,7 +568,7 @@ struct DriveTimeline: View {
                 Spacer(minLength: 6)
                 if let ms = phase.ms {
                     Text(DriveStyle.ms(ms))
-                        .font(.system(size: 10.5, design: .monospaced)).monospacedDigit()
+                        .font(.system(size: 11)).monospacedDigit() // Fork (uitype): the monospaced face's thin strokes drew 3.8:1
                         .foregroundStyle(Palette.muted)
                 } else {
                     Ring(size: 9)
@@ -567,7 +596,7 @@ struct DriveTimeline: View {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     chip(outcome.operation)
                     Text(error.split(whereSeparator: \.isNewline).first.map(String.init) ?? error)
-                        .font(.system(size: 12)).foregroundStyle(Color.red.opacity(0.8))
+                        .font(.system(size: 12)).foregroundStyle(Palette.danger)
                         .lineLimit(2).truncationMode(.tail)
                         .fixedSize(horizontal: false, vertical: true)
                         .help(error)
@@ -586,14 +615,14 @@ struct DriveTimeline: View {
                     Spacer(minLength: 6)
                     if let result = outcome.result {
                         Text("→ \(result)")
-                            .font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+                            .font(.system(size: 11)).foregroundStyle(Palette.muted)
                             .lineLimit(2).truncationMode(.tail)
                             .multilineTextAlignment(.trailing)
                             .fixedSize(horizontal: false, vertical: true)
                             .help(result)
                     } else if let changed = outcome.pageChanged {
                         Text(changed ? "→ page changed" : "→ no change")
-                            .font(.system(size: 10.5)).foregroundStyle(Palette.muted).fixedSize()
+                            .font(.system(size: 11)).foregroundStyle(Palette.muted).fixedSize()
                     }
                 }
             } else {
@@ -619,7 +648,7 @@ struct DriveTimeline: View {
 
     private func chip(_ operation: String) -> some View {
         Text(operation)
-            .font(.system(size: 9.5, design: .monospaced))
+            .font(.system(size: 11, design: .monospaced)) // Fork (uichrome): nothing read under 11 pt
             .foregroundStyle(Palette.ink)
             .padding(.horizontal, 5).padding(.vertical, 1.5)
             .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Palette.ink.opacity(0.25), lineWidth: 1))
@@ -630,14 +659,14 @@ struct DriveTimeline: View {
     @ViewBuilder
     private func tail(_ outcome: Drive.Outcome) -> some View {
         if outcome.stale {
-            Text("page moved · re-read").font(.system(size: 10.5)).foregroundStyle(Palette.muted).fixedSize()
+            Text("page moved · re-read").font(.system(size: 11)).foregroundStyle(Palette.muted).fixedSize()
         } else {
             HStack(spacing: 5) {
                 Text(percent(outcome.probability))
-                    .font(.system(size: 10.5, design: .monospaced)).monospacedDigit()
+                    .font(.system(size: 11, design: .monospaced)).monospacedDigit()
                     .foregroundStyle(Palette.muted)
                 if let changed = outcome.pageChanged {
-                    Text(changed ? "→ page changed" : "→ no change").font(.system(size: 10.5)).foregroundStyle(Palette.muted)
+                    Text(changed ? "→ page changed" : "→ no change").font(.system(size: 11)).foregroundStyle(Palette.muted)
                 }
             }
             .fixedSize()
@@ -663,7 +692,7 @@ struct DriveTimeline: View {
                 HStack(spacing: 4) {
                     Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold))
                         .rotationEffect(.degrees(open ? 90 : 0))
-                    Text("\(outcome.candidates.count) offered").font(.system(size: 10.5))
+                    Text("\(outcome.candidates.count) offered").font(.system(size: 11))
                 }
                 .foregroundStyle(Palette.muted)
             }
@@ -671,7 +700,7 @@ struct DriveTimeline: View {
             if open {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(Array(outcome.candidates.enumerated()), id: \.offset) { _, line in
-                        Text(line).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(Palette.muted)
+                        Text(line).font(.system(size: 11, design: .monospaced)).foregroundStyle(Palette.muted)
                             .lineLimit(1).truncationMode(.tail)
                     }
                 }
@@ -681,46 +710,123 @@ struct DriveTimeline: View {
     }
 }
 
-/// Over the page while a run is live: a word that it is not your hands on the
-/// wheel — whose they are — and the one button that takes it back. Small
-/// enough to ignore, close enough to hit. The dot is solid while a call is
-/// in flight and breathes while the driver thinks between calls.
+/// Over the page while a run is live: "<Agent> · <task> · Stop" over the tab
+/// it drives, "<Agent> · on <tab> · Stop" over any other — a click there goes
+/// to that tab. Stop (or ⎋) takes the wheel back. A tab an agent has its
+/// hand on wears the bar (HandBar) instead, in the same place and format.
+/// Fork (agent-ux): it said "phi is driving" over whichever page was in
+/// front, with a ring round it, as if that page were the one being driven.
 struct DrivePill: View {
+    let browser: Browser
+    /// The run is on a tab not in view: the pill names it and goes there.
+    let elsewhere: Bool
+    /// Fork (ui-flows): as wide as the column it sits in (DriveSlot).
+    var fits = false
     @ObservedObject private var drive = Drive.shared
     @State private var breathing = false
+    @State private var hovering = false // Fork (uib): the card under the pointer
+    @State private var inCard = false
+    @State private var carded = false
+
+    private var tab: Tab? { AgentTabs.find(drive.run?.tabID) }
 
     var body: some View {
+        let name = drive.run?.who.agent ?? drive.run?.driver.name ?? "Agent"
+        let title = tab.map { $0.title.isEmpty ? ($0.address?.host ?? "another tab") : $0.title } ?? "another tab"
+        let thread = drive.run.map { $0.who.thread == "this window" ? "" : $0.who.thread } ?? ""
+        let goal = drive.run.map { $0.goal.isEmpty ? thread : $0.goal } ?? ""
+        let task = elsewhere || goal.isEmpty ? "on \(title)" : goal
+        if fits {
+            // Fork (uib): the column's pill, two lines (SidePillWords), the
+            // whole task and its time in the card under the pointer.
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(DriveStyle.accent)
+                    .frame(width: 7, height: 7)
+                    .opacity(drive.busy ? 1 : (breathing ? 0.35 : 1))
+                    .frame(width: 16)
+                Button { jump() } label: { SidePillWords(name: name, task: task) }
+                    .buttonStyle(.plain)
+                    .help(elsewhere ? "Go to the tab it is driving" : "Show what it is doing")
+                DriveStop(help: drive.run?.driver == .jev ? "Stop the run (⎋)" : "Take the browser back (⎋)", compact: true) { drive.stop() }
+            }
+            .modifier(SidePillGround())
+            .onHover { over in hovering = over; settle() }
+            .popover(isPresented: $carded, arrowEdge: .trailing) {
+                card(name: name, task: elsewhere ? (goal.isEmpty ? task : "\(goal)\n\(task)") : task)
+                    .onHover { inCard = $0; settle() }
+            }
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { breathing = true }
+            }
+        } else {
+            line(name: name, task: task)
+        }
+    }
+
+    /// Fork (uib): the whole task, and how long it has been at it.
+    private func card(name: String, task: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(name).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Palette.ink)
+            Text(task).font(.system(size: 11.5)).foregroundStyle(Palette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            if let run = drive.run {
+                TimelineView(.periodic(from: run.started, by: 1)) { beat in
+                    Text("Working for \(DriveStyle.span(beat.date.timeIntervalSince(run.started))) · since \(run.started.formatted(date: .omitted, time: .shortened))")
+                        .font(.system(size: 11)).monospacedDigit().foregroundStyle(Palette.muted)
+                }
+            }
+        }
+        .padding(12)
+        .frame(width: 280, alignment: .leading)
+    }
+
+    private func settle() {
+        if hovering || inCard {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { if hovering || inCard { carded = true } }
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { if !hovering && !inCard { carded = false } }
+        }
+    }
+
+    private func line(name: String, task: String) -> some View {
         HStack(spacing: 6) {
             Circle()
                 .fill(DriveStyle.accent)
                 .frame(width: 6, height: 6)
                 .opacity(drive.busy ? 1 : (breathing ? 0.35 : 1))
-            Button { Agent.shared.reveal() } label: {
-                Text("\(drive.run?.driver.name ?? "Agent") is driving")
-                    .font(.system(size: 11, weight: .medium))
+            Button { jump() } label: {
+                (Text(name).fontWeight(.semibold) + Text("  ·  \(task)"))
+                    .font(.system(size: 11.5))
                     .foregroundStyle(Palette.ink)
-                    .lineLimit(1)
+                    .lineLimit(1).truncationMode(.tail)
+                    .frame(maxWidth: fits ? .infinity : 300, alignment: .leading)
+                    .fixedSize(horizontal: !fits, vertical: false)
             }
             .buttonStyle(.plain)
-            .help("Show what it is doing")
-            Button { drive.stop() } label: {
-                Image(systemName: "stop.fill")
-                    .font(.system(size: 8))
-                    .foregroundStyle(DriveStyle.accent)
-                    .frame(width: 16, height: 16)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help(drive.run?.driver == .jev ? "Stop the run" : "Take the browser back")
+            .help(elsewhere ? "Go to the tab it is driving" : "Show what it is doing")
+            DriveStop(help: drive.run?.driver == .jev ? "Stop the run (⎋)" : "Take the browser back (⎋)", compact: fits) { drive.stop() }
         }
-        .padding(.leading, 9)
-        .padding(.trailing, 4)
-        .frame(height: 22)
-        .background(Palette.ground.opacity(0.92), in: Capsule())
+        .padding(.leading, 10)
+        .padding(.trailing, 3)
+        .frame(height: 30)
+        .background(Palette.ground.opacity(0.94), in: Capsule())
         .overlay(Capsule().strokeBorder(Palette.hairline, lineWidth: 1))
         .shadow(color: .black.opacity(0.12), radius: 6, y: 1)
         .onAppear {
             withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { breathing = true }
+        }
+    }
+
+    /// To the driven tab: this window's row, else its space.
+    private func jump() {
+        guard elsewhere, let tab else { return Agent.shared.reveal() }
+        if browser.tabs.contains(where: { $0.id == tab.id }) {
+            browser.select(tab)
+        } else if let space = Spaces.shared.spaceID(of: tab) {
+            Spaces.shared.select(space, in: browser, landing: tab.id)
+        } else {
+            Agent.shared.reveal()
         }
     }
 }

@@ -11,14 +11,42 @@ time; the others are parked and come back exactly as they were.
 mark and its name in full. Hover it for the tab count; click it (or the
 chevron) for the space menu. This is the label the column used to lack.
 
-**The strip at the foot.** Every space is a 22pt chip — its emoji, its
-symbol, or its first letter, on a soft square of its own colour. The current
-one sits on the column's paper-white pill, the same thing the live row wears.
-Hovering a chip names it at once, above the strip. When the chips outgrow the
+**Around the page.** In the sidebar layout the space's ground runs under the
+whole window, and the page sits on it as a card: a 7pt margin on the top,
+right and bottom, 11pt round corners, a hairline and a soft shadow — the same
+card a split view's two panes are, and the agent's pane beside it. A space's
+picture keeps the column's width and fades into its colour past it. The top
+tab layout keeps its page edge to edge.
+
+**The strip at the foot.** Every space is a 28pt chip — its emoji or its
+symbol at 20pt, or its initial (11pt semibold) on a 20pt tile of its own
+colour, so no two spaces look the same. The current one sits on the column's paper-white pill,
+the same thing the live row wears. Hovering a chip names it at once, above
+the strip, and its tooltip gives its key (`Work · ⌃2`). When the chips outgrow the
 column the row scrolls sideways under a soft edge, with the current chip kept
 in view; nothing shrinks to a dot and no name is ever cut to a letter. Drag a
 chip to reorder the spaces. The `+` at the end makes a space *and opens its
 editor*, so it gets a name, an icon and a colour straight away.
+
+**Switching.** The rows slide sideways by the column's width, Arc's pager:
+the old space's out, the new one's in, while the ground under them changes
+colour in place. With Reduce Motion on nothing travels — the old rows fade
+out, then the new ones fade in, never the two lists over each other. The
+new space's page takes the card in the same frame as its rows: a page
+already drawn is swapped in once WebKit has a frame of it (never faded over
+the old one); a page that is waking shows its own last picture, or its
+ground, until it draws. After a launch, the landing page of the space you
+were in last is loaded in the background; another space's starts loading
+when you show you are going there — the pointer resting on its chip, a
+swipe setting off towards it, ⌃ held a moment (the spaces either side). A
+page loaded ahead that you don't go to within a minute goes back to sleep
+(`spaces.warm.cool`, seconds), so a guess costs no memory for long.
+
+Where a switch's main-thread time goes: `bench pace` after a switch lists
+its steps (`swap`, `swap.projection`, `swap.selected`, `swap.done`, then
+`page.attach`, `slide.go` and `swap.committed` — the next pass after the
+switch's own) beside every pass of 1 ms or more; `perf/a2steps.py` sums
+them per arm from a `perf/a2.py` run.
 
 ## The space menu
 
@@ -84,6 +112,7 @@ views (header, strip, editor, menu, delete sheet).
 ./bench spaces colour N|NAME Teal|…|Graphite
 ./bench spaces reorder N|NAME M             move a space to index M
 ./bench spaces move N|NAME                  the active tab, into that space
+./bench spaces warm N|NAME | sides          load a space's landing page ahead, as hovering its chip (sides: as ⌃ held)
 ./bench spaces remove N|NAME [--keep]       --keep moves its tabs to the neighbour
 ./bench spaces edit [N|NAME]                the editor popover, on the header
 ./bench spaces delete N|NAME                the Delete sheet (prints its text)

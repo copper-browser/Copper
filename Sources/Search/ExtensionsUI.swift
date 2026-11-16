@@ -6,7 +6,7 @@ import WebKit
 /// extension's switch, pin, details, site access, options, reload and
 /// remove — is this page (`ExtensionsSettings`, Fork/ExtensionsManager.swift).
 struct ExtensionsPage: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
 
     var body: some View {
         if #available(macOS 15.4, *) {
@@ -22,7 +22,7 @@ struct ExtensionsPage: View {
 /// On an extension's page in the Chrome Web Store, the offer to add it —
 /// where the store's own button only says "Switch to Chrome".
 struct StoreOffer: View {
-    @ObservedObject var browser: Browser
+    let browser: Browser
 
     var body: some View {
         if #available(macOS 15.4, *), let tab = browser.active {
@@ -53,10 +53,10 @@ struct StoreOffer: View {
                         Button("Add") { extensions.install(from: id) }
                             .buttonStyle(.plain)
                             .font(.system(size: 12))
-                            .foregroundStyle(Palette.ground)
+                            .foregroundStyle(Palette.onAccent)
                             .padding(.horizontal, 11)
                             .padding(.vertical, 5)
-                            .background(Palette.ink, in: Capsule())
+                            .background(Palette.accent, in: Capsule()) // Fork (ui-system)
                     }
                 }
                 .padding(.leading, 16)

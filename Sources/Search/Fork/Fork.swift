@@ -58,6 +58,7 @@ enum Fork {
         case "pace": return Pace.bench(request) // Fork/Pace.swift
         case "calendar": return CalendarPeek.bench(request) // Fork/CalendarPeek.swift
         case "pins": return PinsAwake.bench(request, in: browser) // Fork/PinsAwake.swift
+        case "covers": return Covers.bench(request) // Fork/Covers.swift
         case "stage": return StageReport.report() // Fork/StageBench.swift
         case "history": return Flow.shared.bench(request, in: browser)
         case "spaces": return Spaces.shared.bench(request, in: browser)
@@ -72,6 +73,7 @@ enum Fork {
         case "agent":
             // `agent ask TEXT` / `agent chat|open|close|clear` are the pane's; the rest is the server's.
             if let op = request["op"] as? String, ["ask", "chat", "open", "close", "clear", "stop", "selftest", "regression", "seed", "expand", "turns"].contains(op) { return Agent.shared.bench(request, in: Windows.current) }
+            if request["op"] as? String == "handoff" { return Handoff.shared.bench(request["arg"] as? String ?? "") } // Fork (agent-handoff)
             if request["op"] as? String == "servers" { Task { await Servers.shared.reload() }; return ["reloading": true] }
             return MCP.shared.bench(request)
         case "windows": return Windows.bench(request)
@@ -574,6 +576,7 @@ enum Fork {
                 ["index": index, "key": row.key, "kind": "\(row.kind)", "heading": CardSections.shared.headings[index] ?? ""] as [String: Any]
             }
             out["picked"] = browser.picked ?? -1
+            out["summoning"] = browser.summoning
             return out
         case "window":
             // The whole window as the compositor shows it — sidebar, page,
