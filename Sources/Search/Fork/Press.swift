@@ -20,7 +20,9 @@ struct PressLook: ViewModifier {
                     .allowsHitTesting(false)
             }
             .scaleEffect(down && !still ? 0.98 : 1)
-            .animation(still ? nil : Motion.quick, value: down)
+            // Fork (r7 motion): the press lands in the frame after the click, the
+            // let-go eases out — eased in too, it crept in over 4 frames.
+            .animation(still || down ? nil : Motion.quick, value: down)
     }
 }
 
