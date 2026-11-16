@@ -22,7 +22,16 @@ enum Web {
 
     /// What every view says it is after "AppleWebKit … (KHTML, like Gecko)"
     /// — web tabs and extension views alike (see Extensions.init).
-    static let userAgentName = "Version/26.5 Safari/605.1.15"
+    /// Fork (sites): the version of the Safari on this Mac, whose WebKit
+    /// this is. A fixed "26.5" told sites on macOS 27 they had an older
+    /// browser than the one running their scripts.
+    static let userAgentName = agentName(safari: Bundle(path: "/Applications/Safari.app")?
+        .object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
+
+    static func agentName(safari version: String?) -> String {
+        let ok = version.map { $0.range(of: #"^\d+(\.\d+){0,2}$"#, options: .regularExpression) != nil } ?? false
+        return "Version/\(ok ? version! : "26.5") Safari/605.1.15"
+    }
 
     static func configuration(shy: Bool = false, store: WKWebsiteDataStore? = nil) -> WKWebViewConfiguration {
         let config = WKWebViewConfiguration()
