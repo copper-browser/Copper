@@ -39,9 +39,9 @@ if [ "$(uname)" = Linux ]; then
   [ -n "${AGENTBENCH_SRC:-}" ] && AGENTBENCH_SHA="$(git -C "$AGENTBENCH_SRC" rev-parse HEAD)$(git -C "$AGENTBENCH_SRC" diff --quiet HEAD || echo -dirty)"
   AGENTBENCH_HARNESS_SHA="$(git -C "$here" rev-parse HEAD)$(git -C "$here" diff --quiet HEAD -- . || echo -dirty)"
   export AGENTBENCH_SHA AGENTBENCH_HARNESS_SHA
-  envs=""; for v in AGENTBENCH_SHA AGENTBENCH_HARNESS_SHA ARMS ROUNDS_ULTRAFAST ROUNDS_WIKIGAME ROUNDS_UIBENCH ROUNDS_REALWEB ROUNDS_PARAPHRASE ROUNDS_PROBES TASKS ULTRAFAST_DIR AGENTBENCH_ALLOW_CHROME \
+  envs=""; for v in AGENTBENCH_SHA AGENTBENCH_HARNESS_SHA ARMS ROUNDS_ULTRAFAST ROUNDS_WIKIGAME ROUNDS_UIBENCH ROUNDS_REALWEB ROUNDS_FBPUB ROUNDS_PARAPHRASE ROUNDS_PROBES TASKS ULTRAFAST_DIR AGENTBENCH_ALLOW_CHROME \
       AGENTBENCH_WORLD AGENTBENCH_PORT AGENTBENCH_FIXPORT AGENTBENCH_VIEWPORT AGENTBENCH_TEXT_MODEL AGENTBENCH_JEV_ENDPOINT AGENTBENCH_PRIVATE \
-      AGENTBENCH_SAME_PORT AGENTBENCH_SAME_VIEWPORT AGENTBENCH_FLIGHTS_GAP AGENTBENCH_FLIGHTS_INLOCK AGENTBENCH_CHUNK AGENTBENCH_BASE_APP; do
+      AGENTBENCH_SAME_PORT AGENTBENCH_SAME_VIEWPORT FB_CDP_PORT AGENTBENCH_FLIGHTS_GAP AGENTBENCH_FLIGHTS_INLOCK AGENTBENCH_CHUNK AGENTBENCH_BASE_APP; do
     [ -n "${!v:-}" ] && envs+="$v=$(printf %q "${!v}") "; done
   ssh "$host" "cd $remote && $envs ./agentbench.sh $(printf %q "$label") $(printf %q "$app") ${3:-}" || echo "remote run exited $?"
   dest="$HOME/plans/copper-hillclimb-2026-11-14/out/$label/agentbench"
@@ -157,7 +157,7 @@ case ",${ARMS:-}," in *,same,*) py+=(--same-viewport "$same_viewport") ;; *,base
 # chunk is used up, 5 when only Google Flights runs are left and the next must wait (outside the lock), 3 when a
 # probe died; already-recorded (task, arm, round) runs are skipped, so a rerun resumes.
 rounds="ultrafast=${ROUNDS_ULTRAFAST:-10},wikigame=${ROUNDS_WIKIGAME:-3},uibench=${ROUNDS_UIBENCH:-2},realweb=${ROUNDS_REALWEB:-2}"
-rounds+=",paraphrase=${ROUNDS_PARAPHRASE:-2},probes=${ROUNDS_PROBES:-2}"
+rounds+=",fbpub=${ROUNDS_FBPUB:-2},paraphrase=${ROUNDS_PARAPHRASE:-2},probes=${ROUNDS_PROBES:-2}"
 restarts=0
 while :; do
   { lsof -tiTCP:"$port" -sTCP:LISTEN >/dev/null && case ",${ARMS:-}," in *,same,*) lsof -tiTCP:"$same_port" -sTCP:LISTEN >/dev/null ;; esac; } \

@@ -78,6 +78,8 @@ ARMS = {
     "bu-ultrafast": None,
     # an LLM agent (AGENTBENCH_MCP_MODEL, sonnet) on browser_snapshot/browser_click & co. — play_mcp
     "phi-mcp": None,
+    # fastbrowse 0.10 (agent-labs-dev, MIT): Jev picks from indexed controls, an LLM (router luna) writes/reads, in Chrome (fastbrowse_arm.py)
+    "fastbrowse": None,
 }
 
 # arms that run in the second probe world (agentbench.sh: <world>-same): since round 4 the base build's
@@ -235,13 +237,62 @@ def check_human(page, run):
             "not_clicked": path == "/probe/human" and page.get("title") == "Copper Shop"}
 
 
+def answer_has(pattern):
+    def check(page, run):
+        return {"answer": bool(re.search(pattern, run.get("answer") or "", re.I))}
+    return check
+
+
+def live_json(url, timeout=10):
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            return json.load(r)
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+
+
+def check_pypi_version(page, run):
+    v = ((live_json("https://pypi.org/pypi/httpx/json") or {}).get("info") or {}).get("version") or "0.28.1"
+    return {"answer": bool(re.search(r"(?<![\d.])" + re.escape(v) + r"(?![\d])", run.get("answer") or ""))}
+
+
+def hn_top(n=3):
+    ids = (live_json("https://hacker-news.firebaseio.com/v0/topstories.json") or [])[:n]
+    return [(i, (live_json(f"https://hacker-news.firebaseio.com/v0/item/{i}.json") or {}).get("title") or "") for i in ids]
+
+
+def check_hn_top(page, run):
+    # the front page moves: any of the top three titles counts (checked seconds after the run)
+    norm = lambda s: re.sub(r"\W+", " ", s or "").strip().lower()
+    return {"answer": any(t and norm(t) in norm(run.get("answer")) for _, t in hn_top())}
+
+
+def check_hn_comments(page, run):
+    host, path = host_path(page.get("url"))
+    q = urllib.parse.parse_qs(urllib.parse.urlsplit(page.get("url") or "").query).get("id", [""])[0]
+    return {"item_page": host == "news.ycombinator.com" and path == "/item", "top_story": q in {str(i) for i, _ in hn_top()}}
+
+
+FB_TASKS = {  # id: (start, task verbatim, checker, is a question)
+    "fb-wiki-open": ("https://en.wikipedia.org/wiki/Main_Page", "Search for Gödel's incompleteness theorems and open that article.", check_godel, False),
+    "fb-arxiv-open": ("https://arxiv.org/", "Open the abstract page of arXiv paper 1706.03762.", check_url("arxiv.org", r"^/abs/1706\.03762(v\d+)?$"), False),
+    "fb-hn-comments": ("https://news.ycombinator.com/", "Open the comments page of the top story.", check_hn_comments, False),
+    "fb-hn-top": ("https://news.ycombinator.com/", "What is the title of the top story right now?", check_hn_top, True),
+    "fb-github-license": ("https://github.com/encode", "Open the httpx repository and tell me which license it uses.", answer_has(r"BSD"), True),
+    "fb-wiki-godel": ("https://en.wikipedia.org/wiki/Main_Page", "Search for Gödel's incompleteness theorems, open that article, and tell me the year they were published.", answer_has(r"\b1931\b"), True),
+    "fb-arxiv-title": ("https://arxiv.org/", "What is the title of arXiv paper 1706.03762?", answer_has(r"attention is all you need"), True),
+    "fb-pypi-version": ("https://pypi.org/", "What is the latest released version of httpx?", check_pypi_version, True),
+    "fb-oscars-2012": ("https://www.scrapethissite.com/pages/ajax-javascript/", "Of the 2012 films listed here, which one won Best Picture?", answer_has(r"\bargo\b"), True),
+}
+
+
 def tasks(fixtures):
     """Every task: id → dict(group, url, goal, check, max_steps, core). url() may embed a run id."""
     T = {}
     # ultrafast's own three (docs/performance.md); goals verbatim except the flight date
     T["hotel"] = dict(group="ultrafast", url=lambda sid: f"{fixtures}/fixture.html?scenario=travel",
                       goal="Use the destination search and filters to find Design stays in Lisbon with Free cancellation, "
-                           "then open Casa Flora.", check=check_hotel, max_steps=15, published_ms=1896)
+                           "then open Casa Flora.", check=check_hotel, max_steps=15, published_ms=1896, authorize=True)
     T["godel"] = dict(group="ultrafast", url=lambda sid: "https://en.wikipedia.org/wiki/Main_Page",
                       goal="Find and open the Wikipedia article about Gödel’s incompleteness theorems.",
                       check=check_godel, max_steps=20, published_ms=2798)
@@ -282,7 +333,11 @@ def tasks(fixtures):
                                  name=f"{start} → {target}")
     for name, (goal, optimal) in UIBENCH.items():
         T[f"ui-{name}"] = dict(group="uibench", url=(lambda n: lambda sid: f"{fixtures}/app?task={n}&sid={sid}")(name),
-                               goal=goal, check="app", max_steps=30, optimal=optimal)
+                               goal=goal, check="app", max_steps=30, optimal=optimal, authorize=True)
+    # fastbrowse's own published live tasks (src/fastbrowse/evals/public-tasks.json, release-0.10.0): read-only, no login.
+    # Questions (ask=True) are judged on the run's answer (fastbrowse: its answer; Copper: jev_extract after jev_run).
+    for tid, (start, goal, check, ask) in FB_TASKS.items():
+        T[tid] = dict(group="fbpub", url=(lambda s: lambda sid: s)(start), goal=goal, check=check, max_steps=20, ask=ask)
     # five read-only real-web tasks: no login, no purchase, no posting
     T["gh-issues"] = dict(group="realweb", url=lambda sid: "https://github.com/microsoft/vscode/issues",
                           goal='Search this repository\'s issues for "minimap" and show the results.',
@@ -384,6 +439,19 @@ def play_copper(copper, task, arm, sid):
             raise ProbeDown() from e
         error = f"{type(e).__name__}: {e}"[:300]
         run = {"status": "error", "note": error, "elapsed_ms": int((time.time() - begun) * 1000), "steps": [], "totals": {}}
+    if task.get("ask") and not error:
+        # a question: Copper's answer channel is jev_extract after the run (its own tool text: "verify with jev_extract");
+        # its time goes on the run's clock, its model is the world's router model (estimated $, see EXTRACT_PRICE)
+        t0 = time.time()
+        try:
+            out = json.loads(copper.call("jev_extract", {"instruction": task["goal"], "full": True,
+                                                         "schema": {"type": "object", "properties": {"answer": {"type": "string"}}}}, timeout=60))
+            run["answer"] = str(out.get("answer", out))
+        except Exception as e:
+            run["answer"] = None
+            run["extract_error"] = f"{type(e).__name__}: {e}"[:200]
+        run["extract_ms"] = int((time.time() - t0) * 1000)
+        run["elapsed_ms"] = (run.get("elapsed_ms") or 0) + run["extract_ms"]
     try:
         # A page still loading (Amazon's product page right after the click: no title yet) is read
         # again for up to 5 s, so the checker judges the page, not the moment.
@@ -399,6 +467,10 @@ def play_copper(copper, task, arm, sid):
             copper.call("browser_close", {}, timeout=20)
         except Exception:
             pass
+    if "extract_ms" in run:
+        # shortcut: tokens estimated as chars/4 of the page text sent (≤24k chars) + ~3k of controls/prompt; no usage is returned
+        tin = (min(len(page.get("text") or ""), 24000) + 12000) // 4
+        run["extract_usd"] = round((tin * EXTRACT_PRICE[0] + 100 * EXTRACT_PRICE[1]) / 1e6, 5)
     run["harness_ms"] = int((time.time() - begun) * 1000)
     run["private"] = bool(args.get("private"))
     if error:
@@ -446,6 +518,27 @@ def play_bu(task_id, task, sid, fixtures):
     return out["run"], out["page"]
 
 
+def play_fb(task_id, task, sid, fixtures):
+    """One run of fastbrowse in ~/hc/fastbrowse-venv on the benchmark-only Chrome (FB_CDP_PORT); keys never printed."""
+    if os.environ.get("AGENTBENCH_ALLOW_CHROME") != "1":
+        raise SystemExit("fastbrowse arm needs Chrome; set AGENTBENCH_ALLOW_CHROME=1")
+    py = os.environ.get("FB_PYTHON", os.path.expanduser("~/hc/fastbrowse-venv/bin/python"))
+    cmd = [py, os.path.join(HERE, "fastbrowse_arm.py"), "--url", task["url"](sid), "--goal", task["goal"],
+           "--max-steps", str(task["max_steps"]), "--read", READ_PAGE]
+    if task.get("authorize"):
+        cmd.append("--authorize")
+    begun = time.time()
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=200)
+        out = json.loads(p.stdout.strip().splitlines()[-1])
+    except subprocess.TimeoutExpired:
+        out = {"run": {"status": "error", "note": "harness timeout 200 s", "steps": [], "totals": {}}, "page": {}}
+    except (IndexError, json.JSONDecodeError):
+        out = {"run": {"status": "error", "note": (p.stderr or p.stdout)[-300:], "steps": [], "totals": {}}, "page": {}}
+    out["run"]["harness_ms"] = int((time.time() - begun) * 1000)
+    return out["run"], out["page"]
+
+
 # phi-mcp: an LLM agent on Copper's Playwright-style tools, the way phi or Claude Code drives Copper without Jev.
 # It sees the real browser_* tool list (tools/list: names, descriptions, input schemas), answers one JSON
 # action a turn, and after every action gets the page's interactive snapshot in full, as Playwright MCP's click
@@ -459,6 +552,8 @@ MCP_PRICE = {"sonnet": (3.0, 15.0), "haiku": (1.0, 5.0), "luna": (0.14, 0.55), "
 # Jev (TypeSafe) bills input tokens with no dollar figure in its answers; priced here at this assumed list price
 # (haiku's input price: an upper bound for a small classifier), so $/pass ranks every method. Set to change it.
 JEV_USD_PER_M = float(os.environ.get("AGENTBENCH_JEV_USD_PER_M", "1.0"))
+# jev_extract (fbpub questions) runs on the probe world's router model (sonnet, copied from the dev world): list price
+EXTRACT_PRICE = MCP_PRICE.get(os.environ.get("AGENTBENCH_EXTRACT_MODEL", "sonnet"), (3.0, 15.0))
 MCP_SKIP = {"browser_close", "browser_resize", "browser_groups", "browser_vault_save", "browser_vault_note", "browser_install_extension"}
 MCP_SYSTEM = """You drive Copper, the user's web browser, through its tools to reach the user's goal. Each turn you get the goal, your recent actions with their results, and the page: its interactive accessibility snapshot (refs like e12) after your last action, or what your last read returned.
 Answer with ONE JSON object and nothing else: {"tool": "<a tool name below>", "args": {...}} | {"tool": "done"} | {"tool": "blocked", "why": "..."}
@@ -649,6 +744,10 @@ def record(task_id, task, arm, rnd, run, page, fixtures, sid):
     tout = t.get("llm_out_tokens") if t.get("llm_out_tokens") is not None else run.get("llm_out_tokens")
     if run.get("cost_usd") is None and tin is not None:
         run["cost_usd"] = usd(tin, tout or 0, t.get("llm_model") or t.get("text_model") or "", t.get("llm_usd"))
+    if run.get("extract_usd"):
+        run["cost_usd"] = (run.get("cost_usd") or 0) + run["extract_usd"]
+    extra.update({k: run.get(k) for k in ("answer", "fb_status", "fb_dollars", "fb_unknown_lines", "llm_calls", "extract_ms", "extract_error")
+                  if run.get(k) is not None})
     # A form sent again with nothing shown in between (the review posted three times, council R4).
     sent_before, dup = set(), 0
     for s in steps:
@@ -735,7 +834,7 @@ def resolved(results):
 
 def summarize(results, meta):
     arms = [a for a in ARMS if any(r["arm"] == a for r in results)]
-    groups = [g for g in ("ultrafast", "wikigame", "uibench", "realweb", "paraphrase", "probes") if any(r["group"] == g for r in results)]
+    groups = [g for g in ("ultrafast", "wikigame", "uibench", "realweb", "fbpub", "paraphrase", "probes") if any(r["group"] == g for r in results)]
     worlds = meta.get("worlds") or {"main": {k: meta.get(k) for k in ("jevModel", "textModel", "viewport")}}
     L = [f"# Agentbench — {meta.get('label', '?')}", "",
          f"Build: `{meta.get('app', '?')}` ({meta.get('build', '?')}, commit {meta.get('sha') or '?'}, binary {meta.get('binary_sha256') or '?'}; "
@@ -892,6 +991,11 @@ def selftest():
     assert first_json('Sure.\n{"tool": "done"}\n{"tool": "blocked"}') == {"tool": "done"} and first_json("no json") == {}
     assert abs(total_usd({"model": "jev-1.14.0", "input_tokens": 2_000_000, "cost_usd": 0.01}) - (0.01 + 2 * JEV_USD_PER_M)) < 1e-9
     assert total_usd({"model": "haiku", "input_tokens": 5000, "cost_usd": 0.02}) == 0.02 and total_usd({"model": "x"}) is None
+    assert ok("fb-wiki-godel", {}, {"answer": "They were published in 1931 [1]"}) and not ok("fb-wiki-godel", {}, {"answer": "1930"})
+    assert ok("fb-oscars-2012", {}, {"answer": "Argo won."}) and not ok("fb-oscars-2012", {}, {"answer": None})
+    assert ok("fb-arxiv-open", {"url": "https://arxiv.org/abs/1706.03762v7"}) and not ok("fb-arxiv-open", {"url": "https://arxiv.org/pdf/1706.03762"})
+    assert ok("fb-github-license", {}, {"answer": "BSD-3-Clause"}) and ok("fb-wiki-open", {"url": "https://en.wikipedia.org/wiki/G%C3%B6del%27s_incompleteness_theorems"})
+    assert all(T[t]["group"] == "fbpub" for t in FB_TASKS) and T["ui-login"]["authorize"] and not T["godel"].get("authorize")
     print("selftest ok")
 
 
@@ -1035,8 +1139,8 @@ def main():
             pending.remove(ready)
             task = T[tid]
             sid = f"{tid}-{arm}-{uuid.uuid4().hex[:8]}"
-            if arm in ("ultrafast", "bu-ultrafast"):
-                run, page = (play_ultrafast if arm == "ultrafast" else play_bu)(tid, task, sid, a.fixtures)
+            if arm in ("ultrafast", "bu-ultrafast", "fastbrowse"):
+                run, page = {"ultrafast": play_ultrafast, "bu-ultrafast": play_bu, "fastbrowse": play_fb}[arm](tid, task, sid, a.fixtures)
                 if task.get("flights"):
                     with open(stamp, "w") as sf:
                         sf.write(str(time.time()))
