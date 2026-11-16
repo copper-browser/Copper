@@ -317,6 +317,7 @@ final class BackdropWeb: WKWebView, WKNavigationDelegate {
     /// Copper window is in front). Each of those used to draw 24 frames a
     /// second, a main-thread commit each, for nobody.
     private var mode: String {
+        if let held = BackdropWeb.held { return held }
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || ProcessInfo.processInfo.isLowPowerModeEnabled { return "still" }
         guard let window, !isHiddenOrHasHiddenAncestor else { return "pause" }
         guard Attention.awake else { return "still" }
@@ -344,6 +345,19 @@ final class BackdropWeb: WKWebView, WKNavigationDelegate {
     }
 
     // MARK: The bench
+
+    /// `./bench spaces backdrop pause|still|run|auto`: every scene told to do
+    /// that whatever its window says, as if Copper went behind another app
+    /// and came back (a probe's window is never in front). `auto` hands the
+    /// word back to `mode`.
+    private static var held: String?
+
+    static func hold(_ word: String) -> [String: Any] {
+        guard ["pause", "still", "run", "auto"].contains(word) else { return ["error": "spaces backdrop pause|still|run|auto"] }
+        held = word == "auto" ? nil : word
+        alive.allObjects.forEach { $0.refresh() }
+        return ["held": held ?? "auto", "backdrops": alive.count]
+    }
 
     /// `./bench backdrop`: every backdrop alive — its WebContent process,
     /// whether it is hidden, and the page's own `backdrop.status()` (the

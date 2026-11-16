@@ -1351,6 +1351,7 @@ extension Spaces {
             guard SpaceDelete.answer(arg) else { return ["error": "no sheet up, or no \(arg) button on it"] }
             return ["answered": arg, "did": SpaceDelete.last]
         case "slide": return ["slide": SpaceSlide.shared.bench(arg)]
+        case "backdrop": return BackdropWeb.hold(arg) // Fork/AnimatedBackdrop.swift
         case "swipe": return ["slide": SpaceSwipe.script(arg, in: browser)]
         case "scroll": return ["slide": SideScrollElasticity.script(arg)]
         case "preview": return ["preview": SpacePreview.bench(words, find: find, in: browser)]

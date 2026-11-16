@@ -16,7 +16,10 @@ whole window, and the page sits on it as a card: a 7pt margin on the top,
 right and bottom, 11pt round corners, a hairline and a soft shadow — the same
 card a split view's two panes are, and the agent's pane beside it. A space's
 picture keeps the column's width and fades into its colour past it. The top
-tab layout keeps its page edge to edge.
+tab layout keeps its page edge to edge. An animated ground (a scene, Settings ›
+Spaces) stands still while nobody can see it or has touched Copper for half a
+minute, and carries on from that very frame when you come back — its clock
+stops with it (`Fork/Backdrop/scene.js`), so the gradient never races to catch up.
 
 **The strip at the foot.** Every space is a 28pt chip — its emoji or its
 symbol at 20pt, or its initial (11pt semibold) on a 20pt tile of its own
@@ -123,5 +126,6 @@ views (header, strip, editor, menu, delete sheet).
 ./bench spaces edit [N|NAME]                the editor popover, on the header
 ./bench spaces delete N|NAME                the Delete sheet (prints its text)
 ./bench spaces answer close|move|cancel     press one of the sheet's buttons
+./bench spaces backdrop pause|still|run|auto  an animated space's scene, as with Copper behind another app (pause) and back (auto)
 ./bench ui width 176                        the column's width, for a look
 ```

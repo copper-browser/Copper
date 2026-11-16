@@ -76,6 +76,7 @@ enum StageReport {
             return ["index": index, "number": window?.windowNumber ?? 0, "visible": window?.isVisible ?? false,
                     "key": window?.isKeyWindow ?? false, "space": Spaces.shared.space(in: browser).name,
                     "active": describe(browser.active, on: browser), "stages": stages,
+                    "side": describe(Split.shared.holder === browser ? browser.tabs.first { $0.id == Split.shared.side } : nil, on: browser),
                     "tabs": browser.tabs.count, "taken": browser.taken.map { String($0.uuidString.prefix(8)).lowercased() } ?? ""]
         }
         return ["windows": windows, "backstage": Backstage.shared.report, "popovers": DoorHand.open]
