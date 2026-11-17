@@ -512,7 +512,11 @@ final class Drive: ObservableObject {
         case "browser_navigate": return (host.isEmpty ? "Opening a page" : "Opening \(host)", detail)
         case "browser_navigate_back": return ("Going back", detail)
         case "browser_navigate_forward": return ("Going forward", detail)
-        case "browser_take_screenshot": return ((args["fullPage"] as? Bool) == true ? "Taking a full-page screenshot" : "Taking a screenshot", detail)
+        case "browser_take_screenshot":
+            // What is pictured: a region, an element, the page or the view.
+            if let region = args["region"], !(region is NSNull) { return ("Taking a screenshot of a region", detail) }
+            if !named.isEmpty { return ("Taking a screenshot of \(named)", detail) }
+            return ((args["fullPage"] as? Bool) == true ? "Taking a full-page screenshot" : "Taking a screenshot", detail)
         case "browser_evaluate": return ("Running a script in the page", detail)
         case "browser_wait_for":
             if let text = args["text"] as? String, !text.isEmpty { return ("Waiting for “\(text.prefix(40))”", detail) }

@@ -31,14 +31,23 @@ enum OffMainWrite {
     /// `timeout`, or what the writer threw. Never blocks the calling thread.
     static func write(_ data: Data, to url: URL, timeout: TimeInterval = defaultTimeout,
                       writer: @escaping Writer = plainWrite) async throws {
+        try await run(url.path, timeout: timeout) { try writer(data, url) }
+    }
+
+    /// Any short file job for `path` (look, make folders, write) the same
+    /// way: on a utility queue, its answer, or `TimedOut` after `timeout`.
+    /// browser_take_screenshot saves through it, since a folder it is given
+    /// becomes a file name only once the folder has been looked at.
+    static func run<T>(_ path: String, timeout: TimeInterval = defaultTimeout,
+                       _ work: @escaping @Sendable () throws -> T) async throws -> T {
         let once = Once()
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, Error>) in
             DispatchQueue.global(qos: .utility).async {
-                let result = Result { try writer(data, url) }
+                let result = Result { try work() }
                 if once.claim() { continuation.resume(with: result) }
             }
             DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) {
-                if once.claim() { continuation.resume(throwing: TimedOut(path: url.path, seconds: timeout)) }
+                if once.claim() { continuation.resume(throwing: TimedOut(path: path, seconds: timeout)) }
             }
         }
     }

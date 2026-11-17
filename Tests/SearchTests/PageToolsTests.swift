@@ -33,15 +33,17 @@ import Testing
 
 @MainActor @Test func toolsListStaysUnderItsBudget() throws {
     // What a loopback agent pays at the start of every session (MCP tools/list):
-    // < 6k tokens at ~4 bytes a token, ≤ 8k once a canvas is in use and the
+    // < 6.25k tokens at ~4 bytes a token, ≤ 8k once a canvas is in use and the
     // canvas tools are listed too (CanvasTools.listed). One-line descriptions;
     // canvas_apply's op shapes ride on the first canvas_read (CanvasTools.opsGuide).
+    // 24k until browser_take_screenshot took elements, regions and scale
+    // (~0.9k, its schema shared word for word with Copper for Linux and Windows).
     let extra = [CloudHistoryTool.schema] + VoiceTools.catalogue
     let bare = Tools.listed(Tools.offered(jev: true, canvas: false) + extra)
     let all = Tools.listed(Tools.offered(jev: true, canvas: true) + extra)
     let bareBytes = try JSONSerialization.data(withJSONObject: bare).count
     let bytes = try JSONSerialization.data(withJSONObject: all).count
-    #expect(bareBytes < 24_000, "tools/list with no canvas is \(bareBytes) bytes")
+    #expect(bareBytes < 25_000, "tools/list with no canvas is \(bareBytes) bytes")
     #expect(bytes <= 32_000, "tools/list is \(bytes) bytes")
     #expect(!all.contains { ($0["inputSchema"] as? [String: Any])?["required"].map { ($0 as? [Any])?.isEmpty == true } == true })
     for name in ["browser_mouse_click_xy", "browser_handoff", "browser_permissions", "canvas_apply"] {

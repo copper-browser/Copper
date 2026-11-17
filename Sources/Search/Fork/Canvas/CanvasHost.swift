@@ -1039,8 +1039,10 @@ final class CanvasHost {
                 """, ["ms": CanvasHost.settleMs])
             let pending = CanvasHost.pendingText(CanvasHost.object(raw))
             do {
-                return (try await Tools.Page.screenshot(web, rect: nil, fullPage: false, jpeg: false), pending)
+                return (try await Tools.Page.screenshot(web, Tools.Shots.Ask(), target: nil).data, pending)
             } catch let failure as Tools.Page.Failure {
+                throw Failure(text: "couldn't take the canvas's picture: \(failure.text)")
+            } catch let failure as Tools.Failure {
                 throw Failure(text: "couldn't take the canvas's picture: \(failure.text)")
             }
         }
