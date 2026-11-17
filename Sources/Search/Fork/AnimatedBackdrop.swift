@@ -57,9 +57,8 @@ enum BackdropScene {
         var speed: Double
         var blur: Double
         var dark: Bool
-        /// Which space this is the look of: the page keeps each space's
-        /// clock offset by it, and a `set` of the same key is a retune (no
-        /// fade) rather than a switch.
+        /// Which space this is the look of: a `set` of the same key is a
+        /// retune (no fade) rather than a switch.
         var key: String = ""
 
         init(style: String, colors: [String], speed: Double, blur: Double, dark: Bool, key: String = "") {
