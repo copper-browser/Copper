@@ -316,21 +316,45 @@ enum CLI {
             guard !args.contains(where: { $0.hasPrefix("-") }) else { return bad("find text cannot be an option") }
             return call("browser_find", ["text": args.joined(separator: " ")])
         case "shot":
+            // Each flag is one of browser_take_screenshot's arguments (Shots.swift).
+            let usage = "usage: copper shot \(shotUsage)"
             var path: String?
             var arguments: [String: Any] = ["type": "png"]
+            var hd = false
             var i = 0
             while i < args.count {
-                switch args[i] {
+                let flag = args[i]
+                switch flag {
                 case "--full": arguments["fullPage"] = true
                 case "--jpeg": arguments["type"] = "jpeg"
+                case "--hd": hd = true
+                case "--ref", "--selector", "--frame":
+                    guard let value = next(&args, &i), !value.isEmpty else { return bad("shot \(flag) needs a value — \(usage)") }
+                    arguments[String(flag.dropFirst(2))] = value
+                case "--region":
+                    let numbers = next(&args, &i)?.split(separator: ",", omittingEmptySubsequences: false).map { Double($0.trimmingCharacters(in: .whitespaces)) }
+                    guard let numbers, numbers.count == 4, let x = numbers[0], let y = numbers[1], let w = numbers[2], let h = numbers[3] else {
+                        return bad("shot --region needs X,Y,W,H: four numbers in CSS pixels — \(usage)")
+                    }
+                    arguments["region"] = ["x": x, "y": y, "width": w, "height": h]
+                case "--padding", "--scale":
+                    guard let value = next(&args, &i).flatMap(Double.init), value.isFinite else { return bad("shot \(flag) needs a number — \(usage)") }
+                    arguments[String(flag.dropFirst(2))] = value
                 default:
-                    guard !args[i].hasPrefix("-"), path == nil else { return bad("shot takes one optional PATH") }
-                    path = args[i]
+                    guard !flag.hasPrefix("-"), path == nil else { return bad("shot takes one optional PATH and these options — \(usage)") }
+                    path = flag
                 }
                 i += 1
             }
-            let suffix = (arguments["type"] as? String) == "jpeg" ? "jpg" : "png"
-            let output = path ?? "/tmp/copper-\(Int(Date().timeIntervalSince1970)).\(suffix)"
+            if hd {
+                guard arguments["scale"] == nil else { return bad("shot takes --scale N or --hd, not both — \(usage)") }
+                arguments["scale"] = 2
+            }
+            if arguments["frame"] != nil, arguments["selector"] == nil { return bad("shot --frame goes with --selector — \(usage)") }
+            // The app's own checks, here first, so a bad call exits 2 like any other usage error.
+            do { _ = try Tools.Shots.parse(arguments) } catch { return bad("\(error.localizedDescription) — \(usage)") }
+            let jpeg = (arguments["type"] as? String) == "jpeg"
+            let output = shotPath(path ?? "/tmp/copper-\(Int(Date().timeIntervalSince1970)).\(jpeg ? "jpg" : "png")")
             arguments["filename"] = output
             return call("browser_take_screenshot", arguments, imagePath: output, imageCommand: true)
         case "eval":
@@ -375,8 +399,14 @@ enum CLI {
             } else {
                 return bad("call JSON-ARGS must be a JSON object")
             }
-            let imagePath = (name == "browser_take_screenshot" ? arguments["filename"] as? String : nil)
-            return call(name, arguments, imagePath: imagePath)
+            var sent = arguments
+            var imagePath: String?
+            // A path relative to the shell, or ~/…, made absolute for the app (which saves it).
+            if name == "browser_take_screenshot", let filename = arguments["filename"] as? String, !filename.isEmpty {
+                imagePath = shotPath(filename)
+                sent["filename"] = imagePath
+            }
+            return call(name, sent, imagePath: imagePath)
         case "cloud-history":
             // `cloud-history delete …` → cloud_history_delete. The app checks
             // the values; nothing chosen is refused here, before it gets there.
@@ -523,6 +553,42 @@ enum CLI {
 
     private static func endpoint(from config: Config?) -> String {
         "http://127.0.0.1:\(config?.port ?? 4123)/mcp"
+    }
+
+    /// `copper shot`'s options, for its help line and its usage errors.
+    private static let shotUsage = "[PATH] [--full] [--jpeg] [--ref REF | --selector CSS [--frame F] | --region X,Y,W,H] [--padding N] [--scale N | --hd]"
+
+    /// A screenshot's path as the shell meant it: `~` expanded, a relative
+    /// one made absolute against the working directory, a trailing `/` (a
+    /// folder) kept. Absolute paths stay as written (standardizing would turn
+    /// /private/tmp into /tmp).
+    private static func shotPath(_ path: String) -> String {
+        let expanded = (path as NSString).expandingTildeInPath
+        let absolute = expanded.hasPrefix("/") ? expanded : (FileManager.default.currentDirectoryPath as NSString).appendingPathComponent(expanded)
+        return path.hasSuffix("/") && !absolute.hasSuffix("/") ? absolute + "/" : absolute
+    }
+
+    /// The file the app said it saved a screenshot asked for at `asked` to
+    /// ("Saved to …." in its answer): `asked` itself, or for a folder the
+    /// name it made there. Nil when it saved nothing.
+    static func savedShot(_ texts: [String], asked: String) -> String? {
+        let folder = asked.hasSuffix("/") ? String(asked.dropLast()) : asked
+        let made = try? NSRegularExpression(pattern: "Saved to (" + NSRegularExpression.escapedPattern(for: folder) + #"/copper-\d{8}-\d{6}(?:-\d+)?\.(?:png|jpg))\."#)
+        for text in texts {
+            if text.contains("Saved to \(asked).") { return asked }
+            if let made, let hit = made.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+               let range = Range(hit.range(at: 1), in: text) { return String(text[range]) }
+        }
+        return nil
+    }
+
+    /// Where this CLI writes a screenshot itself, when the app could not:
+    /// `path`, or for a folder (an existing directory, or a path ending in /)
+    /// a new name in it, as the app would have named it.
+    private static func shotDestination(_ path: String, jpeg: Bool) -> String {
+        var directory: ObjCBool = false
+        let folder = path.hasSuffix("/") || (FileManager.default.fileExists(atPath: path, isDirectory: &directory) && directory.boolValue)
+        return Tools.Shots.destination(path, folder: folder, jpeg: jpeg, at: Date()) { FileManager.default.fileExists(atPath: $0) }
     }
 
     private static func next(_ args: inout [String], _ index: inout Int) -> String? {
@@ -1601,6 +1667,7 @@ enum CLI {
         var text: [String] = []
         if var content = result["content"] as? [[String: Any]] {
             var transformed: [[String: Any]] = []
+            let texts = content.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }
             for (index, item) in content.enumerated() {
                 guard let type = item["type"] as? String else { continue }
                 if type == "text", let value = item["text"] as? String {
@@ -1608,7 +1675,14 @@ enum CLI {
                     transformed.append(item)
                 } else if type == "image", let encoded = item["data"] as? String, let data = Data(base64Encoded: encoded) {
                     let mime = item["mimeType"] as? String
-                    let path = imagePath(for: spec, mime: mime, index: index)
+                    // Already saved by the app where it was asked to go: that file, not a second write.
+                    if paths.isEmpty, let asked = spec.imagePath, let saved = savedShot(texts, asked: asked) {
+                        paths.append(saved)
+                        transformed.append(["type": "image", "path": saved])
+                        continue
+                    }
+                    var path = imagePath(for: spec, mime: mime, index: index)
+                    if spec.imagePath != nil { path = shotDestination(path, jpeg: mime == "image/jpeg") }
                     do {
                         let file = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
                         try OffMainWrite.writeBlocking(data, to: file) { data, file in
@@ -1699,7 +1773,13 @@ enum CLI {
       snapshot [--interactive] [-n N] [--selector CSS]
       text                                      read page text
       find TEXT                                 find matching page elements
-      shot [PATH] [--full] [--jpeg]             save a screenshot
+      shot [PATH] [--full] [--jpeg] [--ref REF | --selector CSS [--frame F] | --region X,Y,W,H]
+           [--padding N] [--scale N | --hd]
+                                                save a screenshot (default /tmp/copper-<time>.png): the viewport,
+                                                the whole page (--full), one element or a region in CSS px (the
+                                                page's with --full), with --padding px round it. --scale 1-4
+                                                draws it again at that many pixels per CSS px (--hd = 2);
+                                                a folder PATH gets copper-YYYYMMDD-HHMMSS.png in it
       eval 'JS'                                 evaluate JavaScript
       click REF | --selector CSS                click an element
       type REF TEXT [--submit]                  type into an element

@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import WebKit
 
 // The page's side of the agent. One script, put into the page when a tool
@@ -219,70 +220,297 @@ enum Page {
         return CGRect(x: x * zoom, y: y * zoom, width: w * zoom, height: h * zoom)
     }
 
-    @MainActor
-    static func screenshot(_ web: WKWebView, rect: CGRect?, fullPage: Bool, jpeg: Bool) async throws -> Data {
-        let config = WKSnapshotConfiguration()
-        config.afterScreenUpdates = true
-        // 1×: a pixel in the picture is a CSS pixel on the page, so an agent
-        // that reads coordinates off it can click them.
-        config.snapshotWidth = NSNumber(value: Double(web.bounds.width))
-        if let rect {
-            config.rect = rect.intersection(web.bounds)
-            config.snapshotWidth = NSNumber(value: Double(config.rect.width))
+    /// A picture and what it came out as. WebKit draws the page again at
+    /// any size asked, so a Mac picture is never an enlarged one (the
+    /// answer's "Upscaled" note is for ports that can't always).
+    struct Picture {
+        /// PNG or JPEG, as asked: what a file gets.
+        let data: Data
+        let size: Tools.Shots.Size
+        /// The pictured rectangle's size in CSS pixels (Shots.inline).
+        let css: CGSize
+        /// What `data` encodes, kept for the answer's smaller image (`drawnDown`).
+        let bitmap: CGImage
+
+        init(_ bitmap: CGImage, size: Tools.Shots.Size, css: CGSize, jpeg: Bool) throws {
+            self.data = try Page.encode(bitmap, jpeg: jpeg)
+            self.size = size
+            self.css = css
+            self.bitmap = bitmap
         }
-        if fullPage {
-            // WebKit snapshots the viewport; the whole document is had by
-            // growing the view for one frame. Only when asked. A lazy page
-            // draws a section when it scrolls into view, so the page is
-            // walked a screen at a time first, and put back where it was.
+    }
+
+    /// The most a view is grown to, in CSS pixels, for a picture of what is
+    /// bigger than it (the full page has always stopped here).
+    static let tallest: Double = 20000
+
+    /// browser_take_screenshot. The subject is worked out in the page's CSS
+    /// pixels — padded and cut to what is there (Shots.area) — and WebKit
+    /// draws it at the picture's own size: scale 2 is the page drawn again
+    /// with twice the pixels, never a picture blown up. What is bigger than
+    /// the view (the page, a tall element, a region low on the page) is drawn
+    /// by growing the view to the page for the moment of the picture (`grown`).
+    @MainActor
+    static func screenshot(_ web: WKWebView, _ ask: Tools.Shots.Ask, target: Tools.Locator?) async throws -> Picture {
+        let zoom = max(web.pageZoom, 0.01)
+        let viewport = CGRect(x: 0, y: 0, width: web.bounds.width / zoom, height: web.bounds.height / zoom)
+        // A tab no window holds (an empty tab with no page yet) has no size to draw.
+        guard web.window != nil, viewport.width >= 1, viewport.height >= 1 else {
+            throw Tools.Failure(text: "this tab isn't drawn anywhere yet, so there is nothing to picture: open a page in it (browser_navigate), or work in a tab of your own (browser_tabs new)")
+        }
+        switch ask.subject {
+        case .view where !ask.fullPage:
+            return try await draw(web, viewport, ask)
+        case .region(let region) where !ask.fullPage:
+            guard let area = Tools.Shots.area(region, padding: ask.padding, within: viewport) else {
+                throw Tools.Failure(text: "the region is outside the viewport")
+            }
+            return try await draw(web, area, ask)
+        case .view, .region:
+            // The whole page, as wide as the view. A lazy page draws a section
+            // only when it scrolls into view, so it is walked a screen at a
+            // time first, and put back where it was.
             var height = (try? await call(web, walk, timeout: 10, late: "")) as? NSNumber
-            if height == nil { height = try await raw(web, "Math.min(document.documentElement.scrollHeight, 20000)") as? NSNumber }
-            if let height, height.doubleValue > web.bounds.height {
-                let before = web.frame
-                web.frame = CGRect(origin: before.origin, size: CGSize(width: before.width, height: height.doubleValue))
-                config.rect = CGRect(x: 0, y: 0, width: before.width, height: height.doubleValue)
-                defer { web.frame = before }
-                return try await take(web, config, jpeg: jpeg)
+            if height == nil { height = try await raw(web, "Math.min(document.documentElement.scrollHeight, \(Int(tallest)))") as? NSNumber }
+            let page = CGRect(x: 0, y: 0, width: viewport.width, height: max(height?.doubleValue ?? 0, viewport.height))
+            var area = page
+            if case .region(let region) = ask.subject {
+                guard let cut = Tools.Shots.area(region, padding: ask.padding, within: page) else {
+                    throw Tools.Failure(text: "the region is outside the page")
+                }
+                area = cut
+            }
+            guard page.height > viewport.height + 0.5 else { return try await draw(web, area, ask) }
+            return try await grown(web, to: page.size) { held in
+                // As tall as the page, the view has no room left to scroll
+                // and the page's coordinates are the view's. A page past
+                // `tallest` still has: it is scrolled to its top, so the
+                // picture is the page's first `tallest` pixels whatever
+                // its scroll (`grown` puts that back after).
+                _ = try? await raw(web, "window.scrollTo({ left: scrollX, top: 0, behavior: 'instant' }); true", counted: false)
+                let top = (try? await scroll(web))?.y ?? 0
+                return try await draw(web, area.offsetBy(dx: 0, dy: -top), ask, holding: held)
+            }
+        case .ref, .selector:
+            guard let target else { throw Tools.Failure(text: "ref (from browser_snapshot) or selector required") }
+            // Only the height is ever grown: a wider view would lay a
+            // responsive page out again, so what is wider than the view is
+            // cut at its sides.
+            let first = try await place(web, target, padding: ask.padding)
+            if first.area.minY >= -0.5, first.area.maxY <= viewport.height + 0.5 {
+                guard let area = Tools.Shots.area(first.area, padding: 0, within: viewport) else {
+                    throw Tools.Failure(text: "\(target.label) is outside the viewport, to the side")
+                }
+                return try await draw(web, area, ask)
+            }
+            // Taller than the view (or its padding off it): the view grown to
+            // the page, and the element measured again there.
+            return try await grown(web, to: CGSize(width: viewport.width, height: min(first.page.height, tallest))) { held in
+                var placed = try await place(web, target, padding: ask.padding)
+                // A layout pass may have put the view back meanwhile: grown again, measured again.
+                for _ in 0..<2 where web.frame.size != held {
+                    await resize(web, to: held)
+                    placed = try await place(web, target, padding: ask.padding)
+                }
+                let view = CGRect(x: 0, y: 0, width: held.width / zoom, height: held.height / zoom)
+                guard let area = Tools.Shots.area(placed.area, padding: 0, within: view) else {
+                    throw Tools.Failure(text: "\(target.label) is outside the page")
+                }
+                return try await draw(web, area, ask, holding: held)
             }
         }
-        return try await take(web, config, jpeg: jpeg)
+    }
+
+    /// An element for a picture: its border box scrolled into view
+    /// (`prepare`, frames included) in the view's CSS pixels, padded and cut
+    /// to the page; and the page's size.
+    @MainActor
+    private static func place(_ web: WKWebView, _ target: Tools.Locator, padding: Double) async throws -> (area: CGRect, page: CGSize) {
+        let zoom = max(web.pageZoom, 0.01)
+        let points = try await prepare(web, target, hit: false)
+        let box = CGRect(x: points.minX / zoom, y: points.minY / zoom, width: points.width / zoom, height: points.height / zoom)
+        guard box.width > 0, box.height > 0 else { throw Tools.Failure(text: "\(target.label) has no size: there is nothing to picture") }
+        let said = (try await raw(web, "[scrollX, scrollY, document.documentElement.scrollWidth, document.documentElement.scrollHeight]") as? [NSNumber])?.map(\.doubleValue) ?? []
+        guard said.count == 4 else { throw Tools.Failure(text: "couldn't measure the page") }
+        // The page in the view's coordinates: where its top-left is scrolled to.
+        let page = CGRect(x: -said[0], y: -said[1], width: max(said[2], web.bounds.width / zoom), height: max(said[3], web.bounds.height / zoom))
+        guard let area = Tools.Shots.area(box, padding: padding, within: page) else { throw Tools.Failure(text: "\(target.label) is outside the page") }
+        return (area, page.size)
+    }
+
+    /// `body` run with the view grown to `size` (CSS pixels, never smaller
+    /// than it is), then the view put back and scrolled where it was. WebKit
+    /// pictures what the view holds, so what is bigger than the view is had
+    /// by making the view that big for a moment. Only when asked.
+    @MainActor
+    private static func grown<T>(_ web: WKWebView, to size: CGSize, _ body: (CGSize) async throws -> T) async throws -> T {
+        let zoom = max(web.pageZoom, 0.01)
+        let before = web.frame
+        let scrolled = try? await scroll(web)
+        let wanted = CGSize(width: max(before.width, (size.width * zoom).rounded()), height: max(before.height, (size.height * zoom).rounded()))
+        await resize(web, to: wanted)
+        let result: Result<T, Error>
+        do { result = .success(try await body(wanted)) } catch { result = .failure(error) }
+        web.frame = before
+        if let scrolled {
+            _ = try? await raw(web, "window.scrollTo({ left: \(scrolled.x), top: \(scrolled.y), behavior: 'instant' }); true", counted: false)
+        }
+        return try result.get()
+    }
+
+    /// The view set to `size` (points), and back once the page has been
+    /// laid out at it (a second at most): WebKit may hold a new size back
+    /// until the last one is through, and a measurement or a picture taken
+    /// before then is of the old layout.
+    @MainActor
+    private static func resize(_ web: WKWebView, to size: CGSize) async {
+        let zoom = max(web.pageZoom, 0.01)
+        func inner() async -> [Double]? {
+            let said = (try? await raw(web, "[innerWidth, innerHeight]", counted: false) as? [NSNumber])?.map(\.doubleValue)
+            return said?.count == 2 ? said : nil
+        }
+        let from = web.frame.size
+        let before = await inner()
+        web.frame = CGRect(origin: web.frame.origin, size: size)
+        guard let before else { return }
+        let goal = (before[0] + (size.width - from.width) / zoom, before[1] + (size.height - from.height) / zoom)
+        let deadline = Date().addingTimeInterval(1)
+        while Date() < deadline {
+            if let now = await inner(), abs(now[0] - goal.0) < 1.5, abs(now[1] - goal.1) < 1.5 { return }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+            if web.frame.size != size { web.frame = CGRect(origin: web.frame.origin, size: size) }
+        }
     }
 
     @MainActor
-    private static func take(_ web: WKWebView, _ config: WKSnapshotConfiguration, jpeg: Bool) async throws -> Data {
-        let image: NSImage = try await withCheckedThrowingContinuation { continuation in
+    private static func scroll(_ web: WKWebView) async throws -> CGPoint {
+        let said = (try await raw(web, "[scrollX, scrollY]", counted: false) as? [NSNumber])?.map(\.doubleValue) ?? []
+        guard said.count == 2 else { throw Tools.Failure(text: "couldn't read where the page is scrolled") }
+        return CGPoint(x: said[0], y: said[1])
+    }
+
+    /// `area` (CSS pixels, in the view as it is now) drawn by WebKit at the
+    /// picture's size (Shots.size). `holding`: the grown size the view must
+    /// have when the picture is taken.
+    @MainActor
+    private static func draw(_ web: WKWebView, _ area: CGRect, _ ask: Tools.Shots.Ask, holding: CGSize? = nil) async throws -> Picture {
+        let size = Tools.Shots.size(css: area.size, scale: ask.scale)
+        let zoom = max(web.pageZoom, 0.01)
+        let rect = Tools.Shots.snapped(CGRect(x: area.minX * zoom, y: area.minY * zoom, width: area.width * zoom, height: area.height * zoom))
+        // WebKit draws the page into snapshotWidth × its device scale pixels,
+        // so asking for the picture's width over that scale has the page
+        // drawn at the picture's own size, whatever the screen. Its sizes are
+        // whole points, so the rectangle is first grown a point or two to one
+        // whose picture is whole pixels (Shots.whole), and the picture is its
+        // top-left corner. When no such rectangle is near (an odd scale), the
+        // picture is drawn at the nearest size and scaled the last pixel.
+        let ratio = await deviceScale(web)
+        let perPoint = size.scale / zoom
+        if ratio == ratio.rounded(), let whole = Tools.Shots.whole(rect, k: perPoint / ratio) {
+            let drawn = CGSize(width: (whole.width * perPoint).rounded(), height: (whole.height * perPoint).rounded())
+            if drawn.width >= Double(size.width), drawn.height >= Double(size.height) {
+                let picture = try await snapshot(web, whole, width: whole.width * perPoint / ratio, holding: holding)
+                let bitmap = try flatten(picture, into: size, at: CGRect(x: 0, y: Double(size.height) - drawn.height, width: drawn.width, height: drawn.height), opaque: ask.jpeg)
+                return try Picture(bitmap, size: size, css: area.size, jpeg: ask.jpeg)
+            }
+        }
+        let picture = try await snapshot(web, rect.intersection(web.bounds), width: Double(size.width) / ratio, holding: holding)
+        let bitmap = try flatten(picture, into: size, at: CGRect(x: 0, y: 0, width: size.width, height: size.height), opaque: ask.jpeg)
+        return try Picture(bitmap, size: size, css: area.size, jpeg: ask.jpeg)
+    }
+
+    /// WebKit's picture drawn at `place` (pixels, y up) in a bitmap of `size`.
+    /// Drawn, not read back: NSImage hands out a 1× copy of a picture whose
+    /// size in points isn't whole.
+    @MainActor
+    private static func flatten(_ picture: NSImage, into size: Tools.Shots.Size, at place: CGRect, opaque: Bool) throws -> CGImage {
+        picture.cacheMode = .never
+        return try bitmap(width: size.width, height: size.height, opaque: opaque) { context in
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+            picture.draw(in: place, from: .zero, operation: .copy, fraction: 1, respectFlipped: false,
+                         hints: [.interpolation: NSNumber(value: NSImageInterpolation.high.rawValue)])
+            NSGraphicsContext.restoreGraphicsState()
+        }
+    }
+
+    /// The page's device scale: devicePixelRatio, read in Copper's own
+    /// world (where the page can't redefine it); 2 on a Retina screen, often
+    /// 1 headless, and Safari's zoom leaves it alone. Else the window's.
+    @MainActor
+    private static func deviceScale(_ web: WKWebView) async -> Double {
+        if let ratio = (try? await raw(web, "devicePixelRatio", counted: false)) as? NSNumber, ratio.doubleValue >= 0.5, ratio.doubleValue <= 8 {
+            return ratio.doubleValue
+        }
+        return Double(web.window?.backingScaleFactor ?? 1)
+    }
+
+    /// One WKWebView snapshot of `rect` (view points), `width` points wide.
+    @MainActor
+    private static func snapshot(_ web: WKWebView, _ rect: CGRect, width: Double, holding: CGSize?) async throws -> NSImage {
+        if let holding, web.frame.size != holding { await resize(web, to: holding) }
+        let cut = rect.intersection(web.bounds)
+        guard !cut.isNull, cut.width >= 1, cut.height >= 1 else { throw Tools.Failure(text: "nothing of it is in the view to picture") }
+        let config = WKSnapshotConfiguration()
+        config.afterScreenUpdates = true
+        // May pass the view's edge by the point or two Shots.whole added; that strip is cut off.
+        config.rect = rect
+        config.snapshotWidth = NSNumber(value: max(width.rounded(.up), 1))
+        let picture: NSImage = try await withCheckedThrowingContinuation { continuation in
             web.takeSnapshot(with: config) { image, error in
                 if let image { continuation.resume(returning: image) }
                 else { continuation.resume(throwing: Failure(text: error?.localizedDescription ?? "no picture")) }
             }
         }
-        guard let tiff = image.tiffRepresentation, var rep = NSBitmapImageRep(data: tiff) else { throw Failure(text: "couldn't encode the picture") }
-        // A Retina screen (or a page at another device pixel ratio) snapshots
-        // at 2× its points: drawn down to one pixel per point, so the
-        // picture's coordinates are the ones browser_mouse_click_xy takes.
-        let size = image.size
-        if rep.pixelsWide != Int(size.width.rounded()), size.width >= 1, size.height >= 1,
-           let one = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width.rounded()), pixelsHigh: Int(size.height.rounded()),
-                                      bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-                                      colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
-           let context = NSGraphicsContext(bitmapImageRep: one) {
-            one.size = size
-            NSGraphicsContext.saveGraphicsState()
-            NSGraphicsContext.current = context
-            context.imageInterpolation = .high
-            rep.draw(in: NSRect(origin: .zero, size: size))
-            NSGraphicsContext.restoreGraphicsState()
-            rep = one
-        }
-        guard let data = rep.representation(using: jpeg ? .jpeg : .png, properties: jpeg ? [.compressionFactor: 0.8] : [:])
+        return picture
+    }
+
+    /// The answer's image when it isn't the picture (Shots.inline): the
+    /// picture drawn down to `size`, from its bitmap so a JPEG isn't
+    /// compressed twice. Same format as the picture.
+    static func drawnDown(_ picture: Picture, to size: Tools.Shots.Size, jpeg: Bool) throws -> Data {
+        try encode(picture.bitmap, width: size.width, height: size.height, jpeg: jpeg)
+    }
+
+    /// `image` scaled to exactly `width`×`height` and encoded (see `bitmap`).
+    /// Core Graphics' high-quality pass averages all the pixels each new
+    /// one covers, however far it is made smaller, so fine text drawn down
+    /// comes out smooth, not jagged (ShotsTests).
+    static func encode(_ image: CGImage, width: Int, height: Int, jpeg: Bool) throws -> Data {
+        try encode(bitmap(width: width, height: height, opaque: jpeg) { context in
+            context.interpolationQuality = .high
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        }, jpeg: jpeg)
+    }
+
+    /// What `paint` draws into a plain 8-bit sRGB bitmap of exactly
+    /// `width`×`height` (`opaque` for a JPEG). Drawn at that size, WebKit's
+    /// picture comes out right when it is a pixel or two off (it sizes
+    /// pictures in whole points).
+    static func bitmap(width: Int, height: Int, opaque: Bool, _ paint: (CGContext) -> Void) throws -> CGImage {
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                                      bitmapInfo: (opaque ? CGImageAlphaInfo.noneSkipLast : .premultipliedLast).rawValue)
         else { throw Failure(text: "couldn't encode the picture") }
-        return data
+        paint(context)
+        guard let flat = context.makeImage() else { throw Failure(text: "couldn't encode the picture") }
+        return flat
+    }
+
+    /// `bitmap` as PNG, or JPEG at quality 0.8.
+    static func encode(_ bitmap: CGImage, jpeg: Bool) throws -> Data {
+        let data = NSMutableData()
+        guard let out = CGImageDestinationCreateWithData(data, (jpeg ? "public.jpeg" : "public.png") as CFString, 1, nil)
+        else { throw Failure(text: "couldn't encode the picture") }
+        CGImageDestinationAddImage(out, bitmap, jpeg ? [kCGImageDestinationLossyCompressionQuality: 0.8] as CFDictionary : nil)
+        guard CGImageDestinationFinalize(out) else { throw Failure(text: "couldn't encode the picture") }
+        return data as Data
     }
 
     /// The full-page walk: a screen at a time to the bottom (a frame and
     /// 40 ms on each), then back. Answers the height to draw.
     static let walk = """
-    const tall = () => Math.min(document.documentElement.scrollHeight, 20000);
+    const tall = () => Math.min(document.documentElement.scrollHeight, \(Int(tallest)));
     const x = scrollX, y = scrollY, step = Math.max(innerHeight * 0.9, 200);
     const beat = () => new Promise(r => { requestAnimationFrame(() => setTimeout(r, 40)); setTimeout(r, 120); });
     for (let top = step; top < tall(); top += step) { scrollTo({ left: x, top, behavior: 'instant' }); await beat(); }

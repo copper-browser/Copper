@@ -122,7 +122,7 @@ forward; the pane opens itself only for work on the page on screen.
 | `browser_drag` | a `draggable="true"` source: an HTML5 drag in the page (one DataTransfer from `dragstart` to `drop`; fails when the target cancels no `dragover`). Anything else: a real press, twelve moves a frame (16 ms) apart, a dwell, a release. Fails when nothing on the page changed |
 | `browser_handle_dialog` | `accept`, `promptText` (Playwright's). An alert/confirm/prompt on an agent's tab stays open after the call that raised it and is listed under `### Dialogs` in that answer; this answers it. With none open it arms the answer for the next one. The agent's next other call on that tab, or 30 s, closes it as a closed sheet would (OK, false, null); one raised while Copper's own script waits on the page (inside `browser_evaluate`) gets that answer at once. Every question and its answer is listed in the next answer for that tab (after `browser_evaluate`'s, whose text is the value alone). A tab on the user's screen keeps its sheet for the user unless an answer was armed |
 | `browser_select_option`, `browser_scroll` | as named; `browser_scroll` with a `ref` and a delta scrolls the nearest scrolling box around it (a list, a virtual table) |
-| `browser_take_screenshot` | PNG/JPEG at 1×, so image pixels are CSS pixels; `ref` for one element, `fullPage` (walks the page a screen at a time first, so scroll-lazy content is drawn), `filename` |
+| `browser_take_screenshot` | PNG/JPEG of the viewport, at 1× by default so image pixels are CSS pixels; `fullPage` for the whole page (walked a screen at a time first, so scroll-lazy content is drawn); one element by `ref`, or `selector` (+ `frame`), whole even when it is taller than the viewport; a `region` `{x, y, width, height}` in CSS pixels; `padding` round an element or region; `scale` 1–4 draws it again at that many pixels per CSS pixel (2 is HD); `filename` (absolute or `~/…`; a folder gets a new name) — [Screenshots](#screenshots) |
 | `browser_evaluate` | `function: "() => …"` or `(element) => …` with `ref`, or a bare expression; a Promise is awaited (30 s cap); a string comes back as it is, anything else as JSON; a throw is an error with its message |
 | `browser_wait_for` | `text`, `textGone`, `time` (0–30 s); 15 s for the text, then an error. None of the three is an error |
 | `browser_get_text`, `browser_find`, `browser_console_messages` | reading without a snapshot; refs for text you name; console since load (from document start in a tab the agent opened, else from the first tool call) |
@@ -142,6 +142,41 @@ forward; the pane opens itself only for work on the page on screen.
 | `browser_vault_save`, `browser_vault_note` | keep a login or a secure note (backup codes) in the open Bitwarden vault; values never come back ([Saving to the vault](#saving-to-the-vault)) |
 | `browser_crashes` | Copper's own crash history on this Mac as JSON, newest first; `index: N` for one in full with the breadcrumbs before it ([crashes.md](crashes.md)) |
 | `cloud_history_delete` | Deletes the user's history on Copper Cloud (`since`, `until`, `host[]`, `page[]`, `device`, or `all: true`); history on the Mac stays. Loopback clients only — not listed through an agent link, refused to the agent pane. Sites and pages are matched on the Mac, never by the server (docs/cloud.md) |
+
+### Screenshots
+
+`browser_take_screenshot` pictures the viewport, the whole page (`fullPage`),
+one element (`ref`, or `selector` with `frame`) or a `region` — CSS pixels from
+the viewport's top-left, the same as a 1× screenshot's and
+`browser_mouse_click_xy`'s, or from the page's top-left with `fullPage`.
+`padding` adds CSS pixels round an element or region, cut at the page's edge (a
+region's at the viewport's, or the page's with `fullPage`). At `scale` 1 a
+picture pixel is a CSS pixel, so coordinates read off it can be clicked; at 2
+to 4 WebKit draws the page again at that many pixels per CSS pixel
+(`WKSnapshotConfiguration.snapshotWidth`), so text and hairlines stay sharp: an
+HD picture, not an enlarged one. An element taller than the viewport, or a
+region low on the page, comes out whole: the view is grown to the page's height
+for the moment of the picture and put back, scrolled where it was. Only the
+height grows — a wider view would lay a responsive page out again — so the
+whole page is as wide as the viewport, and what overflows it sideways (an
+element wider than the viewport) is cut at its sides. No side
+passes 16384 px and no picture 64 megapixels; past that the scale comes down to
+the largest that fits, in hundredths, and the answer says so. A `filename` that
+is a folder (or ends in `/`) gets `copper-YYYYMMDD-HHMMSS.png` (`.jpg`) in it;
+missing folders are made. The image in the answer is for the model to look
+at, the file is the HD picture: a picture saved above scale 1 comes back drawn
+down to scale 1 (its pixels CSS pixels again), and no answer image passes
+8000 px on its longest side, which models refuse (the scale comes down to fit,
+in hundredths). `copper shot` keeps the file the app saved, so it always has
+the full picture. The answer starts with what came out, in the words Copper
+for Linux and Windows use too (`Fork/MCP/Shots.swift`), and says when the
+image here is not the picture:
+`Screenshot 520×280 PNG at scale 2 of .pricing-card. Saved to /Users/x/Desktop/card.png. The image here is 260×140 at scale 1; the file has the full picture.`
+
+```sh
+copper shot ~/Desktop/card.png --selector '.pricing-card' --padding 12 --hd
+copper shot ~/Desktop/ --region 0,0,800,600 --scale 3   # a folder: copper-YYYYMMDD-HHMMSS.png in it
+```
 
 ### Files and browser state
 

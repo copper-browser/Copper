@@ -24,7 +24,7 @@ created. Enable **Settings › Agents › Let agents drive this window** once.
 | `copper extract "INSTRUCTION" [--full]` | Return a structured page read. |
 | `copper snapshot` / `copper text` / `copper find TEXT` | Read the page. |
 | `copper click REF` / `copper type REF TEXT` / `copper key KEY` | Act on a snapshot ref. |
-| `copper shot [PATH]` / `copper eval 'JS'` | Save a screenshot / evaluate JavaScript. |
+| `copper shot [PATH] [--full] [--jpeg] [--ref REF \| --selector CSS [--frame F] \| --region X,Y,W,H] [--padding N] [--scale N \| --hd]` / `copper eval 'JS'` | Save a screenshot — the viewport, the whole page, one element or a region (CSS px), `--padding` px round it, `--hd` (= `--scale 2`, up to 4) drawn again sharper; a folder PATH gets a new name — e.g. `copper shot ~/Desktop/card.png --selector '.pricing-card' --padding 12 --hd` / evaluate JavaScript. |
 | `copper --json COMMAND` | Return the raw result object for scripts. |
 | `copper tools` | Inspect available capabilities. |
 | `copper session list` | List session.json and session.previous.json with counts and mtimes. |
