@@ -669,6 +669,13 @@ enum Jev {
         ["type": "score", "instructions": instructions, "criteria": levels]
     }
 
+    /// What Jev is sent about a page. Fork (secret-redact): the page Jev is
+    /// shown — its text, its fields' values, the recent actions — never holds
+    /// a secret Copper filled (AgentSecrets).
+    static func body(model: String, state: Any, questions: [String: Any]) -> [String: Any] {
+        ["model": model, "state": AgentSecrets.scrub(json: state), "questions": AgentSecrets.scrub(json: questions)]
+    }
+
     /// Ask, with a hard budget. Anything but a clean 200 with `answers`
     /// throws; the caller decides whether to fail open to the router.
     /// `assets` attaches images (and turns on TypeSafe's images header, which
@@ -684,7 +691,7 @@ enum Jev {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("copper/\(Fork.version)", forHTTPHeaderField: "User-Agent")
         let model = (override ?? "").trimmingCharacters(in: .whitespaces)
-        var body: [String: Any] = ["model": model.isEmpty ? keys.jevModel : model, "state": state, "questions": questions]
+        var body = Jev.body(model: model.isEmpty ? keys.jevModel : model, state: state, questions: questions)
         let usesBox = questions.values.contains { (($0 as? [String: Any])?["type"] as? String) == "box" }
         if !assets.isEmpty || usesBox {
             // Images and Box are off by default on TypeSafe's side; this
@@ -763,6 +770,9 @@ enum Router {
     /// such flag and the reply is read leniently either way.
     static func ask(system: String, user: String, keys: Intelligence.Keys, timeout: TimeInterval = 20, maxTokens: Int = 400, model override: String? = nil,
                     json: Bool = false) async throws -> Reply {
+        // Fork (secret-redact): what a model is asked about a page (jev_extract,
+        // Jev's typed values) never holds a secret Copper filled (AgentSecrets).
+        let system = AgentSecrets.scrub(system), user = AgentSecrets.scrub(user)
         if keys.lane == .claude {
             let token = try await ClaudeAccount.shared.token()
             let model = await MainActor.run { Intelligence.shared.model(override) }

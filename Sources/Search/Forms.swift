@@ -181,6 +181,15 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
         return { user: user, pass: pass };
       }
 
+      // Fork (secret-redact): the boxes Copper put a secret into — a password,
+      // a one-time code, a new password, a card's number or code, a hidden
+      // vault field. Kept in Copper's own world, where the page can't reach
+      // it; the agent's page readers (Page.helper, Ultrafast.script) print
+      // such a box's value as a placeholder, never as itself.
+      var secretFields = window.__copperSecretFields || (window.__copperSecretFields = new WeakSet());
+      var secretKinds = { password: 1, otp: 1, cardNumber: 1, cardCode: 1, ssn: 1 };
+      function hide(box) { try { if (box) secretFields.add(box); } catch (e) {} }
+
       function put(box, value) {
         if (!box) return;
         var tag = (box.tagName || '').toLowerCase();
@@ -471,8 +480,8 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
         var filled = 0;
         for (var i = 0; i < form.boxes.length; i++) {
           var role = form.roles[i];
-          if (role === 'new' || role === 'confirm') { put(form.boxes[i], password); filled++; }
-          else if (role === 'current' && old && !form.boxes[i].value) put(form.boxes[i], old);
+          if (role === 'new' || role === 'confirm') { hide(form.boxes[i]); put(form.boxes[i], password); filled++; }
+          else if (role === 'current' && old && !form.boxes[i].value) { hide(form.boxes[i]); put(form.boxes[i], old); }
         }
         return filled;
       }
@@ -837,6 +846,7 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
             if (choice == null) continue;
             put(box, choice);
           } else {
+            if (secretKinds[info.kind]) hide(box);
             put(box, wanted);
           }
           filled++;
@@ -844,9 +854,10 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
         return filled;
       }
 
-      function fillFocused(value) {
+      function fillFocused(value, secret) {
         var active = document.activeElement;
         if (!active || ['input', 'select', 'textarea'].indexOf((active.tagName || '').toLowerCase()) < 0) return false;
+        if (secret) hide(active);
         put(active, value);
         return true;
       }
@@ -855,7 +866,7 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
         return String(value || '').toLowerCase().replace(/[\\s\\-_:*]/g, '');
       }
 
-      function fillField(label, value) {
+      function fillField(label, value, secret) {
         var wanted = normalised(label);
         if (!wanted) return false;
         var controls = document.querySelectorAll('input, select, textarea');
@@ -870,6 +881,7 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
               if (choice == null) continue;
               put(controls[i], choice);
             } else {
+              if (secret || secretKinds[info.kind]) hide(controls[i]);
               put(controls[i], info.kind === 'cardExp' ? expiryValue(value, controls[i]) : value);
             }
             return true;
@@ -936,6 +948,49 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
         return false;
       }
 
+      // Fork (secret-redact): the same account, however the page wrote it —
+      // "Ann@x.com " is ann@x.com, and a box that holds only the name before
+      // the @ holds that account too.
+      function sameAccount(held, user) {
+        var a = String(held || '').trim().toLowerCase(), b = String(user || '').trim().toLowerCase();
+        if (!a || !b || a === b) return true;
+        return a.indexOf('@') < 0 && b.split('@')[0] === a;
+      }
+
+      // Fork (secret-redact): an agent's sign-in (SignIn.swift). The password
+      // goes only into a real password box, only beside the account it
+      // belongs to, and stays only there. Answers 'ok' or why nothing was
+      // left on the page: 'no-fields', 'not-password' (the box it would go
+      // into is no password box), 'hidden-password' (the password box is
+      // not shown yet: a sign-in that asks for the account first), 'other-account' (the account box holds
+      // someone else), 'echoed' (the page copied it into another box or
+      // turned its box to text: every copy, and the box, emptied again).
+      function signIn(user, password) {
+        var both = pair();
+        if (!both) return 'no-fields';
+        var box = both.pass;
+        function isPassword(el) {
+          return !!el && (el.tagName || '').toLowerCase() === 'input' &&
+            String(el.type).toLowerCase() === 'password' &&
+            String(el.getAttribute('type') || '').toLowerCase() === 'password';
+        }
+        if (!isPassword(box)) return 'not-password';
+        if (!visible(box) || (box.closest && box.closest('[aria-hidden="true"],[inert]'))) return 'hidden-password';
+        if (both.user && both.user.value && !sameAccount(both.user.value, user)) return 'other-account';
+        if (both.user && !both.user.value) put(both.user, user);
+        hide(box);
+        put(box, password);
+        var echoed = !isPassword(box);
+        var all = document.querySelectorAll('input, textarea');
+        for (var i = 0; i < all.length; i++) {
+          var el = all[i], type = String(el.type).toLowerCase();
+          if (el === box || type === 'password' || type === 'hidden') continue;
+          if (el.value && password && password.length >= 4 && String(el.value).indexOf(password) >= 0) { put(el, ''); echoed = true; }
+        }
+        if (echoed) { put(box, ''); return 'echoed'; }
+        return 'ok';
+      }
+
       window.__officeForms = {
         doc: doc,
         unsaved: unsaved,
@@ -943,9 +998,11 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
           var both = pair();
           if (!both) return false;
           if (both.user && !both.user.value) put(both.user, user);
+          hide(both.pass);
           put(both.pass, password);
           return true;
         },
+        signIn: signIn,
         submit: function () {
           var both = pair();
           if (!both) return false;
@@ -963,11 +1020,12 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
           var split = splitOTPFields();
           if (split) {
             if (String(code).length < split.length) return false;
-            for (var i = 0; i < split.length; i++) put(split[i], String(code).charAt(i));
+            for (var i = 0; i < split.length; i++) { hide(split[i]); put(split[i], String(code).charAt(i)); }
             return true;
           }
           var box = otpField();
           if (!box) return false;
+          hide(box);
           put(box, code);
           return true;
         },

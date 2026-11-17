@@ -103,6 +103,14 @@ struct FocusedField: Equatable {
 final class Tab: ObservableObject, Identifiable {
     let id = UUID()
 
+    /// Fork (secret-redact): the kinds of value an agent never reads back
+    /// (AgentSecrets): passwords, codes, a card's number and code, an SSN.
+    nonisolated static let secretKinds: Set<FieldKind> = [.password, .otp, .cardNumber, .cardCode, .ssn]
+
+    /// Fork (secret-redact): a tab dropped without close() (a test's, a
+    /// window torn down) still takes its secrets with it.
+    deinit { AgentSecrets.forget(tab: id) }
+
     /// The page. Built the first time anyone asks for it, not when the tab
     /// is — a session of twenty tabs coming back is twenty objects, not
     /// twenty web views and their processes fighting the first frame.
@@ -822,11 +830,30 @@ final class Tab: ObservableObject, Identifiable {
     /// something about: the sign-in fields that were there a moment ago,
     /// when this was offered, are gone by the time it actually runs.
     func fill(user: String, password: String, at target: FormTarget? = nil, done: ((Bool) -> Void)? = nil) {
+        AgentSecrets.remember(password, tab: id) // Fork (secret-redact): never read back out to an agent
         forms(
             "window.__officeForms && window.__officeForms.fill(`\(escape(user))`, `\(escape(password))`)",
             at: target
         ) { result in
             done?((result as? Bool) ?? false)
+        }
+    }
+
+    /// Fork (secret-redact): an agent's sign-in (SignIn.swift). The password
+    /// goes only into a real password box beside the account it belongs to,
+    /// and is taken out again if the page copies it anywhere else. Answers
+    /// the forms script's word: "ok", "no-fields", "not-password",
+    /// "other-account" or "echoed" (nothing left on the page).
+    func signIn(user: String, password: String, at target: FormTarget? = nil) async -> String {
+        AgentSecrets.remember(password, tab: id)
+        guard let user = jsonLiteral(user), let password = jsonLiteral(password) else { return "no-fields" }
+        return await withCheckedContinuation { (continuation: CheckedContinuation<String, Never>) in
+            forms(
+                "(window.__officeForms && window.__officeForms.signIn && window.__officeForms.signIn(\(user), \(password))) || 'no-fields'",
+                at: target
+            ) { result in
+                continuation.resume(returning: (result as? String) ?? "no-fields")
+            }
         }
     }
 
@@ -858,6 +885,7 @@ final class Tab: ObservableObject, Identifiable {
     }
 
     func fillOTP(_ code: String, at target: FormTarget? = nil, done: ((Bool) -> Void)? = nil) {
+        AgentSecrets.remember(code, tab: id) // Fork (secret-redact)
         forms(
             "window.__officeForms && window.__officeForms.fillOTP(`\(escape(code))`)",
             at: target
@@ -869,6 +897,9 @@ final class Tab: ObservableObject, Identifiable {
     /// Fills every recognised box in the focused form without putting values
     /// into the JavaScript source itself.
     func fillValues(_ values: [FieldKind: String], at target: FormTarget? = nil, done: ((Int) -> Void)? = nil) {
+        // Fork (secret-redact): a card's number and code, a password, a code,
+        // a social security number never come back out to an agent.
+        for (kind, value) in values where Tab.secretKinds.contains(kind) { AgentSecrets.remember(value, tab: id) }
         let object = Dictionary(uniqueKeysWithValues: values.map { ($0.key.rawValue, $0.value) })
         guard let data = try? JSONSerialization.data(withJSONObject: object),
               let json = String(data: data, encoding: .utf8)
@@ -886,13 +917,14 @@ final class Tab: ObservableObject, Identifiable {
 
     /// Fills the page's active input, including a custom field that has no
     /// recognised kind.
-    func fillFocused(_ value: String, at target: FormTarget? = nil, done: ((Bool) -> Void)? = nil) {
+    func fillFocused(_ value: String, secret: Bool = false, at target: FormTarget? = nil, done: ((Bool) -> Void)? = nil) {
         guard let json = jsonLiteral(value) else {
             done?(false)
             return
         }
+        if secret { AgentSecrets.remember(value, tab: id) } // Fork (secret-redact): a hidden vault field
         forms(
-            "window.__officeForms && window.__officeForms.fillFocused(\(json))",
+            "window.__officeForms && window.__officeForms.fillFocused(\(json), \(secret))",
             at: target
         ) { result in
             done?((result as? Bool) ?? false)
@@ -901,13 +933,14 @@ final class Tab: ObservableObject, Identifiable {
 
     /// Fills the first visible field whose label names the requested custom
     /// field.
-    func fillField(label: String, value: String, at target: FormTarget? = nil, done: ((Bool) -> Void)? = nil) {
+    func fillField(label: String, value: String, secret: Bool = false, at target: FormTarget? = nil, done: ((Bool) -> Void)? = nil) {
+        if secret { AgentSecrets.remember(value, tab: id) } // Fork (secret-redact): a hidden vault field
         guard let label = jsonLiteral(label), let value = jsonLiteral(value) else {
             done?(false)
             return
         }
         forms(
-            "window.__officeForms && window.__officeForms.fillField(\(label), \(value))",
+            "window.__officeForms && window.__officeForms.fillField(\(label), \(value), \(secret))",
             at: target
         ) { result in
             done?((result as? Bool) ?? false)
@@ -932,6 +965,9 @@ final class Tab: ObservableObject, Identifiable {
     /// arguments, never spliced into the source; answers how many new boxes
     /// took it.
     func fillNewPassword(_ password: String, current: String?, at target: FormTarget? = nil) async -> Int {
+        // Fork (secret-redact): the new password and the one it replaces.
+        AgentSecrets.remember(password, tab: id)
+        if let current { AgentSecrets.remember(current, tab: id) }
         guard let password = jsonLiteral(password) else { return 0 }
         let old = current.flatMap(jsonLiteral) ?? "null"
         return await withCheckedContinuation { (continuation: CheckedContinuation<Int, Never>) in
@@ -1568,6 +1604,7 @@ final class Tab: ObservableObject, Identifiable {
     /// Called when the tab is thrown away. Without it the view keeps running
     /// whatever the page left behind — timers, video, sockets.
     func close() {
+        AgentSecrets.forget(tab: id) // Fork (secret-redact): what it was given goes with it
         onScroll = nil
         onZoom = nil
         onPick = nil

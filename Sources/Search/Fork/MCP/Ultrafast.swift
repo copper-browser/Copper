@@ -142,8 +142,22 @@ enum Ultrafast {
     /// a bitmap of known size so the marks and the box maths share one scale.
     @MainActor
     static func shot(_ tab: Tab, _ obs: Observation, vision: Vision) async throws -> Shot {
-        let web = tab.web
         let started = Date()
+        // Fork (secret-redact): the picture Jev is shown never shows a secret Copper filled.
+        let masked = await AgentSecrets.masking(tab, on: true) > 0
+        do {
+            let taken = try await shotUnmasked(tab, obs, vision: vision, started: started)
+            if masked { await AgentSecrets.masking(tab, on: false) }
+            return taken
+        } catch {
+            if masked { await AgentSecrets.masking(tab, on: false) }
+            throw error
+        }
+    }
+
+    @MainActor
+    private static func shotUnmasked(_ tab: Tab, _ obs: Observation, vision: Vision, started: Date) async throws -> Shot {
+        let web = tab.web
         _ = try? await Page.raw(web, "(function(){var t=document.getElementById('__jev-trail'); if (t) t.style.visibility='hidden'; return true})()")
         defer { Task { @MainActor in _ = try? await Page.raw(web, "(function(){var t=document.getElementById('__jev-trail'); if (t) t.style.visibility=''; return true})()") } }
         let config = WKSnapshotConfiguration()
@@ -626,6 +640,18 @@ enum Ultrafast {
         const id=cache.ids.get(e); cache.nodes.set(id,e); return id;
       };
       const safe = e => !['password','file','hidden'].includes(e.type);
+      // Fork (secret-redact): a box whose value is a secret — one that was a
+      // password box, one whose autocomplete promises a password, a code or a
+      // card's number or code, or one Copper filled with a secret (Forms.script's
+      // __copperSecretFields, in this same world). Its value is read as SECRET,
+      // never as itself (AgentSecrets).
+      const SECRET=\#(Tools.Page.quote(AgentSecrets.placeholder));
+      const secret = e => { try {
+        if (e?.ownerDocument?.defaultView?.__copperSecretFields?.has(e)) return true;
+        if (e?.tagName==='INPUT' && String(e.getAttribute('type')||'').toLowerCase()==='password') return true;
+        return /(^|\s)(current-password|new-password|one-time-code|cc-number|cc-csc)(\s|$)/i.test(e?.getAttribute?.('autocomplete')||'');
+      } catch (_) { return false; } };
+      const valueOf = e => secret(e) && e.value ? SECRET+'#'+String(e.value).length : e.value;
       // deep (cache.deep, set by each read): the page's open shadow roots and
       // same-origin frames are read too, as browser-use's ax.py does: every
       // root a control can live in, the top document first, 40 at most.
@@ -633,7 +659,7 @@ enum Ultrafast {
         const out=[document];
         if (!cache.deep) return out;
         for (let i=0;i<out.length && out.length<40;i++) for (const e of out[i].querySelectorAll('*')) {
-          if (e.shadowRoot) out.push(e.shadowRoot);
+          if (e.shadowRoot) { if (!secret(e)) out.push(e.shadowRoot); } // Fork (secret-redact): a secret box's inner tree is its value
           else if (e.tagName==='IFRAME' || e.tagName==='FRAME') { try { const d=e.contentDocument; if (d?.body) out.push(d); } catch (_) {} }
           if (out.length>=40) break;
         }
@@ -714,12 +740,12 @@ enum Ultrafast {
         return fields.length===1 && (fields[0].type==='search' || /^(?:q|s|k|query|search|keywords?|term)$|search|query/i.test(fields[0].name||fields[0].id||''));
       };
       const formState = () => [...document.querySelectorAll('input,textarea,select')].filter(safe)
-        .map(e=>[identity(e),e.value,e.checked,e.selectedIndex,e.disabled,e.readOnly]);
+        .map(e=>[identity(e),valueOf(e),e.checked,e.selectedIndex,e.disabled,e.readOnly]);
       cache.pageKey=()=>JSON.stringify([performance.timeOrigin,location.href,scrollX,scrollY,innerWidth,innerHeight,formState()]);
       cache.guard=e=>{
         if (!e?.isConnected || !shown(e,face(e))) return null;
         const scope=e.closest('form,dialog,[role="dialog"],article,li,tr,[role="row"]') || e.parentElement;
-        return JSON.stringify([identity(e),role(e),name(e),e.value??null,e.checked??null,e.selectedIndex??null,
+        return JSON.stringify([identity(e),role(e),name(e),valueOf(e)??null,e.checked??null,e.selectedIndex??null,
           e.readOnly??null,e.matches(':disabled'),e.getAttribute('aria-disabled'),
           e.getAttribute('aria-expanded'),e.getAttribute('aria-checked'),e.getAttribute('aria-selected'),
           e.getAttribute('href'),scope?.innerText?.slice(0,6000)||'']);
@@ -814,7 +840,7 @@ enum Ultrafast {
             const editable=!e.readOnly && e.getAttribute('aria-readonly')!=='true' &&
               (['textbox','searchbox','spinbutton'].includes(rname) ||
                 (rname==='combobox' && ['INPUT','TEXTAREA'].includes(e.tagName)));
-            const value='value' in e ? String(e.value) :
+            const value='value' in e ? (secret(e) && e.value ? SECRET : String(e.value)) :
               e.isContentEditable || rname==='combobox' ? e.innerText.trim() : '';
             // Which document and which form a field is in: the run's memory
             // of what it typed is kept per field, and "Search" on one form

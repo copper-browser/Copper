@@ -209,6 +209,8 @@ final class Drive: ObservableObject {
     /// Opens a phase in the current cycle and returns its id.
     @discardableResult
     func phase(_ kind: Phase.Kind, _ title: String, detail: String? = nil) -> UUID {
+        // Fork (secret-redact): the timeline (the pane, a linked app's progress) never shows a secret Copper filled.
+        let title = AgentSecrets.scrub(title), detail = detail.map(AgentSecrets.scrub)
         let id = UUID()
         guard let run, !run.cycles.isEmpty else { return id }
         self.run?.cycles[run.cycles.count - 1].phases.append(
@@ -225,13 +227,14 @@ final class Drive: ObservableObject {
         for c in run.cycles.indices.reversed() {
             guard let p = run.cycles[c].phases.lastIndex(where: { $0.id == id }) else { continue }
             self.run?.cycles[c].phases[p].ended = Date()
-            if let detail { self.run?.cycles[c].phases[p].detail = detail }
+            if let detail { self.run?.cycles[c].phases[p].detail = AgentSecrets.scrub(detail) }
             return
         }
     }
 
     /// What the cycle amounted to. The cycle closes with it.
     func outcome(_ o: Outcome) {
+        let o = Drive.scrubbed(o)
         guard let run, !run.cycles.isEmpty else { return }
         let last = run.cycles.count - 1
         self.run?.cycles[last].outcome = o
@@ -241,16 +244,27 @@ final class Drive: ObservableObject {
     /// Where the page stands, as of the last read.
     func page(url: String, title: String) {
         guard run != nil else { return }
-        run?.url = url
-        run?.title = title
+        run?.url = AgentSecrets.scrub(url)
+        run?.title = AgentSecrets.scrub(title)
     }
 
     /// What the driver says it is doing, in its own words. Kept short.
     func thought(_ text: String) {
-        let line = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let line = AgentSecrets.scrub(text.trimmingCharacters(in: .whitespacesAndNewlines))
         guard run != nil, !line.isEmpty else { return }
         run?.thought = line.count > 400 ? String(line.prefix(399)) + "…" : line
         run?.thoughtAt = Date()
+    }
+
+    /// Fork (secret-redact): an outcome's words with no secret Copper filled in them.
+    static func scrubbed(_ o: Outcome) -> Outcome {
+        var o = o
+        o.label = AgentSecrets.scrub(o.label)
+        o.text = o.text.map(AgentSecrets.scrub)
+        o.error = o.error.map(AgentSecrets.scrub)
+        o.result = o.result.map(AgentSecrets.scrub)
+        o.candidates = o.candidates.map(AgentSecrets.scrub)
+        return o
     }
 
     /// The end state. The pane stays open so the trace can be read after.
@@ -268,7 +282,7 @@ final class Drive: ObservableObject {
         }
         self.run?.ended = Date()
         self.run?.status = status
-        self.run?.note = note
+        self.run?.note = AgentSecrets.scrub(note)
         live = false
         stopRequested = false
         rest(run.who.key)
@@ -423,10 +437,10 @@ final class Drive: ObservableObject {
             o.result = summary
             o.pageChanged = nil
         }
-        target.cycles[cycle].outcome = o
+        target.cycles[cycle].outcome = Drive.scrubbed(o)
         target.cycles[cycle].ended = now
-        target.url = url
-        target.title = title
+        target.url = AgentSecrets.scrub(url)
+        target.title = AgentSecrets.scrub(title)
         if run?.id != target.id {
             if target.status != .stopped {
                 target.status = error == nil ? .done : .error

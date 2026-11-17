@@ -139,11 +139,11 @@ enum AgentAutofill {
                 throw Failure(message: "no saved field named \(name)")
             }
             let filled = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-                tab.fillField(label: name, value: field.value, at: target) { ok in continuation.resume(returning: ok) }
+                tab.fillField(label: name, value: field.value, secret: field.hidden, at: target) { ok in continuation.resume(returning: ok) }
             }
             if !filled {
                 let focused = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-                    tab.fillFocused(field.value, at: target) { ok in continuation.resume(returning: ok) }
+                    tab.fillFocused(field.value, secret: field.hidden, at: target) { ok in continuation.resume(returning: ok) }
                 }
                 guard focused else { throw Failure(message: "no field named \(name) on the page") }
             }

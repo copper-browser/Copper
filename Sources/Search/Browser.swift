@@ -561,7 +561,7 @@ final class Browser: NSObject {
                 if filled == 0 { announceFailure() }
             }
         case .field(let field):
-            tab.fillFocused(field.value) { worked in
+            tab.fillFocused(field.value, secret: field.hidden) { worked in
                 if !worked { announceFailure() }
             }
         }
