@@ -18,6 +18,25 @@ enum SignIn {
         var errorDescription: String? { message }
     }
 
+    /// Fork (secret-redact): the forms script's word on a sign-in as the
+    /// agent's error, or nil when the password went in. None of them says
+    /// the password; each says that nothing of it was left on the page.
+    static func refusal(_ word: String, account: String) -> String? {
+        switch word {
+        case "ok": return nil
+        case "not-password":
+            return "refused: the box the password would go into is not a password box, so nothing was filled. Go to the step of the sign-in that shows the password box, take a fresh browser_snapshot and call again"
+        case "hidden-password":
+            return "refused: the page's password box is not shown yet (the sign-in asks for the account first), so nothing was filled. Enter the account and continue to the password step, take a fresh browser_snapshot and call again"
+        case "other-account":
+            return "refused: the account box on the page holds a different account than \(account), so nothing was filled. Put \(account) in the account box (or pass account: for the one on the page) and call again"
+        case "echoed":
+            return "refused: the page copied the password out of its password box, so Copper emptied every copy and the box itself. Take a fresh browser_snapshot, check the account box holds the right account, then call again"
+        default:
+            return "sign-in fields not found on the page"
+        }
+    }
+
     @MainActor
     static func run(_ args: [String: Any], in browser: Browser, source: Source) async throws -> [String: Any] {
         guard let tab = AgentTabs.target(in: browser) else { throw Failure(message: AgentTabs.missing()) }
@@ -99,12 +118,10 @@ enum SignIn {
                 }
                 throw error
             }
-            let filled = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-                tab.fill(user: credential.user, password: secret, at: target) { ok in
-                    continuation.resume(returning: ok)
-                }
-            }
-            guard filled else { throw Failure(message: "sign-in fields not found on the page") }
+            // Fork (secret-redact): only into a real password box, beside this
+            // account, and only while it stays there (Tab.signIn, Forms.script).
+            let word = await tab.signIn(user: credential.user, password: secret, at: target)
+            if let refusal = SignIn.refusal(word, account: credential.user) { throw Failure(message: refusal) }
             let submitted: Bool
             if submit {
                 submitted = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in

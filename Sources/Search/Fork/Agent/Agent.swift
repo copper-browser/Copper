@@ -332,7 +332,8 @@ final class Agent: ObservableObject {
             } else if let slice = try? await Tools.Page.js(tab.web, "window.__copper.text('')") as? String, !slice.isEmpty {
                 context += "\nVisible text (first 3000 chars):\n" + slice.prefix(3000)
             }
-            user["content"] = "<page>\n\(context)\n</page>\n\n\(text)"
+            // Fork (secret-redact): the page as the pane's model sees it never holds a secret Copper filled.
+            user["content"] = "<page>\n\(AgentSecrets.scrub(context))\n</page>\n\n\(text)"
         } else {
             user["content"] = text
         }
@@ -585,6 +586,9 @@ final class Agent: ObservableObject {
     /// gateway whenever Copper Cloud provides its key.
     static func complete(messages: [[String: Any]], tools: [[String: Any]], keys: Intelligence.Keys, model: String,
                          limit: Int = outputLimit, cached: Bool = true) async throws -> [String: Any] {
+        // Fork (secret-redact): every turn sent to the pane's model — page context, Copper's
+        // tool answers, other servers' — with no secret Copper filled in it (AgentSecrets).
+        let messages = AgentSecrets.scrub(json: messages) as? [[String: Any]] ?? messages
         if keys.lane == .claude {
             let token = try await ClaudeAccount.shared.token()
             do {

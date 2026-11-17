@@ -39,7 +39,8 @@ enum JevProgress {
         let note = run.note.trimmingCharacters(in: .whitespacesAndNewlines)
         if !note.isEmpty { out["note"] = cap(note, 300) }
         if let ended = run.ended { out["endedAt"] = iso(ended) }
-        return out
+        // Fork (secret-redact): what a linked app is told never holds a secret Copper filled.
+        return AgentSecrets.scrub(json: out) as? [String: Any] ?? out
     }
 
     static func cycle(_ c: Drive.Cycle) -> [String: Any] {

@@ -55,8 +55,10 @@ enum Tools {
         var line: String? {
             get { lock.lock(); defer { lock.unlock() }; return value }
             set {
+                // Fork (secret-redact): the summary rides out as _meta.summary into an app's audit.
+                let clean = newValue.map(AgentSecrets.scrub)
                 lock.lock(); defer { lock.unlock() }
-                value = newValue.map { $0.count > 200 ? String($0.prefix(199)) + "…" : $0 }
+                value = clean.map { $0.count > 200 ? String($0.prefix(199)) + "…" : $0 }
             }
         }
     }
@@ -313,10 +315,13 @@ enum Tools {
             Breadcrumbs.tool(name, tab: tab?.id, started: started, error: nil, phases: phases.line)
             // Fork (agent-dialogs): what the page asked while the call ran, and what it was told —
             // in the next answer after browser_evaluate's, whose text is the function's value alone.
-            return name == "browser_evaluate" ? content : content + AgentDialogs.report(tab)
+            let answer = name == "browser_evaluate" ? content : content + AgentDialogs.report(tab)
+            // Fork (secret-redact): the last thing before an answer leaves — no secret
+            // Copper filled reads as itself, whatever the page did with it (AgentSecrets).
+            return AgentSecrets.outgoing(answer)
         } catch {
             Breadcrumbs.tool(name, tab: AgentTabs.peek(args, in: browser, caller: AgentTabs.callerKey)?.id, started: started, error: error, phases: phases.line)
-            throw error
+            throw AgentSecrets.scrub(error: error)
         }
     }
 
@@ -606,7 +611,14 @@ enum Tools {
             case .selector(let css, let frame): target = Locator(css: css, frame: try frame.map(Frames.number))
             case .view, .region: break
             }
-            let shot = try await Page.screenshot(web, ask, target: target)
+            // Fork (secret-redact): a picture can't be scrubbed, so what shows a secret Copper filled is masked first.
+            let masked = await AgentSecrets.masking(tab, on: true)
+            let shot: Page.Picture
+            do { shot = try await Page.screenshot(web, ask, target: target) } catch {
+                if masked > 0 { await AgentSecrets.masking(tab, on: false) }
+                throw error
+            }
+            if masked > 0 { await AgentSecrets.masking(tab, on: false) }
             var saved: String?
             var failed: (path: String, reason: String)?
             if let path = ask.filename {
@@ -636,43 +648,7 @@ enum Tools {
             let ref = args["ref"] as? String ?? ""
             let target = ref.isEmpty ? nil : Locator(ref: ref)
             let frame = try target.map { try $0.info(web) } ?? frameNamed(args, in: web)
-            var token = ""
-            if let target {
-                token = UUID().uuidString
-                guard try await Page.js(web, at: target, "window.__copper.mark(\(Page.quote(target.script)), \(Page.quote(token)))") as? Bool == true else {
-                    throw Failure(text: "\(ref) is not on the page any more; take a fresh browser_snapshot")
-                }
-            }
-            // A function is called (with the element when there is a ref); a bare
-            // expression is its own value. Either way a Promise is awaited, and the
-            // answer is text: a string as it is, anything else as JSON.
-            let body = """
-            const pick = (root) => {
-              const hit = root.querySelector('[data-copper-eval="' + token + '"]');
-              if (hit) return hit;
-              for (const n of root.querySelectorAll('*')) { const inner = n.shadowRoot && pick(n.shadowRoot); if (inner) return inner; }
-              return null;
-            };
-            const el = token ? pick(document) : undefined;
-            if (el) el.removeAttribute('data-copper-eval');
-            if (token && !el) throw new Error(ref + ' is not on the page any more; take a fresh browser_snapshot');
-            const f = (
-            \(function)
-            );
-            const v = await (typeof f === 'function' ? f(el) : f);
-            if (v === undefined) return 'undefined';
-            if (typeof v === 'string') return v;
-            try { const s = JSON.stringify(v); if (s !== undefined) return s; } catch (e) {}
-            return String(v);
-            """
-            do {
-                let result = try await Page.call(web, body, ["ref": ref, "token": token], timeout: 30,
-                                                 late: "No answer after 30 s: the function's Promise never settled, or the page is busy. Return sooner, or poll with browser_wait_for.",
-                                                 in: frame, world: .page)
-                return [.text(Page.render(result))]
-            } catch let failure as Page.Failure where failure.text.contains("SyntaxError") {
-                throw Failure(text: "\(failure.text). The function did not parse: pass one arrow function such as () => document.title, or a plain expression.")
-            }
+            return [.text(try await evaluate(web, function: function, ref: ref, frame: frame))]
         case "browser_wait_for":
             let seconds = (args["time"] as? NSNumber)?.doubleValue
             guard seconds != nil || args["text"] is String || args["textGone"] is String else {
@@ -724,6 +700,52 @@ enum Tools {
             return [.text(fence(Page.render(result)))]
         default:
             throw Failure(text: "Unknown tool \(name). Call tools/list for the tools there are.")
+        }
+    }
+
+    /// browser_evaluate's run: `function` in the page's own world, in `frame`
+    /// (or the page), with the element `ref` names handed to it. The answer
+    /// is the function's value as text, as the page gave it — Tools.call
+    /// scrubs it (AgentSecrets) before it leaves.
+    @MainActor
+    static func evaluate(_ web: WKWebView, function: String, ref: String, frame: WKFrameInfo?) async throws -> String {
+        let target = ref.isEmpty ? nil : Locator(ref: ref)
+        var token = ""
+        if let target {
+            token = UUID().uuidString
+            guard try await Page.js(web, at: target, "window.__copper.mark(\(Page.quote(target.script)), \(Page.quote(token)))") as? Bool == true else {
+                throw Failure(text: "\(ref) is not on the page any more; take a fresh browser_snapshot")
+            }
+        }
+        // A function is called (with the element when there is a ref); a bare
+        // expression is its own value. Either way a Promise is awaited, and the
+        // answer is text: a string as it is, anything else as JSON.
+        let body = """
+        const pick = (root) => {
+          const hit = root.querySelector('[data-copper-eval="' + token + '"]');
+          if (hit) return hit;
+          for (const n of root.querySelectorAll('*')) { const inner = n.shadowRoot && pick(n.shadowRoot); if (inner) return inner; }
+          return null;
+        };
+        const el = token ? pick(document) : undefined;
+        if (el) el.removeAttribute('data-copper-eval');
+        if (token && !el) throw new Error(ref + ' is not on the page any more; take a fresh browser_snapshot');
+        const f = (
+        \(function)
+        );
+        const v = await (typeof f === 'function' ? f(el) : f);
+        if (v === undefined) return 'undefined';
+        if (typeof v === 'string') return v;
+        try { const s = JSON.stringify(v); if (s !== undefined) return s; } catch (e) {}
+        return String(v);
+        """
+        do {
+            let result = try await Page.call(web, body, ["ref": ref, "token": token], timeout: 30,
+                                             late: "No answer after 30 s: the function's Promise never settled, or the page is busy. Return sooner, or poll with browser_wait_for.",
+                                             in: frame, world: .page)
+            return Page.render(result)
+        } catch let failure as Page.Failure where failure.text.contains("SyntaxError") {
+            throw Failure(text: "\(failure.text). The function did not parse: pass one arrow function such as () => document.title, or a plain expression.")
         }
     }
 
