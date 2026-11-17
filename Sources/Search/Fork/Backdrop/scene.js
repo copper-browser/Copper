@@ -12,7 +12,7 @@
 // (transparent) web view carries the load.
 //
 // One page serves every space the column visits. A space switch is a `set`
-// with a `fade`: the colours, the softness and the clock slide from what is
+// with a `fade`: the colours and the softness slide from what is
 // on screen to the new space's over that many seconds, in the shader, with
 // no reload. A swipe is `toward`: the arriving space's look mixed in by the
 // fingers' `x`, 0…1, until the swipe lands (a `set` of the new space) or
@@ -24,9 +24,12 @@
 // frame that was left on screen. (It used to run on while paused, and the
 // way back was a 0.9 s glide through everything missed: a minute away was
 // a minute of motion in under a second, the gradient lurching as the window
-// came forward.) Each space's time is that clock times its speed, plus an
-// offset kept per space (`key`) so that dragging the speed slider bends the
-// motion rather than jumping it.
+// came forward.) The scene's time is one running count for the whole
+// column: each frame adds the wall's step times the speed on screen. A
+// space switch or a speed slider only changes how fast it moves, never
+// where it is. (It used to be wall × each space's own speed, and a switch
+// glided between the two spaces' times: an hour in, that was hundreds of
+// seconds of motion in 0.3 s, the pattern lurching on every switch.)
 //
 // Performance is the point. The canvas is rendered at half device
 // resolution (less as blur rises) and upscaled by the compositor — the
@@ -276,12 +279,10 @@ class Backdrop {
     this.fadeAt = 0;
     this.fadeFor = 0;
     this.scrub = null;
-    // Per space, what its clock is ahead of `wall × speed` — moved only
-    // when its speed changes, so the change is a bend and not a jump.
-    this.offsets = {};
     this.mode = 'pause';
     this.running = false;
     this.time = 0;
+    this.drawnAt = null;
     this.last = 0;
     this.frame = 0;
     this.resizeDue = true;
@@ -305,14 +306,9 @@ class Backdrop {
     };
   }
 
-  /// Where a look's scene is at wall time `w`.
-  timeOf(look, w) {
-    return look.clock ? look.clock(w) : w * look.speed + (this.offsets[look.key] || 0);
-  }
-
   /// Part way from look `a` to look `b`. The shape (the style) cannot be
-  /// mixed — it is which program runs — so it changes half way; the clock
-  /// is mixed like the colours, so the motion never jumps either.
+  /// mixed — it is which program runs — so it changes half way; the speed
+  /// is mixed like the colours, and the column's one clock never jumps.
   blend(a, b, k) {
     if (k <= 0) return a;
     if (k >= 1) return b;
@@ -321,8 +317,7 @@ class Backdrop {
       style: k < 0.5 ? a.style : b.style,
       stops: a.stops.map((s, i) => s.map((v, j) => m(v, b.stops[i][j]))),
       light: a.light.map((v, j) => m(v, b.light[j])),
-      blur: m(a.blur, b.blur), dark: m(a.dark, b.dark), speed: Math.max(a.speed, b.speed), key: '',
-      clock: w => m(this.timeOf(a, w), this.timeOf(b, w)),
+      blur: m(a.blur, b.blur), dark: m(a.dark, b.dark), speed: m(a.speed, b.speed), key: '',
     };
   }
 
@@ -347,10 +342,8 @@ class Backdrop {
       this.to = look;
       this.build();
     } else if (!this.scrub && look.key && look.key === this.to.key) {
-      // The same space, retuned — its own page's colours or sliders. Its
+      // The same space, retuned — its own page's colours or sliders. The
       // clock carries on from where it is at the new speed.
-      const w = wall();
-      if (look.speed !== this.to.speed) this.offsets[look.key] = this.timeOf(this.to, w) - w * look.speed;
       this.to = look;
     } else {
       // Another space, or the end of a swipe either way: from whatever is
@@ -525,7 +518,11 @@ class Backdrop {
     u.uLight.value.setRGB(look.light[0], look.light[1], look.light[2]);
     u.uBlur.value = look.blur;
     u.uDark.value = look.dark;
-    this.time = this.timeOf(look, now);
+    // The wall's step since the last frame (it stands still while parked);
+    // anything odd — the first frame, the fold, a new epoch — steps nothing.
+    const step = this.drawnAt === null ? 0 : now - this.drawnAt;
+    this.drawnAt = now;
+    if (step > 0 && step < 1) this.time = (this.time + step * look.speed) % WRAP;
     u.uTime.value = this.time;
     this.renderer.render(this.scene, this.camera);
     const w = this.window;
