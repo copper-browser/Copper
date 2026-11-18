@@ -16,7 +16,7 @@
 <meta property="og:url" content="https://copper-browser.github.io/Copper/">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Copper at a glance: spaces with animated sidebars, agents in your tabs, Jev in 200 ms, Bitwarden sign-in with 2FA, Copper Cloud, a multiplayer canvas, and MIT.">
+<meta property="og:image:alt" content="Open source. Bring your own agent. Beside the headline, a real Copper window on Wikipedia: tabs down the left in a warm copper sidebar, the page filling the rest.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Copper — open source, bring your own agent">
 <meta name="twitter:description" content="A fast little Mac browser with a full MCP server built in. Use the agent and subscription you already have. Full Arc parity. MIT, all of it.">
@@ -509,7 +509,8 @@ html:not(.js) .dl-panel[hidden] { display: block; }
 }
 
 /* ---------- hero (stage) ---------- */
-.hero-stage { padding-bottom: clamp(72px, 9vw, 120px); overflow: hidden; }
+.hero-stage { padding-bottom: clamp(48px, 5vw, 72px); overflow: hidden; }
+#agents.sec { padding-top: clamp(64px, 7vw, 96px); }
 .hero-stage::before {
   content: ""; position: absolute; inset: 0 0 auto 0; height: min(980px, 120vh); z-index: -1;
   background:
@@ -535,7 +536,7 @@ html:not(.js) .dl-panel[hidden] { display: block; }
 .quip { display: inline-flex; align-items: center; gap: 10px; max-width: 100%; padding: 7px 14px 7px 8px; border-radius: 20px; background: rgba(255, 248, 240, .06); border: 1px solid var(--line-2); color: var(--ink-2); font-size: 14.5px; line-height: 1.35; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 .quip b { flex: none; font: 650 12px/1 var(--font); letter-spacing: .06em; text-transform: uppercase; color: var(--on-accent); background: var(--accent); padding: 5px 8px; border-radius: 999px; }
 .hero h1 {
-  margin-top: 24px; font-size: clamp(2.8rem, 1rem + 3.4vw, 4.05rem); line-height: .98; letter-spacing: -.045em; font-weight: 700;
+  margin-top: 24px; font-size: clamp(2.8rem, 1rem + 3.4vw, 4.4rem); line-height: .98; letter-spacing: -.045em; font-weight: 700;
   max-width: 11ch;
 }
 .hero .lead { margin-top: 24px; max-width: 30em; font-size: clamp(1.12rem, 1rem + .45vw, 1.35rem); line-height: 1.5; color: var(--ink-2); }
@@ -640,13 +641,15 @@ h2, .sec-head h2, .sec-head .h2 { font-size: clamp(2.1rem, 1.3rem + 2.6vw, 3.3re
 .wide-media { margin-top: clamp(36px, 5vw, 56px); }
 /* one measured fact, drawn: two bars on the same scale */
 .bench { margin: clamp(40px, 5vw, 64px) 0 0; display: grid; gap: 10px; max-width: 46rem; }
-.bench-row { display: grid; grid-template-columns: 4.5em minmax(0, 1fr) 4em; align-items: center; gap: 14px; font-weight: 600; }
-.bench-row i { height: 14px; border-radius: 999px; width: calc(var(--v) / 11.6 * 100%); min-width: 14px; background: var(--accent); }
-.bench-row b { font: 650 1.25rem/1 var(--display); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.bench-row { display: flex; align-items: center; gap: 14px; font-weight: 600; }
+.bench-row span { flex: none; width: 4.5em; }
+.bench-row i { flex: none; height: 14px; border-radius: 999px; width: calc(var(--v) / 11.6 * (100% - 11.5em)); min-width: 14px; background: var(--accent); }
+.bench-row b { font: 650 1.5rem/1 var(--display); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 .bench-row.them { color: var(--ink-2); font-weight: 500; }
 .bench-row.them i { background: var(--line-2); }
 .bench-row.them b { font-weight: 500; }
 .bench figcaption { margin-top: 8px; font-size: 14px; color: var(--ink-2); max-width: 44em; }
+.bench figcaption code { font-size: .88em; padding: 1px 5px; border-radius: 4px; background: var(--sunk); color: var(--ink); }
 
 .keys-row { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 4px 0 0; padding: 0; }
 .keys-row li { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px 0 6px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface); font-size: 14px; }
@@ -665,7 +668,7 @@ h2, .sec-head h2, .sec-head .h2 { font-size: clamp(2.1rem, 1.3rem + 2.6vw, 3.3re
 .jev-facts { margin-top: clamp(48px, 6vw, 72px); }
 
 /* ---------- outro (stage) ---------- */
-.outro { margin-top: clamp(72px, 8vw, 112px); padding-block: clamp(80px, 10vw, 128px); overflow: hidden; }
+.outro { margin-top: clamp(48px, 5vw, 72px); padding-block: clamp(64px, 7vw, 96px) clamp(80px, 10vw, 128px); overflow: hidden; }
 .outro::before { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(45% 60% at 0% 100%, var(--glow1), transparent 70%), radial-gradient(40% 60% at 100% 48%, var(--glow2), transparent 70%); }
 .outro .feature-copy > p { font-size: 1.15rem; }
 .repos { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 4px 0 0; padding: 0; }
@@ -849,7 +852,7 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
         </div>
         <a class="t t-agents" href="#agents">
           <div>
-            <h3>Bring <em>your own agent.</em></h3>
+            <h3>Your agent, <em>in your tabs.</em></h3>
             <p>Claude Code, Codex, phi or any MCP client drives the browser you're signed into. Every tab wears a badge for who's in it.</p>
           </div>
           <img class="t-shot" src="assets/tile-agents.webp" alt="" width="1200" height="833" loading="lazy" decoding="async">
@@ -857,7 +860,7 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
         <a class="t t-jev" href="#jev">
           <span class="t-big">200<small>ms</small></span>
           <h3>Jev picks each click. <em>Your keys.</em></h3>
-          <ul class="chips"><li>Claude account</li><li>any OpenAI-compatible gateway</li></ul>
+          <ul class="chips"><li>TypeSafe key</li><li>Claude account</li><li>any OpenAI-compatible gateway</li></ul>
         </a>
         <a class="t t-bw" href="#bitwarden">
           <span class="otp" aria-hidden="true"><span>4</span><span>8</span><span>1</span><span>9</span><span>0</span><span>6</span></span>
@@ -901,7 +904,7 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
     <figure class="bench">
       <div class="bench-row"><span>Copper</span><i style="--v: 2"></i><b>2.0 s</b></div>
       <div class="bench-row them"><span>Polar</span><i style="--v: 11.6"></i><b>11.6 s</b></div>
-      <figcaption>Median time per completed task, asked over MCP. 28 web tasks, two rounds, on one Mac mini, 18&nbsp;November 2026: Copper&nbsp;1.0.20261117.114 and Polar&nbsp;0.2.12.</figcaption>
+      <figcaption>Median time per completed task. Each goal was handed to the browser over MCP and run by its own driver (in Copper, <code>jev_run</code>). 28 web tasks, two rounds, on one Mac mini, 18&nbsp;November 2026: Copper&nbsp;1.0.20261117.114 and Polar&nbsp;0.2.12.</figcaption>
     </figure>
     <div class="split">
       <div class="agents-copy">
@@ -936,8 +939,8 @@ Jev mode: <span class="ok">on</span>
         <span class="kicker">Jev, built in</span>
         <h2 id="jev-title">Ultrafast, and <em>bring your own key.</em></h2>
         <p>Hand Copper a goal. Jev reads the page's controls, picks an operation and an element in about 200&nbsp;ms, and acts. A small model writes any text it has to type.</p>
-        <p>Bring your own key: sign in with a Claude account, or point Copper at any OpenAI-compatible gateway.</p>
-        <ul class="chips" aria-label="Model access"><li>Claude account</li><li>OpenAI-compatible gateway</li><li>Haiku, Sonnet or Opus</li></ul>
+        <p>Jev runs on your own TypeSafe key. Any text it types comes from your Claude account or any OpenAI-compatible gateway.</p>
+        <ul class="chips" aria-label="Model access"><li>TypeSafe key</li><li>Claude account</li><li>OpenAI-compatible gateway</li><li>Haiku, Sonnet or Opus</li></ul>
       </div>
       <figure class="media">
         <div class="frame"><img src="assets/post-jev.webp" width="2000" height="1250" loading="lazy" decoding="async" alt="Copper on the Wikipedia article for Patina, with a small Jev pill at the top of the page and the driver timeline open on the right. The timeline lists each cycle: reading the page, asking Jev which move, clicking Search, typing “patina”, clicking the Patina result, and finally Jev said DONE, 96% sure."></div>
@@ -1215,7 +1218,7 @@ Jev said <span class="ok">DONE</span>, 96% sure
     <div class="sec-head">
       <span class="kicker">Privacy</span>
       <h2 id="privacy-title">On your Mac, unless you <em>say otherwise.</em></h2>
-      <p>What leaves your Mac: the pages you ask for, their icons, and one small request a day to see whether there is a newer version. When you run Jev, what it reads on the page goes to the model provider you chose. Copper Cloud stays off until you link a server you run.</p>
+      <p>What leaves your Mac: the pages you ask for, their icons, and one small request a day to see whether there is a newer version. When you run Jev, the page's controls and your goal go to TypeSafe on your own key, and the text it types is written by the model provider you chose. Copper Cloud stays off until you link a server you run.</p>
     </div>
     <div class="never">
       <div><strong>No account</strong><span>Nothing to sign into with us. Copper Cloud accounts live on your own server.</span></div>
@@ -1232,7 +1235,7 @@ Jev said <span class="ok">DONE</span>, 96% sure
         <tr><th scope="row">Cookies and site data</th><td data-l="Where">WebKit's own store for the app</td><td data-l="Who">The sites that set them, as in any browser.</td></tr>
         <tr><th scope="row">Extensions</th><td data-l="Where">Unpacked in Copper's own folder, their data in WebKit's extension store</td><td data-l="Who">Each extension, within the permissions you accepted.</td></tr>
         <tr><th scope="row">Copper Cloud, only if you link it</th><td data-l="Where">The parts you switched on, on the instance you linked, encrypted at rest with your account's key</td><td data-l="Who">You, and that instance's operator.</td></tr>
-        <tr><th scope="row">Jev, only while it runs</th><td data-l="Where">The page's controls and your goal, sent to the model you picked: your Claude account or your gateway</td><td data-l="Who">You, and that provider.</td></tr>
+        <tr><th scope="row">Jev, only while it runs</th><td data-l="Where">The page's controls and your goal go to TypeSafe on your key; text to type is written by the model you picked, on your Claude account or your gateway</td><td data-l="Who">You, and those providers.</td></tr>
         <tr><th scope="row">Anything else</th><td data-l="Where">Nowhere.</td><td data-l="Who">No one.</td></tr>
       </tbody>
     </table>
@@ -1443,7 +1446,7 @@ Jev said <span class="ok">DONE</span>, 96% sure
         <p class="credit">Built by <a href="https://collinrijock.com">Collin Rijock</a> and <a href="https://felipearce.dev">Felipe Arce</a>. We built it at ShellHacks at FIU.</p>
       </div>
       <figure class="media">
-        <div class="frame"><img src="assets/post-credits.webp" width="2000" height="1250" loading="lazy" decoding="async" alt="A glass card over a sculpted copper stone veined with patina. It reads: copper. A fast little Mac browser, basically full Arc parity, with agents built in, plus a server you run yourself. MIT, all of it. Below are the two repositories, github.com/copper-browser/Copper and github.com/copper-browser/copper-cloud, and the line built by Collin Rijock and Felipe Arce."></div>
+        <div class="frame"><img src="assets/art-agate.webp" width="960" height="536" loading="lazy" decoding="async" alt=""></div>
       </figure>
     </div>
   </section>

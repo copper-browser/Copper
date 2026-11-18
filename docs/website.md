@@ -100,9 +100,9 @@ play H.264, so check the videos in Safari or Chrome.
 ## Launch graphics
 
 The hero bento, `loop-spaces`/`loop-agents` (captioned loops), `post-*.webp` (the launch thread's
-stills), `tile-*.webp` (bento pieces), `art-*.webp` (copper-art backdrops) and `og.jpg` come from
+stills; the credits card is no longer used, it carried the old tagline), `tile-*.webp` (bento pieces), `art-*.webp` (copper-art backdrops) and `og.jpg` come from
 the launch kit (bento source, caption renderer and raw recordings), not from `site-capture/`.
-The bento itself is live HTML in `index.html`; `og.jpg` is a 1200×630 crop of its render.
+The bento itself is live HTML in `index.html`; `og.jpg` is the live hero at 1200×630 with the nav, quip, buttons and meta hidden.
 
 ## Captures (screenshots and loops)
 
