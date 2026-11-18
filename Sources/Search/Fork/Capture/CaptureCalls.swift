@@ -119,6 +119,8 @@ final class CaptureCalls {
         }
         // One page starting or stopping changes what every other may resume.
         reviewAll()
+        // … and whether a page asking for the microphone gets Copper's own (PageMic).
+        PageMic.shared.captureChanged()
     }
 
     private func keep(_ web: WKWebView) {

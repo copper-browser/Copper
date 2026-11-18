@@ -16,6 +16,11 @@ import WebKit
 //                   canvas whose capture track is the stream it gets
 //   the end         Stop on the bar (TabShareBar.swift), the shared tab
 //                   closed, the page's track.stop() or its leaving
+//   sound           a page that asked for audio gets "Also share tab audio"
+//                   in the picker; on, the stream also carries Copper's page
+//                   sound, heard by a CoreAudio tap on WebKit's GPU process
+//                   (TabAudioTap.swift, TabShareAudio.swift) — all of
+//                   Copper's page sound, not only the tab's
 //
 // This file is the bookkeeping: the page's messages, the asks waiting for
 // WebKit's request, the picker that is up, and the shares that are live.
@@ -70,6 +75,9 @@ final class TabShare: NSObject, ObservableObject {
         let tabs: [TabShareRules.Candidate]
         let canShareTab: Bool
         let systemAudio: Bool
+        /// "Also share tab audio": whether it is drawn, where it starts, and
+        /// what is said under it (TabAudioRules.audioSwitch).
+        var audio = TabAudioRules.AudioSwitch()
         /// The matched ask's token (Copper's own, never the page's id).
         fileprivate let ask: UUID?
         /// The page that asked: gone, its question is too (a new document in
@@ -84,6 +92,8 @@ final class TabShare: NSObject, ObservableObject {
     @Published var query = ""
     @Published var highlighted = 0
     @Published var expanded = false
+    /// "Also share tab audio", as the person left it.
+    @Published var shareAudio = false
     /// The row highlighted when the picker came up, for when the search is
     /// emptied again.
     private var opening = 0
@@ -130,6 +140,13 @@ final class TabShare: NSObject, ObservableObject {
         let host: String
         let started = Date()
         let capture: TabShareCapture
+        /// The tab's sound, while it is shared (TabShareAudio).
+        var audio: TabShareAudio?
+        /// What the bar says about sound.
+        var sound: Sound = .off
+        /// macOS is asking whether Copper may record its sound: the page
+        /// has not been answered yet, and is not "quiet" for it.
+        var waitingOnMacOS = false
         init(id: String, source: Tab.ID, consumer: Tab.ID?, consumerView: WKWebView?, origin: String,
              frame: TabShareRules.FrameKey, host: String, capture: TabShareCapture) {
             self.id = id
@@ -141,6 +158,20 @@ final class TabShare: NSObject, ObservableObject {
             self.host = host
             self.capture = capture
         }
+    }
+
+    /// A share's sound, for the bar.
+    enum Sound: String {
+        /// Not asked for, or the switch was off.
+        case off
+        /// macOS is asking.
+        case asking
+        /// Shared.
+        case on
+        /// macOS refuses Copper audio capture: pictures only.
+        case refused
+        /// The page stopped its audio track.
+        case stopped
     }
 
     @Published private(set) var shares: [Share] = []
@@ -211,12 +242,17 @@ final class TabShare: NSObject, ObservableObject {
         let owner = caller.flatMap { Windows.owner(of: $0) } ?? browser
         let canShareTab = ask != nil
         let candidates = canShareTab ? Self.candidates(in: owner, caller: caller?.id) : []
-        let picking = Picking(browser: ObjectIdentifier(owner), host: names.host, within: names.within,
+        var picking = Picking(browser: ObjectIdentifier(owner), host: names.host, within: names.within,
                               home: Spaces.shared.space(in: owner).title, caller: caller?.id,
                               tabs: TabShareRules.offer(candidates, includeCaller: ask?.includeSelf ?? false),
                               canShareTab: canShareTab, systemAudio: systemAudio, ask: askID, view: view,
                               decide: decide)
+        picking.audio = TabAudioRules.audioSwitch(asked: (ask?.audio ?? false) || systemAudio, canShareTab: canShareTab,
+                                                  callerHost: names.host, callerPlaying: caller?.noisy ?? false,
+                                                  permission: AudioCapturePermission.status)
+        shareAudio = picking.audio.on
         note(["origin": key, "frame": frameOrigin, "mainFrame": frame.isMainFrame, "systemAudio": systemAudio,
+              "askedAudio": ask?.audio ?? false, "audioSwitch": picking.audio.shown ? (picking.audio.on ? "on" : "off") : "none",
               "ask": ask?.key.id ?? NSNull(), "offered": picking.tabs.count, "decision": "picker",
               "frameKnown": frameKey.frame != nil, "documentKnown": frameKey.document != nil])
         query = ""
@@ -274,12 +310,54 @@ final class TabShare: NSObject, ObservableObject {
             }
             entry["decision"] = "tab"
             entry["share"] = reply["share"]
-            answer(askID, reply)
+            let sound = TabAudioRules.sharesAudio(picking.audio, on: shareAudio)
+            entry["audio"] = sound
+            if sound, let id = reply["share"] as? String {
+                withSound(id, reply: reply, ask: askID)
+            } else {
+                answer(askID, reply)
+            }
             // WebKit's own request is refused on purpose: the page's wrapper
             // has its stream already and lets WebKit's rejection go.
             picking.decide(0)
         }
         note(entry)
+    }
+
+    /// A tab with sound: the answer waits for macOS's word on audio capture
+    /// (asked the first time); refused, the page gets pictures only, and the
+    /// bar says why.
+    private func withSound(_ id: String, reply: [String: Any], ask: UUID) {
+        guard let share = shares.first(where: { $0.id == id }) else { return answer(ask, ["choice": "cancel"]) }
+        let give: (Bool) -> Void = { [weak self] granted in
+            guard let self else { return }
+            // Over while macOS asked (the page went, the tab closed).
+            guard let share = self.shares.first(where: { $0.id == id }) else { return self.answer(ask, ["choice": "cancel"]) }
+            share.waitingOnMacOS = false
+            share.capture.handedOver()
+            var reply = reply
+            if granted {
+                share.audio = TabShareAudio()
+                share.sound = .on
+                reply["audio"] = true
+            } else {
+                share.sound = .refused
+                reply["audio"] = false
+            }
+            self.objectWillChange.send()
+            self.answer(ask, reply)
+        }
+        switch AudioCapturePermission.status {
+        case .granted: give(true)
+        case .denied: give(false)
+        case .unknown:
+            share.waitingOnMacOS = true
+            share.sound = .asking
+            objectWillChange.send()
+            AudioCapturePermission.request { granted in
+                DispatchQueue.main.async { MainActor.assumeIsolated { give(granted) } }
+            }
+        }
     }
 
     // MARK: - starting and stopping
@@ -356,6 +434,8 @@ final class TabShare: NSObject, ObservableObject {
         guard let at = shares.firstIndex(where: { $0.id == id }) else { return }
         let share = shares.remove(at: at)
         share.capture.stop(reason)
+        share.audio?.stop(reason)
+        share.audio = nil
         holdPace()
         let others = shares
         if let tab = AgentTabs.find(share.source) {
@@ -428,10 +508,17 @@ final class TabShare: NSObject, ObservableObject {
                 stop(share.id, reason: "the sharing page went away")
                 continue
             }
-            if TabShareRules.quiet(sinceAsked: Date().timeIntervalSince(share.capture.lastAsked), everAsked: share.capture.asked > 0) {
-                stop(share.id, reason: share.capture.asked > 0 ? "the sharing page stopped asking" : "the sharing page never asked")
+            // Not answered yet: macOS is asking about its sound.
+            if share.waitingOnMacOS { continue }
+            // Asking for pictures or for sound: a page that keeps only the
+            // sound stops asking for pictures.
+            let lastAsked = max(share.capture.lastAsked, share.audio?.feed.lastAsked ?? .distantPast)
+            let everAsked = share.capture.asked > 0 || (share.audio?.feed.asked ?? 0) > 0
+            if TabShareRules.quiet(sinceAsked: Date().timeIntervalSince(lastAsked), everAsked: everAsked) {
+                stop(share.id, reason: everAsked ? "the sharing page stopped asking" : "the sharing page never asked")
                 continue
             }
+            share.audio?.refresh()
             // A tab in use is never idle: the sleep sweep skips both.
             source.touch()
             share.consumer.flatMap { AgentTabs.find($0) }?.touch()
@@ -446,6 +533,7 @@ final class TabShare: NSObject, ObservableObject {
     /// document can ask for anything. Nothing to do, and no work, when
     /// nothing is shared or asked.
     func committed(_ view: WKWebView) {
+        PageMic.shared.committed(view) // a page served Copper's microphone (Fork/Capture/PageMic.swift)
         guard !shares.isEmpty || picking != nil || !asks.isEmpty else { return }
         for share in shares where share.consumerView === view { stop(share.id, reason: "the sharing page went away") }
         if let picking, picking.view === view { close(picking, with: .cancel, note: "the page went away") }
@@ -493,12 +581,15 @@ final class TabShare: NSObject, ObservableObject {
             guard let id = body["id"] as? String,
                   let ask = asks.first(where: { $0.key.id == id && $0.view === view && $0.key.origin == from && $0.key.frame.same(frame) })
             else { return }
+            // A tab was chosen and the answer waits on macOS's word about
+            // sound (withSound): WebKit's request was refused on purpose.
+            if ask.matched, picking?.ask != ask.token { return }
             // WebKit's request ended without Copper's answer — a newer request,
             // a navigation, the permissions policy: the picker for it goes.
             if let picking, picking.ask == ask.token { close(picking, with: .cancel, note: "page settled") }
             answer(ask.token, ["choice": "none"])
-        case "frame", "stop", "tune":
-            let refuse = { op == "stop" ? reply(true) : reply(["ended": true, "reason": "no such share"]) }
+        case "frame", "stop", "tune", "audio", "audio-stop":
+            let refuse = { op == "stop" || op == "audio-stop" ? reply(true) : reply(["ended": true, "reason": "no such share"]) }
             guard let id = body["share"] as? String, let share = shares.first(where: { $0.id == id }), share.consumerView === view else {
                 return refuse()
             }
@@ -516,6 +607,18 @@ final class TabShare: NSObject, ObservableObject {
             case "stop":
                 reply(true)
                 stop(id, reason: "the page stopped it")
+            case "audio":
+                guard let audio = share.audio else { return reply(["ended": true, "reason": "no sound"]) }
+                audio.feed.next(after: (body["after"] as? NSNumber)?.intValue ?? 0, reply: reply)
+            case "audio-stop":
+                reply(true)
+                // The page stopped its audio track and kept the pictures.
+                if let audio = share.audio {
+                    audio.stop("the page stopped it")
+                    share.audio = nil
+                    share.sound = .stopped
+                    objectWillChange.send()
+                }
             default:
                 share.capture.tune(TabShareRules.want(from: body["want"]))
                 reply(["fps": share.capture.fps, "width": share.capture.size.width, "height": share.capture.size.height])
@@ -611,13 +714,17 @@ final class TabShare: NSObject, ObservableObject {
     /// nobody waiting on its answer, to draw and to walk with the keys. It
     /// belongs to the window's front page, so the watchdog leaves it up.
     func sample(in browser: Browser, host: String, within: String?, home: String?, tabs: [TabShareRules.Candidate],
-                includeSelf: Bool, canShareTab: Bool, systemAudio: Bool, video: Any?) {
+                includeSelf: Bool, canShareTab: Bool, systemAudio: Bool, video: Any?, callerPlaying: Bool = false,
+                permission: TabAudioRules.Permission = .granted) {
         guard Store.testing else { return }
         if let open = picking { close(open, with: .cancel, note: "replaced") }
-        let picking = Picking(browser: ObjectIdentifier(browser), host: host, within: within, home: home, caller: nil,
+        var picking = Picking(browser: ObjectIdentifier(browser), host: host, within: within, home: home, caller: nil,
                               tabs: canShareTab ? TabShareRules.offer(tabs, includeCaller: includeSelf) : [],
                               canShareTab: canShareTab, systemAudio: systemAudio, ask: nil, view: browser.active?.built,
                               decide: { _ in })
+        picking.audio = TabAudioRules.audioSwitch(asked: systemAudio, canShareTab: canShareTab, callerHost: host,
+                                                  callerPlaying: callerPlaying, permission: permission)
+        shareAudio = picking.audio.on
         query = ""
         expanded = false
         self.picking = picking
@@ -647,6 +754,8 @@ final class TabShare: NSObject, ObservableObject {
                 row["consumerHung"] = share.consumer.map(TabShareStage.isHung) ?? false
                 row["sourceWindow"] = AgentTabs.find(share.source)?.built?.window.map { String(describing: type(of: $0)) } ?? "none"
                 row["sourceIgnoresOcclusion"] = AgentTabs.find(share.source)?.built?.headlessIgnoresOcclusion ?? NSNull()
+                row["sound"] = share.sound.rawValue
+                row["audio"] = share.audio?.feed.report ?? NSNull()
                 return row
             },
             "asks": asks.map { ["id": $0.key.id, "origin": $0.key.origin, "matched": $0.matched] },
@@ -655,10 +764,15 @@ final class TabShare: NSObject, ObservableObject {
             "stage": TabShareStage.report,
             "keepsCallerPainting": keepsCallerPainting,
             "pace": ["holds": holdsPace, "held": holdingPace],
+            "tap": TabAudioTap.shared.report,
+            "audioPermission": "\(AudioCapturePermission.status)",
+            "pageMic": PageMic.shared.report,
         ]
         if let picking {
             out["picker"] = [
                 "host": picking.host, "within": picking.within ?? NSNull(), "canShareTab": picking.canShareTab, "systemAudio": picking.systemAudio,
+                "audio": ["shown": picking.audio.shown, "enabled": picking.audio.enabled, "on": shareAudio,
+                          "note": TabAudioRules.note(picking.audio, on: shareAudio)] as [String: Any],
                 "query": query, "highlighted": highlighted, "expanded": expanded, "offered": picking.tabs.count,
                 "rows": rows.map { row -> String in
                     switch row {

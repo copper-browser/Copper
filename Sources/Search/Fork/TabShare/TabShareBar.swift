@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 // While a tab is shared, a capsule at the foot of the window says which and
@@ -9,6 +10,10 @@ import SwiftUI
 // its own controls along the bottom edge (Meet's, Zoom's), the capsule would
 // sit on them, and that page has its own way to stop. Everywhere else —
 // above all on the shared tab itself — it is there.
+//
+// With sound (TabShare.Sound) a speaker says Copper's sound goes too; when
+// macOS refused Copper audio capture the capsule says the sound isn't going,
+// and Settings opens the switch for it.
 struct ShareBar: View {
     let browser: Browser
     @ObservedObject private var share = TabShare.shared
@@ -17,7 +22,7 @@ struct ShareBar: View {
         VStack(spacing: 8) {
             ForEach(visible, id: \.id) { live in
                 if let tab = AgentTabs.find(live.source) {
-                    ShareCapsule(tab: tab, host: live.host,
+                    ShareCapsule(tab: tab, host: live.host, sound: live.sound,
                                  show: browser.activeID == tab.id ? nil : { AgentTabs.show(tab) },
                                  stop: { share.stop(live.id, reason: "stopped from the bar") })
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -35,6 +40,7 @@ struct ShareBar: View {
 struct ShareCapsule: View {
     @ObservedObject var tab: Tab
     let host: String
+    var sound: TabShare.Sound = .off
     /// Brings the shared tab forward; nil while it is the one on screen.
     let show: (() -> Void)?
     let stop: () -> Void
@@ -44,6 +50,13 @@ struct ShareCapsule: View {
             Image(systemName: "rectangle.on.rectangle")
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(Palette.muted)
+            if sound == .on {
+                Image(systemName: "speaker.wave.2")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Palette.muted)
+                    .help("Copper's sound is shared too: every tab's, not only this one's")
+                    .accessibilityLabel("with sound")
+            }
             // On the shared tab itself the words are only words; elsewhere
             // they take you to it.
             if let show {
@@ -52,6 +65,9 @@ struct ShareCapsule: View {
                     .help("Show the shared tab")
             } else {
                 words
+            }
+            if sound == .refused || sound == .asking {
+                soundNote
             }
             Button(action: stop) {
                 Text("Stop")
@@ -79,6 +95,31 @@ struct ShareCapsule: View {
             .foregroundStyle(Palette.ink)
             .lineLimit(1)
             .truncationMode(.middle)
+    }
+
+    /// Why no sound goes, and the way to change it.
+    @ViewBuilder private var soundNote: some View {
+        if sound == .asking {
+            Text("No sound yet: macOS is asking")
+                .font(.system(size: 12))
+                .foregroundStyle(Palette.muted)
+                .lineLimit(1)
+        } else {
+            HStack(spacing: 6) {
+                Image(systemName: "speaker.slash")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Palette.muted)
+                Text("No sound: Copper isn't allowed to record audio")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.muted)
+                    .lineLimit(1)
+                Button("Settings") { NSWorkspace.shared.open(AudioCapturePermission.settingsURL) }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Palette.ink)
+            }
+            .accessibilityElement(children: .combine)
+        }
     }
 
     /// A long title is cut, never the words around it.

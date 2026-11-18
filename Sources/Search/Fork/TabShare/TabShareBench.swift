@@ -8,14 +8,17 @@ import WebKit
 //   share answer tab ID|window|screen|cancel
 //                                     test worlds: answer the open picker, or the next one
 //   share keys KEYS                   test worlds: keys pressed on the open picker (↑ ↓ ← → ⇥ ↩ ⎋ ⌫, letters)
-//   share sample [N] [self] [notab] [audio] [frame] [hint monitor|window|browser]
+//   share sample [N] [self] [notab] [audio [playing] [refused]] [frame] [hint monitor|window|browser]
 //                                     test worlds: put the picker up over N made-up tabs (250) in five
 //                                     spaces, nobody waiting on its answer — to draw it and walk it
 //                                     with the keys. self offers the calling tab, notab none at all
-//                                     (a window or the screen only), audio says tab audio isn't
-//                                     shared, frame asks from a frame of another site, hint is the
+//                                     (a window or the screen only), audio is a page asking for
+//                                     sound ("Also share tab audio"; playing: the page is playing
+//                                     sound itself, refused: macOS refuses Copper audio capture),
+//                                     frame asks from a frame of another site, hint is the
 //                                     page's displaySurface
 //   share stop [SHARE|all]            as the bar's Stop does
+//   share audio on|off                the open picker's "Also share tab audio" switch
 //   share caller on|off               keep the calling page painting while you are elsewhere
 //   share pace on|off                 test worlds: hold (on, as Copper does) or not the latency-critical
 //                                     activity that keeps a share at 30 fps behind other apps
@@ -79,7 +82,8 @@ enum TabShareBench {
             let hint = words.firstIndex(of: "hint").flatMap { words.indices.contains($0 + 1) ? words[$0 + 1] : nil }
             share.sample(in: browser, host: "meet.google.com", within: words.contains("frame") ? "news.example" : nil,
                          home: "Exowatt", tabs: sampleTabs(count), includeSelf: words.contains("self"), canShareTab: !words.contains("notab"),
-                         systemAudio: words.contains("audio"), video: hint.map { ["displaySurface": $0] as Any } ?? true)
+                         systemAudio: words.contains("audio"), video: hint.map { ["displaySurface": $0] as Any } ?? true,
+                         callerPlaying: words.contains("playing"), permission: words.contains("refused") ? .denied : .granted)
             answer(state(in: browser))
         case "stop":
             let target = words.first ?? "all"
@@ -101,6 +105,10 @@ enum TabShareBench {
             }
             Backstage.ignoreOcclusion(web, words[1] == "on")
             answer(["ignoresOcclusion": web.headlessIgnoresOcclusion ?? NSNull()])
+        case "audio":
+            guard share.picking != nil else { answer(["error": "no picker is up"]); return }
+            share.shareAudio = words.first != "off"
+            answer(state(in: browser))
         case "caller":
             share.keepsCallerPainting = words.first != "off"
             answer(["keepsCallerPainting": share.keepsCallerPainting])
@@ -117,7 +125,7 @@ enum TabShareBench {
             picture(words[0], path: words[1], dark: words.dropFirst(2).contains("dark"), bare: words.dropFirst(2).contains("bare"),
                     in: browser, answer: answer)
         default:
-            answer(["error": "share state|answer|keys|sample|stop|caller|pace|occlusion|picture"])
+            answer(["error": "share state|answer|keys|sample|stop|audio|caller|pace|occlusion|picture"])
         }
     }
 
@@ -169,12 +177,12 @@ enum TabShareBench {
             let height = bare ? 900 : Windows.window(of: browser)?.contentView?.bounds.height ?? 900
             card = AnyView(SharePickerCard(picking: picking, query: share.query, highlighted: share.highlighted, rows: share.rows,
                                            tint: Spaces.shared.space(in: browser).tint, scheme: scheme, stamp: 0,
-                                           room: SharePicker.room(in: height), scrolls: false)
+                                           room: SharePicker.room(in: height), scrolls: false, audioOn: share.shareAudio)
                 .frame(width: SharePicker.width))
             top = true
         case "bar":
             guard let live = share.shares.first, let tab = AgentTabs.find(live.source) else { answer(["error": "nothing is shared"]); return }
-            card = AnyView(ShareCapsule(tab: tab, host: live.host, show: {}, stop: {}))
+            card = AnyView(ShareCapsule(tab: tab, host: live.host, sound: live.sound, show: {}, stop: {}))
             page = browser.active
             top = false
         default:

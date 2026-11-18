@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import CoreAudio
 import Foundation
 
 // The microphone, for dictation and Listen: AVAudioEngine's input node tapped
@@ -50,8 +51,15 @@ final class VoiceCapture: @unchecked Sendable {
     private let onQueueKey = DispatchSpecificKey<Bool>()
     private let lock = NSLock()
     private var current: Run?                // guarded by `lock`
+    /// The input to open, by name (a page's chosen microphone, PageMic);
+    /// nil is the Mac's default input. Looked up again on every rebuild, so
+    /// a device that goes is a device lost.
+    let device: String?
 
-    init() { queue.setSpecific(key: onQueueKey, value: true) }
+    init(device: String? = nil) {
+        self.device = device
+        queue.setSpecific(key: onQueueKey, value: true)
+    }
 
     deinit { stop() }
 
@@ -105,6 +113,9 @@ final class VoiceCapture: @unchecked Sendable {
     /// Taps the run's engine at the device's own format and starts it. On queue.
     private func open(_ run: Run) throws {
         let input = run.engine.inputNode
+        if let device {
+            guard let id = AudioInputs.id(named: device), AudioInputs.use(id, on: input) else { throw VoiceCaptureError.noInput }
+        }
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else { throw VoiceCaptureError.noInput }
         // 100 ms is the shortest buffer a tap accepts.
@@ -212,6 +223,58 @@ final class VoiceCapture: @unchecked Sendable {
     private func onQueue<T>(_ body: () throws -> T) rethrows -> T {
         if DispatchQueue.getSpecific(key: onQueueKey) == true { return try body() }
         return try queue.sync(execute: body)
+    }
+}
+
+/// The Mac's audio inputs by name — the names WebKit gives a page's
+/// microphones — for opening one that is not the default.
+enum AudioInputs {
+    private static func address(_ selector: AudioObjectPropertySelector, _ scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal) -> AudioObjectPropertyAddress {
+        AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: kAudioObjectPropertyElementMain)
+    }
+
+    /// Every device with an input stream, and its name.
+    static func all() -> [(id: AudioDeviceID, name: String)] {
+        var where_ = address(kAudioHardwarePropertyDevices)
+        var size: UInt32 = 0
+        let system = AudioObjectID(kAudioObjectSystemObject)
+        guard AudioObjectGetPropertyDataSize(system, &where_, 0, nil, &size) == noErr, size > 0 else { return [] }
+        var ids = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(system, &where_, 0, nil, &size, &ids) == noErr else { return [] }
+        return ids.compactMap { id in
+            var streams = address(kAudioDevicePropertyStreams, kAudioObjectPropertyScopeInput)
+            var bytes: UInt32 = 0
+            guard AudioObjectGetPropertyDataSize(id, &streams, 0, nil, &bytes) == noErr, bytes > 0 else { return nil }
+            var nameAt = address(kAudioObjectPropertyName)
+            var name: Unmanaged<CFString>?
+            var nameSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+            guard AudioObjectGetPropertyData(id, &nameAt, 0, nil, &nameSize, &name) == noErr,
+                  let text = name?.takeRetainedValue() as String? else { return nil }
+            return (id, text)
+        }
+    }
+
+    static func id(named name: String) -> AudioDeviceID? {
+        let inputs = all()
+        guard let match = PageMicRules.device(named: name, among: inputs.map(\.name)) else { return nil }
+        return inputs.first { $0.name == match }?.id
+    }
+
+    /// The default input's name.
+    static var defaultName: String? {
+        var where_ = address(kAudioHardwarePropertyDefaultInputDevice)
+        var id = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &where_, 0, nil, &size, &id) == noErr, id != 0 else { return nil }
+        return all().first { $0.id == id }?.name
+    }
+
+    /// The engine's input opens this device (before it starts).
+    static func use(_ id: AudioDeviceID, on input: AVAudioInputNode) -> Bool {
+        guard let unit = input.audioUnit else { return false }
+        var device = id
+        return AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
+                                    &device, UInt32(MemoryLayout<AudioDeviceID>.size)) == noErr
     }
 }
 

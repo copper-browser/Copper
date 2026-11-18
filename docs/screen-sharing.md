@@ -70,9 +70,48 @@ on its track, when you press Stop, close the shared tab, or close or leave the
 page that is sharing; the page's own `track.stop()` ends it too. A shared tab
 and the page sharing it are never put to sleep.
 
-**Tab audio isn't shared.** A page that asks for audio with a tab gets the
-video alone, as Chrome gives for a window. For sound, share the screen with
-the call's own audio, or play it into the call from the shared tab's site.
+## Tab audio
+
+A page that asks for audio (`getDisplayMedia({ video, audio })`, as a call
+or a meeting transcriber does) gets Chrome's **Also share tab audio** switch
+at the foot of the card. Share a tab with it on and the stream carries an
+audio track as well as the picture; off, or for a window or the screen, the
+video alone (window and screen go to WebKit's own picker, as before).
+
+**What goes is all of Copper's page sound, not only the chosen tab's.**
+WebKit plays every page's sound — `<audio>`, `<video>`, Web Audio, a call's
+voices — in its one GPU process (Activity Monitor's "Copper Graphics and
+Media"), and says nothing about which page a sample came from, so the sound
+Copper can hand over is that process's: a CoreAudio process tap on it
+(macOS 14.2+). The line under the switch says so: *All of Copper's sound,
+not only this tab's*, and the speaker on the share's capsule has the same
+words. Copper's own sounds (dictation, the agent) are a different process and
+never go.
+
+- **On by default** when the page asked for audio, as in Chrome — **except**
+  when the page doing the sharing is itself playing sound (a call presenting a
+  tab): it would hear its own sound back, so the switch starts off and says
+  *Off: meet.google.com would hear itself*. It can still be turned on.
+  Copper can't leave the sharing page's own sound out of the tap cheaply
+  (one GPU process for every page), so it doesn't try.
+- **macOS asks once.** The first share with sound brings up macOS's own
+  question for recording the sound Copper plays ("audio capture"; it is
+  listed later under System Settings › Privacy & Security › Screen & System
+  Audio Recording › System Audio Recording Only). The page waits for your
+  answer. Refused, the share goes ahead with pictures only — the stream has
+  no audio track — and the capsule says *No sound: Copper isn't allowed to
+  record audio* with **Settings**. Refused for good, the switch is drawn off
+  and dimmed with the same words.
+- **Bounded latency.** The sound reaches the page in 20 ms pieces of 16-bit
+  PCM over the same message-reply long poll as the pictures, played a
+  twentieth of a second ahead of the page's audio clock. Copper keeps at most
+  a quarter of a second for a page that falls behind, and the page drops a
+  piece that would start more than a quarter of a second ahead: a skip, never
+  a growing delay.
+- **It stops with the share**: Stop, the page's `track.stop()` (the audio
+  track alone stops the sound and keeps the pictures; a page that keeps only
+  the sound stops the pictures being taken), the shared tab closing, the page
+  leaving. The tap runs only while some share has sound.
 
 ## How it works
 
@@ -161,6 +200,26 @@ page          getDisplayMedia (wrapped)
 No Screen Recording permission is involved for a tab: Copper pictures its own
 web view. *A window…* and *Entire screen…* are WebKit's and macOS's, and need
 it as before.
+
+**Sound** (`Fork/TabShare/TabAudioTap.swift`, `TabShareAudio.swift`,
+`PCMPlayerScript.swift`). A page that asked for audio has an `AudioContext`
+made and started inside its click, the only time WebKit lets one start; any
+answer but a tab with sound closes it. With sound, Copper first has macOS's
+word on audio capture (TCC's own preflight and request, the way Apple's
+process-tap samples ask), then attaches the share to one `TabAudioTap`: a
+`CATapDescription(stereoMixdownOfProcesses:)` of WebKit's GPU process —
+found by the pid WebKit names (`_gpuProcessIdentifier`), else a
+`com.apple.WebKit.GPU` process macOS holds this Copper responsible for, never
+another app's WebKit — private and `.unmuted`, in a private aggregate device
+clocked by the default output. Its IO turns each cycle into 16-bit PCM for
+every listener's bounded queue. The page long-polls `audio` (its last piece's
+number, as with pictures), plays each piece through an
+`AudioBufferSourceNode` into a `MediaStreamAudioDestinationNode`, and that
+node's track joins the stream. No AudioWorklet: a worklet's module must load
+from a URL the page's Content Security Policy allows. The tap follows the GPU
+process once a second (a new one after a crash is tapped again), is rebuilt
+when its sound stops for two seconds (the output device went), and is torn
+down with the last share that has sound.
 
 ## Who gets the pictures
 
@@ -253,7 +312,13 @@ Rejected:
 
 ## Limits
 
-- No tab audio (see above). WebKit gives no public tap on a page's sound.
+- Tab audio is every page's sound in Copper, never one tab's (see Tab audio),
+  and has no echo cancellation: a call that shares a tab with sound while
+  playing its own sends its voices back (the switch starts off there).
+- Tab audio needs macOS 14.2 (process taps) and the audio-capture
+  permission; a page that played no sound since Copper's WebKit GPU process
+  started is not yet known to CoreAudio, and the track is silent until some
+  page plays (looked for once a second).
 - A page that calls `getDisplayMedia` some way the wrapper never sees — an
   extension's script that kept WebKit's own before Copper's ran — is offered
   a window or the screen only: a tab is handed only to a frame of the
@@ -281,6 +346,11 @@ Rejected:
   keys (`TabShareRulesTests`); the page script in JavaScriptCore against a
   stand-in page — untouched until called, the tab path's fixed label and
   private share id (`TabShareScriptTests`).
+- `swift test --filter TabAudio`: the switch's rules and words, the bounded
+  queue and its framing, which process is tapped (`TabAudioRulesTests`); the
+  page's sound in JavaScriptCore against stand-in Web Audio — the player's
+  bounded scheduling, the audio track on a tab share, the sound stopping
+  alone, the context closed for every other answer (`TabAudioScriptTests`).
 - `docs/fixtures/tab-share-e2e.sh`: a headless test world end to end — the
   picker, a tab at pace behind the calling tab and over WebRTC, the ends,
   cancel, window and screen through WebKit's mock devices, a cross-origin
@@ -300,12 +370,15 @@ Rejected:
   between ticks, an ask's wait for its picture and the page's turn, middle /
   slow tenth / slowest over the last few seconds; `appActive`; `pace`),
   `answer tab ID|window|screen|cancel`, `keys`, `sample [N] [self] [notab]
-  [audio] [frame] [hint monitor|window|browser]` (test worlds: the card over
+  [audio [playing] [refused]] [frame] [hint monitor|window|browser]` (test worlds: the card over
   N made-up tabs in five spaces, nobody waiting on its answer — to draw it
   and walk it with `keys`; `picture picker PATH [dark] bare` draws it on its
   own), `pace on|off` and
   `occlusion ID on|off` (test worlds only; the last lets a windowed
   probe behind your own windows call getDisplayMedia, which wants a visible
-  page), `stop`, `caller on|off`, `picture window|picker|bar PATH [dark]`. `SEARCH_SHARE_MOCK=1` at launch, in a
+  page), `audio on|off` (the open card's switch), `stop`, `caller on|off`, `picture window|picker|bar PATH [dark]`. `SEARCH_SHARE_MOCK=1` at launch, in a
   test world, turns on WebKit's mock capture devices (the same switch as the camera and microphone's
-  `capture.mock`, [capture.md](capture.md) › Checking it).
+  `capture.mock`, [capture.md](capture.md) › Checking it); `SEARCH_SHARE_AUDIO_MOCK=1`
+  replaces the tap with a quiet 440 Hz tone, so a share's sound runs end to end
+  with no macOS question. `share state` reports each share's `sound` and
+  `audio` (pieces, held, dropped, level), the tap's state and `audioPermission`.
