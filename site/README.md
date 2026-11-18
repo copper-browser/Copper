@@ -1,7 +1,8 @@
 # Copper — website
 
 The static landing page for [Copper](https://github.com/copper-browser/Copper), meant to be
-served by GitHub Pages at `https://copper-browser.github.io/Copper/`.
+served by GitHub Pages at `https://copper-browser.github.io/Copper/` and by Exowatt AWS
+(S3 + CloudFront, [`infra/site-aws.yml`](../infra/site-aws.yml)) at `https://copper.exowatt.com`.
 
 - `index.html` — the whole page: inline CSS and a little vanilla JS. No framework, no build
   step, no external fonts, CDNs or trackers.
