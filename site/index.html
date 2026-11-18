@@ -33,8 +33,8 @@
     var r = document.documentElement, dark = (r.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')) === 'dark';
     var k = dark ? 'dark' : 'light';
     if (el.tagName === 'IMG') { if (el.getAttribute('src') !== el.dataset[k]) el.src = el.dataset[k]; return; }
-    var s = el.querySelector('source'), want = s.dataset[k];
-    el.poster = el.dataset[k];
+    var s = el.querySelector('source'), want = s.dataset[k] || s.dataset.src;
+    el.poster = el.dataset[k] || el.dataset.poster;
     if (s.getAttribute('src') !== want) {
       var t = el.currentTime, on = !el.paused;
       s.src = want; el.load();
@@ -136,10 +136,10 @@ em.g, h1 em, h2 em, .t h3 em {
   display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 20px;
   border-radius: 999px; border: 0; background: var(--accent); color: var(--on-accent);
   font: 600 16px/1 var(--font); text-decoration: none; cursor: pointer; white-space: nowrap;
-  transition: background-color .15s ease, transform .15s ease;
+  transition: background-color .15s ease, transform .16s cubic-bezier(.23, 1, .32, 1);
 }
 .btn:hover { background: var(--accent-hover); }
-.btn:active { transform: translateY(1px); }
+.btn:active { transform: scale(.97); }
 .btn svg { width: 17px; height: 17px; flex: none; }
 .btn-sm { min-height: 34px; padding: 0 14px; font-size: 14px; }
 .cmd {
@@ -390,7 +390,7 @@ kbd {
 .steps li { counter-increment: s; display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 2px 10px; align-items: baseline; padding: 11px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
 .steps li::before { content: counter(s, decimal-leading-zero); font: 12px/1 var(--mono); color: var(--ink-2); }
 .steps li small { font: 12.5px/1.3 var(--mono); color: var(--ink-2); white-space: nowrap; }
-.steps .op { font: 600 11px/1 var(--mono); letter-spacing: .02em; padding: 3px 6px; border-radius: 4px; border: 1px solid var(--line-2); color: var(--ink); margin-right: 6px; vertical-align: 1px; }
+.steps .op { font: 600 12px/1 var(--mono); letter-spacing: .02em; padding: 3px 6px; border-radius: 4px; border: 1px solid var(--line-2); color: var(--ink); margin-right: 6px; vertical-align: 1px; }
 .steps li.done span { font-weight: 600; }
 .term .hl { color: #F0E6D8; font-weight: 600; }
 
@@ -400,8 +400,14 @@ kbd {
 .never div + div { padding-left: 24px; border-left: 1px solid var(--line); }
 .never strong { font: 600 18px/1.3 var(--display); letter-spacing: -.01em; }
 .never span { color: var(--ink-2); font-size: 15.5px; }
-.ptable { width: 100%; margin-top: 40px; border-collapse: collapse; font-size: 15.5px; }
-.ptable caption { text-align: left; font-weight: 600; padding-bottom: 12px; caption-side: top; }
+.fold { margin-top: 28px; border-bottom: 1px solid var(--line); }
+.fold summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; cursor: pointer; font-weight: 600; list-style: none; }
+.fold summary::-webkit-details-marker { display: none; }
+.fold summary::after { content: ""; width: 8px; height: 8px; margin-right: 4px; border-right: 2px solid var(--ink-2); border-bottom: 2px solid var(--ink-2); transform: translateY(-2px) rotate(45deg); transition: transform .2s cubic-bezier(.23, 1, .32, 1); }
+.fold[open] summary::after { transform: translateY(2px) rotate(-135deg); }
+.fold summary:hover::after { border-color: var(--ink); }
+.ptable { width: 100%; border-collapse: collapse; font-size: 15.5px; }
+.fold .ptable tbody tr:last-child > * { border-bottom: 0; }
 .ptable th, .ptable td { text-align: left; vertical-align: top; padding: 14px 20px 14px 0; border-bottom: 1px solid var(--line); }
 .ptable thead th { font-size: 13px; font-weight: 600; color: var(--ink-2); padding-block: 10px; }
 .ptable tbody th { font-weight: 600; width: 22%; }
@@ -444,6 +450,7 @@ kbd {
 /* Without script the tabs can't switch: show every panel instead. */
 html:not(.js) .dl-tabs { display: none; }
 html:not(.js) .dl-panel[hidden] { display: block; }
+.reel noscript img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .dl-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
 .dl-seen { color: var(--ink-2); font-size: 14.5px; }
 .dl-seen strong { color: var(--ink); font-weight: 600; }
@@ -513,17 +520,30 @@ html:not(.js) .dl-panel[hidden] { display: block; }
   content: ""; position: absolute; inset: 0; z-index: -2;
   background: radial-gradient(50% 40% at 0% 60%, var(--glow1), transparent 70%), radial-gradient(45% 40% at 100% 85%, var(--glow2), transparent 70%);
 }
-.hero { padding-top: clamp(64px, 12vh, 140px); }
-.quip { display: inline-flex; align-items: center; gap: 10px; max-width: 100%; padding: 7px 14px 7px 8px; border-radius: 999px; background: rgba(255, 248, 240, .06); border: 1px solid var(--line-2); color: var(--ink-2); font-size: 14.5px; line-height: 1.35; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
-.quip b { flex: none; font: 650 11.5px/1 var(--font); letter-spacing: .06em; text-transform: uppercase; color: var(--on-accent); background: var(--accent); padding: 5px 8px; border-radius: 999px; }
+.hero {
+  --bleed: clamp(0px, (100vw - var(--w)) / 2 - 24px, 300px);
+  display: grid; grid-template-columns: minmax(0, 29rem) minmax(0, 1fr); grid-template-areas: "copy shot" "meta shot"; column-gap: clamp(28px, 3.2vw, 44px);
+  padding-top: clamp(44px, 8vh, 96px);
+}
+.hero-copy { grid-area: copy; align-self: end; }
+.hero .meta { grid-area: meta; align-self: start; }
+/* the real window, whole, on the copper art; it leans into the right gutter on wide screens */
+.hero-shot { grid-area: shot; align-self: center; display: block; margin-right: calc(-1 * var(--bleed)); }
+.hero-shot img { width: 100%; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .5)) drop-shadow(0 30px 44px rgba(0, 0, 0, .55)); }
+.quip { display: inline-flex; align-items: center; gap: 10px; max-width: 100%; padding: 7px 14px 7px 8px; border-radius: 20px; background: rgba(255, 248, 240, .06); border: 1px solid var(--line-2); color: var(--ink-2); font-size: 14.5px; line-height: 1.35; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.quip b { flex: none; font: 650 12px/1 var(--font); letter-spacing: .06em; text-transform: uppercase; color: var(--on-accent); background: var(--accent); padding: 5px 8px; border-radius: 999px; }
 .hero h1 {
-  margin-top: 26px; font-size: clamp(2.8rem, 1.2rem + 5.6vw, 5.6rem); line-height: .98; letter-spacing: -.045em; font-weight: 700;
+  margin-top: 24px; font-size: clamp(2.8rem, 1rem + 3.4vw, 4.05rem); line-height: .98; letter-spacing: -.045em; font-weight: 700;
   max-width: 11ch;
 }
 .hero .lead { margin-top: 24px; max-width: 30em; font-size: clamp(1.12rem, 1rem + .45vw, 1.35rem); line-height: 1.5; color: var(--ink-2); }
-.hero .lead strong { color: var(--ink); font-weight: 600; }
+.hero .lead strong { color: var(--ink); font-weight: 600; white-space: nowrap; }
 .hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 34px; }
 .hero-actions .cmd { flex: 0 1 auto; }
+.hero .meta { display: grid; grid-template-columns: repeat(2, max-content); }
+.hero .cmd { font-size: 13px; padding-left: 12px; }
+.hero .copy { width: 34px; padding: 0; justify-content: center; }
+.hero .copy span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .meta { margin-top: 18px; font-size: 14px; color: var(--ink-2); display: flex; flex-wrap: wrap; column-gap: 22px; row-gap: 4px; }
 .meta span { display: inline-flex; align-items: center; gap: 7px; }
 .meta span::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--patina); }
@@ -537,9 +557,10 @@ html:not(.js) .dl-panel[hidden] { display: block; }
   position: relative; display: flex; flex-direction: column; min-width: 0; overflow: hidden;
   padding: 26px 28px; border-radius: var(--r-xl); border: 1px solid var(--line);
   background: var(--tile); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
-  color: var(--ink); text-decoration: none; transition: border-color .2s ease, transform .2s ease;
+  color: var(--ink); text-decoration: none; transition: border-color .2s ease, transform .2s cubic-bezier(.23, 1, .32, 1);
 }
-a.t:hover { border-color: var(--line-2); transform: translateY(-2px); }
+@media (hover: hover) and (pointer: fine) { a.t:hover { border-color: var(--line-2); transform: translateY(-2px); } }
+a.t:active { transform: scale(.99); }
 .t h3 { font: 650 26px/1.12 var(--display); letter-spacing: -.022em; max-width: 20em; position: relative; }
 .t p { color: var(--ink-2); font-size: 15px; line-height: 1.42; margin-top: 8px; max-width: 30em; position: relative; }
 .t-kick { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; font: 600 12.5px/1 var(--font); letter-spacing: .06em; text-transform: uppercase; color: var(--patina); }
@@ -554,9 +575,9 @@ a.t:hover { border-color: var(--line-2); transform: translateY(-2px); }
 .t-spaces h3 { font-size: clamp(30px, 1.2rem + 1.6vw, 44px); line-height: 1.04; letter-spacing: -.03em; max-width: 11em; }
 .t-spaces p { font-size: 16.5px; max-width: 26em; }
 .sides { display: flex; gap: 14px; margin-top: 28px; }
-.sides img { width: calc((100% - 28px) / 3); border-radius: 14px 14px 0 0; border: 1px solid var(--line); box-shadow: var(--shadow); }
-.sides img:nth-child(2) { margin-top: 22px; }
-.sides img:nth-child(3) { margin-top: 44px; }
+.sides video { width: calc((100% - 28px) / 3); border-radius: 14px 14px 0 0; border: 1px solid var(--line); box-shadow: var(--shadow); background: #15100D; }
+.sides video:nth-child(2) { margin-top: 22px; }
+.sides video:nth-child(3) { margin-top: 44px; }
 .t-agents { grid-column: 7 / 13; grid-row: 1; display: grid; grid-template-columns: minmax(0, 240px) minmax(0, 1fr); gap: 24px; background: linear-gradient(200deg, rgba(61, 214, 190, .16), rgba(61, 214, 190, .02) 55%), var(--tile); }
 .t-agents .t-shot { width: 480px; max-width: none; }
 .t-jev, .t-bw, .t-mit { justify-content: flex-end; }
@@ -581,7 +602,7 @@ a.t:hover { border-color: var(--line-2); transform: translateY(-2px); }
 
 /* ---------- sections ---------- */
 section { scroll-margin-top: 70px; }
-.sec { padding-block: clamp(96px, 12vw, 168px) 0; }
+.sec { padding-block: clamp(88px, 10vw, 136px) 0; }
 .sec-head { display: grid; gap: 14px; max-width: 40rem; }
 h2, .sec-head h2, .sec-head .h2 { font-size: clamp(2.1rem, 1.3rem + 2.6vw, 3.3rem); line-height: 1.04; letter-spacing: -.035em; font-weight: 700; }
 .sec-head p, .feature-copy > p { color: var(--ink-2); font-size: 1.12rem; }
@@ -602,20 +623,11 @@ h2, .sec-head h2, .sec-head .h2 { font-size: clamp(2.1rem, 1.3rem + 2.6vw, 3.3re
   box-shadow: 0 0 0 1px var(--line), var(--shadow);
 }
 .frame img, .reel video { width: 100%; height: auto; }
+.reel video { display: block; cursor: pointer; }
+.reel video:focus-visible { outline-offset: -4px; border-radius: 20px; }
 .media figcaption, .reel-cap { margin-top: 14px; font-size: 14px; color: var(--ink-2); }
 .reel-cap { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 18px; }
 .reel-cap > span { max-width: 52em; }
-.reel-toggle {
-  position: absolute; right: 14px; bottom: 14px; z-index: 2; display: inline-flex; align-items: center; gap: 7px;
-  height: 32px; padding: 0 12px 0 10px; border-radius: 999px; border: 0; cursor: pointer;
-  background: rgba(20, 14, 10, .66); color: #FFF7EE; font: 500 12.5px/1 var(--font);
-  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); transition: background-color .15s ease;
-}
-.reel-toggle:hover { background: rgba(20, 14, 10, .85); }
-.reel-toggle svg { width: 12px; height: 12px; }
-.reel-toggle .i-play { display: none; }
-.reel-toggle[aria-pressed="true"] .i-play { display: block; }
-.reel-toggle[aria-pressed="true"] .i-pause { display: none; }
 .wide-media { margin-top: clamp(36px, 5vw, 56px); }
 
 .keys-row { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 4px 0 0; padding: 0; }
@@ -635,7 +647,7 @@ h2, .sec-head h2, .sec-head .h2 { font-size: clamp(2.1rem, 1.3rem + 2.6vw, 3.3re
 .jev-facts { margin-top: clamp(48px, 6vw, 72px); }
 
 /* ---------- outro (stage) ---------- */
-.outro { margin-top: clamp(112px, 13vw, 176px); padding-block: clamp(80px, 10vw, 128px); overflow: hidden; }
+.outro { margin-top: clamp(96px, 11vw, 144px); padding-block: clamp(80px, 10vw, 128px); overflow: hidden; }
 .outro::before { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(45% 60% at 0% 100%, var(--glow1), transparent 70%), radial-gradient(40% 60% at 100% 0%, var(--glow2), transparent 70%); }
 .outro .feature-copy > p { font-size: 1.15rem; }
 .repos { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 4px 0 0; padding: 0; }
@@ -654,6 +666,10 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
 
 /* ---------- responsive ---------- */
 @media (max-width: 1100px) {
+  .hero { display: block; }
+  .hero h1 { font-size: clamp(2.8rem, 1.2rem + 5.6vw, 5.6rem); }
+  .hero-shot { margin: 44px 0 0; }
+  .hero .meta { margin-top: 24px; }
   .bento { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; grid-auto-rows: auto; }
   .bento .t { grid-column: auto; grid-row: auto; }
   .t-spaces, .t-agents, .t-cloud { grid-column: 1 / -1 !important; }
@@ -681,6 +697,7 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
   .ptable thead { display: none; }
   .ptable, .ptable tbody, .ptable tr, .ptable th, .ptable td { display: block; width: auto; }
   .ptable tr { padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .fold .ptable tbody tr:last-child { border-bottom: 0; }
   .ptable th, .ptable td { border: 0; padding: 2px 0; }
   .ptable tbody th { width: auto; }
   .ptable td[data-l]::before { content: attr(data-l) " — "; color: var(--ink); font-weight: 500; font-size: 13px; }
@@ -695,21 +712,28 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
   .t-agents .t-shot { width: 440px; }
   .t-canvas, .t-mit { height: 300px; }
   .cw { height: 440px; }
-  .hero { padding-top: 48px; }
+  /* thumbs: every control at least 40 px tall */
+  .brand, .linkish { min-height: 40px; }
+  .linkish { display: inline-flex; align-items: center; }
+  .theme { width: 40px; height: 40px; }
+  .btn-sm, .hint, .dl-tabs [role="tab"] { min-height: 40px; }
+  .copy, .hero .copy { width: 40px; height: 40px; padding: 0; justify-content: center; }
+  .copy span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  /* phone: the window comes right after the button; the brew line waits in Install */
+  .hero { padding-top: 28px; }
+  .hero-shot { margin-top: 32px; }
+  .hero .meta { display: flex; }
+  .hero .hero-actions .cmd { display: none; }
   .hero-stage::before { background: linear-gradient(180deg, rgba(12, 10, 9, .55), rgba(12, 10, 9, .8) 60%), url(assets/art-liquid.webp) 70% 0 / cover no-repeat; }
   .manifest li { grid-template-columns: 15px minmax(0, 1fr); }
   .manifest li small { grid-column: 2; text-align: left; }
-  .ptable caption { display: block; }
   .hero-actions .btn { flex: 1 1 100%; justify-content: center; }
   .hero-actions .cmd { flex: 1 1 100%; }
   .frame, .reel { border-radius: 12px; }
-  .reel-toggle { right: 8px; bottom: 8px; height: 30px; }
   .steps li { grid-template-columns: 24px minmax(0, 1fr); }
   .steps li small { grid-column: 2; }
 }
 @media (max-width: 480px) {
-  .copy { width: 34px; padding: 0; justify-content: center; }
-  .copy span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .term pre { font-size: 12px; padding: 16px; }
   .quip { font-size: 13.5px; }
 }
@@ -737,8 +761,6 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
   <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M6.5 10.5L12 16l5.5-5.5M5 20h14"/></symbol>
   <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M13 6l6 6-6 6"/></symbol>
   <symbol id="i-gh" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1.5a10.5 10.5 0 0 0-3.32 20.46c.53.1.72-.23.72-.5v-1.8c-2.92.63-3.54-1.4-3.54-1.4-.48-1.22-1.17-1.54-1.17-1.54-.95-.65.08-.64.08-.64 1.05.08 1.6 1.08 1.6 1.08.94 1.6 2.46 1.14 3.06.87.1-.68.37-1.14.66-1.4-2.33-.27-4.78-1.17-4.78-5.18 0-1.15.41-2.08 1.08-2.82-.1-.27-.47-1.34.1-2.79 0 0 .88-.28 2.89 1.08a10 10 0 0 1 5.26 0c2-1.36 2.88-1.08 2.88-1.08.58 1.45.21 2.52.1 2.79.68.74 1.08 1.67 1.08 2.82 0 4.02-2.45 4.9-4.79 5.16.38.33.71.97.71 1.96v2.9c0 .28.19.61.73.5A10.5 10.5 0 0 0 12 1.5z"/></symbol>
-  <symbol id="i-pause" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="4" width="5" height="16" rx="1.2"/><rect x="14" y="4" width="5" height="16" rx="1.2"/></symbol>
-  <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
   <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
 </svg>
@@ -746,7 +768,7 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
 
 <header class="nav" id="top">
   <div class="wrap">
-    <a class="brand" href="#top" aria-label="Copper, back to top"><img src="assets/icon.png" alt="" width="30" height="30">Copper</a>
+    <a class="brand" href="#top" aria-label="Copper, back to top"><img src="assets/icon-96.webp" alt="" width="30" height="30">Copper</a>
     <nav aria-label="Sections">
       <ul class="nav-links">
         <li><a href="#spaces">Browser</a></li>
@@ -770,6 +792,7 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
 <main id="main">
   <div class="stage hero-stage">
     <section class="hero wrap" aria-labelledby="hero-title">
+      <div class="hero-copy">
       <p class="quip"><b>Yes</b><span>Everyone is forking a WebKit browser. We spent the tokens so you don't have to.</span></p>
       <h1 id="hero-title">Full Arc parity, and <em>open source.</em></h1>
       <p class="lead">Copper is a fast little Mac browser with agents built in, plus a server you run yourself. <strong>MIT, all of it.</strong></p>
@@ -780,19 +803,24 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
           <button class="copy" type="button" data-copy="brew install --cask copper-browser/copper/copper" aria-label="Copy the Homebrew command"><svg class="i-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="i-check" aria-hidden="true"><use href="#i-check"/></svg><span>Copy</span></button>
         </div>
       </div>
+      </div>
+      <picture class="hero-shot">
+        <source media="(max-width: 640px)" srcset="assets/copper-hero-sm.webp" width="1280" height="1120">
+        <img src="assets/copper-hero-1920.webp" srcset="assets/copper-hero-1280.webp 1280w, assets/copper-hero-1920.webp 1920w, assets/copper-hero-2560.webp 2560w" sizes="(max-width: 1100px) 92vw, 62vw" width="2560" height="1600" fetchpriority="high" decoding="async" alt="The Copper window. A sidebar in the Copper space's warm animated theme holds the address and four tabs: Google, Copper on Wikipedia, Mac on apple.com and Hacker News, with the three spaces along the bottom. The page fills the rest of the window, with no toolbar above it.">
+      </picture>
       <p class="meta"><span>macOS 14 or later</span><span>Apple Silicon &amp; Intel</span><span>Windows &amp; Linux too</span><span>No account</span></p>
     </section>
 
     <section class="wrap" aria-label="Copper at a glance">
       <div class="bento">
         <a class="t t-spaces" href="#spaces">
-          <span class="t-kick"><img src="assets/icon.png" alt="" width="28" height="28">Copper for macOS</span>
+          <span class="t-kick"><img src="assets/icon-96.webp" alt="" width="28" height="28">Copper for macOS</span>
           <h3>Spaces with <em>animated sidebars.</em></h3>
           <p>Split view, ⌘K, folders, Favorites, Today and Saved. WebKit underneath, no account.</p>
           <span class="sides" aria-hidden="true">
-            <img src="assets/tile-side-125-top.webp" alt="" width="400" height="1000" loading="lazy" decoding="async">
-            <img src="assets/tile-side-30-top.webp" alt="" width="400" height="1000" loading="lazy" decoding="async">
-            <img src="assets/tile-side-85-top.webp" alt="" width="400" height="1000" loading="lazy" decoding="async">
+            <video class="side" muted loop playsinline preload="none" width="336" height="840" poster="assets/side-copper.webp" data-src="assets/side-copper.mp4"></video>
+            <video class="side" muted loop playsinline preload="none" width="336" height="840" poster="assets/side-patina.webp" data-src="assets/side-patina.mp4"></video>
+            <video class="side" muted loop playsinline preload="none" width="336" height="840" poster="assets/side-ember.webp" data-src="assets/side-ember.mp4"></video>
           </span>
         </a>
         <a class="t t-agents" href="#agents">
@@ -848,10 +876,9 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
       </div>
       <figure class="media">
         <div class="reel">
-          <video class="loop" autoplay muted loop playsinline preload="metadata" width="1600" height="1000" poster="assets/loop-spaces.webp" aria-label="A recording of Copper switching between spaces. Each space washes the whole sidebar in its own colour and animated theme, from warm copper to blue-green patina, and keeps its own tabs." aria-describedby="spaces-cap">
-            <source src="assets/loop-spaces.mp4" type="video/mp4">
-          </video>
-          <button class="reel-toggle" type="button" aria-pressed="false" aria-label="Pause the recording"><svg class="i-pause" aria-hidden="true"><use href="#i-pause"/></svg><svg class="i-play" aria-hidden="true"><use href="#i-play"/></svg><span>Pause</span></button>
+          <video class="loop" muted loop playsinline preload="none" width="1600" height="1000" data-poster="assets/loop-spaces.webp" aria-label="A recording of Copper switching between spaces. Each space washes the whole sidebar in its own colour and animated theme, from warm copper to blue-green patina, and keeps its own tabs." aria-describedby="spaces-cap">
+            <source data-src="assets/loop-spaces.mp4" type="video/mp4">
+          </video><noscript><img src="assets/loop-spaces.webp" alt=""></noscript>
         </div>
         <figcaption class="reel-cap" id="spaces-cap"><span>Switching spaces in Copper. The whole sidebar changes with you, and every space keeps its own tabs.</span></figcaption>
       </figure>
@@ -862,7 +889,7 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
     <div class="try">
       <div class="sec-head">
         <h2 id="try-title">Try it here.</h2>
-        <p>A small working copy of Copper's window. Click a tab, switch spaces, find any tab by name, or hide the cookie banner for good.</p>
+        <p>A small working copy of Copper's window.</p>
         <div class="hints" role="group" aria-label="Things to try">
           <button class="hint" type="button" data-act="find"><kbd data-k="⌘K">⌘K</kbd>Find a tab</button>
           <button class="hint" type="button" data-act="hide" aria-pressed="false"><kbd data-k="⇧⌘H">⇧⌘H</kbd>Hide something</button>
@@ -895,7 +922,6 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
           </div>
         </div>
         <div class="demo-foot">
-          <span>Shortcuts work while the demo has focus. Nothing here leaves this page.</span>
           <button class="linkish" type="button" id="cw-reset">Reset the demo</button>
         </div>
         <p class="sr" aria-live="polite" id="cw-live"></p>
@@ -911,12 +937,11 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
       </div>
       <figure class="reel-fig">
         <div class="reel">
-          <video class="loop" autoplay muted loop playsinline preload="metadata" width="2240" height="1480" poster="assets/copper-motion.webp" data-light="assets/copper-motion.webp" data-dark="assets/copper-motion-dark.webp" aria-label="A recording of Copper: switching from Google to a Wikipedia tab, pressing ⌘K and typing “pat” to find the Patina tab in another space, changing to the Work space, moving the tabs to the top of the window and back." aria-describedby="motion-cap">
-            <source src="assets/copper-motion.mp4" data-light="assets/copper-motion.mp4" data-dark="assets/copper-motion-dark.mp4" type="video/mp4">
-          </video><script>copperMedia(document.currentScript.previousElementSibling)</script>
-          <button class="reel-toggle" type="button" aria-pressed="false" aria-label="Pause the recording"><svg class="i-pause" aria-hidden="true"><use href="#i-pause"/></svg><svg class="i-play" aria-hidden="true"><use href="#i-play"/></svg><span>Pause</span></button>
+          <video class="loop" muted loop playsinline preload="none" width="2240" height="1480" data-light="assets/copper-motion.webp" data-dark="assets/copper-motion-dark.webp" aria-label="A recording of Copper: switching from Google to a Wikipedia tab, pressing ⌘K and typing “pat” to find the Patina tab in another space, changing to the Work space, moving the tabs to the top of the window and back." aria-describedby="motion-cap">
+            <source data-light="assets/copper-motion.mp4" data-dark="assets/copper-motion-dark.mp4" type="video/mp4">
+          </video><noscript><img src="assets/copper-motion.webp" alt=""></noscript>
         </div>
-        <figcaption class="reel-cap" id="motion-cap"><span>A tab, then <kbd>⌘K</kbd> and three letters to find one in another space, then the Work space, then the tabs across the top. Recorded in Copper as it is, not a mock-up.</span></figcaption>
+        <figcaption class="reel-cap" id="motion-cap"><span>A tab, then <kbd>⌘K</kbd> and three letters to find one in another space, then the Work space, then the tabs across the top. Recorded in Copper.</span></figcaption>
       </figure>
       <ul class="ledger">
         <li><h3>One field</h3><span class="keys"><kbd>⌘L</kbd></span><p>Type an address and you go there; type words and you search. Nothing you type is sent anywhere until you press Return.</p></li>
@@ -973,10 +998,9 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
     </div>
     <figure class="media wide-media">
       <div class="reel">
-        <video class="loop" autoplay muted loop playsinline preload="metadata" width="1600" height="1000" poster="assets/loop-agents.webp" aria-label="A recording of three agents working in three Copper tabs at once. Claude Code asks Jev to find the Patina article on Wikipedia; a trail on the page shows where Jev is about to click, and each tab in the sidebar wears the badge of the agent working in it." aria-describedby="agents-cap">
-          <source src="assets/loop-agents.mp4" type="video/mp4">
-        </video>
-        <button class="reel-toggle" type="button" aria-pressed="false" aria-label="Pause the recording"><svg class="i-pause" aria-hidden="true"><use href="#i-pause"/></svg><svg class="i-play" aria-hidden="true"><use href="#i-play"/></svg><span>Pause</span></button>
+        <video class="loop" muted loop playsinline preload="none" width="1600" height="1000" data-poster="assets/loop-agents.webp" aria-label="A recording of three agents working in three Copper tabs at once. Claude Code asks Jev to find the Patina article on Wikipedia; a trail on the page shows where Jev is about to click, and each tab in the sidebar wears the badge of the agent working in it." aria-describedby="agents-cap">
+          <source data-src="assets/loop-agents.mp4" type="video/mp4">
+        </video><noscript><img src="assets/loop-agents.webp" alt=""></noscript>
       </div>
       <figcaption class="reel-cap" id="agents-cap"><span>Three agents, three tabs, one browser. The badges in the sidebar say who is where; the trail on the page shows the next click before it happens.</span></figcaption>
     </figure>
@@ -1011,7 +1035,7 @@ Jev mode: <span class="ok">on</span>
       <div class="feature-copy">
         <span class="kicker">Jev, built in</span>
         <h2 id="jev-title">Ultrafast, and <em>bring your own key.</em></h2>
-        <p>Hand Copper a goal, not a list of clicks. Jev reads the page's controls, picks an operation and an element in about 200&nbsp;ms, and acts, instead of waiting on a large model for every click. A small model writes any text it has to type.</p>
+        <p>Hand Copper a goal. Jev reads the page's controls, picks an operation and an element in about 200&nbsp;ms, and acts. A small model writes any text it has to type.</p>
         <p>Bring your own key: sign in with a Claude account, or point Copper at any OpenAI-compatible gateway.</p>
         <ul class="chips" aria-label="Model access"><li>Claude account</li><li>OpenAI-compatible gateway</li><li>Haiku, Sonnet or Opus</li></ul>
       </div>
@@ -1046,10 +1070,9 @@ Jev mode: <span class="ok">on</span>
         </div>
         <figure class="reel-fig">
           <div class="reel">
-            <video class="loop" autoplay muted loop playsinline preload="metadata" width="2240" height="1480" poster="assets/copper-jev.webp" data-light="assets/copper-jev.webp" data-dark="assets/copper-jev-dark.webp" aria-label="A recording of Jev driving Copper. On the Wikipedia article for Copper, Jev clicks Search, types “patina”, picks the Patina article from the suggestions and says DONE. The driver timeline beside the page lists each cycle as it happens." aria-describedby="jev-cap">
-              <source src="assets/copper-jev.mp4" data-light="assets/copper-jev.mp4" data-dark="assets/copper-jev-dark.mp4" type="video/mp4">
-            </video><script>copperMedia(document.currentScript.previousElementSibling)</script>
-            <button class="reel-toggle" type="button" aria-pressed="false" aria-label="Pause the recording"><svg class="i-pause" aria-hidden="true"><use href="#i-pause"/></svg><svg class="i-play" aria-hidden="true"><use href="#i-play"/></svg><span>Pause</span></button>
+            <video class="loop" muted loop playsinline preload="none" width="2240" height="1480" data-light="assets/copper-jev.webp" data-dark="assets/copper-jev-dark.webp" aria-label="A recording of Jev driving Copper. On the Wikipedia article for Copper, Jev clicks Search, types “patina”, picks the Patina article from the suggestions and says DONE. The driver timeline beside the page lists each cycle as it happens." aria-describedby="jev-cap">
+              <source data-light="assets/copper-jev.mp4" data-dark="assets/copper-jev-dark.mp4" type="video/mp4">
+            </video><noscript><img src="assets/copper-jev.webp" alt=""></noscript>
           </div>
           <figcaption class="reel-cap" id="jev-cap"><span>The real run, recorded in Copper. The driver timeline is on the right; the blue ring and the Jev pill say the page is not yours for now.</span></figcaption>
         </figure>
@@ -1169,8 +1192,9 @@ Jev said <span class="ok">DONE</span>, 96% sure
       <div><strong>No telemetry</strong><span>No analytics, and no crash reports sent anywhere.</span></div>
       <div><strong>No server of ours</strong><span>Your tabs, history and passwords stay on the Mac, or on a machine you run.</span></div>
     </div>
-    <table class="ptable">
-      <caption>Where everything is</caption>
+    <details class="fold">
+    <summary>Where everything is</summary>
+    <table class="ptable" aria-label="Where everything is">
       <thead><tr><th scope="col">What</th><th scope="col">Where it is</th><th scope="col">Who can read it</th></tr></thead>
       <tbody>
         <tr><th scope="row">Passwords</th><td data-l="Where">The macOS login keychain, as ordinary keychain items tagged <code>Copper</code>, or your Bitwarden vault if you connect one</td><td data-l="Who">Copper. Any other app triggers the system's permission dialog.</td></tr>
@@ -1181,6 +1205,7 @@ Jev said <span class="ok">DONE</span>, 96% sure
         <tr><th scope="row">Anything else</th><td data-l="Where">Nowhere.</td><td data-l="Who">No one.</td></tr>
       </tbody>
     </table>
+    </details>
     <p class="ptable-note">A private tab (<kbd>⇧⌘N</kbd>) has its own cookie jar and leaves nothing behind when it closes.</p>
   </section>
 
@@ -1225,7 +1250,7 @@ Jev said <span class="ok">DONE</span>, 96% sure
           <p class="dl-other" id="dl-other">Intel Mac? <a href="https://github.com/copper-browser/Copper/releases/latest/download/copper-macos-x86_64.zip">Download for Intel</a>, or see <a href="#dl-all" data-dl-all>all downloads</a>.</p>
           <p>Unzip it and drag Copper.app to Applications.</p>
           <div class="notice">
-            <p><strong>About the first launch.</strong> Copper builds are ad-hoc signed, not notarized. Homebrew and the installer clear the quarantine flag for you. After a manual download, run this once, or right-click Copper and choose Open:</p>
+            <p><strong>About the first launch.</strong> Copper builds are ad-hoc signed and not yet notarized. Homebrew and the installer clear the quarantine flag for you. After a manual download, run this once, or right-click Copper and choose Open:</p>
             <div class="cmd"><code>xattr -cr <span class="nw">/Applications/Copper.app</span></code><button class="copy" type="button" data-copy="xattr -cr /Applications/Copper.app" aria-label="Copy the xattr command"><svg class="i-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="i-check" aria-hidden="true"><use href="#i-check"/></svg><span>Copy</span></button></div>
           </div>
         </div>
@@ -1395,7 +1420,7 @@ Jev said <span class="ok">DONE</span>, 96% sure
 
 <footer>
   <div class="wrap">
-    <div class="foot-id"><img src="assets/icon.png" alt="" width="28" height="28"><span>Copper, made by <a href="https://collinrijock.com">Collin</a> and <a href="https://felipearce.dev">Felipe</a>.</span></div>
+    <div class="foot-id"><img src="assets/icon-96.webp" alt="" width="28" height="28"><span>Copper, made by <a href="https://collinrijock.com">Collin</a> and <a href="https://felipearce.dev">Felipe</a>.</span></div>
     <ul class="links">
       <li><a href="https://github.com/copper-browser/Copper">GitHub</a></li>
       <li><a href="https://github.com/copper-browser/Copper/blob/HEAD/LICENSE">MIT License</a></li>
@@ -1419,7 +1444,7 @@ Jev said <span class="ok">DONE</span>, 96% sure
   function syncTheme() {
     var t = effective();
     themeBtn.setAttribute('aria-label', t === 'dark' ? 'Switch to light appearance' : 'Switch to dark appearance');
-    $$('[data-dark]').forEach(function (el) { if (el.tagName !== 'SOURCE') window.copperMedia(el); });
+    $$('[data-dark]').forEach(function (el) { if (el.tagName === 'IMG' || el.dataset.armed) window.copperMedia(el); });
     if (root.dataset.theme) $$('meta[name="theme-color"]').forEach(function (m) { m.content = t === 'dark' ? '#0C0A09' : '#F8F2EA'; });
   }
   themeBtn.addEventListener('click', function () {
@@ -1602,31 +1627,33 @@ Jev said <span class="ok">DONE</span>, 96% sure
     });
   })();
 
-  /* ---------- recordings: play in view, pause on request, never under reduced motion ---------- */
+  /* ---------- recordings: fetched when near, play in view, a click (or Space on a focused one) pauses, a still under reduced motion ---------- */
   var calm = window.matchMedia('(prefers-reduced-motion: reduce)');
-  $$('video.loop').forEach(function (v) {
-    var btn = v.parentNode.querySelector('.reel-toggle'), label = $('span', btn), held = false, seen = false;
-    function show(paused) {
-      btn.setAttribute('aria-pressed', String(paused));
-      btn.setAttribute('aria-label', paused ? 'Play the recording' : 'Pause the recording');
-      label.textContent = paused ? 'Play' : 'Pause';
+  $$('video.loop, video.side').forEach(function (v) {
+    var seen = false, held = false;
+    function arm() {
+      if (v.dataset.armed) return;
+      v.dataset.armed = '1';
+      if (v.dataset.src) v.src = v.dataset.src; else window.copperMedia(v);
     }
-    function play() { var p = v.play(); if (p && p.catch) p.catch(function () { show(true); }); show(false); }
-    function stop() { v.pause(); show(true); }
     function settle() {
-      if (calm.matches) { v.removeAttribute('autoplay'); v.autoplay = false; if (!held) stop(); return; }
-      if (!held && seen) play(); else if (!seen) v.pause();
+      if (!v.dataset.armed || calm.matches || held || !seen) { v.pause(); return; }
+      var p = v.play(); if (p && p.catch) p.catch(function () {});
     }
-    btn.addEventListener('click', function () {
-      if (v.paused) { held = false; play(); } else { held = true; stop(); }
-    });
+    if (v.classList.contains('loop')) {
+      v.tabIndex = 0;
+      v.addEventListener('click', function () { held = !v.paused; settle(); });
+      v.addEventListener('keydown', function (e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); v.click(); } });
+    }
     if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function (es, io) {
+        if (es.some(function (e) { return e.isIntersecting; })) { io.disconnect(); arm(); settle(); }
+      }, { rootMargin: '900px 0px' }).observe(v);
       new IntersectionObserver(function (es) {
-        es.forEach(function (e) { seen = e.isIntersecting; if (!seen) v.pause(); else settle(); });
+        es.forEach(function (e) { seen = e.isIntersecting; settle(); });
       }, { rootMargin: '120px 0px' }).observe(v);
-    } else { seen = true; }
+    } else { arm(); seen = true; settle(); }
     if (calm.addEventListener) calm.addEventListener('change', function () { held = false; settle(); });
-    settle();
   });
 
   /* ---------- the little Copper window ---------- */

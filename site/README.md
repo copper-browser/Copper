@@ -8,11 +8,15 @@ served by GitHub Pages at `https://copper-browser.github.io/Copper/` and by Exow
   step, no external fonts, CDNs or trackers.
 - `assets/` — real captures of Copper, the app icon, favicons and the 1200×630 `og.png`
   social card:
-  - `copper-google.webp` — the hero still (2240×1480, shown at 1120 CSS px).
+  - `copper-hero-{1280,1920,2560}.webp` + `copper-hero-sm.webp` — the hero: the whole Copper
+    window with a transparent surround (the phone one is a narrower window on Wikipedia).
+  - `side-{copper,patina,ember}.mp4` + `.webp` — the bento's three sidebars, each space's
+    animated theme with the selection moving between tabs (loop + poster, about 70 KB each).
   - `copper-motion.mp4` + `copper-motion.webp` — tabs, ⌘K, spaces, tabs on top (loop + poster).
   - `copper-jev.mp4` + `copper-jev.webp` — Jev running one goal, driver timeline open.
-  Videos are H.264, muted, `+faststart`; they play only while on screen, have a Pause
-  button, and show just the poster under `prefers-reduced-motion`.
+  Videos are H.264, muted, `+faststart`. Nothing of a video is fetched until it is near the
+  screen; it plays only while on screen, a click pauses it, and under
+  `prefers-reduced-motion` only the poster shows.
 - `.nojekyll` — serve the files as they are.
 
 Pushing a change under `site/` to `fork` deploys it: `.github/workflows/site.yml` checks that

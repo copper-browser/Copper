@@ -54,8 +54,14 @@ exists) and add `site.yml`.
 - Light and dark follow `prefers-color-scheme`, with a toggle stored in `localStorage`
   (`copper-theme`). Captures come in pairs (`*-dark.*`); `window.copperMedia` in the `<head>`
   picks the pair that matches.
-- Videos are `<video autoplay muted loop playsinline preload="metadata" poster=…>`; under
-  `prefers-reduced-motion` only the poster shows.
+- Videos are `<video class="loop" muted loop playsinline preload="none">` with the file and
+  poster in `data-*` attributes: the script at the end of the page sets them when the video
+  comes within 900 px of the screen, plays it while it is on screen, and pauses it on a click.
+  Under `prefers-reduced-motion` only the poster shows. There is no pause button.
+- The hero image is the page's largest paint: `fetchpriority="high"`, never `loading="lazy"`,
+  with `width`/`height` so nothing shifts. The source order in the hero is copy, window, meta,
+  which is also the order on a phone; don't reorder it with CSS `order` (content that streams in
+  later would push what is already on screen).
 - Hard rules: no horizontal scrolling at any width ≥ 360 px; AA contrast in both themes; real
   focus styles. Copper is presented on its own — the page names no other browser project as its
   origin. Facts on the page come from this repo's README and `docs/`; don't invent features.
@@ -104,6 +110,8 @@ are using is never touched:
 
 | Asset | What it shows | Made with |
 |---|---|---|
+| `copper-hero-*.webp` | the whole window on google.com (phone: a 640×560 window on Wikipedia's Copper article), dark appearance, sidebar on | `launch.sh` with `SIZE=1280x800` (or `640x560`) → bench `window` → `cwebp`/`convert -quality 80`, alpha kept |
+| `side-{copper,patina,ember}.mp4/.webp` | each space's sidebar: the animated theme and the selection moving between tabs | `launch.sh` with `SIZE=640x760` → `rec_sides.py` → crop the left 464 px, scale to 336×840, 24 fps, CRF 27–29, last 0.6 s dissolved into the first |
 | `copper-motion(-dark).mp4/.webp` | tab switch, ⌘K filtering, a space switch, tabs on top and back | `rec_motion.py` → `compose.py video` |
 | `copper-jev(-dark).mp4/.webp` | a real Jev run: "Search Wikipedia for patina and stop when the article is visible", with the driver timeline | `rec_jev.py` → `compose.py video` |
 
@@ -115,10 +123,12 @@ Recipe:
    `./bench` needs the `bench` default on in that world's own suite
    (`defaults write com.collinrijock.copper.test.sitepics bench -bool true`; never the installed
    Copper's `com.collinrijock.copper`).
-2. Set the world up with public pages only — never sign in to anything. The current captures use
-   three spaces: Personal (google.com, Wikipedia "Patina", apple.com/mac,
+2. Set the world up with public pages only — never sign in to anything. The motion and Jev
+   captures use three spaces: Personal (google.com, Wikipedia "Patina", apple.com/mac,
    news.ycombinator.com), Work (w3.org, swift.org, webkit.org) and Reading (Wikipedia: Statue of
-   Liberty, Verdigris, Patina). For Jev, the world needs its own `intelligence.json` (0600) in
+   Liberty, Verdigris, Patina). The hero and the bento sidebars use Copper (google.com, Wikipedia
+   "Copper", apple.com/mac, news.ycombinator.com), Patina (Wikipedia: Patina, Verdigris, Statue
+   of Liberty) and Ember (webkit.org, swift.org, w3.org), each with an animated theme. For Jev, the world needs its own `intelligence.json` (0600) in
    `~/Library/Application Support/Copper (sitepics)/`; keep keys, settings pages and internal
    URLs out of every frame.
 3. Record: `cb.py` grabs whole-window PNGs over the bench socket (the bench `window` verb — no
