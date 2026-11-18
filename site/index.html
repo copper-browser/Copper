@@ -1636,36 +1636,40 @@ Jev said <span class="ok">DONE</span>, 96% sure
   })();
 
   /* ---------- recordings: fetched when near, play in view, a still under reduced motion.
-     Each is a button with no chrome: a click, Space or Enter pauses or plays it, and its name says which. ---------- */
+     Each is a button with no chrome: a click, Space or Enter pauses or plays it, and its name says which.
+     The bento's three sidebars are one control with one intent. ---------- */
   var calm = window.matchMedia('(prefers-reduced-motion: reduce)');
-  $$('video.loop, video.side').forEach(function (v) {
-    var side = v.classList.contains('side'), ctl = side ? v.parentNode : v;   // the three sidebars share one control
-    var about = side ? '' : v.getAttribute('aria-label'), seen = false, user = '';
-    function name() { ctl.setAttribute('aria-label', (v.paused ? 'Play ' : 'Pause ') + (side ? 'the sidebar recordings' : 'the recording: ' + about)); }
-    function arm() {
+  var sides = $('.sides');
+  $$('video.loop').map(function (v) { return [v, [v], ': ' + v.getAttribute('aria-label')]; })
+    .concat([[sides, $$('video.side', sides), ' the sidebar recordings']]).forEach(function (g) {
+    var ctl = g[0], vids = g[1], about = g[2], user = '';
+    function wanted() { return user ? user === 'play' : !calm.matches; }
+    function arm(v) {
       if (v.dataset.armed) return;
       v.dataset.armed = '1';
       if (v.dataset.src) v.src = v.dataset.src; else window.copperMedia(v);
     }
     function settle() {
-      if (!v.dataset.armed || !seen || user === 'pause' || (calm.matches && user !== 'play')) { v.pause(); return; }
-      var p = v.play(); if (p && p.catch) p.catch(function () {});
+      ctl.setAttribute('aria-label', (wanted() ? 'Pause' : 'Play') + about);
+      vids.forEach(function (v) {
+        if (!v.dataset.armed || !v.seen || !wanted()) { v.pause(); return; }
+        var p = v.play(); if (p && p.catch) p.catch(function () {});
+      });
     }
-    ctl.addEventListener('click', function () { user = v.paused ? 'play' : 'pause'; arm(); settle(); });
-    if (!ctl.hasAttribute('role')) {
-      ctl.setAttribute('role', 'button'); ctl.tabIndex = 0; ctl.removeAttribute('aria-hidden');
-      ctl.addEventListener('keydown', function (e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); ctl.click(); } });
-    }
-    v.addEventListener('play', name); v.addEventListener('pause', name); name();
-    if ('IntersectionObserver' in window) {
+    ctl.setAttribute('role', 'button'); ctl.tabIndex = 0; ctl.removeAttribute('aria-hidden');
+    ctl.addEventListener('click', function () { user = wanted() ? 'pause' : 'play'; vids.forEach(arm); settle(); });
+    ctl.addEventListener('keydown', function (e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); ctl.click(); } });
+    vids.forEach(function (v) {
+      if (!('IntersectionObserver' in window)) { arm(v); v.seen = true; return; }
       new IntersectionObserver(function (es, io) {
-        if (es.some(function (e) { return e.isIntersecting; })) { io.disconnect(); arm(); settle(); }
+        if (es.some(function (e) { return e.isIntersecting; })) { io.disconnect(); arm(v); settle(); }
       }, { rootMargin: '900px 0px' }).observe(v);
       new IntersectionObserver(function (es) {
-        es.forEach(function (e) { seen = e.isIntersecting; settle(); });
+        es.forEach(function (e) { v.seen = e.isIntersecting; }); settle();
       }).observe(v);
-    } else { arm(); seen = true; settle(); }
+    });
     if (calm.addEventListener) calm.addEventListener('change', function () { user = ''; settle(); });
+    settle();
   });
 
   /* ---------- the little Copper window ---------- */

@@ -60,7 +60,7 @@ exists) and add `site.yml`.
   the recording itself is the control (`role="button"`, named "Pause…" or "Play…"), so a click,
   Space or Enter toggles it. The bento's three sidebars share one control. Under
   `prefers-reduced-motion` only the poster shows until someone presses play.
-- The hero image is the page's largest paint: `fetchpriority="high"`, never `loading="lazy"`,
+- The hero screenshot loads first (the measured LCP is the art behind it, which is preloaded): `fetchpriority="high"`, never `loading="lazy"`,
   with `width`/`height` so nothing shifts. The source order in the hero is copy, window, meta,
   which is also the order on a phone; don't reorder it with CSS `order` (content that streams in
   later would push what is already on screen).
