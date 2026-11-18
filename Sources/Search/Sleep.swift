@@ -172,6 +172,7 @@ extension Browser {
         if tab.pin != nil, !PinsAwake.mayDoze(tab) { return "pinned" } // Fork (pins-awake): always — Tab.sleep(picture:) refuses a pin too; Fork (covers): unless big pins may sleep
         if Backstage.shared.holds(tab.id) { return "an agent is working in it" } // Fork: agent-tabs
         if TabShare.shared.involves(tab.id) { return "being shared" } // Fork: tab-share — the shared tab and the page sharing it
+        if PageMic.shared.serves(tab.id) { return "on a call" } // Fork (page-mic): its page hears Copper's own microphone (Fork/Capture/PageMic.swift)
         if tab.bench { return "a bench tab" }
         if tab.isBlank { return "blank" }
         if tab.asleep { return "already asleep" }

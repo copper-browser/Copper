@@ -51,10 +51,13 @@ enum CaptureHook {
     static func listen(_ controller: WKUserContentController) {
         controller.removeScriptMessageHandler(forName: name)
         controller.add(relay, name: name)
+        PageMic.listen(controller) // Fork (page-mic): a second page's microphone, Copper's own (PageMic.swift)
     }
 
     static func arm(_ controller: WKUserContentController) {
         controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+        // After the script above: its getUserMedia wrapper is the one PageMic's wraps.
+        PageMic.arm(controller)
     }
 
     private static let relay = Relay()

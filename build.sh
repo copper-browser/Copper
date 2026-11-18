@@ -179,6 +179,11 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <string>Websites you visit can ask to use your camera. Copper asks you first, every time, for each site.</string>
   <key>NSMicrophoneUsageDescription</key>
   <string>Copper uses your microphone when you dictate to the agent, and when a website you allow asks for it. Speech is turned into text on this Mac.</string>
+  <!-- Sharing a tab with its sound (docs/screen-sharing.md › Tab audio): a
+       CoreAudio process tap on WebKit's GPU process, which plays every page's
+       sound. macOS asks for "audio capture" with this sentence the first time. -->
+  <key>NSAudioCaptureUsageDescription</key>
+  <string>When you share a tab with its sound, Copper records the sound its pages play and sends it only to the page you share with. That is every tab's sound, not only the shared tab's.</string>
   <!-- The Calendar pin's card lists your next meetings (Fork/CalendarPeek.swift). -->
   <key>NSCalendarsFullAccessUsageDescription</key>
   <string>Copper shows your next meetings when you rest the pointer on a Google Calendar pin. They are read on this Mac and never sent anywhere.</string>

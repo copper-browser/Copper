@@ -127,6 +127,45 @@ microphone (a second call, a device test, a voice search).
   capture going live again — so no page, or frame in it, can have Copper switch on a microphone it
   muted. Copper has no mute of its own.
 
+### Two pages, one microphone
+
+A page asking for the microphone *alone* while another page is capturing — a meeting transcriber
+next to a Meet call — would pause the call. So that page is served **Copper's own microphone**
+instead (`Fork/Capture/PageMic.swift`): WebKit never starts a capture for it, so it pauses nothing,
+and both pages hear you.
+
+- **Asked the same way.** The site is asked exactly as for WebKit's own request — a remembered
+  Allow lets it straight in, otherwise the bar asks, Don't allow refuses it (NotAllowedError) — and
+  Copper only does this when macOS already allows Copper the microphone.
+- **Only when it has to.** No other page capturing: WebKit's own call, made at once and unchanged.
+  A request that also wants the camera, a frame's request, and a page already capturing through
+  WebKit stay WebKit's (the camera would pause the call either way: one page at a time).
+- **The microphone the page chose**, found by the name WebKit gave it (a page's device ids are
+  WebKit's own, salted per site); a name Copper can't find opens the Mac's default input. The
+  track is 16 kHz mono with no echo cancellation, noise suppression or gain control (the voice
+  engine's capture, as dictation hears you), whatever the page asked; its settings say so.
+- **It ends** when the page stops the track, leaves, or its tab closes or sleeps (it is kept awake
+  while it listens), when the device goes away, when the Mac sleeps, or when the page stops
+  listening for twelve seconds. The page hears `ended`.
+- **Why not WebKit's own?** On a Mac every capture WebKit starts pauses every other page's
+  (`WebPageProxy::activateMediaStreamCaptureInPage` → `WebProcessProxy::muteCaptureInPagesExcept`,
+  for every page in every process pool). Looked for on macOS 27's WebKit: no preference
+  (`_features` lists `InterruptAudioOnPageVisibilityChangeEnabled`, `GetUserMediaRequiresFocus`,
+  `MuteCameraOnMicrophoneInterruptionEnabled`, `CaptureAudioInGPUProcessEnabled` — none about
+  it), no `WKPreferences`, `WKWebView`, `_WKProcessPoolConfiguration` or UI-delegate call turns it
+  off; `setMicrophoneCaptureState(.active)` on the call takes it back by pausing the other page.
+- **How the page gets it.** A main-frame script (`PageMicScript`) wraps `getUserMedia` (a Proxy of
+  the page-capture wrapper, which wraps WebKit's). Copper tells it, over a long poll answered only
+  when it changes, whether another page is capturing; only then is an audio-only request put to
+  Copper first, so WebKit's rules (gestures, remembered refusals) are untouched otherwise. The
+  sound comes over the same PCM long poll and Web Audio player as a shared tab's
+  ([screen-sharing.md](screen-sharing.md) › Tab audio). WebKit lets an `AudioContext` start only in
+  a click, and a page often asks for the microphone a few awaits after one; so while another page
+  captures, a click in the page readies a context (started, then suspended at once) for a request
+  in the next half minute. Nothing else about the click changes, and the page is never handed a
+  gesture. With no such click, the track starts on the page's next one.
+- `swift test --filter PageMic` (`PageMicRulesTests`, and the page script in `TabAudioScriptTests`).
+
 ## The page script
 
 Every frame gets a small document-start script (`CaptureHook.script`) that wraps

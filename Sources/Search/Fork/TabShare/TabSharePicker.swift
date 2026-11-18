@@ -13,6 +13,11 @@ import SwiftUI
 // The calling tab is left out (sharing a call into itself is a hall of
 // mirrors), unless the page asked to be offered itself; then it comes first,
 // marked "This tab".
+//
+// A page that asked for audio gets Chrome's "Also share tab audio" in the
+// foot, on unless the page is itself playing sound (it would hear itself),
+// and a line under it that says what goes: all of Copper's page sound
+// (TabAudioRules.audioSwitch, .note).
 
 /// App.swift's hook: the picker, in the window it belongs to.
 struct SharePickerSlot: View {
@@ -59,7 +64,9 @@ struct SharePicker: View {
             SharePickerCard(picking: picking, query: share.query, highlighted: share.highlighted,
                             rows: share.rows, tint: tint, scheme: scheme, stamp: marks.landed,
                             room: place.height > 0 ? SharePicker.room(in: place.height) : 640,
-                            pick: { share.pick($0) }, cancel: { share.choose(.cancel) }, clear: { share.edited("") })
+                            audioOn: share.shareAudio,
+                            pick: { share.pick($0) }, cancel: { share.choose(.cancel) }, clear: { share.edited("") },
+                            toggleAudio: { share.shareAudio.toggle() })
                 .frame(width: SharePicker.width)
                 .offset(x: -inset / 2, y: place.height > 0 ? place.height * SharePicker.drop - place.top : 200)
         }
@@ -128,9 +135,12 @@ struct SharePickerCard: View {
     /// so the list is drawn from its top and cut where the scroll view would
     /// end.
     var scrolls = true
+    /// "Also share tab audio", where the person left it.
+    var audioOn = false
     var pick: (TabShareRules.Row) -> Void = { _ in }
     var cancel: () -> Void = {}
     var clear: () -> Void = {}
+    var toggleAudio: () -> Void = {}
 
     // Fixed, so the card's height is known before it is drawn: a scroll view
     // left to size itself takes all the room it is offered.
@@ -389,9 +399,7 @@ struct SharePickerCard: View {
 
     private var footer: some View {
         HStack(spacing: 14) {
-            Text("Tab audio isn't shared")
-                .font(.system(size: 11.5))
-                .foregroundStyle(Palette.muted.opacity(picking.canShareTab && picking.systemAudio ? 1 : 0))
+            if picking.audio.shown { audioSwitch }
             Spacer()
             Button(action: cancel) {
                 Text("Cancel")
@@ -416,6 +424,38 @@ struct SharePickerCard: View {
         }
         .padding(.horizontal, 20)
         .frame(height: SharePickerCard.footerHeight)
+    }
+}
+
+extension SharePickerCard {
+    /// Chrome's switch, for a tab: the sound goes with the pictures. The line
+    /// under it is honest about what that sound is.
+    var audioSwitch: some View {
+        let on = audioOn && picking.audio.enabled
+        return HStack(alignment: .center, spacing: 8) {
+            Toggle("", isOn: Binding(get: { on }, set: { _ in toggleAudio() }))
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .labelsHidden()
+                .disabled(!picking.audio.enabled)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Also share tab audio")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(picking.audio.enabled ? Palette.ink : Palette.muted)
+                Text(TabAudioRules.note(picking.audio, on: on))
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Palette.muted)
+            }
+            .lineLimit(1)
+            .contentShape(Rectangle())
+            .onTapGesture { if picking.audio.enabled { toggleAudio() } }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Also share tab audio")
+        .accessibilityValue(on ? "on" : "off")
+        .accessibilityHint(TabAudioRules.note(picking.audio, on: on))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { if picking.audio.enabled { toggleAudio() } }
     }
 }
 

@@ -255,6 +255,10 @@ final class TabShareCapture {
         waiting.append((after, reply, now))
     }
 
+    /// The page was handed its share only now (macOS asked about sound
+    /// first): its first ask is counted from here.
+    func handedOver() { lastAsked = Date() }
+
     /// Over: every page waiting hears it, and no more pictures are taken.
     func stop(_ reason: String) {
         guard ended == nil else { return }

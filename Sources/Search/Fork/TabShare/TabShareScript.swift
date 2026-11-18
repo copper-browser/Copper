@@ -22,6 +22,14 @@ import Foundation
 // The canvas stays out of the document on purpose: a canvas WebKit does not
 // draw on screen hands each new picture to its capture track at once, so the
 // track keeps its pace while the calling page is a background tab.
+//
+// Sound (docs/screen-sharing.md › Tab audio): a page that asks for audio has
+// an AudioContext made and started inside its click — WebKit lets a context
+// start only from one — and, when the answer is a tab with sound, that
+// context's MediaStreamAudioDestinationNode is the stream's audio track, fed
+// Copper's PCM by PCMPlayerScript's long poll (`audio`). Any other answer
+// closes the context. The track ends with the share, or on its own when the
+// page stops it (`audio-stop`).
 enum TabShareScript {
     /// The script message handler's name (`window.webkit.messageHandlers.copperShare`).
     static let handler = "copperShare"
@@ -46,6 +54,9 @@ enum TabShareScript {
   const trackProto = MediaStreamTrack.prototype;
   const realStop = trackProto.stop, realClone = trackProto.clone, realSettings = trackProto.getSettings;
   const define = (target, name, value) => Object.defineProperty(target, name, { value, configurable: true, writable: true });
+  // Captured now, before the page's own scripts can replace it.
+  const AudioCtx = typeof window.AudioContext === 'function' ? window.AudioContext : null;
+  const player = \#(PCMPlayerScript.source);
   const fromBase64 = typeof Uint8Array.fromBase64 === 'function'
     ? (text) => Uint8Array.fromBase64(text)
     : (text) => { const raw = atob(text); const bytes = new Uint8Array(raw.length); for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i); return bytes; };
@@ -83,6 +94,7 @@ enum TabShareScript {
     if (!state.live) return;
     state.live = false;
     live.delete(state);
+    quiet(state);
     for (const track of state.tracks) {
       if (track.readyState === 'ended') continue;
       realStop.call(track);
@@ -95,10 +107,97 @@ enum TabShareScript {
     if (state.firstDone) { state.firstDone(); state.firstDone = null; }
   }
 
+  // A context for the page's sound: made and started inside its click, the
+  // only time WebKit lets one start; closed again unless a tab with sound is
+  // the answer.
+  const openSound = () => {
+    if (!AudioCtx) return null;
+    try {
+      const context = new AudioCtx({ latencyHint: 'interactive' });
+      try { Promise.resolve(context.resume()).catch(() => {}); } catch (e) {}
+      return context;
+    } catch (e) { return null; }
+  };
+  const closeSound = (context) => {
+    if (!context) return;
+    try { Promise.resolve(context.close()).catch(() => {}); } catch (e) {}
+  };
+  // Not running after all (no click after all): started on the page's next one.
+  const wake = (context) => {
+    if (!context || context.state === 'running') return;
+    const kinds = ['pointerdown', 'keydown', 'click'];
+    const off = () => { for (const kind of kinds) window.removeEventListener(kind, kick, true); };
+    function kick() {
+      if (context.state === 'running' || context.state === 'closed') return off();
+      try { Promise.resolve(context.resume()).then(off, () => {}); } catch (e) {}
+    }
+    for (const kind of kinds) window.addEventListener(kind, kick, true);
+  };
+  // The sound stops: its player, its context.
+  function quiet(state) {
+    if (state.player) { state.player.stop(); state.player = null; }
+    if (state.sound) { closeSound(state.sound); state.sound = null; }
+  }
+  // Copper's sound for this share ended (the share ending says so too).
+  function soundEnded(state) {
+    if (!state.live) return;
+    quiet(state);
+    for (const track of state.tracks) {
+      if (track.kind !== 'audio' || track.readyState === 'ended') continue;
+      realStop.call(track);
+      try { track.dispatchEvent(new Event('ended')); } catch (e) {}
+    }
+    if ([...state.tracks].every((each) => each.readyState === 'ended')) end(state, true);
+  }
+  const anyLive = (state, audio) => [...state.tracks].some((each) => (each.kind === 'audio') === audio && each.readyState !== 'ended');
+
   function dress(track, state) {
     state.tracks.add(track);
-    try { track.contentHint = 'detail'; } catch (e) {}
     Object.defineProperty(track, 'label', { get: () => state.label, configurable: true });
+    if (track.kind === 'audio') dressSound(track, state);
+    else dressPicture(track, state);
+    define(track, 'stop', function stop() {
+      realStop.call(this);
+      if (!state.live) return;
+      // The share ends with the last of its tracks, clones included; the
+      // sound alone with the last of its own.
+      if ([...state.tracks].every((each) => each.readyState === 'ended')) return end(state, false);
+      if (this.kind === 'audio' && state.sound && !anyLive(state, true)) {
+        quiet(state);
+        send({ op: 'audio-stop', share: state.share });
+      }
+    });
+    define(track, 'clone', function clone() {
+      const copy = realClone.call(this);
+      if (copy) dress(copy, state);
+      return copy;
+    });
+  }
+
+  function dressSound(track, state) {
+    const rate = state.sound ? state.sound.sampleRate : 48000;
+    define(track, 'getSettings', function getSettings() {
+      const settings = realSettings.call(this) || {};
+      return Object.assign(settings, {
+        deviceId: state.device, groupId: '', sampleRate: rate, channelCount: 2, sampleSize: 16,
+        echoCancellation: false, autoGainControl: false, noiseSuppression: false, suppressLocalAudioPlayback: false,
+      });
+    });
+    define(track, 'getCapabilities', function getCapabilities() {
+      return {
+        deviceId: state.device, groupId: '', sampleRate: { min: rate, max: rate }, channelCount: { min: 1, max: 2 },
+        sampleSize: { min: 16, max: 16 }, echoCancellation: [false], autoGainControl: [false], noiseSuppression: [false],
+      };
+    });
+    define(track, 'getConstraints', function getConstraints() { return Object.assign({}, state.audioConstraints); });
+    define(track, 'applyConstraints', function applyConstraints(constraints) {
+      state.audioConstraints = (constraints && typeof constraints === 'object') ? constraints : {};
+      return Promise.resolve();
+    });
+  }
+
+  function dressPicture(track, state) {
+    try { track.contentHint = 'detail'; } catch (e) {}
     define(track, 'getSettings', function getSettings() {
       const settings = realSettings.call(this) || {};
       const width = state.canvas.width, height = state.canvas.height;
@@ -123,21 +222,13 @@ enum TabShareScript {
       return Promise.resolve(post({ op: 'tune', share: state.share, want: plain(state.constraints) }))
         .then((tuned) => { if (tuned && tuned.fps) state.fps = tuned.fps; }, () => {});
     });
-    define(track, 'stop', function stop() {
-      realStop.call(this);
-      // The share ends with the last of its tracks, clones included.
-      if (state.live && [...state.tracks].every((each) => each.readyState === 'ended')) end(state, false);
-    });
-    define(track, 'clone', function clone() {
-      const copy = realClone.call(this);
-      if (copy) dress(copy, state);
-      return copy;
-    });
   }
 
   async function pump(state) {
     let seq = 0;
-    while (state.live) {
+    // Pictures for as long as a picture track is live: a page that keeps
+    // only the sound (stops the video track) stops asking for pictures.
+    while (state.live && anyLive(state, false)) {
       let frame;
       try { frame = await post({ op: 'frame', share: state.share, after: seq }); } catch (e) { end(state, true); return; }
       if (!state.live) return;
@@ -158,7 +249,7 @@ enum TabShareScript {
     }
   }
 
-  async function build(answer, options, id) {
+  async function build(answer, options, id, sound) {
     const canvas = document.createElement('canvas');
     canvas.width = answer.width || 1280;
     canvas.height = answer.height || 720;
@@ -174,10 +265,25 @@ enum TabShareScript {
       share: answer.share, device: 'copper-tab:' + id, live: true, tracks: new Set(), canvas, context, fps: answer.fps || 30,
       label: answer.label || 'Tab', constraints: Object.assign({}, video),
       maxWidth: answer.maxWidth || canvas.width, maxHeight: answer.maxHeight || canvas.height, firstDone: null,
+      sound: null, player: null, audioConstraints: options && typeof options.audio === 'object' ? Object.assign({}, options.audio) : {},
     };
     live.add(state);
     listen();
     dress(track, state);
+    if (sound) {
+      try {
+        const destination = sound.createMediaStreamDestination();
+        const heard = destination.stream.getAudioTracks()[0];
+        if (heard) {
+          state.sound = sound;
+          dress(heard, state);
+          stream.addTrack(heard);
+          state.player = player(sound, destination, (after) => post({ op: 'audio', share: state.share, after }),
+                                () => soundEnded(state), fromBase64);
+          wake(sound);
+        } else closeSound(sound);
+      } catch (e) { closeSound(sound); state.sound = null; }
+    }
     const first = new Promise((done) => { state.firstDone = done; });
     pump(state);
     // The first picture before the page sees the stream, so a call never
@@ -194,6 +300,8 @@ enum TabShareScript {
     apply(target, self, args) {
       const options = args[0];
       const id = Date.now().toString(36) + '.' + (++counter) + '.' + Math.random().toString(36).slice(2);
+      // Made now, inside the click, in case the answer is a tab with sound.
+      const sound = options && options.audio ? openSound() : null;
       let ask;
       try {
         ask = Promise.resolve(post({
@@ -207,15 +315,17 @@ enum TabShareScript {
       // WebKit's own request, now, inside the same click: its checks — the
       // gesture, the visible document, the permissions policy — stay its own.
       let native;
-      try { native = Reflect.apply(target, self, args); } catch (e) { send({ op: 'drop', id }); throw e; }
+      try { native = Reflect.apply(target, self, args); } catch (e) { send({ op: 'drop', id }); closeSound(sound); throw e; }
       return new Promise((resolve, reject) => {
         let settled = false;
         const finish = (how, value) => { if (!settled) { settled = true; how(value); } };
         ask.then((answer) => {
-          if (!answer || answer.choice !== 'tab') return;
+          if (!answer || answer.choice !== 'tab') return closeSound(sound);
           // WebKit's own request was refused on purpose; its rejection is not news.
           Promise.resolve(native).catch(() => {});
-          build(answer, options, id).then((stream) => finish(resolve, stream), (error) => finish(reject, error));
+          if (!answer.audio) closeSound(sound);
+          build(answer, options, id, answer.audio ? sound : null)
+            .then((stream) => finish(resolve, stream), (error) => finish(reject, error));
         });
         Promise.resolve(native).then(
           (stream) => { send({ op: 'drop', id }); finish(resolve, stream); },
