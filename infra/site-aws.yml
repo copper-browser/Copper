@@ -1,0 +1,156 @@
+# AWS hosting for site/ at https://copper.exowatt.com (Exowatt account 340752802981, us-east-1):
+# private S3 bucket behind CloudFront (OAC, HTTPS only, HTTP/2+3, gzip/br) and the GitHub OIDC
+# role that .github/workflows/site.yml assumes to sync site/ and invalidate the cache.
+# Same shape as Exowatt-Labs/exowatt-landing-page infra/aws/landing-site.yml.
+# Create/update (admin SSO creds):
+#   aws cloudformation deploy --region us-east-1 --stack-name copper-site \
+#     --template-file infra/site-aws.yml --capabilities CAPABILITY_NAMED_IAM --no-fail-on-empty-changeset \
+#     --tags owner=crijock app=copper-site
+# The stack was first created with --parameter-overrides CertificateArn= (cert waiting on DNS);
+# once the cert is ISSUED, run it again with CertificateArn=<the default below> to attach the name.
+# DNS lives in Cloudflare (exowatt.com zone): copper CNAME -> the DistributionDomain output,
+# DNS only (grey). Proxied would break: the zone is on Flexible SSL and this redirects to HTTPS.
+AWSTemplateFormatVersion: '2010-09-09'
+Description: copper.exowatt.com static site (S3 + CloudFront + GitHub deploy role)
+
+Parameters:
+  AliasDomain:
+    Type: String
+    Default: copper.exowatt.com
+  CertificateArn:
+    Type: String
+    Default: arn:aws:acm:us-east-1:340752802981:certificate/e27ade86-dfb8-4add-8207-641576536f22
+    Description: ISSUED ACM cert (us-east-1) for AliasDomain. Empty = CloudFront domain only.
+
+Conditions:
+  HasCert: !Not [!Equals [!Ref CertificateArn, '']]
+
+Resources:
+  SiteBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub copper-site-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules: [{ ObjectOwnership: BucketOwnerEnforced }]
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub ${AWS::StackName}-oac
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SiteBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: CloudFrontRead
+            Effect: Allow
+            Principal: { Service: cloudfront.amazonaws.com }
+            Action: s3:GetObject
+            Resource: !Sub ${SiteBucket.Arn}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+
+  HeadersPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub ${AWS::StackName}-headers
+        SecurityHeadersConfig:
+          StrictTransportSecurity: { AccessControlMaxAgeSec: 63072000, IncludeSubdomains: false, Preload: false, Override: true }
+          ContentTypeOptions: { Override: true }
+          ReferrerPolicy: { ReferrerPolicy: strict-origin-when-cross-origin, Override: true }
+          FrameOptions: { FrameOption: SAMEORIGIN, Override: true }
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: copper.exowatt.com (copper-browser/Copper site/)
+        Enabled: true
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        PriceClass: PriceClass_100
+        DefaultRootObject: index.html
+        Aliases: !If [HasCert, [!Ref AliasDomain], !Ref AWS::NoValue]
+        ViewerCertificate: !If
+          - HasCert
+          - { AcmCertificateArn: !Ref CertificateArn, SslSupportMethod: sni-only, MinimumProtocolVersion: TLSv1.2_2021 }
+          - { CloudFrontDefaultCertificate: true }
+        Origins:
+          - Id: s3-site
+            DomainName: !GetAtt SiteBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt OriginAccessControl.Id
+            S3OriginConfig: { OriginAccessIdentity: '' }
+        DefaultCacheBehavior:
+          TargetOriginId: s3-site
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # Managed-CachingOptimized; deploys invalidate /*
+          ResponseHeadersPolicyId: !Ref HeadersPolicy
+        # Missing files: S3 answers 403 (no ListBucket for CloudFront) -> plain 404.
+        CustomErrorResponses:
+          - { ErrorCode: 403, ResponseCode: 404, ResponsePagePath: /index.html, ErrorCachingMinTTL: 60 }
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: gha-copper-site-deploy
+      Description: Assumed by copper-browser/Copper .github/workflows/site.yml on pushes to fork.
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Federated: !Sub 'arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com' }
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                # The repo uses GitHub's immutable subject (owner@id/repo@id); the plain form is kept in case it is turned off.
+                token.actions.githubusercontent.com:sub:
+                  - repo:copper-browser@336654143/Copper@1383722266:ref:refs/heads/fork
+                  - repo:copper-browser/Copper:ref:refs/heads/fork
+      Policies:
+        - PolicyName: deploy-site
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt SiteBucket.Arn
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+                Resource: !Sub ${SiteBucket.Arn}/*
+              - Effect: Allow
+                Action: [cloudfront:CreateInvalidation, cloudfront:GetInvalidation]
+                Resource: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+
+Outputs:
+  BucketName:
+    Value: !Ref SiteBucket
+  DistributionId:
+    Value: !Ref Distribution
+  DistributionDomain:
+    Value: !GetAtt Distribution.DomainName
+  DeployRoleArn:
+    Value: !GetAtt DeployRole.Arn
