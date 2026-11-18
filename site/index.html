@@ -432,6 +432,8 @@ kbd {
 .dl-tabs [role="tab"]:hover { color: var(--ink); }
 .dl-tabs [role="tab"][aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
 .dl-panel .install { margin-top: 20px; }
+.dl-panel > .notice { margin-top: 20px; }
+.notice a { color: var(--ink); text-decoration-color: var(--line-2); text-underline-offset: 3px; }
 .dl-note { margin-top: 16px; color: var(--ink-2); font-size: 15.5px; }
 .cmd.ps code::before { content: "PS> "; }
 .dl-group { margin-top: 36px; font: 600 21px/1.3 var(--display); letter-spacing: -.012em; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
@@ -1193,6 +1195,11 @@ Jev said <span class="ok">DONE</span>, 96% sure
     </div>
     <p class="dl-note" id="dl-note" hidden></p>
     <div class="dl-panel" id="dl-mac" role="tabpanel" aria-labelledby="dl-tab-here">
+    <div class="notice" id="build-from-source">
+      <p><strong>A notarized Mac build is coming very soon.</strong> For now, build Copper yourself from source. You need macOS 14 or later and Xcode 16.</p>
+      <div class="cmd"><code>git clone https://github.com/copper-browser/Copper.git &amp;&amp; cd Copper &amp;&amp; ./build.sh &amp;&amp; open build/Copper.app</code><button class="copy" type="button" data-copy="git clone https://github.com/copper-browser/Copper.git &amp;&amp; cd Copper &amp;&amp; ./build.sh &amp;&amp; open build/Copper.app" aria-label="Copy the build command"><svg class="i-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="i-check" aria-hidden="true"><use href="#i-check"/></svg><span>Copy</span></button></div>
+      <p>It builds Copper.app into the build folder and opens it. The downloads below work today too and are not notarized yet. <a href="https://github.com/copper-browser/Copper#building-it">Source and build notes on GitHub</a></p>
+    </div>
     <div class="install">
       <div class="method">
         <h3>Homebrew <small>Recommended</small></h3>
