@@ -3,23 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Copper — the open source Mac browser, with agents built in</title>
-<meta name="description" content="Copper is an open source Mac browser on WebKit: Arc-style spaces, agents built in, Bitwarden sign-in for agents, a multiplayer canvas, and Copper Cloud, a server you host yourself. MIT licensed.">
+<title>Copper — the open source Mac browser you drive with your own agent</title>
+<meta name="description" content="Copper is an open source Mac browser on WebKit with a full MCP server built in. Drive it with Claude Code, Codex, phi or any MCP client, on the subscription you already have. Arc-style spaces, Bitwarden sign-in for agents, a multiplayer canvas, and Copper Cloud, a server you host yourself. MIT licensed.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#F8F2EA" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0C0A09" media="(prefers-color-scheme: dark)">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Copper">
-<meta property="og:title" content="Copper — full Arc parity, and open source">
-<meta property="og:description" content="A fast little Mac browser with agents built in, plus a server you run yourself. MIT, all of it.">
+<meta property="og:title" content="Copper — open source, bring your own agent">
+<meta property="og:description" content="A fast little Mac browser with a full MCP server built in. Use the agent and subscription you already have. Full Arc parity. MIT, all of it.">
 <meta property="og:image" content="https://copper-browser.github.io/Copper/assets/og.jpg">
 <meta property="og:url" content="https://copper-browser.github.io/Copper/">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Copper at a glance: spaces with animated sidebars, agents in your tabs, Jev in 200 ms, Bitwarden sign-in with 2FA, Copper Cloud, a multiplayer canvas, and MIT.">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Copper — full Arc parity, and open source">
-<meta name="twitter:description" content="A fast little Mac browser with agents built in, plus a server you run yourself. MIT, all of it.">
+<meta name="twitter:title" content="Copper — open source, bring your own agent">
+<meta name="twitter:description" content="A fast little Mac browser with a full MCP server built in. Use the agent and subscription you already have. Full Arc parity. MIT, all of it.">
 <meta name="twitter:image" content="https://copper-browser.github.io/Copper/assets/og.jpg">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
 <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
@@ -173,6 +173,7 @@ kbd {
 /* ---------- try it ---------- */
 .try { display: grid; grid-template-columns: minmax(0, 20rem) minmax(0, 1fr); gap: clamp(32px, 5vw, 64px); align-items: start; }
 .try .sec-head { position: sticky; top: 96px; }
+.try .sec-head p { text-wrap: balance; }
 .hints { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .hint {
   display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px 0 6px; border-radius: 999px;
@@ -376,7 +377,7 @@ kbd {
 .jev-head .sec-head { max-width: none; }
 .jev-facts { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 clamp(28px, 4vw, 56px); margin-top: 40px; border-top: 1px solid var(--line); }
 .jev-facts li { padding: 18px 0 20px; border-bottom: 1px solid var(--line); display: grid; gap: 6px; align-content: start; }
-.jev-facts h4 { margin: 0; font: 600 16.5px/1.3 var(--font); letter-spacing: -.01em; }
+.jev-facts h3 { margin: 0; font: 600 16.5px/1.3 var(--font); letter-spacing: -.01em; }
 .jev-facts p { color: var(--ink-2); font-size: 15.5px; }
 .jev-facts code, .story code, .jev-head code { font-size: .88em; padding: 1px 5px; border-radius: 4px; background: var(--sunk); color: var(--ink); overflow-wrap: anywhere; }
 .tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
@@ -483,7 +484,7 @@ html:not(.js) .dl-panel[hidden] { display: block; }
 .cmd { background: color-mix(in srgb, var(--surface) 80%, transparent); }
 
 /* ---------- nav ---------- */
-.nav { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 82%, transparent); -webkit-backdrop-filter: saturate(1.4) blur(16px); backdrop-filter: saturate(1.4) blur(16px); border-bottom: 1px solid transparent; transition: border-color .2s ease; }
+.nav { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 94%, transparent); -webkit-backdrop-filter: saturate(1.4) blur(16px); backdrop-filter: saturate(1.4) blur(16px); border-bottom: 1px solid transparent; transition: border-color .2s ease; }
 .nav.stuck { border-bottom-color: var(--line); }
 .nav .wrap { display: flex; align-items: center; gap: 28px; height: 60px; }
 .brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font: 650 18px/1 var(--display); letter-spacing: -.015em; margin-right: auto; }
@@ -539,7 +540,9 @@ html:not(.js) .dl-panel[hidden] { display: block; }
 }
 .hero .lead { margin-top: 24px; max-width: 30em; font-size: clamp(1.12rem, 1rem + .45vw, 1.35rem); line-height: 1.5; color: var(--ink-2); }
 .hero .lead strong { color: var(--ink); font-weight: 600; white-space: nowrap; }
-.hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 34px; }
+.hero .byo { margin-top: 18px; gap: 8px; }
+.hero .byo li { font-size: 13.5px; padding: 8px 12px; background: rgba(20, 14, 10, .6); color: #F5EFE6; }
+.hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 28px; }
 .hero-actions .cmd { flex: 0 1 auto; }
 .hero .meta { display: grid; grid-template-columns: repeat(2, max-content); }
 .hero .cmd { font-size: 13px; padding-left: 12px; }
@@ -575,12 +578,12 @@ a.t:active { transform: scale(.99); }
 .t-spaces { grid-column: 1 / 7; grid-row: 1 / 3; padding: 34px 36px 0; background: linear-gradient(160deg, rgba(255, 138, 76, .16), rgba(255, 138, 76, .02) 45%), var(--tile); }
 .t-spaces h3 { font-size: clamp(30px, 1.2rem + 1.6vw, 44px); line-height: 1.04; letter-spacing: -.03em; max-width: 11em; }
 .t-spaces p { font-size: 16.5px; max-width: 26em; }
-.sides { position: relative; z-index: 2; display: flex; align-items: flex-start; gap: 14px; margin-top: 28px; cursor: pointer; border-radius: 14px 14px 0 0; }
+.sides { position: relative; z-index: 2; display: flex; align-items: flex-start; gap: 14px; margin: 28px 0 -64px; cursor: pointer; border-radius: 14px 14px 0 0; }
 .sides:focus-visible { outline-offset: -3px; }
 .t-spaces h3 a { color: inherit; text-decoration: none; }
 .t-spaces h3 a::after { content: ""; position: absolute; inset: 0; z-index: 1; }
 .t-spaces h3 { position: static; }
-.sides video { width: calc((100% - 28px) / 3); border-radius: 14px 14px 0 0; border: 1px solid var(--line); box-shadow: var(--shadow); background: #15100D; }
+.sides video { width: calc((100% - 28px) / 3); border-radius: 14px 14px 0 0; border: 1px solid var(--line); border-bottom: 0; box-shadow: var(--shadow); background: #15100D; }
 .sides video:nth-child(2) { margin-top: 22px; }
 .sides video:nth-child(3) { margin-top: 44px; }
 .t-agents { grid-column: 7 / 13; grid-row: 1; display: grid; grid-template-columns: minmax(0, 240px) minmax(0, 1fr); gap: 24px; background: linear-gradient(200deg, rgba(61, 214, 190, .16), rgba(61, 214, 190, .02) 55%), var(--tile); }
@@ -628,12 +631,22 @@ h2, .sec-head h2, .sec-head .h2 { font-size: clamp(2.1rem, 1.3rem + 2.6vw, 3.3re
   box-shadow: 0 0 0 1px var(--line), var(--shadow);
 }
 .frame img, .reel video { width: 100%; height: auto; }
-.reel video { display: block; cursor: pointer; }
-.reel video:focus-visible { outline-offset: -4px; border-radius: 20px; }
+.reel video { display: block; }
+.reel { cursor: pointer; }
+.reel:focus-visible { outline-offset: -4px; border-radius: 20px; }
 .media figcaption, .reel-cap { margin-top: 14px; font-size: 14px; color: var(--ink-2); }
 .reel-cap { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 18px; }
 .reel-cap > span { max-width: 52em; }
 .wide-media { margin-top: clamp(36px, 5vw, 56px); }
+/* one measured fact, drawn: two bars on the same scale */
+.bench { margin: clamp(40px, 5vw, 64px) 0 0; display: grid; gap: 10px; max-width: 46rem; }
+.bench-row { display: grid; grid-template-columns: 4.5em minmax(0, 1fr) 4em; align-items: center; gap: 14px; font-weight: 600; }
+.bench-row i { height: 14px; border-radius: 999px; width: calc(var(--v) / 11.6 * 100%); min-width: 14px; background: var(--accent); }
+.bench-row b { font: 650 1.25rem/1 var(--display); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.bench-row.them { color: var(--ink-2); font-weight: 500; }
+.bench-row.them i { background: var(--line-2); }
+.bench-row.them b { font-weight: 500; }
+.bench figcaption { margin-top: 8px; font-size: 14px; color: var(--ink-2); max-width: 44em; }
 
 .keys-row { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 4px 0 0; padding: 0; }
 .keys-row li { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px 0 6px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface); font-size: 14px; }
@@ -652,8 +665,8 @@ h2, .sec-head h2, .sec-head .h2 { font-size: clamp(2.1rem, 1.3rem + 2.6vw, 3.3re
 .jev-facts { margin-top: clamp(48px, 6vw, 72px); }
 
 /* ---------- outro (stage) ---------- */
-.outro { margin-top: clamp(96px, 11vw, 144px); padding-block: clamp(80px, 10vw, 128px); overflow: hidden; }
-.outro::before { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(45% 60% at 0% 100%, var(--glow1), transparent 70%), radial-gradient(40% 60% at 100% 28%, var(--glow2), transparent 70%); }
+.outro { margin-top: clamp(72px, 8vw, 112px); padding-block: clamp(80px, 10vw, 128px); overflow: hidden; }
+.outro::before { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(45% 60% at 0% 100%, var(--glow1), transparent 70%), radial-gradient(40% 60% at 100% 48%, var(--glow2), transparent 70%); }
 .outro .feature-copy > p { font-size: 1.15rem; }
 .repos { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 4px 0 0; padding: 0; }
 .repos a { display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--tile); font: 500 14px/1.3 var(--mono); color: #5FE3CC; text-decoration: none; overflow-wrap: anywhere; transition: border-color .15s ease; }
@@ -672,7 +685,8 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
 /* ---------- responsive ---------- */
 @media (max-width: 1100px) {
   .hero { display: block; }
-  .hero h1 { font-size: clamp(2.8rem, 1.2rem + 5.6vw, 5.6rem); }
+  .hero h1 { font-size: clamp(2rem, 8.6vw, 4.6rem); max-width: none; }
+  .hero h1 em { display: block; }
   .hero-shot { margin: 44px 0 0; }
   .hero .meta { margin-top: 24px; }
   .bento { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; grid-auto-rows: auto; }
@@ -726,6 +740,8 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
   .copy span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   /* phone: the window comes right after the button; the brew line waits in Install */
   .hero { padding-top: 28px; }
+  .hero .byo { gap: 6px; }
+  .hero .byo li { font-size: 12.5px; padding: 7px 10px; white-space: nowrap; }
   .hero-shot { margin-top: 32px; }
   .hero .meta { display: flex; }
   .hero .hero-actions .cmd { display: none; }
@@ -777,8 +793,8 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
     <a class="brand" href="#top" aria-label="Copper, back to top"><img src="assets/icon-96.webp" alt="" width="30" height="30">Copper</a>
     <nav aria-label="Sections">
       <ul class="nav-links">
-        <li><a href="#spaces">Browser</a></li>
         <li><a href="#agents">Agents</a></li>
+        <li><a href="#spaces">Browser</a></li>
         <li><a href="#canvas">Canvas</a></li>
         <li><a href="#cloud">Cloud</a></li>
         <li><a href="#install">Install</a></li>
@@ -800,8 +816,9 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
     <section class="hero wrap" aria-labelledby="hero-title">
       <div class="hero-copy">
       <p class="quip"><b>Yes</b><span>Everyone is forking a WebKit browser. We spent the tokens so you don't have to.</span></p>
-      <h1 id="hero-title">Full Arc parity, and <em>open source.</em></h1>
-      <p class="lead">Copper is a fast little Mac browser with agents built in, plus a server you run yourself. <strong>MIT, all of it.</strong></p>
+      <h1 id="hero-title">Open source. <em>Bring your own agent.</em></h1>
+      <p class="lead">Copper is a fast little Mac browser with a full MCP server built in. Use the agent and the subscription you already have. <strong>Full Arc parity too.</strong></p>
+      <ul class="chips byo" aria-label="Works with"><li>Claude Code</li><li>Codex</li><li>phi</li><li>any MCP client</li></ul>
       <div class="hero-actions">
         <a class="btn" href="#install"><svg aria-hidden="true"><use href="#i-down"/></svg>Download for macOS</a>
         <div class="cmd">
@@ -832,14 +849,14 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
         </div>
         <a class="t t-agents" href="#agents">
           <div>
-            <h3>We draw where <em>your agents</em> go.</h3>
-            <p>Any MCP agent drives the browser you're signed into. Every tab wears a badge for who's in it, and Stop gives it back.</p>
+            <h3>Bring <em>your own agent.</em></h3>
+            <p>Claude Code, Codex, phi or any MCP client drives the browser you're signed into. Every tab wears a badge for who's in it.</p>
           </div>
           <img class="t-shot" src="assets/tile-agents.webp" alt="" width="1200" height="833" loading="lazy" decoding="async">
         </a>
         <a class="t t-jev" href="#jev">
           <span class="t-big">200<small>ms</small></span>
-          <h3>Jev, the agent inside. <em>Your keys.</em></h3>
+          <h3>Jev picks each click. <em>Your keys.</em></h3>
           <ul class="chips"><li>Claude account</li><li>any OpenAI-compatible gateway</li></ul>
         </a>
         <a class="t t-bw" href="#bitwarden">
@@ -866,6 +883,148 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
       </div>
     </section>
   </div>
+
+  <section class="sec wrap" id="agents" aria-labelledby="agents-title">
+    <div class="sec-head">
+      <span class="kicker">MCP server, built in</span>
+      <h2 id="agents-title">Bring <em>your own agent.</em></h2>
+      <p>Copper is a full MCP server running on your Mac. Claude Code, Codex, phi or any MCP client drives the browser you're already signed into, on the model and subscription you already have. Copper draws where each agent is about to click and badges every tab with the agent working in it. Press Stop and the browser is yours again.</p>
+    </div>
+    <figure class="media wide-media">
+      <div class="reel">
+        <video class="loop" muted loop playsinline preload="none" width="1600" height="1000" data-poster="assets/loop-agents.webp" aria-label="A recording of three agents working in three Copper tabs at once. Claude Code asks Jev to find the Patina article on Wikipedia; a trail on the page shows where Jev is about to click, and each tab in the sidebar wears the badge of the agent working in it." aria-describedby="agents-cap">
+          <source data-src="assets/loop-agents.mp4" type="video/mp4">
+        </video><noscript><img src="assets/loop-agents.webp" alt=""></noscript>
+      </div>
+      <figcaption class="reel-cap" id="agents-cap"><span>Three agents, three tabs, one browser. The badges in the sidebar say who is where; the trail on the page shows the next click before it happens.</span></figcaption>
+    </figure>
+    <figure class="bench">
+      <div class="bench-row"><span>Copper</span><i style="--v: 2"></i><b>2.0 s</b></div>
+      <div class="bench-row them"><span>Polar</span><i style="--v: 11.6"></i><b>11.6 s</b></div>
+      <figcaption>Median time per task, asked over MCP. 28 web tasks, two rounds, on one Mac mini, 18&nbsp;November 2026: Copper&nbsp;1.0.20261117.114 and Polar&nbsp;0.2.12. Both finished about the same number, 48 and 49 of 56.</figcaption>
+    </figure>
+    <div class="split">
+      <div class="agents-copy">
+        <ul class="facts">
+          <li><span><strong>The tool names you know.</strong> The same names and arguments as Playwright MCP, so a skill written for that works here unchanged.</span></li>
+          <li><span><strong>One switch.</strong> Settings › Agents › Let agents drive this window. Set&nbsp;up for Claude Code and phi is one press, no token pasted into a prompt.</span></li>
+          <li><span><strong>A <code>copper</code> command</strong> for the shell, linked into your <code>PATH</code> by Homebrew. It never starts Copper on its own.</span></li>
+          <li><span><strong>Loopback only,</strong> behind a bearer token readable by you alone. Pages in other browsers can't reach in.</span></li>
+        </ul>
+      </div>
+      <figure class="term" aria-label="A terminal session using the copper command">
+        <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><span>zsh</span></div>
+<pre><code><span class="p">$</span> copper health
+Copper health: running: true
+Jev mode: <span class="ok">on</span>
+
+<span class="p">$</span> copper tabs
+<span class="d">### Open tabs</span>
+- 0: (current) [Google] <span class="d">(https://www.google.com/)</span>
+- 1: [Copper - Wikipedia] <span class="d">(https://en.wikipedia.org/wiki/Copper)</span>
+- 2: [Mac - Apple] <span class="d">(https://www.apple.com/mac/)</span>
+- 3: [Hacker News] <span class="d">(https://news.ycombinator.com/)</span>
+
+<span class="p">$</span> <span class="cursor" aria-hidden="true"></span></code></pre>
+      </figure>
+    </div>
+  </section>
+
+  <section class="sec wrap" id="jev" aria-labelledby="jev-title">
+    <div class="feature">
+      <div class="feature-copy">
+        <span class="kicker">Jev, built in</span>
+        <h2 id="jev-title">Ultrafast, and <em>bring your own key.</em></h2>
+        <p>Hand Copper a goal. Jev reads the page's controls, picks an operation and an element in about 200&nbsp;ms, and acts. A small model writes any text it has to type.</p>
+        <p>Bring your own key: sign in with a Claude account, or point Copper at any OpenAI-compatible gateway.</p>
+        <ul class="chips" aria-label="Model access"><li>Claude account</li><li>OpenAI-compatible gateway</li><li>Haiku, Sonnet or Opus</li></ul>
+      </div>
+      <figure class="media">
+        <div class="frame"><img src="assets/post-jev.webp" width="2000" height="1250" loading="lazy" decoding="async" alt="Copper on the Wikipedia article for Patina, with a small Jev pill at the top of the page and the driver timeline open on the right. The timeline lists each cycle: reading the page, asking Jev which move, clicking Search, typing “patina”, clicking the Patina result, and finally Jev said DONE, 96% sure."></div>
+        <figcaption>The driver timeline (<kbd>⌥⌘J</kbd>) shows every cycle: read, ask, act, settle.</figcaption>
+      </figure>
+    </div>
+      <ul class="jev-facts">
+        <li>
+          <h3>Four Jev tools on the MCP server</h3>
+          <p><span class="tools"><code>jev_run</code><code>jev_step</code><code>jev_observe</code><code>jev_extract</code></span></p>
+          <p>Run a goal to the end, take one step at a time, see the page the way Jev sees it, or pull structured values out of it. The model's output never becomes a selector, a coordinate or JavaScript.</p>
+        </li>
+        <li>
+          <h3>From your agent or your shell</h3>
+          <p>Type <code>/jev&nbsp;&lt;goal&gt;</code> in Claude Code or phi, or <code>copper run "goal"</code> in a terminal. The goal goes to Jev on the first call, with no tab list or snapshot first.</p>
+        </li>
+        <li>
+          <h3>One click to set up</h3>
+          <p>Settings › Agents › Terminal agents: press Set&nbsp;up for phi or Claude Code, or Install for the CLI. Copper writes the config and the command for you, so no token is pasted into a prompt.</p>
+        </li>
+        <li>
+          <h3>You can see who is driving</h3>
+          <p>A pill on the page says <em>Jev is driving</em>, and the driver timeline (<kbd>⌥⌘J</kbd>) shows every cycle: read, ask, act, settle. Press Stop and the browser is yours again before Jev's next action.</p>
+        </li>
+      </ul>
+      <div class="scenario" role="group" aria-labelledby="scenario-title">
+        <div class="sec-head">
+          <h3 class="h3" id="scenario-title">One goal, start to finish.</h3>
+          <p>You are reading about copper on Wikipedia and want the article on the green that grows on old roofs. You hand Jev one sentence and watch the timeline.</p>
+        </div>
+        <figure class="reel-fig">
+          <div class="reel">
+            <video class="loop" muted loop playsinline preload="none" width="2240" height="1480" data-light="assets/copper-jev.webp" data-dark="assets/copper-jev-dark.webp" aria-label="A recording of Jev driving Copper. On the Wikipedia article for Copper, Jev clicks Search, types “patina”, picks the Patina article from the suggestions and says DONE. The driver timeline beside the page lists each cycle as it happens." aria-describedby="jev-cap">
+              <source data-light="assets/copper-jev.mp4" data-dark="assets/copper-jev-dark.mp4" type="video/mp4">
+            </video><noscript><img src="assets/copper-jev.webp" alt=""></noscript>
+          </div>
+          <figcaption class="reel-cap" id="jev-cap"><span>The real run, recorded in Copper. The driver timeline is on the right; the blue ring and the Jev pill say the page is not yours for now.</span></figcaption>
+        </figure>
+        <div class="scenario-body">
+          <div class="story">
+            <p><strong>11.4 seconds, three actions.</strong> Jev clicked Search, a small model wrote the word, and Jev picked the article from Wikipedia's own suggestions. Then it stopped, because the article was on screen.</p>
+            <ol class="steps" aria-label="What Jev did">
+              <li><span><span class="op">CLICK</span>Search</span><small>372 ms</small></li>
+              <li><span><span class="op">TYPE</span>“patina” into Search Wikipedia</span><small>290 ms + 1.3 s text</small></li>
+              <li><span><span class="op">CLICK</span>Patina, change of object's surface…</span><small>268 ms</small></li>
+              <li class="done"><span>DONE, 96% sure</span><small>verify it yourself</small></li>
+            </ol>
+            <p>DONE is Jev's claim, and the tool says so. Your agent is told to check the page before it tells you it worked.</p>
+          </div>
+          <figure class="term" aria-label="The command that started the run, and what it printed">
+            <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><span>zsh</span></div>
+<pre><code><span class="p">$</span> copper run "Search Wikipedia for patina and stop when the article is visible"
+<span class="hl">### Jev run — done in 11.4 s (3 actions, 4 decisions)</span>
+Jev said <span class="ok">DONE</span>, 96% sure
+
+1. CLICK Search <span class="d">(100%, 372 ms) → page changed</span>
+2. TYPE_TEXT Search Wikipedia = "patina" <span class="d">(100%, 290 ms + 1296 ms text) → page changed</span>
+3. CLICK Patina   Change of object's surface through age and exposure <span class="d">(61%, 268 ms) → page changed</span>
+
+<span class="d">### Page</span>
+- URL: https://en.wikipedia.org/wiki/Patina
+- Title: Patina - Wikipedia
+
+<span class="p">$</span> <span class="cursor" aria-hidden="true"></span></code></pre>
+          </figure>
+        </div>
+      </div>
+  </section>
+
+  <section class="sec wrap" id="bitwarden" aria-labelledby="bw-title">
+    <div class="feature flip">
+      <div class="feature-copy">
+        <span class="kicker">Sign-in for agents</span>
+        <h2 id="bw-title">Agents log in, <em>2FA included.</em></h2>
+        <p>Connect Bitwarden and your agents use your saved logins, two-factor codes included, on your Mac or on a headless Mac mini. The password never reaches the agent, and you decide which logins they can use.</p>
+        <ul class="facts">
+          <li><span><strong>You choose what's shared.</strong> Logins in Bitwarden's <code>Agents</code> folder are shared; a <code>copper-agent: deny</code> field keeps one out for good. Agents can't change the rule.</span></li>
+          <li><span><strong>Nothing secret comes back.</strong> A sign-in reports what was filled, never the password, the code or the session key.</span></li>
+          <li><span><strong>Cards and addresses too,</strong> with <code>browser_autofill</code>. Driven by Bitwarden's own <code>bw</code> client, no extension.</span></li>
+        </ul>
+      </div>
+      <figure class="media">
+        <div class="frame"><img src="assets/post-bitwarden.webp" width="2000" height="1250" loading="lazy" decoding="async" alt="A terminal on a Mac mini. copper bitwarden login reads the vault from stdin and unlocks, sharing the Agents folder only. Then copper run “sign in to github and open my notifications” uses SIGN_IN with the saved account, and copper signin --otp fills the one-time code. A comment notes there is no password, code or session key in anything the agent sees."></div>
+        <figcaption>Set up once on a headless Mac mini; after that, any agent can sign in.</figcaption>
+      </figure>
+    </div>
+  </section>
 
   <section class="sec wrap" id="spaces" aria-labelledby="spaces-title">
     <div class="feature">
@@ -960,7 +1119,7 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
         <li><h3>An ad blocker that runs before the page</h3><p>Trackers and ad networks are stopped at the network level, so there is nothing to render and nothing to slow you down. On by default, off per site.</p></li>
         <li><h3>Video that follows you</h3><span class="keys"><kbd>⇧⌘P</kbd></span><p>Lifts the video into a small window that stays above everything, including other apps.</p></li>
         <li><h3>Passwords, in your keychain</h3><span class="keys"><kbd>⌥⌘L</kbd></span><p>Saved once a sign-in has actually worked, offered when you click the field, never filled on its own. Encrypted by macOS.</p></li>
-        <li><h3>Updates itself, quietly</h3><p>A new build is downloaded and verified in the background first. Copper never restarts without your say-so. Light, dark, or the Mac's own — the frame and the pages follow.</p></li>
+        <li><h3>Updates itself, quietly</h3><p>A new build is downloaded and verified in the background first. Copper never restarts without your say-so.</p></li>
       </ul>
     </div>
   </section>
@@ -994,142 +1153,6 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
     <div class="note-row">
       <h3>Chrome extensions run here</h3>
       <p>Paste a Chrome Web Store link, or press Add on the extension's page. It runs on WebKit's own extension engine, the one Safari uses, and Copper fills in the Chrome APIs WebKit lacks. macOS&nbsp;15.4 or later.</p>
-    </div>
-  </section>
-
-  <section class="sec wrap" id="agents" aria-labelledby="agents-title">
-    <div class="sec-head">
-      <span class="kicker">Built for agents</span>
-      <h2 id="agents-title">We draw where <em>your agents</em> go.</h2>
-      <p>Copper is an MCP server. Claude Code, Codex or any MCP client can drive the browser you're already signed into. Copper draws where each agent is about to click and badges every tab with the agent working in it. Press Stop and the browser is yours again.</p>
-    </div>
-    <figure class="media wide-media">
-      <div class="reel">
-        <video class="loop" muted loop playsinline preload="none" width="1600" height="1000" data-poster="assets/loop-agents.webp" aria-label="A recording of three agents working in three Copper tabs at once. Claude Code asks Jev to find the Patina article on Wikipedia; a trail on the page shows where Jev is about to click, and each tab in the sidebar wears the badge of the agent working in it." aria-describedby="agents-cap">
-          <source data-src="assets/loop-agents.mp4" type="video/mp4">
-        </video><noscript><img src="assets/loop-agents.webp" alt=""></noscript>
-      </div>
-      <figcaption class="reel-cap" id="agents-cap"><span>Three agents, three tabs, one browser. The badges in the sidebar say who is where; the trail on the page shows the next click before it happens.</span></figcaption>
-    </figure>
-    <div class="split">
-      <div class="agents-copy">
-        <ul class="facts">
-          <li><span><strong>One switch.</strong> Settings › Agents › Let agents drive this window. Set&nbsp;up for Claude Code and phi is one press, no token pasted into a prompt.</span></li>
-          <li><span><strong>A <code>copper</code> command</strong> for the shell, linked into your <code>PATH</code> by Homebrew. It never starts Copper on its own.</span></li>
-          <li><span><strong>Loopback only,</strong> behind a bearer token readable by you alone. Pages in other browsers can't reach in.</span></li>
-        </ul>
-      </div>
-      <figure class="term" aria-label="A terminal session using the copper command">
-        <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><span>zsh</span></div>
-<pre><code><span class="p">$</span> copper health
-Copper health: running: true
-Jev mode: <span class="ok">on</span>
-
-<span class="p">$</span> copper tabs
-<span class="d">### Open tabs</span>
-- 0: (current) [Google] <span class="d">(https://www.google.com/)</span>
-- 1: [Copper - Wikipedia] <span class="d">(https://en.wikipedia.org/wiki/Copper)</span>
-- 2: [Mac - Apple] <span class="d">(https://www.apple.com/mac/)</span>
-- 3: [Hacker News] <span class="d">(https://news.ycombinator.com/)</span>
-
-<span class="p">$</span> <span class="cursor" aria-hidden="true"></span></code></pre>
-      </figure>
-    </div>
-  </section>
-
-  <section class="sec wrap" id="jev" aria-labelledby="jev-title">
-    <div class="feature">
-      <div class="feature-copy">
-        <span class="kicker">Jev, built in</span>
-        <h2 id="jev-title">Ultrafast, and <em>bring your own key.</em></h2>
-        <p>Hand Copper a goal. Jev reads the page's controls, picks an operation and an element in about 200&nbsp;ms, and acts. A small model writes any text it has to type.</p>
-        <p>Bring your own key: sign in with a Claude account, or point Copper at any OpenAI-compatible gateway.</p>
-        <ul class="chips" aria-label="Model access"><li>Claude account</li><li>OpenAI-compatible gateway</li><li>Haiku, Sonnet or Opus</li></ul>
-      </div>
-      <figure class="media">
-        <div class="frame"><img src="assets/post-jev.webp" width="2000" height="1250" loading="lazy" decoding="async" alt="Copper on the Wikipedia article for Patina, with a small Jev pill at the top of the page and the driver timeline open on the right. The timeline lists each cycle: reading the page, asking Jev which move, clicking Search, typing “patina”, clicking the Patina result, and finally Jev said DONE, 96% sure."></div>
-        <figcaption>The driver timeline (<kbd>⌥⌘J</kbd>) shows every cycle: read, ask, act, settle.</figcaption>
-      </figure>
-    </div>
-      <ul class="jev-facts">
-        <li>
-          <h4>Four Jev tools on the MCP server</h4>
-          <p><span class="tools"><code>jev_run</code><code>jev_step</code><code>jev_observe</code><code>jev_extract</code></span></p>
-          <p>Run a goal to the end, take one step at a time, see the page the way Jev sees it, or pull structured values out of it. The model's output never becomes a selector, a coordinate or JavaScript.</p>
-        </li>
-        <li>
-          <h4>From your agent or your shell</h4>
-          <p>Type <code>/jev&nbsp;&lt;goal&gt;</code> in Claude Code or phi, or <code>copper run "goal"</code> in a terminal. The goal goes to Jev on the first call, with no tab list or snapshot first.</p>
-        </li>
-        <li>
-          <h4>One click to set up</h4>
-          <p>Settings › Agents › Terminal agents: press Set&nbsp;up for phi or Claude Code, or Install for the CLI. Copper writes the config and the command for you, so no token is pasted into a prompt.</p>
-        </li>
-        <li>
-          <h4>You can see who is driving</h4>
-          <p>A pill on the page says <em>Jev is driving</em>, and the driver timeline (<kbd>⌥⌘J</kbd>) shows every cycle: read, ask, act, settle. Press Stop and the browser is yours again before Jev's next action.</p>
-        </li>
-      </ul>
-      <div class="scenario" role="group" aria-labelledby="scenario-title">
-        <div class="sec-head">
-          <h3 class="h3" id="scenario-title">One goal, start to finish.</h3>
-          <p>You are reading about copper on Wikipedia and want the article on the green that grows on old roofs. You hand Jev one sentence and watch the timeline.</p>
-        </div>
-        <figure class="reel-fig">
-          <div class="reel">
-            <video class="loop" muted loop playsinline preload="none" width="2240" height="1480" data-light="assets/copper-jev.webp" data-dark="assets/copper-jev-dark.webp" aria-label="A recording of Jev driving Copper. On the Wikipedia article for Copper, Jev clicks Search, types “patina”, picks the Patina article from the suggestions and says DONE. The driver timeline beside the page lists each cycle as it happens." aria-describedby="jev-cap">
-              <source data-light="assets/copper-jev.mp4" data-dark="assets/copper-jev-dark.mp4" type="video/mp4">
-            </video><noscript><img src="assets/copper-jev.webp" alt=""></noscript>
-          </div>
-          <figcaption class="reel-cap" id="jev-cap"><span>The real run, recorded in Copper. The driver timeline is on the right; the blue ring and the Jev pill say the page is not yours for now.</span></figcaption>
-        </figure>
-        <div class="scenario-body">
-          <div class="story">
-            <p><strong>11.4 seconds, three actions.</strong> Jev clicked Search, a small model wrote the word, and Jev picked the article from Wikipedia's own suggestions. Then it stopped, because the article was on screen.</p>
-            <ol class="steps" aria-label="What Jev did">
-              <li><span><span class="op">CLICK</span>Search</span><small>372 ms</small></li>
-              <li><span><span class="op">TYPE</span>“patina” into Search Wikipedia</span><small>290 ms + 1.3 s text</small></li>
-              <li><span><span class="op">CLICK</span>Patina, change of object's surface…</span><small>268 ms</small></li>
-              <li class="done"><span>DONE, 96% sure</span><small>verify it yourself</small></li>
-            </ol>
-            <p>DONE is Jev's claim, and the tool says so. Your agent is told to check the page before it tells you it worked.</p>
-          </div>
-          <figure class="term" aria-label="The command that started the run, and what it printed">
-            <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><span>zsh</span></div>
-<pre><code><span class="p">$</span> copper run "Search Wikipedia for patina and stop when the article is visible"
-<span class="hl">### Jev run — done in 11.4 s (3 actions, 4 decisions)</span>
-Jev said <span class="ok">DONE</span>, 96% sure
-
-1. CLICK Search <span class="d">(100%, 372 ms) → page changed</span>
-2. TYPE_TEXT Search Wikipedia = "patina" <span class="d">(100%, 290 ms + 1296 ms text) → page changed</span>
-3. CLICK Patina   Change of object's surface through age and exposure <span class="d">(61%, 268 ms) → page changed</span>
-
-<span class="d">### Page</span>
-- URL: https://en.wikipedia.org/wiki/Patina
-- Title: Patina - Wikipedia
-
-<span class="p">$</span> <span class="cursor" aria-hidden="true"></span></code></pre>
-          </figure>
-        </div>
-      </div>
-  </section>
-
-  <section class="sec wrap" id="bitwarden" aria-labelledby="bw-title">
-    <div class="feature flip">
-      <div class="feature-copy">
-        <span class="kicker">Sign-in for agents</span>
-        <h2 id="bw-title">Agents log in, <em>2FA included.</em></h2>
-        <p>Connect Bitwarden and your agents use your saved logins, two-factor codes included, on your Mac or on a headless Mac mini. The password never reaches the agent, and you decide which logins they can use.</p>
-        <ul class="facts">
-          <li><span><strong>You choose what's shared.</strong> Logins in Bitwarden's <code>Agents</code> folder are shared; a <code>copper-agent: deny</code> field keeps one out for good. Agents can't change the rule.</span></li>
-          <li><span><strong>Nothing secret comes back.</strong> A sign-in reports what was filled, never the password, the code or the session key.</span></li>
-          <li><span><strong>Cards and addresses too,</strong> with <code>browser_autofill</code>. Driven by Bitwarden's own <code>bw</code> client, no extension.</span></li>
-        </ul>
-      </div>
-      <figure class="media">
-        <div class="frame"><img src="assets/post-bitwarden.webp" width="2000" height="1250" loading="lazy" decoding="async" alt="A terminal on a Mac mini. copper bitwarden login reads the vault from stdin and unlocks, sharing the Agents folder only. Then copper run “sign in to github and open my notifications” uses SIGN_IN with the saved account, and copper signin --otp fills the one-time code. A comment notes there is no password, code or session key in anything the agent sees."></div>
-        <figcaption>Set up once on a headless Mac mini; after that, any agent can sign in.</figcaption>
-      </figure>
     </div>
   </section>
 
@@ -1640,7 +1663,7 @@ Jev said <span class="ok">DONE</span>, 96% sure
      The bento's three sidebars are one control with one intent. ---------- */
   var calm = window.matchMedia('(prefers-reduced-motion: reduce)');
   var sides = $('.sides');
-  $$('video.loop').map(function (v) { return [v, [v], ': ' + v.getAttribute('aria-label')]; })
+  $$('video.loop').map(function (v) { return [v.parentNode, [v], ': ' + v.getAttribute('aria-label')]; })
     .concat([[sides, $$('video.side', sides), ' the sidebar recordings']]).forEach(function (g) {
     var ctl = g[0], vids = g[1], about = g[2], user = '';
     function wanted() { return user ? user === 'play' : !calm.matches; }
@@ -1657,6 +1680,7 @@ Jev said <span class="ok">DONE</span>, 96% sure
       });
     }
     ctl.setAttribute('role', 'button'); ctl.tabIndex = 0; ctl.removeAttribute('aria-hidden');
+    if (vids[0].hasAttribute('aria-describedby')) ctl.setAttribute('aria-describedby', vids[0].getAttribute('aria-describedby'));
     ctl.addEventListener('click', function () { user = wanted() ? 'pause' : 'play'; vids.forEach(arm); settle(); });
     ctl.addEventListener('keydown', function (e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); ctl.click(); } });
     vids.forEach(function (v) {
