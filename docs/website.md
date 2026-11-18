@@ -56,8 +56,10 @@ exists) and add `site.yml`.
   picks the pair that matches.
 - Videos are `<video class="loop" muted loop playsinline preload="none">` with the file and
   poster in `data-*` attributes: the script at the end of the page sets them when the video
-  comes within 900 px of the screen, plays it while it is on screen, and pauses it on a click.
-  Under `prefers-reduced-motion` only the poster shows. There is no pause button.
+  comes within 900 px of the screen and plays it while it is on screen. There is no pause button:
+  the recording itself is the control (`role="button"`, named "Pause…" or "Play…"), so a click,
+  Space or Enter toggles it. The bento's three sidebars share one control. Under
+  `prefers-reduced-motion` only the poster shows until someone presses play.
 - The hero image is the page's largest paint: `fetchpriority="high"`, never `loading="lazy"`,
   with `width`/`height` so nothing shifts. The source order in the hero is copy, window, meta,
   which is also the order on a phone; don't reorder it with CSS `order` (content that streams in
@@ -110,7 +112,7 @@ are using is never touched:
 
 | Asset | What it shows | Made with |
 |---|---|---|
-| `copper-hero-*.webp` | the whole window on google.com (phone: a 640×560 window on Wikipedia's Copper article), dark appearance, sidebar on | `launch.sh` with `SIZE=1280x800` (or `640x560`) → bench `window` → `cwebp`/`convert -quality 80`, alpha kept |
+| `copper-hero-*.webp` | the whole window on Wikipedia's Copper article (phone: the same page in a 640×560 window), dark appearance, sidebar on | `launch.sh` with `SIZE=1280x800` (or `640x560`) → bench `window` → `convert` to WebP at 1280 and 1920 wide, alpha kept (lossless: smaller than lossy for a page of text) |
 | `side-{copper,patina,ember}.mp4/.webp` | each space's sidebar: the animated theme and the selection moving between tabs | `launch.sh` with `SIZE=640x760` → `rec_sides.py` → crop the left 464 px, scale to 336×840, 24 fps, CRF 27–29, last 0.6 s dissolved into the first |
 | `copper-motion(-dark).mp4/.webp` | tab switch, ⌘K filtering, a space switch, tabs on top and back | `rec_motion.py` → `compose.py video` |
 | `copper-jev(-dark).mp4/.webp` | a real Jev run: "Search Wikipedia for patina and stop when the article is visible", with the driver timeline | `rec_jev.py` → `compose.py video` |

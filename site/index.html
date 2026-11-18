@@ -148,7 +148,8 @@ em.g, h1 em, h2 em, .t h3 em {
   background: var(--surface); border: 1px solid var(--line);
   font: 14px/1.45 var(--mono); color: var(--ink);
 }
-.cmd code { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.cmd code { flex: 1; min-width: 0; overflow-wrap: break-word; }
+.nw { white-space: nowrap; }
 .cmd code::before { content: "$ "; color: var(--ink-2); }
 .cmd .nw { white-space: nowrap; }
 .cmd.plain code::before { content: none; }
@@ -381,7 +382,7 @@ kbd {
 .tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .tools code { font-size: 13px; }
 .scenario { margin-top: clamp(56px, 7vw, 88px); }
-.scenario > .reel { margin-top: 28px; }
+.scenario > .reel-fig { margin-top: 28px; }
 .scenario-body { display: grid; grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr); gap: clamp(28px, 5vw, 64px); align-items: start; margin-top: 36px; }
 .story { display: grid; gap: 14px; }
 .story > p { color: var(--ink-2); font-size: 16px; }
@@ -518,10 +519,10 @@ html:not(.js) .dl-panel[hidden] { display: block; }
 }
 .hero-stage::after {
   content: ""; position: absolute; inset: 0; z-index: -2;
-  background: radial-gradient(50% 40% at 0% 60%, var(--glow1), transparent 70%), radial-gradient(45% 40% at 100% 85%, var(--glow2), transparent 70%);
+  background: radial-gradient(50% 40% at 0% 60%, var(--glow1), transparent 70%), radial-gradient(45% 40% at 100% 62%, var(--glow2), transparent 70%);
 }
 .hero {
-  --bleed: clamp(0px, (100vw - var(--w)) / 2 - 24px, 300px);
+  --bleed: clamp(0px, (100vw - var(--w)) / 2 - 56px, 280px);
   display: grid; grid-template-columns: minmax(0, 29rem) minmax(0, 1fr); grid-template-areas: "copy shot" "meta shot"; column-gap: clamp(28px, 3.2vw, 44px);
   padding-top: clamp(44px, 8vh, 96px);
 }
@@ -559,7 +560,7 @@ html:not(.js) .dl-panel[hidden] { display: block; }
   background: var(--tile); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
   color: var(--ink); text-decoration: none; transition: border-color .2s ease, transform .2s cubic-bezier(.23, 1, .32, 1);
 }
-@media (hover: hover) and (pointer: fine) { a.t:hover { border-color: var(--line-2); transform: translateY(-2px); } }
+@media (hover: hover) and (pointer: fine) { a.t:hover, .t-spaces:hover { border-color: var(--line-2); transform: translateY(-2px); } }
 a.t:active { transform: scale(.99); }
 .t h3 { font: 650 26px/1.12 var(--display); letter-spacing: -.022em; max-width: 20em; position: relative; }
 .t p { color: var(--ink-2); font-size: 15px; line-height: 1.42; margin-top: 8px; max-width: 30em; position: relative; }
@@ -574,7 +575,11 @@ a.t:active { transform: scale(.99); }
 .t-spaces { grid-column: 1 / 7; grid-row: 1 / 3; padding: 34px 36px 0; background: linear-gradient(160deg, rgba(255, 138, 76, .16), rgba(255, 138, 76, .02) 45%), var(--tile); }
 .t-spaces h3 { font-size: clamp(30px, 1.2rem + 1.6vw, 44px); line-height: 1.04; letter-spacing: -.03em; max-width: 11em; }
 .t-spaces p { font-size: 16.5px; max-width: 26em; }
-.sides { display: flex; gap: 14px; margin-top: 28px; }
+.sides { position: relative; z-index: 2; display: flex; align-items: flex-start; gap: 14px; margin-top: 28px; cursor: pointer; border-radius: 14px 14px 0 0; }
+.sides:focus-visible { outline-offset: -3px; }
+.t-spaces h3 a { color: inherit; text-decoration: none; }
+.t-spaces h3 a::after { content: ""; position: absolute; inset: 0; z-index: 1; }
+.t-spaces h3 { position: static; }
 .sides video { width: calc((100% - 28px) / 3); border-radius: 14px 14px 0 0; border: 1px solid var(--line); box-shadow: var(--shadow); background: #15100D; }
 .sides video:nth-child(2) { margin-top: 22px; }
 .sides video:nth-child(3) { margin-top: 44px; }
@@ -589,7 +594,7 @@ a.t:active { transform: scale(.99); }
 .otp { position: absolute; top: 22px; right: 22px; display: flex; gap: 5px; }
 .otp span { width: 26px; height: 34px; border-radius: 7px; background: var(--term-bg); border: 1px solid rgba(95, 227, 204, .45); display: grid; place-items: center; font: 600 17px/1 var(--mono); color: #5FE3CC; }
 .t-cloud { grid-column: 1 / 6; grid-row: 3; background: linear-gradient(20deg, rgba(61, 214, 190, .13), rgba(61, 214, 190, .01) 60%), var(--tile); }
-.t-term { margin-top: auto; padding: 14px 16px; border-radius: 12px; background: var(--term-bg); border: 1px solid rgba(255, 255, 255, .06); font: 12.5px/1.6 var(--mono); color: var(--term-ink); overflow-wrap: anywhere; }
+.t-term { margin-top: auto; padding: 14px 16px; border-radius: 12px; background: var(--term-bg); border: 1px solid rgba(255, 255, 255, .06); font: 12.5px/1.6 var(--mono); color: var(--term-ink); overflow-wrap: break-word; }
 .t-term .d { color: var(--term-dim); }
 .t-term .a { color: #5FE3CC; }
 .t-canvas { grid-column: 6 / 10; grid-row: 3; background: linear-gradient(160deg, rgba(255, 192, 122, .10), rgba(255, 192, 122, .01) 55%), var(--tile); }
@@ -617,7 +622,7 @@ h2, .sec-head h2, .sec-head .h2 { font-size: clamp(2.1rem, 1.3rem + 2.6vw, 3.3re
 .feature-copy > p + p { margin-top: -4px; }
 .feature-copy .cmd { margin-top: 4px; }
 
-.media { margin: 0; }
+.media, .reel-fig { margin: 0; }
 .frame, .reel {
   position: relative; border-radius: 20px; overflow: hidden; background: #15100D;
   box-shadow: 0 0 0 1px var(--line), var(--shadow);
@@ -648,7 +653,7 @@ h2, .sec-head h2, .sec-head .h2 { font-size: clamp(2.1rem, 1.3rem + 2.6vw, 3.3re
 
 /* ---------- outro (stage) ---------- */
 .outro { margin-top: clamp(96px, 11vw, 144px); padding-block: clamp(80px, 10vw, 128px); overflow: hidden; }
-.outro::before { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(45% 60% at 0% 100%, var(--glow1), transparent 70%), radial-gradient(40% 60% at 100% 0%, var(--glow2), transparent 70%); }
+.outro::before { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(45% 60% at 0% 100%, var(--glow1), transparent 70%), radial-gradient(40% 60% at 100% 28%, var(--glow2), transparent 70%); }
 .outro .feature-copy > p { font-size: 1.15rem; }
 .repos { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 4px 0 0; padding: 0; }
 .repos a { display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--tile); font: 500 14px/1.3 var(--mono); color: #5FE3CC; text-decoration: none; overflow-wrap: anywhere; transition: border-color .15s ease; }
@@ -724,7 +729,8 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
   .hero-shot { margin-top: 32px; }
   .hero .meta { display: flex; }
   .hero .hero-actions .cmd { display: none; }
-  .hero-stage::before { background: linear-gradient(180deg, rgba(12, 10, 9, .55), rgba(12, 10, 9, .8) 60%), url(assets/art-liquid.webp) 70% 0 / cover no-repeat; }
+  .hero-stage::before { background: linear-gradient(180deg, rgba(12, 10, 9, .78), rgba(12, 10, 9, .88) 60%), url(assets/art-liquid.webp) 70% 0 / cover no-repeat; }
+  .quip { background: rgba(20, 14, 10, .72); }
   .manifest li { grid-template-columns: 15px minmax(0, 1fr); }
   .manifest li small { grid-column: 2; text-align: left; }
   .hero-actions .btn { flex: 1 1 100%; justify-content: center; }
@@ -805,24 +811,25 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
       </div>
       </div>
       <picture class="hero-shot">
-        <source media="(max-width: 640px)" srcset="assets/copper-hero-sm.webp" width="1280" height="1120">
-        <img src="assets/copper-hero-1920.webp" srcset="assets/copper-hero-1280.webp 1280w, assets/copper-hero-1920.webp 1920w, assets/copper-hero-2560.webp 2560w" sizes="(max-width: 1100px) 92vw, 56vw" width="2560" height="1600" fetchpriority="high" decoding="async" alt="The Copper window. A sidebar in the Copper space's warm animated theme holds the address and four tabs: Google, Copper on Wikipedia, Mac on apple.com and Hacker News, with the three spaces along the bottom. The page fills the rest of the window, with no toolbar above it.">
+        <source media="(max-width: 640px)" srcset="assets/copper-hero-sm-720.webp 720w, assets/copper-hero-sm.webp 1280w" sizes="92vw" width="1280" height="1120">
+        <img src="assets/copper-hero-1920.webp" srcset="assets/copper-hero-1280.webp 1280w, assets/copper-hero-1920.webp 1920w" sizes="(max-width: 1100px) 92vw, 56vw" width="1920" height="1200" fetchpriority="high" alt="The Copper window on Wikipedia's article about copper. A sidebar in the Copper space's warm animated theme holds the address and four tabs: Google, Copper on Wikipedia, Mac on apple.com and Hacker News, with the three spaces along the bottom. The page fills the rest of the window, with no toolbar above it.">
       </picture>
       <p class="meta"><span>macOS 14 or later</span><span>Apple Silicon &amp; Intel</span><span>Windows &amp; Linux too</span><span>No account</span></p>
     </section>
 
-    <section class="wrap" aria-label="Copper at a glance">
+    <section class="wrap" aria-labelledby="glance-title">
+      <h2 class="sr" id="glance-title">Copper at a glance</h2>
       <div class="bento">
-        <a class="t t-spaces" href="#spaces">
+        <div class="t t-spaces">
           <span class="t-kick"><img src="assets/icon-96.webp" alt="" width="28" height="28">Copper for macOS</span>
-          <h3>Spaces with <em>animated sidebars.</em></h3>
+          <h3><a href="#spaces">Spaces with <em>animated sidebars.</em></a></h3>
           <p>Split view, ⌘K, folders, Favorites, Today and Saved. WebKit underneath, no account.</p>
           <span class="sides" aria-hidden="true">
             <video class="side" muted loop playsinline preload="none" width="336" height="840" poster="assets/side-copper.webp" data-src="assets/side-copper.mp4"></video>
             <video class="side" muted loop playsinline preload="none" width="336" height="840" poster="assets/side-patina.webp" data-src="assets/side-patina.mp4"></video>
             <video class="side" muted loop playsinline preload="none" width="336" height="840" poster="assets/side-ember.webp" data-src="assets/side-ember.mp4"></video>
           </span>
-        </a>
+        </div>
         <a class="t t-agents" href="#agents">
           <div>
             <h3>We draw where <em>your agents</em> go.</h3>
@@ -832,7 +839,7 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
         </a>
         <a class="t t-jev" href="#jev">
           <span class="t-big">200<small>ms</small></span>
-          <h3>Jev ultrafast, <em>your keys.</em></h3>
+          <h3>Jev, the agent inside. <em>Your keys.</em></h3>
           <ul class="chips"><li>Claude account</li><li>any OpenAI-compatible gateway</li></ul>
         </a>
         <a class="t t-bw" href="#bitwarden">
@@ -843,7 +850,7 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
         <a class="t t-cloud" href="#cloud">
           <h3>Run your own <em>Copper Cloud.</em></h3>
           <p>One Rust binary and Postgres. Syncs spaces, tabs, bookmarks and history between Macs.</p>
-          <span class="t-term" aria-hidden="true"><span class="d">$</span> curl -fsSL …/copper-cloud/main/install.sh | sudo sh<br><span class="d">Admin portal:</span> https://203.0.113.10/<br><span class="d">Access mode:</span> directory<br><span class="a">copper-cloud://203.0.113.10:443/#k=ck_…&amp;fp=…</span></span>
+          <span class="t-term" aria-hidden="true"><span class="d">$</span> curl -fsSL …/<wbr>copper-cloud/<wbr>main/<wbr>install.sh <span class="nw">| sudo sh</span><br><span class="d">Admin portal:</span> https://203.0.113.10/<br><span class="d">Access mode:</span> directory<br><span class="a">copper-cloud://203.0.113.10:443/#k=ck_…&amp;fp=…</span></span>
         </a>
         <a class="t t-canvas" href="#canvas">
           <h3>Multiplayer <em>canvas</em> in a tab.</h3>
@@ -933,7 +940,7 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
     <div class="quiet">
       <div class="sec-head">
         <h2 id="quiet-title">Quiet by default.</h2>
-        <p>No toolbar, no start page, no sidebar of suggestions, no account to sign into. The things people install extensions for are already here, each one keystroke away.</p>
+        <p>No toolbar, no start page, no feed of suggestions, no account to sign into. The things people install extensions for are already here, each one keystroke away.</p>
       </div>
       <figure class="reel-fig">
         <div class="reel">
@@ -985,7 +992,7 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
       </figure>
     </div>
     <div class="note-row">
-      <h3>Chrome extensions, without Chrome</h3>
+      <h3>Chrome extensions run here</h3>
       <p>Paste a Chrome Web Store link, or press Add on the extension's page. It runs on WebKit's own extension engine, the one Safari uses, and Copper fills in the Chrome APIs WebKit lacks. macOS&nbsp;15.4 or later.</p>
     </div>
   </section>
@@ -1167,7 +1174,7 @@ Jev said <span class="ok">DONE</span>, 96% sure
         <span class="kicker">Copper Cloud</span>
         <h2 id="cloud-title">Run your own <em>Copper Cloud.</em></h2>
         <p>Copper Cloud is the server half: one Rust binary and Postgres, installed with one command on any Linux machine, or with Terraform on AWS. It syncs spaces, tabs, bookmarks and history between your Macs and hosts live canvas rooms.</p>
-        <div class="cmd"><code>curl -fsSL https://raw.githubusercontent.com/copper-browser/copper-cloud/main/install.sh | sudo sh</code><button class="copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/copper-browser/copper-cloud/main/install.sh | sudo sh" aria-label="Copy the Copper Cloud install command"><svg class="i-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="i-check" aria-hidden="true"><use href="#i-check"/></svg><span>Copy</span></button></div>
+        <div class="cmd"><code>curl -fsSL https://raw.githubusercontent.com/<wbr>copper-browser/<wbr>copper-cloud/<wbr>main/<wbr>install.sh <span class="nw">| sudo sh</span></code><button class="copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/copper-browser/copper-cloud/main/install.sh | sudo sh" aria-label="Copy the Copper Cloud install command"><svg class="i-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="i-check" aria-hidden="true"><use href="#i-check"/></svg><span>Copy</span></button></div>
         <ul class="facts">
           <li><span><strong>Off until you turn it on,</strong> and it never carries passwords. You pick what syncs.</span></li>
           <li><span><strong>Pinned by its certificate.</strong> Copper shows the fingerprint before it sends anything.</span></li>
@@ -1185,7 +1192,7 @@ Jev said <span class="ok">DONE</span>, 96% sure
     <div class="sec-head">
       <span class="kicker">Privacy</span>
       <h2 id="privacy-title">On your Mac, unless you <em>say otherwise.</em></h2>
-      <p>The only things that leave your Mac are the pages you ask for, their icons, and one small request a day to see whether there is a newer version. Copper Cloud is the one exception, and it stays off until you link a server you run.</p>
+      <p>What leaves your Mac: the pages you ask for, their icons, and one small request a day to see whether there is a newer version. When you run Jev, what it reads on the page goes to the model provider you chose. Copper Cloud stays off until you link a server you run.</p>
     </div>
     <div class="never">
       <div><strong>No account</strong><span>Nothing to sign into with us. Copper Cloud accounts live on your own server.</span></div>
@@ -1202,6 +1209,7 @@ Jev said <span class="ok">DONE</span>, 96% sure
         <tr><th scope="row">Cookies and site data</th><td data-l="Where">WebKit's own store for the app</td><td data-l="Who">The sites that set them, as in any browser.</td></tr>
         <tr><th scope="row">Extensions</th><td data-l="Where">Unpacked in Copper's own folder, their data in WebKit's extension store</td><td data-l="Who">Each extension, within the permissions you accepted.</td></tr>
         <tr><th scope="row">Copper Cloud, only if you link it</th><td data-l="Where">The parts you switched on, on the instance you linked, encrypted at rest with your account's key</td><td data-l="Who">You, and that instance's operator.</td></tr>
+        <tr><th scope="row">Jev, only while it runs</th><td data-l="Where">The page's controls and your goal, sent to the model you picked: your Claude account or your gateway</td><td data-l="Who">You, and that provider.</td></tr>
         <tr><th scope="row">Anything else</th><td data-l="Where">Nowhere.</td><td data-l="Who">No one.</td></tr>
       </tbody>
     </table>
@@ -1222,7 +1230,7 @@ Jev said <span class="ok">DONE</span>, 96% sure
     <div class="dl-panel" id="dl-mac" role="tabpanel" aria-labelledby="dl-tab-here">
     <div class="notice" id="build-from-source">
       <p><strong>A notarized Mac build is coming very soon.</strong> For now, build Copper yourself from source. You need macOS 14 or later and Xcode 16.</p>
-      <div class="cmd"><code>git clone https://github.com/copper-browser/Copper.git &amp;&amp; cd Copper &amp;&amp; ./build.sh &amp;&amp; open build/Copper.app</code><button class="copy" type="button" data-copy="git clone https://github.com/copper-browser/Copper.git &amp;&amp; cd Copper &amp;&amp; ./build.sh &amp;&amp; open build/Copper.app" aria-label="Copy the build command"><svg class="i-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="i-check" aria-hidden="true"><use href="#i-check"/></svg><span>Copy</span></button></div>
+      <div class="cmd"><code>git clone https://github.com/<wbr>copper-browser/<wbr>Copper.git &amp;&amp; cd Copper &amp;&amp; ./<wbr>build.sh &amp;&amp; open build/<wbr>Copper.app</code><button class="copy" type="button" data-copy="git clone https://github.com/copper-browser/Copper.git &amp;&amp; cd Copper &amp;&amp; ./build.sh &amp;&amp; open build/Copper.app" aria-label="Copy the build command"><svg class="i-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="i-check" aria-hidden="true"><use href="#i-check"/></svg><span>Copy</span></button></div>
       <p>It builds Copper.app into the build folder and opens it. The downloads below work today too and are not notarized yet. <a href="https://github.com/copper-browser/Copper#building-it">Source and build notes on GitHub</a></p>
     </div>
     <div class="install">
@@ -1236,7 +1244,7 @@ Jev said <span class="ok">DONE</span>, 96% sure
       <div class="method">
         <h3>One-line installer</h3>
         <div class="method-body">
-          <div class="cmd"><code>curl -fsSL https://github.com/copper-browser/Copper/releases/latest/download/copper-install.sh | sh</code><button class="copy" type="button" data-copy="curl -fsSL https://github.com/copper-browser/Copper/releases/latest/download/copper-install.sh | sh" aria-label="Copy the installer command"><svg class="i-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="i-check" aria-hidden="true"><use href="#i-check"/></svg><span>Copy</span></button></div>
+          <div class="cmd"><code>curl -fsSL https://github.com/<wbr>copper-browser/<wbr>Copper/<wbr>releases/<wbr>latest/<wbr>download/<wbr>copper-install.sh <span class="nw">| sh</span></code><button class="copy" type="button" data-copy="curl -fsSL https://github.com/copper-browser/Copper/releases/latest/download/copper-install.sh | sh" aria-label="Copy the installer command"><svg class="i-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="i-check" aria-hidden="true"><use href="#i-check"/></svg><span>Copy</span></button></div>
           <p>The same build, without Homebrew.</p>
         </div>
       </div>
@@ -1284,7 +1292,7 @@ Jev said <span class="ok">DONE</span>, 96% sure
       <div class="method">
         <h3>One-line installer <small>Recommended</small></h3>
         <div class="method-body">
-          <div class="cmd"><code>curl -fsSL https://github.com/copper-browser/copper-linux/releases/latest/download/install.sh | sh</code><button class="copy" type="button" data-copy="curl -fsSL https://github.com/copper-browser/copper-linux/releases/latest/download/install.sh | sh" aria-label="Copy the Linux install command"><svg class="i-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="i-check" aria-hidden="true"><use href="#i-check"/></svg><span>Copy</span></button></div>
+          <div class="cmd"><code>curl -fsSL https://github.com/<wbr>copper-browser/<wbr>copper-linux/<wbr>releases/<wbr>latest/<wbr>download/<wbr>install.sh <span class="nw">| sh</span></code><button class="copy" type="button" data-copy="curl -fsSL https://github.com/copper-browser/copper-linux/releases/latest/download/install.sh | sh" aria-label="Copy the Linux install command"><svg class="i-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="i-check" aria-hidden="true"><use href="#i-check"/></svg><span>Copy</span></button></div>
           <p>x86_64 or aarch64. On Ubuntu 24.04+ and Debian 13+ it installs the <code class="inline">.deb</code> with apt, video codecs included; everywhere else a Flatpak for your user. Run it again to upgrade.</p>
         </div>
       </div>
@@ -1627,33 +1635,37 @@ Jev said <span class="ok">DONE</span>, 96% sure
     });
   })();
 
-  /* ---------- recordings: fetched when near, play in view, a click (or Space on a focused one) pauses, a still under reduced motion ---------- */
+  /* ---------- recordings: fetched when near, play in view, a still under reduced motion.
+     Each is a button with no chrome: a click, Space or Enter pauses or plays it, and its name says which. ---------- */
   var calm = window.matchMedia('(prefers-reduced-motion: reduce)');
   $$('video.loop, video.side').forEach(function (v) {
-    var seen = false, held = false;
+    var side = v.classList.contains('side'), ctl = side ? v.parentNode : v;   // the three sidebars share one control
+    var about = side ? '' : v.getAttribute('aria-label'), seen = false, user = '';
+    function name() { ctl.setAttribute('aria-label', (v.paused ? 'Play ' : 'Pause ') + (side ? 'the sidebar recordings' : 'the recording: ' + about)); }
     function arm() {
       if (v.dataset.armed) return;
       v.dataset.armed = '1';
       if (v.dataset.src) v.src = v.dataset.src; else window.copperMedia(v);
     }
     function settle() {
-      if (!v.dataset.armed || calm.matches || held || !seen) { v.pause(); return; }
+      if (!v.dataset.armed || !seen || user === 'pause' || (calm.matches && user !== 'play')) { v.pause(); return; }
       var p = v.play(); if (p && p.catch) p.catch(function () {});
     }
-    if (v.classList.contains('loop')) {
-      v.tabIndex = 0;
-      v.addEventListener('click', function () { held = !v.paused; settle(); });
-      v.addEventListener('keydown', function (e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); v.click(); } });
+    ctl.addEventListener('click', function () { user = v.paused ? 'play' : 'pause'; arm(); settle(); });
+    if (!ctl.hasAttribute('role')) {
+      ctl.setAttribute('role', 'button'); ctl.tabIndex = 0; ctl.removeAttribute('aria-hidden');
+      ctl.addEventListener('keydown', function (e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); ctl.click(); } });
     }
+    v.addEventListener('play', name); v.addEventListener('pause', name); name();
     if ('IntersectionObserver' in window) {
       new IntersectionObserver(function (es, io) {
         if (es.some(function (e) { return e.isIntersecting; })) { io.disconnect(); arm(); settle(); }
       }, { rootMargin: '900px 0px' }).observe(v);
       new IntersectionObserver(function (es) {
         es.forEach(function (e) { seen = e.isIntersecting; settle(); });
-      }, { rootMargin: '120px 0px' }).observe(v);
+      }).observe(v);
     } else { arm(); seen = true; settle(); }
-    if (calm.addEventListener) calm.addEventListener('change', function () { held = false; settle(); });
+    if (calm.addEventListener) calm.addEventListener('change', function () { user = ''; settle(); });
   });
 
   /* ---------- the little Copper window ---------- */
