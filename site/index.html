@@ -484,7 +484,7 @@ html:not(.js) .dl-panel[hidden] { display: block; }
 .cmd { background: color-mix(in srgb, var(--surface) 80%, transparent); }
 
 /* ---------- nav ---------- */
-.nav { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 94%, transparent); -webkit-backdrop-filter: saturate(1.4) blur(16px); backdrop-filter: saturate(1.4) blur(16px); border-bottom: 1px solid transparent; transition: border-color .2s ease; }
+.nav { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 97%, transparent); -webkit-backdrop-filter: saturate(1.4) blur(16px); backdrop-filter: saturate(1.4) blur(16px); border-bottom: 1px solid transparent; transition: border-color .2s ease; }
 .nav.stuck { border-bottom-color: var(--line); }
 .nav .wrap { display: flex; align-items: center; gap: 28px; height: 60px; }
 .brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font: 650 18px/1 var(--display); letter-spacing: -.015em; margin-right: auto; }
@@ -743,6 +743,7 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
   .copy span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   /* phone: the window comes right after the button; the brew line waits in Install */
   .hero { padding-top: 28px; }
+  .repos a { font-size: 12.5px; padding: 0 12px; }
   .hero .byo { gap: 6px; }
   .hero .byo li { font-size: 12.5px; padding: 7px 10px; white-space: nowrap; }
   .hero-shot { margin-top: 32px; }
@@ -891,7 +892,7 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
     <div class="sec-head">
       <span class="kicker">MCP server, built in</span>
       <h2 id="agents-title">Bring <em>your own agent.</em></h2>
-      <p>Copper is a full MCP server running on your Mac. Claude Code, Codex, phi or any MCP client drives the browser you're already signed into, on the model and subscription you already have. Copper draws where each agent is about to click and badges every tab with the agent working in it. Press Stop and the browser is yours again.</p>
+      <p>Copper is a full MCP server running on your Mac. Claude Code, Codex, phi or any MCP client drives the browser you're signed into, on the model and subscription you already have. Copper draws where each agent is about to click and badges every tab with the agent working in it. Press Stop and the browser is yours again.</p>
     </div>
     <figure class="media wide-media">
       <div class="reel">
@@ -944,7 +945,7 @@ Jev mode: <span class="ok">on</span>
       </div>
       <figure class="media">
         <div class="frame"><img src="assets/post-jev.webp" width="2000" height="1250" loading="lazy" decoding="async" alt="Copper on the Wikipedia article for Patina, with a small Jev pill at the top of the page and the driver timeline open on the right. The timeline lists each cycle: reading the page, asking Jev which move, clicking Search, typing “patina”, clicking the Patina result, and finally Jev said DONE, 96% sure."></div>
-        <figcaption>The driver timeline (<kbd>⌥⌘J</kbd>) shows every cycle: read, ask, act, settle.</figcaption>
+        <figcaption>Jev on Wikipedia's Patina article, the driver timeline open on the right.</figcaption>
       </figure>
     </div>
       <ul class="jev-facts">
@@ -959,7 +960,7 @@ Jev mode: <span class="ok">on</span>
         </li>
         <li>
           <h3>One click to set up</h3>
-          <p>Settings › Agents › Terminal agents: press Set&nbsp;up for phi or Claude Code, or Install for the CLI. Copper writes the config and the command for you, so no token is pasted into a prompt.</p>
+          <p>Settings › Agents › Terminal agents: press Set&nbsp;up for phi or Claude Code, or Install for the CLI. Copper writes the config and the command for you.</p>
         </li>
         <li>
           <h3>You can see who is driving</h3>
@@ -981,7 +982,7 @@ Jev mode: <span class="ok">on</span>
         </figure>
         <div class="scenario-body">
           <div class="story">
-            <p><strong>11.4 seconds, three actions.</strong> Jev clicked Search, a small model wrote the word, and Jev picked the article from Wikipedia's own suggestions. Then it stopped, because the article was on screen.</p>
+            <p><strong>One sentence, three actions.</strong> Jev clicked Search, a small model wrote the word, and Jev picked the article from Wikipedia's own suggestions. Then it stopped, because the article was on screen.</p>
             <ol class="steps" aria-label="What Jev did">
               <li><span><span class="op">CLICK</span>Search</span><small>372 ms</small></li>
               <li><span><span class="op">TYPE</span>“patina” into Search Wikipedia</span><small>290 ms + 1.3 s text</small></li>

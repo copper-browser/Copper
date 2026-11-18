@@ -103,6 +103,7 @@ The hero bento, `loop-spaces`/`loop-agents` (captioned loops), `post-*.webp` (th
 stills; the credits card is no longer used, it carried the old tagline), `tile-*.webp` (bento pieces), `art-*.webp` (copper-art backdrops) and `og.jpg` come from
 the launch kit (bento source, caption renderer and raw recordings), not from `site-capture/`.
 The bento itself is live HTML in `index.html`; `og.jpg` is the live hero at 1200×630 with the nav, quip, buttons and meta hidden.
+`loop-agents` has four lines of its GitHub pane blurred (the fork line, the About text, the star counts and the branch banner), in the video and the poster, so the page keeps to the rule above; re-record it on another page when the launch kit is next open.
 
 ## Captures (screenshots and loops)
 
