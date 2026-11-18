@@ -6,7 +6,7 @@ served by GitHub Pages at `https://copper-browser.github.io/Copper/` and by Exow
 
 - `index.html` — the whole page: inline CSS and a little vanilla JS. No framework, no build
   step, no external fonts, CDNs or trackers.
-- `assets/` — real captures of Copper, the app icon, favicons and the 1200×630 `og.png`
+- `assets/` — real captures of Copper, the app icon, favicons and the 1200×630 `og.jpg`
   social card:
   - `copper-hero-{1280,1920}.webp` + `copper-hero-sm.webp` — the hero: the whole Copper
     window on Wikipedia's Copper article, transparent surround (`-sm`: a narrower window for phones).
