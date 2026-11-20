@@ -770,7 +770,7 @@ def record(task_id, task, arm, rnd, run, page, fixtures, sid):
         extra["inputs"] = [x for x in page.get("inputs") or [] if x and x[0] in ("Where from?", "Where to?")][:4]
     return {
         "at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "load1": round(os.getloadavg()[0], 2),
-        "group": task["group"], "task": task_id, "arm": arm, "round": rnd, "sid": sid,
+        "group": task["group"], "task": task_id, "arm": arm, "round": rnd, "sid": sid, "run_id": run.get("run_id"),
         "pass": passed, "verified": verified, "checks": checks, "wrong": wrong,
         "status": status, "note": (run.get("note") or "")[:300], "error": run.get("error"),
         "wall_ms": run.get("elapsed_ms"), "harness_ms": run.get("harness_ms"),
@@ -779,7 +779,7 @@ def record(task_id, task, arm, rnd, run, page, fixtures, sid):
         "stale_ops": run.get("stale_ops"),
         **{k: t.get(k) for k in ("observe_ms", "decide_ms", "text_ms", "act_ms", "settle_ms", "jev_ms", "shot_ms",
                                  "input_tokens", "requests", "stale", "pictured", "burst_actions", "model", "strategy", "vision",
-                                 "text_model", "settles", "settles_capped", "covered")},
+                                 "text_model", "settles", "settles_capped", "covered", "answered_by", "fallbacks")},
         "fills": fills, "text_calls": calls, "text_reused": reused, "literal_fills": max(0, fills - calls - reused),
         "final_url": page.get("url") or (run.get("page") or {}).get("url"), "final_title": page.get("title"),
         "read_error": page.get("read_error"), "viewport": page.get("viewport"), "doubts": t.get("doubts"), "cost_usd": run.get("cost_usd"), **extra,

@@ -61,7 +61,8 @@ Settle % (settle ms / wall) and Capped (settles at the cap).
 Per run (`runs.jsonl`): pass, checks, status/note, wall (jev_run's clock: first decision → end,
 initial navigation excluded, upstream's boundary), decisions, actions, per-phase ms
 (observe/decide/text/act/settle — sums over steps from the json trace), Jev ms, input tokens,
-model/strategy/vision as answered, load average, every step.
+model/strategy/vision as answered, load average, every step; `run_id` (joins the SEARCH_JEV_LOG run line),
+`answered_by` (every model that answered) and `fallbacks` (retries and second asks), from builds that report them.
 
 ## Arms
 
