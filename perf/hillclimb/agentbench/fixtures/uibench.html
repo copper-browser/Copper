@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Northwind Console</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --ink:#16181d; --muted:#6b7280; --line:#e5e7eb; --bg:#f6f7f9; --accent:#4f46e5; --ok:#059669; --bad:#dc2626; }
+  * { box-sizing: border-box; }
+  body { margin:0; font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Inter", sans-serif; color:var(--ink); background:var(--bg); }
+  header { height:56px; display:flex; align-items:center; gap:16px; padding:0 24px; background:#fff; border-bottom:1px solid var(--line); }
+  header .brand { font-weight:700; letter-spacing:-.01em; }
+  header .who { margin-left:auto; color:var(--muted); }
+  .shell { display:flex; min-height:calc(100vh - 56px); }
+  nav.side { width:200px; background:#fff; border-right:1px solid var(--line); padding:16px 10px; }
+  nav.side a { display:block; padding:8px 12px; border-radius:8px; color:var(--ink); text-decoration:none; margin-bottom:2px; }
+  nav.side a.on { background:#eef2ff; color:var(--accent); font-weight:600; }
+  main { flex:1; padding:28px 36px; max-width:980px; }
+  h1 { font-size:22px; margin:0 0 4px; } p.sub { color:var(--muted); margin:0 0 22px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:22px; margin-bottom:16px; }
+  .row { display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid var(--line); }
+  .row:last-child { border-bottom:0; }
+  label.field { display:block; font-weight:600; margin:14px 0 6px; }
+  input[type=text], input[type=email], select { width:100%; padding:9px 11px; border:1px solid #d1d5db; border-radius:8px; font:inherit; background:#fff; }
+  button { font:inherit; cursor:pointer; }
+  .btn { padding:9px 16px; border-radius:8px; border:1px solid #d1d5db; background:#fff; }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  .btn.danger { background:var(--bad); border-color:var(--bad); color:#fff; font-weight:600; }
+  .switch { width:42px; height:24px; border-radius:12px; border:0; background:#d1d5db; position:relative; transition:background .15s; }
+  .switch::after { content:""; position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:50%; background:#fff; transition:left .15s; }
+  .switch[aria-checked=true] { background:var(--accent); } .switch[aria-checked=true]::after { left:21px; }
+  .login { max-width:380px; margin:72px auto; }
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#111827; color:#fff; padding:10px 18px; border-radius:10px; }
+  .spinner { color:var(--muted); margin-top:12px; }
+  .scrim { position:fixed; inset:0; background:rgba(17,24,39,.45); display:flex; align-items:center; justify-content:center; animation:fade .15s ease-out; }
+  .modal { background:#fff; border-radius:14px; width:460px; padding:24px; animation:rise .15s ease-out; }
+  .modal h2 { margin:0 0 6px; font-size:18px; } .modal .actions { display:flex; gap:10px; justify-content:flex-end; margin-top:22px; }
+  @keyframes fade { from { opacity:0 } } @keyframes rise { from { transform:translateY(8px); opacity:0 } }
+  .combo { position:relative; } .combo > button { width:100%; text-align:left; padding:9px 11px; border:1px solid #d1d5db; border-radius:8px; background:#fff; }
+  .combo ul { position:absolute; left:0; right:0; top:42px; margin:0; padding:4px; list-style:none; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.12); z-index:5; }
+  .combo li { padding:8px 10px; border-radius:6px; cursor:pointer; } .combo li:hover { background:#f3f4f6; }
+  .radios label, .checks label { display:flex; gap:8px; align-items:center; padding:6px 0; }
+  .steps { display:flex; gap:8px; margin-bottom:18px; color:var(--muted); } .steps .on { color:var(--accent); font-weight:600; }
+  table { width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  th, td { text-align:left; padding:10px 14px; border-bottom:1px solid var(--line); } th { color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; }
+  td .btn { padding:5px 10px; margin-right:6px; }
+  .pill { padding:2px 8px; border-radius:999px; font-size:12px; background:#f3f4f6; } .pill.approved { background:#d1fae5; color:var(--ok); }
+  .icon { width:32px; height:32px; border-radius:8px; border:1px solid var(--line); background:#fff; display:inline-flex; align-items:center; justify-content:center; margin-left:4px; }
+  .icon svg { width:16px; height:16px; stroke:#374151; fill:none; stroke-width:2; }
+  .grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; max-width:640px; }
+  .grid button { padding:20px 0; border-radius:10px; border:1px solid #d1d5db; background:#fff; font-weight:600; font-size:15px; }
+  .swatches { display:grid; grid-template-columns:repeat(3, 110px); gap:14px; }
+  .swatches button { width:110px; height:80px; border-radius:12px; border:2px solid rgba(0,0,0,.08); }
+  .prompt { font-size:20px; font-weight:700; margin-bottom:18px; } .score { color:var(--muted); margin-bottom:18px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  const TASK = q.get('task') || 'login';
+  const SID = q.get('sid') || 'manual';
+  const started = performance.now();
+  const root = document.getElementById('root');
+  const S = { // the app's state, reported on every event
+    user: TASK === 'login' ? null : 'Maya Lin', page: 'dashboard',
+    settings: { email: true, twofa: false, beta: false, lang: 'en' }, saved: null,
+    projects: [], invoices: {}, files: ['quarterly-report.pdf','budget-2026.xlsx','team-photo.png','roadmap.key','notes.txt','contract-signed.pdf'],
+    order: null, ship: null, agree: false, rounds: 0, wrong: 0,
+  };
+  const ROUNDS = { whack: 12, swatches: 8 };
+
+  function send(type, extra) {
+    const body = Object.assign({ sid: SID, task: TASK, type, t: Math.round(performance.now() - started) }, extra || {});
+    navigator.sendBeacon ? navigator.sendBeacon('/api/event', new Blob([JSON.stringify(body)], { type: 'application/json' }))
+                         : fetch('/api/event', { method: 'POST', body: JSON.stringify(body) });
+  }
+  function done(ok, detail) { send('done', Object.assign({ ok }, detail || {})); }
+  function wrong(what) { S.wrong++; send('wrong', { what }); }
+  send('load');
+
+  const h = (tag, attrs, ...kids) => {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+      else if (k === 'html') e.innerHTML = v;
+      else if (v !== false && v != null) e.setAttribute(k, v === true ? '' : v);
+    }
+    for (const kid of kids.flat()) if (kid != null && kid !== false) e.append(kid.nodeType ? kid : String(kid));
+    return e;
+  };
+  const toast = text => { const t = h('div', { class: 'toast', role: 'status' }, text); document.body.append(t); setTimeout(() => t.remove(), 1600); };
+  const later = (ms, fn) => setTimeout(fn, ms);
+
+  function chrome(content) {
+    const nav = h('nav', { class: 'side', 'aria-label': 'Main' },
+      ['Dashboard', 'Projects', 'Invoices', 'Files', 'Settings'].map(name =>
+        h('a', { href: '#' + name.toLowerCase(), class: S.page === name.toLowerCase() ? 'on' : '',
+                 onclick: ev => { ev.preventDefault(); S.page = name.toLowerCase(); render(); } }, name)));
+    return [h('header', {}, h('span', { class: 'brand' }, 'Northwind Console'), h('span', { class: 'who' }, S.user || '')),
+            h('div', { class: 'shell' }, nav, h('main', {}, content))];
+  }
+
+  // ---- screens --------------------------------------------------------------
+  function loginScreen() {
+    const email = h('input', { type: 'email', id: 'email', placeholder: 'you@company.com', autocomplete: 'off' });
+    const code = h('input', { type: 'text', id: 'code', placeholder: '6-digit code', inputmode: 'numeric', autocomplete: 'off' });
+    const status = h('div', { class: 'spinner', 'aria-live': 'polite' });
+    const form = h('form', { class: 'card login', onsubmit: ev => {
+      ev.preventDefault();
+      status.textContent = 'Signing in…';
+      later(350, () => {
+        if (email.value.trim() === 'maya@northwind.test' && code.value.trim() === '482915') {
+          S.user = 'Maya Lin'; S.page = 'dashboard'; send('signed_in'); done(true, { email: email.value }); render();
+        } else { status.textContent = 'That email and access code do not match.'; wrong('credentials'); }
+      });
+    } },
+      h('h1', {}, 'Sign in to Northwind'), h('p', { class: 'sub' }, 'Use your work email and the access code from your admin.'),
+      h('label', { class: 'field', for: 'email' }, 'Work email'), email,
+      h('label', { class: 'field', for: 'code' }, 'Access code'), code,
+      h('div', { style: 'margin-top:20px' }, h('button', { class: 'btn primary', type: 'submit' }, 'Sign in')), status);
+    return [h('header', {}, h('span', { class: 'brand' }, 'Northwind Console')), form];
+  }
+
+  function dashboard() {
+    return chrome([h('h1', {}, 'Welcome back, Maya'), h('p', { class: 'sub' }, 'Here is what changed since yesterday.'),
+      h('div', { class: 'card' }, h('div', { class: 'row' }, 'Open invoices', h('strong', {}, '8')),
+        h('div', { class: 'row' }, 'Active projects', h('strong', {}, String(3 + S.projects.length))),
+        h('div', { class: 'row' }, 'Storage used', h('strong', {}, '41%')))]);
+  }
+
+  function settingsScreen() {
+    const sw = (key, title, note) => h('div', { class: 'row' },
+      h('div', {}, h('div', { style: 'font-weight:600' }, title), h('div', { style: 'color:var(--muted)' }, note)),
+      h('button', { class: 'switch', role: 'switch', 'aria-checked': String(S.settings[key]), 'aria-label': title,
+                    onclick: () => { S.settings[key] = !S.settings[key]; render(); } }));
+    const lang = h('select', { id: 'lang', onchange: ev => { S.settings.lang = ev.target.value; } },
+      [['en', 'English'], ['de', 'Deutsch'], ['fr', 'Français'], ['es', 'Español']].map(([v, l]) => h('option', { value: v, selected: S.settings.lang === v }, l)));
+    return chrome([h('h1', {}, 'Settings'), h('p', { class: 'sub' }, 'Security, notifications and language for your account.'),
+      h('div', { class: 'card' },
+        sw('email', 'Email notifications', 'A summary of activity every morning.'),
+        sw('twofa', 'Two-factor authentication', 'Ask for a code from your phone when you sign in.'),
+        sw('beta', 'Beta features', 'Try things before everyone else.'),
+        h('label', { class: 'field', for: 'lang' }, 'Language'), lang),
+      h('button', { class: 'btn primary', onclick: () => later(200, () => {
+        S.saved = JSON.parse(JSON.stringify(S.settings)); toast('Settings saved');
+        const s = S.saved; done(s.twofa && s.lang === 'de' && s.email && !s.beta, { saved: s });
+      }) }, 'Save changes')]);
+  }
+
+  let modal = null;
+  function projectsScreen() {
+    const list = h('div', { class: 'card' }, ['Atlas', 'Borealis', 'Cobalt', ...S.projects.map(p => p.name)].map(n => h('div', { class: 'row' }, n, h('span', { class: 'pill' }, 'Active'))));
+    return chrome([h('div', { style: 'display:flex;justify-content:space-between;align-items:center' },
+        h('div', {}, h('h1', {}, 'Projects'), h('p', { class: 'sub' }, 'Everything your team is building.')),
+        h('button', { class: 'btn primary', onclick: () => { modal = { name: '', region: null, vis: 'private', open: false }; render(); } }, 'New project')),
+      list, modal ? projectModal() : null]);
+  }
+  function projectModal() {
+    const regions = ['US East (Virginia)', 'EU Central (Frankfurt)', 'Asia Pacific (Tokyo)', 'South America (São Paulo)'];
+    const name = h('input', { type: 'text', id: 'pname', value: modal.name, placeholder: 'e.g. Phoenix', oninput: ev => { modal.name = ev.target.value; } });
+    const combo = h('div', { class: 'combo' },
+      h('button', { type: 'button', role: 'combobox', 'aria-expanded': String(modal.open), 'aria-haspopup': 'listbox', 'aria-controls': 'regions', 'aria-label': 'Region',
+                    onclick: () => { modal.open = !modal.open; render(); } }, modal.region || 'Choose a region'),
+      modal.open ? h('ul', { role: 'listbox', id: 'regions' }, regions.map(r => h('li', { role: 'option', 'aria-selected': String(modal.region === r),
+                     onclick: () => { modal.region = r; modal.open = false; render(); } }, r))) : null);
+    const vis = v => h('label', {}, h('input', { type: 'radio', name: 'vis', value: v, checked: modal.vis === v, onchange: () => { modal.vis = v; } }), v === 'private' ? 'Private — only you' : 'Team — everyone in Northwind');
+    return h('div', { class: 'scrim' }, h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'New project' },
+      h('h2', {}, 'New project'), h('p', { class: 'sub' }, 'Name it and pick where its data lives.'),
+      h('label', { class: 'field', for: 'pname' }, 'Project name'), name,
+      h('label', { class: 'field' }, 'Region'), combo,
+      h('label', { class: 'field' }, 'Visibility'), h('div', { class: 'radios' }, vis('private'), vis('team')),
+      h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => { modal = null; render(); } }, 'Cancel'),
+        h('button', { class: 'btn primary', onclick: () => {
+          if (!modal.name.trim() || !modal.region) { wrong('incomplete'); toast('Name and region are required'); return; }
+          const p = { name: modal.name.trim(), region: modal.region, vis: modal.vis }; S.projects.push(p); modal = null; render(); toast('Project created');
+          done(p.name === 'Apollo' && p.region === 'EU Central (Frankfurt)' && p.vis === 'team', { project: p });
+        } }, 'Create project'))));
+  }
+
+  let step = 1;
+  function checkoutScreen() {
+    const steps = h('div', { class: 'steps' }, ['1 Shipping', '2 Terms', '3 Review'].map((s, i) => h('span', { class: i + 1 === step ? 'on' : '' }, s)));
+    let body;
+    if (step === 1) {
+      const opt = (v, l, price) => h('label', {}, h('input', { type: 'radio', name: 'ship', value: v, checked: S.ship === v, onchange: () => { S.ship = v; } }), `${l} — ${price}`);
+      body = [h('h2', {}, 'How should we ship it?'), h('div', { class: 'radios' }, opt('standard', 'Standard (5–7 days)', '$0'), opt('express', 'Express (1–2 days)', '$18'), opt('pickup', 'Pick up in store', '$0')),
+        h('div', { class: 'actions', style: 'margin-top:18px' }, h('button', { class: 'btn primary', onclick: () => { if (!S.ship) { wrong('no shipping'); return; } step = 2; render(); } }, 'Next'))];
+    } else if (step === 2) {
+      body = [h('h2', {}, 'Terms'), h('p', {}, 'Orders ship from our Rotterdam warehouse. Returns within 30 days.'),
+        h('div', { class: 'checks' }, h('label', {}, h('input', { type: 'checkbox', id: 'agree', checked: S.agree, onchange: ev => { S.agree = ev.target.checked; } }), 'I agree to the terms of sale')),
+        h('div', { class: 'checks' }, h('label', {}, h('input', { type: 'checkbox', id: 'news' }), 'Send me product news')),
+        h('div', { class: 'actions', style: 'margin-top:18px;display:flex;gap:10px' },
+          h('button', { class: 'btn', onclick: () => { step = 1; render(); } }, 'Back'),
+          h('button', { class: 'btn primary', onclick: () => { if (!S.agree) { wrong('terms'); toast('Please accept the terms'); return; } step = 3; render(); } }, 'Next'))];
+    } else {
+      body = [h('h2', {}, 'Review'), h('div', { class: 'row' }, 'Shipping', h('strong', {}, S.ship)), h('div', { class: 'row' }, 'Total', h('strong', {}, S.ship === 'express' ? '$147.00' : '$129.00')),
+        h('div', { class: 'actions', style: 'margin-top:18px;display:flex;gap:10px' },
+          h('button', { class: 'btn', onclick: () => { step = 2; render(); } }, 'Back'),
+          h('button', { class: 'btn primary', onclick: () => later(250, () => { S.order = { ship: S.ship }; toast('Order placed'); render(); done(S.ship === 'express' && S.agree, { order: S.order }); }) }, 'Place order'))];
+    }
+    return chrome([h('h1', {}, S.order ? 'Thank you!' : 'Checkout'), h('p', { class: 'sub' }, S.order ? 'Your order is on its way.' : 'Desk lamp · 1 item'), S.order ? null : h('div', { class: 'card' }, steps, body)]);
+  }
+
+  let confirmFor = null;
+  function invoicesScreen() {
+    const ids = ['INV-1038', 'INV-1039', 'INV-1040', 'INV-1041', 'INV-1042', 'INV-1043', 'INV-1044', 'INV-1045'];
+    const who = ['Acme Corp', 'Globex', 'Initech', 'Umbrella', 'Hooli', 'Stark Industries', 'Wayne Enterprises', 'Wonka'];
+    const amount = ['$1,200.00', '$860.50', '$4,310.00', '$97.20', '$2,045.00', '$12,800.00', '$640.00', '$3,330.75'];
+    const rows = ids.map((id, i) => h('tr', {}, h('td', {}, id), h('td', {}, who[i]), h('td', {}, amount[i]),
+      h('td', {}, h('span', { class: 'pill ' + (S.invoices[id] || '') }, S.invoices[id] || 'pending')),
+      h('td', {}, S.invoices[id] ? '' : [h('button', { class: 'btn', onclick: () => { confirmFor = id; render(); } }, 'Approve'),
+                                          h('button', { class: 'btn', onclick: () => { S.invoices[id] = 'rejected'; wrong('rejected ' + id); render(); } }, 'Reject')])));
+    const dialog = confirmFor ? h('div', { class: 'scrim' }, h('div', { class: 'modal', role: 'alertdialog', 'aria-label': 'Confirm approval' },
+      h('h2', {}, `Approve ${confirmFor}?`), h('p', { class: 'sub' }, 'The customer will be charged today.'),
+      h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => { confirmFor = null; render(); } }, 'Cancel'),
+        h('button', { class: 'btn primary', onclick: () => { const id = confirmFor; S.invoices[id] = 'approved'; confirmFor = null; render();
+          if (id !== 'INV-1042') wrong('approved ' + id);
+          const approved = Object.entries(S.invoices).filter(([, v]) => v === 'approved').map(([k]) => k);
+          if (S.invoices['INV-1042'] === 'approved') done(approved.length === 1 && !Object.values(S.invoices).includes('rejected'), { approved }); } }, 'Approve')))) : null;
+    return chrome([h('h1', {}, 'Invoices'), h('p', { class: 'sub' }, 'Approve or reject what your customers owe.'),
+      h('table', {}, h('thead', {}, h('tr', {}, ['Invoice', 'Customer', 'Amount', 'Status', ''].map(t => h('th', {}, t)))), h('tbody', {}, rows)), dialog]);
+  }
+
+  // Icon-only buttons, the way many real apps ship them: no text, no label, no title.
+  const ICONS = {
+    star: '<svg viewBox="0 0 24 24"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>',
+    download: '<svg viewBox="0 0 24 24"><path d="M12 4v11m0 0l-4-4m4 4l4-4M5 20h14"/></svg>',
+    trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m-8 0l1 13h8l1-13"/></svg>',
+  };
+  let deleting = null;
+  function filesScreen() {
+    const rows = S.files.map(f => h('div', { class: 'row' }, h('span', {}, f),
+      h('span', {}, ['star', 'download', 'trash'].map(kind => h('button', { class: 'icon', html: ICONS[kind],
+        onclick: () => { if (kind === 'trash') { deleting = f; render(); } else wrong(kind + ' ' + f); } })))));
+    const dialog = deleting ? h('div', { class: 'scrim' }, h('div', { class: 'modal', role: 'alertdialog', 'aria-label': 'Delete file' },
+      h('h2', {}, `Delete ${deleting}?`), h('p', { class: 'sub' }, 'It goes to the bin for 30 days.'),
+      h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => { deleting = null; render(); } }, 'Keep'),
+        h('button', { class: 'btn danger', onclick: () => { const f = deleting; S.files = S.files.filter(x => x !== f); deleting = null; render(); toast('Moved to bin');
+          if (f !== 'budget-2026.xlsx') wrong('deleted ' + f); else done(S.files.length === 5, { deleted: f }); } }, 'Delete')))) : null;
+    return chrome([h('h1', {}, 'Files'), h('p', { class: 'sub' }, 'Shared with the whole team.'), h('div', { class: 'card' }, rows), dialog]);
+  }
+
+  const WORDS = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot', 'Golf', 'Hotel', 'India', 'Juliet', 'Kilo', 'Lima'];
+  const ORDER = [6, 2, 10, 0, 8, 4, 11, 1, 7, 3, 9, 5];
+  function whackScreen() {
+    const n = ROUNDS.whack, want = WORDS[ORDER[S.rounds % ORDER.length]];
+    const over = S.rounds >= n;
+    return chrome([h('h1', {}, 'Reaction drill'), h('p', { class: 'sub' }, `Click the button named in the prompt, ${n} times.`),
+      h('div', { class: 'prompt', 'aria-live': 'polite' }, over ? 'All done!' : `Click: ${want}`), h('div', { class: 'score' }, `${S.rounds} of ${n} · ${S.wrong} wrong`),
+      over ? null : h('div', { class: 'grid' }, WORDS.map(w => h('button', { onclick: () => {
+        if (w === want) { S.rounds++; send('hit', { n: S.rounds }); if (S.rounds >= n) done(true, { wrong: S.wrong }); } else wrong(w);
+        render(); } }, w)))]);
+  }
+
+  const COLORS = [['red', '#ef4444'], ['orange', '#f97316'], ['yellow', '#facc15'], ['green', '#22c55e'], ['teal', '#14b8a6'], ['blue', '#3b82f6'], ['purple', '#a855f7'], ['pink', '#ec4899'], ['black', '#111827']];
+  const CORDER = [3, 0, 5, 8, 1, 6, 2, 7];
+  function swatchScreen() {
+    const n = ROUNDS.swatches, want = COLORS[CORDER[S.rounds % CORDER.length]][0];
+    const over = S.rounds >= n;
+    return chrome([h('h1', {}, 'Colour drill'), h('p', { class: 'sub' }, `Click the square of the colour named in the prompt, ${n} times.`),
+      h('div', { class: 'prompt', 'aria-live': 'polite' }, over ? 'All done!' : `Click the ${want.toUpperCase()} square`), h('div', { class: 'score' }, `${S.rounds} of ${n} · ${S.wrong} wrong`),
+      over ? null : h('div', { class: 'swatches' }, COLORS.map(([name, hex]) => h('button', { style: `background:${hex}`, onclick: () => {
+        if (name === want) { S.rounds++; send('hit', { n: S.rounds }); if (S.rounds >= n) done(true, { wrong: S.wrong }); } else wrong(name);
+        render(); } })))]);
+  }
+
+  const START = { login: 'login', settings: 'dashboard', project: 'projects', checkout: 'checkout', invoices: 'invoices', files: 'files', whack: 'whack', swatches: 'swatches' };
+  S.page = START[TASK] || 'dashboard';
+  function render() {
+    const screens = { login: loginScreen, dashboard, settings: settingsScreen, projects: projectsScreen, checkout: checkoutScreen,
+                      invoices: invoicesScreen, files: filesScreen, whack: whackScreen, swatches: swatchScreen };
+    const page = S.user ? S.page : 'login';
+    root.replaceChildren(...[].concat((screens[page] || dashboard)()));
+    document.title = `${page[0].toUpperCase() + page.slice(1)} · Northwind Console`;
+  }
+  render();
+})();
+</script>
+</body>
+</html>
