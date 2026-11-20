@@ -136,3 +136,26 @@ private final class Loaded: NSObject, WKNavigationDelegate {
     #expect(fills.first { $0["label"] as? String == "Code" }?["value"] as? String == AgentSecrets.placeholder)
     #expect(fills.first { $0["label"] as? String == "Expiry" }?["value"] as? String == "12/29")
 }
+
+/// SEARCH_JEV_URL / SEARCH_JEV_MODEL: a test world's Jev goes to the named server, without the TypeSafe key; the browser in use never.
+@Test func probeEndpointOverride() {
+    var keys = Intelligence.Keys()
+    keys.jevKey = "ts-real-key"
+    let env = ["SEARCH_JEV_URL": "http://127.0.0.1:4199/v1/systemone", "SEARCH_JEV_MODEL": "mini-jev"]
+    let probe = Intelligence.probe(keys, env: env, world: "test")
+    #expect(probe.jevEndpoint == "http://127.0.0.1:4199/v1/systemone" && probe.jevModel == "mini-jev")
+    #expect(probe.jevKey == "probe")
+    #expect(Intelligence.probe(keys, env: env.merging(["SEARCH_JEV_KEY": "mk"]) { $1 }, world: "test").jevKey == "mk")
+    #expect(Intelligence.probe(keys, env: env, world: nil) == keys)
+    #expect(Intelligence.probe(keys, env: [:], world: "test") == keys)
+}
+
+/// Jev.Calls: what each decision reads off it (Session.advance).
+@Test func callsCountSecondAsks() {
+    let calls = Jev.Calls()
+    calls.sent(); calls.answer("jev-1.14.0")
+    let before = calls.mark
+    calls.sent(); calls.sent(); calls.answer("mini-jev")   // a 429, then its retry
+    #expect(calls.models(since: before.answered) == ["mini-jev"])
+    #expect(calls.mark.sent - before.sent - 1 == 1)
+}
