@@ -1466,15 +1466,26 @@ enum Ultrafast {
 
     // MARK: - choose
 
-    /// One TypeSafe request: the operation, and a target for every operation
-    /// that has candidates. Only the head the operation picked is consumed.
-    /// With a `shot`, the picture rides in the state (`page.screenshot`);
-    /// in `box` mode the target heads give way to one Box question, and
-    /// the box is mapped back onto an observed element.
-    static func choose(_ obs: Observation, goal: String, history: [Step], keys: Intelligence.Keys, signInAvailable: Bool = false, autofill: Set<String> = [],
-                       vision: Vision = .off, shot: Shot? = nil, model: String? = nil, strategy: Strategy = Strategy(),
-                       doneRefused: Bool = false, blockedRefused: Bool = false, noScroll: Bool = false,
-                       askUnmet: Bool = false, confirmOnly: Bool = false, refusal: [String: Any]? = nil, notes: [[String: Any]] = []) async throws -> Decision {
+    /// What one decision asks Jev, before any call: the state and the
+    /// questions exactly as `choose` sends them, and what it needs to read
+    /// the answer. jev_dump writes the same (training data, JevDump.swift).
+    struct Request {
+        var state: [String: Any]
+        var questions: [String: Any]
+        let operations: [String: String]
+        let targets: [String: [String: [String: Any]]]
+        let controls: [String: [String: Any]]
+        let rules: [String]
+        let quoted: [String]
+        let fills: [String: [String: Any]]
+        let boxMode: Bool
+        let assets: [Jev.Asset]
+    }
+
+    static func request(_ obs: Observation, goal: String, history: [Step], signInAvailable: Bool = false, autofill: Set<String> = [],
+                        vision: Vision = .off, shot: Shot? = nil, strategy: Strategy = Strategy(),
+                        doneRefused: Bool = false, blockedRefused: Bool = false, noScroll: Bool = false,
+                        askUnmet: Bool = false, confirmOnly: Bool = false, refusal: [String: Any]? = nil, notes: [[String: Any]] = []) -> Request {
         let (elements, allTargets, allControls) = actionSpace(obs.actions, signInAvailable: signInAvailable, autofill: autofill)
         // A form sent once that the page took without a word: only DONE or BLOCKED is left to say.
         let targets = confirmOnly ? [:] : allTargets, controls = confirmOnly ? [:] : allControls
@@ -1517,25 +1528,6 @@ enum Ultrafast {
             questions["unmet"] = ["type": "noul", "instructions": ["goal": goal, "statement": unmetStatement]] as [String: Any]
         }
         let boxMode = pictured && vision == .box
-        func targetHeads() -> [String: Any] {
-            var heads: [String: Any] = [:]
-            for (operation, candidates) in targets {
-                var criteria: [String: Any] = [:]
-                for (index, a) in candidates {
-                    var c: [String: Any] = [
-                        "element": "[\(index)] \(a["label"] as? String ?? "")",
-                        "current_value": (a["current_value"] ?? a["value"] ?? "") as Any,
-                    ]
-                    for k in ["role", "checked", "selected", "expanded"] { if let v = a[k] { c[k] = v } }
-                    criteria[index] = c
-                }
-                heads[operation.lowercased() + "_target"] = [
-                    "type": "choice", "criteria": criteria,
-                    "instructions": ["goal": goal, "operation": operation, "rules": rules + [targetRule]] as [String: Any],
-                ] as [String: Any]
-            }
-            return heads
-        }
         if boxMode {
             if !targets.isEmpty {
                 questions["target_box"] = [
@@ -1546,7 +1538,7 @@ enum Ultrafast {
                 ] as [String: Any]
             }
         } else {
-            for (name, head) in targetHeads() { questions[name] = head }
+            for (name, head) in targetHeads(targets, goal: goal, rules: rules) { questions[name] = head }
         }
         for (name, question) in valueQuestions(quoted, fills: fills, goal: goal) { questions[name] = question }
         var page: [String: Any] = ["url": obs.url, "title": obs.title, "text": strategy.lean ? String(obs.text.prefix(1200)) : obs.text]
@@ -1560,6 +1552,45 @@ enum Ultrafast {
             "recent_actions": history.suffix(strategy.lean ? 5 : 10).map(\.recent) + (doneRefused ? [refusal ?? Ultrafast.refusedNote] : [])
                 + (confirmOnly ? [Ultrafast.sentNote] : []) + notes,
         ]
+        return Request(state: state, questions: questions, operations: operations, targets: targets, controls: controls,
+                       rules: rules, quoted: quoted, fills: fills, boxMode: boxMode, assets: assets)
+    }
+
+    /// A target question per operation that has candidates.
+    static func targetHeads(_ targets: [String: [String: [String: Any]]], goal: String, rules: [String]) -> [String: Any] {
+        var heads: [String: Any] = [:]
+        for (operation, candidates) in targets {
+            var criteria: [String: Any] = [:]
+            for (index, a) in candidates {
+                var c: [String: Any] = [
+                    "element": "[\(index)] \(a["label"] as? String ?? "")",
+                    "current_value": (a["current_value"] ?? a["value"] ?? "") as Any,
+                ]
+                for k in ["role", "checked", "selected", "expanded"] { if let v = a[k] { c[k] = v } }
+                criteria[index] = c
+            }
+            heads[operation.lowercased() + "_target"] = [
+                "type": "choice", "criteria": criteria,
+                "instructions": ["goal": goal, "operation": operation, "rules": rules + [targetRule]] as [String: Any],
+            ] as [String: Any]
+        }
+        return heads
+    }
+
+    /// One TypeSafe request: the operation, and a target for every operation
+    /// that has candidates. Only the head the operation picked is consumed.
+    /// With a `shot`, the picture rides in the state (`page.screenshot`);
+    /// in `box` mode the target heads give way to one Box question, and
+    /// the box is mapped back onto an observed element.
+    static func choose(_ obs: Observation, goal: String, history: [Step], keys: Intelligence.Keys, signInAvailable: Bool = false, autofill: Set<String> = [],
+                       vision: Vision = .off, shot: Shot? = nil, model: String? = nil, strategy: Strategy = Strategy(),
+                       doneRefused: Bool = false, blockedRefused: Bool = false, noScroll: Bool = false,
+                       askUnmet: Bool = false, confirmOnly: Bool = false, refusal: [String: Any]? = nil, notes: [[String: Any]] = []) async throws -> Decision {
+        let r = request(obs, goal: goal, history: history, signInAvailable: signInAvailable, autofill: autofill, vision: vision, shot: shot,
+                        strategy: strategy, doneRefused: doneRefused, blockedRefused: blockedRefused, noScroll: noScroll,
+                        askUnmet: askUnmet, confirmOnly: confirmOnly, refusal: refusal, notes: notes)
+        let (state, questions, operations, targets, controls) = (r.state, r.questions, r.operations, r.targets, r.controls)
+        let (quoted, fills, boxMode, assets) = (r.quoted, r.fills, r.boxMode, r.assets)
 
         // Their retry: a 429/503/529 is tried twice more, backing off; anything
         // else is the caller's. No action has happened yet, so this is safe.
@@ -1599,7 +1630,7 @@ enum Ultrafast {
                 if boxMode {
                     // The box hit nothing (or there was none): the text head
                     // for this operation, as a second request. Counted.
-                    let heads = targetHeads()
+                    let heads = targetHeads(targets, goal: goal, rules: r.rules)
                     let name = operation.lowercased() + "_target"
                     guard let head = heads[name] else { throw Failure(text: "No target head for \(operation); nothing executed.") }
                     let again = try await ask([name: head], assets: [])
@@ -2918,6 +2949,7 @@ enum Ultrafast {
     @MainActor
     static func call(_ name: String, _ args: [String: Any], in browser: Browser) async throws -> [Content] {
         guard MCP.shared.config.jev else { throw Failure(text: "Jev mode is off — Settings › Agents › Jev mode") }
+        if name == "jev_dump" { return try await dumpPage(args, in: browser) } // no Jev call, so no key needed
         guard Intelligence.shared.jevReady else { throw Failure(text: "No Jev (TypeSafe) key. Tell the user: make a TypeSafe account at \(Jev.keyPage), create a key there, and paste the ts-… key in Copper › Settings › Agents › Jev mode. Jev runs need it.") }
         switch name {
         case "jev_observe":
