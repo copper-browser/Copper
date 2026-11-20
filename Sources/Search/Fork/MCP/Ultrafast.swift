@@ -651,6 +651,8 @@ enum Ultrafast {
         if (e?.tagName==='INPUT' && String(e.getAttribute('type')||'').toLowerCase()==='password') return true;
         return /(^|\s)(current-password|new-password|one-time-code|cc-number|cc-csc)(\s|$)/i.test(e?.getAttribute?.('autocomplete')||'');
       } catch (_) { return false; } };
+      // Fork (jev-log): any card field too (cc-exp, cc-name…); only SEARCH_JEV_LOG reads it.
+      const sensitive = e => secret(e) || /(^|\s)cc-/i.test(e?.getAttribute?.('autocomplete')||'');
       const valueOf = e => secret(e) && e.value ? SECRET+'#'+String(e.value).length : e.value;
       // deep (cache.deep, set by each read): the page's open shadow roots and
       // same-origin frames are read too, as browser-use's ax.py does: every
@@ -825,6 +827,7 @@ enum Ultrafast {
           // button sends its form (never twice without the page answering).
           if (rname==='link' && e.href) base.href=e.href.split('#')[0];
           if (submitter(e)) base.submits=true;
+          if (sensitive(e)) base.sensitive=true;
           if (query(e)) base.query=true;
           else if (e.form || e.closest('form')) base.inForm=true;
           for (const key of ['checked','selected','expanded']) {
@@ -1456,15 +1459,26 @@ enum Ultrafast {
 
     // MARK: - choose
 
-    /// One TypeSafe request: the operation, and a target for every operation
-    /// that has candidates. Only the head the operation picked is consumed.
-    /// With a `shot`, the picture rides in the state (`page.screenshot`);
-    /// in `box` mode the target heads give way to one Box question, and
-    /// the box is mapped back onto an observed element.
-    static func choose(_ obs: Observation, goal: String, history: [Step], keys: Intelligence.Keys, signInAvailable: Bool = false, autofill: Set<String> = [],
-                       vision: Vision = .off, shot: Shot? = nil, model: String? = nil, strategy: Strategy = Strategy(),
-                       doneRefused: Bool = false, blockedRefused: Bool = false, noScroll: Bool = false,
-                       askUnmet: Bool = false, confirmOnly: Bool = false, refusal: [String: Any]? = nil, notes: [[String: Any]] = []) async throws -> Decision {
+    /// What one decision asks Jev, before any call: the state and the
+    /// questions exactly as `choose` sends them, and what it needs to read
+    /// the answer. jev_dump writes the same (training data, JevDump.swift).
+    struct Request {
+        var state: [String: Any]
+        var questions: [String: Any]
+        let operations: [String: String]
+        let targets: [String: [String: [String: Any]]]
+        let controls: [String: [String: Any]]
+        let rules: [String]
+        let quoted: [String]
+        let fills: [String: [String: Any]]
+        let boxMode: Bool
+        let assets: [Jev.Asset]
+    }
+
+    static func request(_ obs: Observation, goal: String, history: [Step], signInAvailable: Bool = false, autofill: Set<String> = [],
+                        vision: Vision = .off, shot: Shot? = nil, strategy: Strategy = Strategy(),
+                        doneRefused: Bool = false, blockedRefused: Bool = false, noScroll: Bool = false,
+                        askUnmet: Bool = false, confirmOnly: Bool = false, refusal: [String: Any]? = nil, notes: [[String: Any]] = []) -> Request {
         let (elements, allTargets, allControls) = actionSpace(obs.actions, signInAvailable: signInAvailable, autofill: autofill)
         // A form sent once that the page took without a word: only DONE or BLOCKED is left to say.
         let targets = confirmOnly ? [:] : allTargets, controls = confirmOnly ? [:] : allControls
@@ -1507,25 +1521,6 @@ enum Ultrafast {
             questions["unmet"] = ["type": "noul", "instructions": ["goal": goal, "statement": unmetStatement]] as [String: Any]
         }
         let boxMode = pictured && vision == .box
-        func targetHeads() -> [String: Any] {
-            var heads: [String: Any] = [:]
-            for (operation, candidates) in targets {
-                var criteria: [String: Any] = [:]
-                for (index, a) in candidates {
-                    var c: [String: Any] = [
-                        "element": "[\(index)] \(a["label"] as? String ?? "")",
-                        "current_value": (a["current_value"] ?? a["value"] ?? "") as Any,
-                    ]
-                    for k in ["role", "checked", "selected", "expanded"] { if let v = a[k] { c[k] = v } }
-                    criteria[index] = c
-                }
-                heads[operation.lowercased() + "_target"] = [
-                    "type": "choice", "criteria": criteria,
-                    "instructions": ["goal": goal, "operation": operation, "rules": rules + [targetRule]] as [String: Any],
-                ] as [String: Any]
-            }
-            return heads
-        }
         if boxMode {
             if !targets.isEmpty {
                 questions["target_box"] = [
@@ -1536,7 +1531,7 @@ enum Ultrafast {
                 ] as [String: Any]
             }
         } else {
-            for (name, head) in targetHeads() { questions[name] = head }
+            for (name, head) in targetHeads(targets, goal: goal, rules: rules) { questions[name] = head }
         }
         for (name, question) in valueQuestions(quoted, fills: fills, goal: goal) { questions[name] = question }
         var page: [String: Any] = ["url": obs.url, "title": obs.title, "text": strategy.lean ? String(obs.text.prefix(1200)) : obs.text]
@@ -1550,6 +1545,45 @@ enum Ultrafast {
             "recent_actions": history.suffix(strategy.lean ? 5 : 10).map(\.recent) + (doneRefused ? [refusal ?? Ultrafast.refusedNote] : [])
                 + (confirmOnly ? [Ultrafast.sentNote] : []) + notes,
         ]
+        return Request(state: state, questions: questions, operations: operations, targets: targets, controls: controls,
+                       rules: rules, quoted: quoted, fills: fills, boxMode: boxMode, assets: assets)
+    }
+
+    /// A target question per operation that has candidates.
+    static func targetHeads(_ targets: [String: [String: [String: Any]]], goal: String, rules: [String]) -> [String: Any] {
+        var heads: [String: Any] = [:]
+        for (operation, candidates) in targets {
+            var criteria: [String: Any] = [:]
+            for (index, a) in candidates {
+                var c: [String: Any] = [
+                    "element": "[\(index)] \(a["label"] as? String ?? "")",
+                    "current_value": (a["current_value"] ?? a["value"] ?? "") as Any,
+                ]
+                for k in ["role", "checked", "selected", "expanded"] { if let v = a[k] { c[k] = v } }
+                criteria[index] = c
+            }
+            heads[operation.lowercased() + "_target"] = [
+                "type": "choice", "criteria": criteria,
+                "instructions": ["goal": goal, "operation": operation, "rules": rules + [targetRule]] as [String: Any],
+            ] as [String: Any]
+        }
+        return heads
+    }
+
+    /// One TypeSafe request: the operation, and a target for every operation
+    /// that has candidates. Only the head the operation picked is consumed.
+    /// With a `shot`, the picture rides in the state (`page.screenshot`);
+    /// in `box` mode the target heads give way to one Box question, and
+    /// the box is mapped back onto an observed element.
+    static func choose(_ obs: Observation, goal: String, history: [Step], keys: Intelligence.Keys, signInAvailable: Bool = false, autofill: Set<String> = [],
+                       vision: Vision = .off, shot: Shot? = nil, model: String? = nil, strategy: Strategy = Strategy(),
+                       doneRefused: Bool = false, blockedRefused: Bool = false, noScroll: Bool = false,
+                       askUnmet: Bool = false, confirmOnly: Bool = false, refusal: [String: Any]? = nil, notes: [[String: Any]] = []) async throws -> Decision {
+        let r = request(obs, goal: goal, history: history, signInAvailable: signInAvailable, autofill: autofill, vision: vision, shot: shot,
+                        strategy: strategy, doneRefused: doneRefused, blockedRefused: blockedRefused, noScroll: noScroll,
+                        askUnmet: askUnmet, confirmOnly: confirmOnly, refusal: refusal, notes: notes)
+        let (state, questions, operations, targets, controls) = (r.state, r.questions, r.operations, r.targets, r.controls)
+        let (quoted, fills, boxMode, assets) = (r.quoted, r.fills, r.boxMode, r.assets)
 
         // Their retry: a 429/503/529 is tried twice more, backing off; anything
         // else is the caller's. No action has happened yet, so this is safe.
@@ -1589,7 +1623,7 @@ enum Ultrafast {
                 if boxMode {
                     // The box hit nothing (or there was none): the text head
                     // for this operation, as a second request. Counted.
-                    let heads = targetHeads()
+                    let heads = targetHeads(targets, goal: goal, rules: r.rules)
                     let name = operation.lowercased() + "_target"
                     guard let head = heads[name] else { throw Failure(text: "No target head for \(operation); nothing executed.") }
                     let again = try await ask([name: head], assets: [])
@@ -1966,6 +2000,8 @@ enum Ultrafast {
         let tab: Tab
         unowned let browser: Browser
         let started = Date()
+        /// Joins this run's SEARCH_JEV_LOG lines to its end (and to jev_run's JSON).
+        let runID = UUID().uuidString.lowercased()
         /// How much of the picture Jev gets (Vision), and which Jev; the
         /// defaults are this Mac's (intelligence.json), a run can say otherwise.
         let vision: Vision
@@ -2110,6 +2146,7 @@ enum Ultrafast {
         func finishTrace(_ status: String? = nil, note: String? = nil) {
             guard !traced else { return }
             traced = true
+            JevLog.finish(run: runID, goal: goal, status: status ?? self.status, steps: history.count, wallMs: elapsedMs, answer: answer)
             // cosmetic only: the run is over, take the layer off the page.
             Trail.clear(tab.web)
             Drive.shared.finish(Drive.Status(rawValue: status ?? self.status) ?? .error, note: note ?? self.note)
@@ -2128,6 +2165,22 @@ enum Ultrafast {
         /// taken, or nil when the decision ended the run or the page went
         /// stale and was read again.
         func tick() async throws -> Step? {
+            guard JevLog.folder != nil else { return try await advance() }
+            // Fork (jev-log): this decision's Jev calls are written once it is
+            // carried out (an action went in, or its DONE/BLOCKED ended the run) or dropped.
+            let log = JevLog.Tick(run: runID, step: decisions + 1, strategy: strategy.name)
+            do {
+                let step = try await JevLog.$tick.withValue(log) { try await advance() }
+                let claim = log.chosen?["operation"] as? String
+                JevLog.flush(log, executed: step != nil || (claim == "DONE" && status == "done") || (claim == "BLOCKED" && status == "blocked"))
+                return step
+            } catch {
+                JevLog.flush(log, executed: false)
+                throw error
+            }
+        }
+
+        private func advance() async throws -> Step? {
             guard !finished else { return nil }
             if stopped() { return nil }
             let keys = Intelligence.shared.effective
@@ -2169,6 +2222,10 @@ enum Ultrafast {
                 var raw = shown.raw
                 raw["actions"] = shown.actions.filter { a in (a["node"] as? NSNumber).map { !covered.contains($0.intValue) } ?? true }
                 shown = Observation(raw: raw)
+            }
+            if let log = JevLog.tick {
+                log.hide(shown.actions.filter { ($0["sensitive"] as? Bool) == true }
+                    .flatMap { [$0["value"] as? String, $0["current_value"] as? String].compactMap { $0 } })
             }
             // What Jev sees this time: `auto` adds the numbered picture only
             // when the table alone can't tell the controls apart.
@@ -2244,6 +2301,7 @@ enum Ultrafast {
             spent.tokens += decision.inputTokens
             spent.requests += decision.requests
             if !decision.model.isEmpty { answeredBy = decision.model }
+            JevLog.tick?.chosen = ["operation": decision.operation, "target": decision.target ?? NSNull()]
             if strategy.llm { spent.llmIn += decision.inputTokens; spent.llmOut += decision.outputTokens; spent.llmUsd += decision.costUsd; spent.llmModel = decision.model }
             // The ms column says how long Jev took; the box's fate is news.
             trace.close(phase: asking, detail: decision.boxHit.map { $0 ? "box hit" : "box missed" })
@@ -2738,7 +2796,7 @@ enum Ultrafast {
         /// The run as one JSON object, for a harness: status, timings,
         /// every step, the page it ended on.
         func json() -> [String: Any] {
-            var out: [String: Any] = ["status": status, "note": note, "goal": goal, "elapsed_ms": elapsedMs,
+            var out: [String: Any] = ["status": status, "note": note, "goal": goal, "elapsed_ms": elapsedMs, "run_id": runID,
                                       "actions": history.count, "decisions": decisions, "totals": totals,
                                       "steps": history.map(\.json),
                                       "page": ["url": tab.address?.absoluteString ?? "about:blank", "title": tab.title]]
@@ -2863,6 +2921,7 @@ enum Ultrafast {
     @MainActor
     static func call(_ name: String, _ args: [String: Any], in browser: Browser) async throws -> [Content] {
         guard MCP.shared.config.jev else { throw Failure(text: "Jev mode is off — Settings › Agents › Jev mode") }
+        if name == "jev_dump" { return try await dumpPage(args, in: browser) } // no Jev call, so no key needed
         guard Intelligence.shared.jevReady else { throw Failure(text: "No Jev (TypeSafe) key. Tell the user: make a TypeSafe account at \(Jev.keyPage), create a key there, and paste the ts-… key in Copper › Settings › Agents › Jev mode. Jev runs need it.") }
         switch name {
         case "jev_observe":

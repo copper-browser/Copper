@@ -178,7 +178,7 @@ def play(copper, game, arm, max_steps, verbose=True):
         "game": f"{start} → {target}", "start": start, "target": target,
         "arm": arm["name"], "vision": arm["vision"], "model_asked": arm["model"],
         "model": totals.get("model", ""),
-        "status": run.get("status"), "note": run.get("note", ""),
+        "status": run.get("status"), "note": run.get("note", ""), "run_id": run.get("run_id"),
         "done": run.get("status") == "done" and reached and not cheated,
         "reached": reached, "cheated": cheated,
         "wall_ms": run.get("elapsed_ms"), "harness_ms": int((time.time() - begun) * 1000),

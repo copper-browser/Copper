@@ -717,6 +717,11 @@ enum Jev {
         else { throw Failure(kind: "bad_response", detail: "no answers in body") }
 
         var out = Answer(latencyMs: latency)
+        if JevLog.folder != nil { // Fork (jev-log)
+            var sent = body
+            sent["assets"] = nil
+            JevLog.record(body: sent, assets: assets, payload: payload, latencyMs: latency)
+        }
         if let usage = payload["usage"] as? [String: Any] { out.inputTokens = (usage["input_tokens"] as? Int) ?? 0 }
         out.model = payload["model"] as? String ?? ""
         for (name, raw) in answers {

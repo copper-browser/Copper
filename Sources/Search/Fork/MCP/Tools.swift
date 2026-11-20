@@ -348,7 +348,7 @@ enum Tools {
     @MainActor
     private static func dispatch(_ name: String, _ args: [String: Any], in browser: Browser) async throws -> [Content] {
         if !["browser_tabs", "browser_close", "browser_resize", "browser_groups", "browser_crashes", "browser_vault_save", "browser_vault_note", CloudHistoryTool.name].contains(name), !CanvasTools.names.contains(name), !StateTools.tabless(name, args),
-           !(name == "jev_run" && (args["newTab"] as? Bool) == true) {
+           !(name == "jev_run" && (args["newTab"] as? Bool) == true), name != "jev_dump" {
             await AgentTabs.ready(in: browser)
         }
         switch name {
@@ -366,7 +366,7 @@ enum Tools {
             window.setFrame(frame, display: true, animate: false)
             return [.text("Window is \(Int(w))×\(Int(h))")]
         case "browser_groups": return try groups(args, in: browser)
-        case "jev_run", "jev_step", "jev_observe", "jev_extract": return try await Ultrafast.call(name, args, in: browser)
+        case "jev_run", "jev_step", "jev_observe", "jev_extract", "jev_dump": return try await Ultrafast.call(name, args, in: browser)
         case _ where CanvasTools.names.contains(name): return try await CanvasTools.call(name, args, in: browser)
         case "browser_crashes": return [.text(try Crashes.answer(args))]
         case "browser_vault_save", "browser_vault_note":
