@@ -15,6 +15,8 @@
 #            (An arm in agentbench.py's SAME_WORLD_ARMS runs in a second probe world, <world>-same on
 #            AGENTBENCH_SAME_PORT (port+2), at AGENTBENCH_SAME_VIEWPORT; none since round 3.)
 #            AGENTBENCH_SRC=<git worktree of the build>  its HEAD goes into meta.json (devbox side)
+#            AGENTBENCH_JEV_URL=<url> [AGENTBENCH_JEV_MODEL=<name>]  the main world's Jev goes to this server
+#                                               (SEARCH_JEV_URL; arm `mini`), the second world's stays Jev (arm `jev`)
 #            AGENTBENCH_JEV_ENDPOINT=<url>      jevEndpoint of the probe world (parity/parity.py's recorder)
 #            AGENTBENCH_FLIGHTS_GAP=45          seconds between Google Flights runs (Google throttles back-to-back searches)
 #            AGENTBENCH_CHUNK=300               seconds of runs per hold of the shared lock
@@ -41,7 +43,7 @@ if [ "$(uname)" = Linux ]; then
   export AGENTBENCH_SHA AGENTBENCH_HARNESS_SHA
   envs=""; for v in AGENTBENCH_SHA AGENTBENCH_HARNESS_SHA ARMS ROUNDS_ULTRAFAST ROUNDS_WIKIGAME ROUNDS_UIBENCH ROUNDS_REALWEB ROUNDS_FBPUB ROUNDS_PARAPHRASE ROUNDS_PROBES TASKS ULTRAFAST_DIR AGENTBENCH_ALLOW_CHROME \
       AGENTBENCH_WORLD AGENTBENCH_PORT AGENTBENCH_FIXPORT AGENTBENCH_VIEWPORT AGENTBENCH_TEXT_MODEL AGENTBENCH_JEV_ENDPOINT AGENTBENCH_PRIVATE \
-      AGENTBENCH_SAME_PORT AGENTBENCH_SAME_VIEWPORT FB_CDP_PORT AGENTBENCH_FLIGHTS_GAP AGENTBENCH_FLIGHTS_INLOCK AGENTBENCH_CHUNK AGENTBENCH_BASE_APP; do
+      AGENTBENCH_SAME_PORT AGENTBENCH_SAME_VIEWPORT AGENTBENCH_JEV_URL AGENTBENCH_JEV_MODEL FB_CDP_PORT AGENTBENCH_FLIGHTS_GAP AGENTBENCH_FLIGHTS_INLOCK AGENTBENCH_CHUNK AGENTBENCH_BASE_APP; do
     [ -n "${!v:-}" ] && envs+="$v=$(printf %q "${!v}") "; done
   ssh "$host" "cd $remote && $envs ./agentbench.sh $(printf %q "$label") $(printf %q "$app") ${3:-}" || echo "remote run exited $?"
   dest="$HOME/plans/copper-hillclimb-2026-11-14/out/$label/agentbench"
@@ -84,6 +86,12 @@ q = os.path.join(folder, "intelligence.json")
 with open(os.open(q, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f: json.dump(out, f)
 print("world ready: agent.json + intelligence.json (" + ",".join(sorted(out)) + "), textModel " + str(out.get("textModel", "(build default)")))
 PY
+  # the main world's Jev at our own server (mini-Jev) when asked; the second world keeps the real Jev
+  local jevenv=""
+  if [ "$w" = "$world" ] && [ -n "${AGENTBENCH_JEV_URL:-}" ]; then
+    jevenv="<key>SEARCH_JEV_URL</key><string>$AGENTBENCH_JEV_URL</string>"
+    [ -n "${AGENTBENCH_JEV_MODEL:-}" ] && jevenv+="<key>SEARCH_JEV_MODEL</key><string>$AGENTBENCH_JEV_MODEL</string>"
+  fi
   local domain="com.collinrijock.copper.test.$w"
   defaults write "$domain" welcomed -bool true
   defaults write "$domain" bench -bool true
@@ -97,7 +105,7 @@ PY
  <key>EnvironmentVariables</key><dict>
   <key>SEARCH_PROBE</key><string>$w</string><key>SEARCH_HEADLESS</key><string>1</string>
   <key>SEARCH_MCP_PORT</key><string>$p</string><key>SEARCH_HEADLESS_SIZE</key><string>${vp:-${SEARCH_HEADLESS_SIZE:-1280x880}}</string>
-  <key>SEARCH_BACKSTAGE_SIZE</key><string>${vp:-1280x800}</string></dict>
+  <key>SEARCH_BACKSTAGE_SIZE</key><string>${vp:-1280x800}</string>$jevenv</dict>
  <key>KeepAlive</key><false/><key>RunAtLoad</key><true/>
  <key>LimitLoadToSessionType</key><string>Aqua</string>
  <key>ProgramArguments</key><array><string>$app/Contents/MacOS/Copper</string></array>
@@ -122,6 +130,7 @@ PLIST
 up_all() {
   up "$1" "$world" "$port" "${AGENTBENCH_VIEWPORT:-}" "${AGENTBENCH_TEXT_MODEL:-default}"
   case ",${ARMS:-}," in *,same,*) up "$1" "$same_world" "$same_port" "$same_viewport" default ;; esac
+  case ",${ARMS:-}," in *,jev,*) up "$1" "$same_world" "$same_port" "${AGENTBENCH_VIEWPORT:-}" "${AGENTBENCH_TEXT_MODEL:-default}" ;; esac
   case ",${ARMS:-}," in *,base,*) up "$base_app" "$same_world" "$same_port" "${AGENTBENCH_VIEWPORT:-}" "${AGENTBENCH_TEXT_MODEL:-default}" ;; esac
 }
 
@@ -136,6 +145,7 @@ case "${1:-}" in
 esac
 
 label="${1:?usage: $0 <label> <Copper.app> [groups]}"
+case ",${ARMS:-}," in *,mini,*) [ -n "${AGENTBENCH_JEV_URL:-}" ] || { echo "ARMS has mini: set AGENTBENCH_JEV_URL" >&2; exit 2; } ;; esac
 groups="${3:-ultrafast,wikigame,uibench,realweb}"
 out="$HOME/hc/out/$label/agentbench"; mkdir -p "$out"
 # run from our own copy: other tracks `pkill -f <app path>` their probes of the same build

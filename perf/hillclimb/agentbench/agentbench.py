@@ -72,6 +72,10 @@ ARMS = {
     # experiment arms (hc6/jev): Fast mode with calm+deep, without one of them
     "nocalm": {"strategy": "watched,burst,lean,paste,watch,near,reach,deep,submit"},
     "nodeep": {"strategy": "watched,burst,lean,paste,watch,near,reach,calm,submit"},
+    # mini-Jev A/B, text only on both sides: `mini` in the main world, whose Jev is AGENTBENCH_JEV_URL (agentbench.sh),
+    # `jev` in the second world on the same build with the real Jev
+    "mini": {"vision": "off"},
+    "jev": {"vision": "off"},
     # browser-use jev-ultrafast in Chrome — prepared, NOT run until Collin OKs Chrome (ultrafast_arm.py)
     "ultrafast": None,
     # browser-use 1.0 mode='ultrafast' (LLM writes code on accessibility-tree helpers) in the same Chrome (bu_ultrafast_arm.py)
@@ -83,7 +87,7 @@ ARMS = {
 }
 
 # arms that run in the second probe world (agentbench.sh: <world>-same): since round 4 the base build's
-SAME_WORLD_ARMS = {"base"}
+SAME_WORLD_ARMS = {"base", "jev"}
 
 # ---------------------------------------------------------------- tasks
 
@@ -1087,7 +1091,7 @@ def main():
                 binary = hashlib.sha256(fh.read()).hexdigest()[:16]
         meta = {"label": os.path.basename(os.path.dirname(a.out.rstrip("/"))), "app": a.app, "build": info, "base_app": a.base_app or None,
                 "sha": os.environ.get("AGENTBENCH_SHA") or None, "harness_sha": os.environ.get("AGENTBENCH_HARNESS_SHA") or None,
-                "binary_sha256": binary,
+                "binary_sha256": binary, "jev_url": os.environ.get("AGENTBENCH_JEV_URL") or None,
                 "machine": subprocess.run(["sysctl", "-n", "hw.model"], capture_output=True, text=True).stdout.strip(),
                 "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "load": os.getloadavg(), "arms": a.arms,
                 "worlds": configured, **{k: configured["main"][k] for k in ("viewport", "jevModel", "textModel", "routerModel")}}

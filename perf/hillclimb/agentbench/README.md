@@ -63,6 +63,9 @@ initial navigation excluded, upstream's boundary), decisions, actions, per-phase
 (observe/decide/text/act/settle — sums over steps from the json trace), Jev ms, input tokens,
 model/strategy/vision as answered, load average, every step; `run_id` (joins the SEARCH_JEV_LOG run line),
 `answered_by` (every model that answered) and `fallbacks` (retries and second asks), from builds that report them.
+mini-Jev A/B: `ARMS=mini,jev AGENTBENCH_JEV_URL=http://127.0.0.1:4299/v1/systemone` — the main world's Jev is that
+server (`SEARCH_JEV_URL`, test worlds only, no TypeSafe key sent), arm `jev` runs the same build on the real Jev in
+the second world; both text only (`vision: off`). Check `answered_by` per run: no hidden fallback.
 
 ## Arms
 
