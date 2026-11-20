@@ -577,13 +577,18 @@ enum Ultrafast {
         var nothingNew = false
         /// Time spent waiting before trying the same control again.
         var waitMs: Double = 0
+        /// The model each of the decision's answers came back with, and how
+        /// many of its calls were a retry or a second ask (not the first).
+        var answeredBy: [String] = []
+        var fallbacks = 0
 
         var json: [String: Any] {
             var out: [String: Any] = ["n": number, "operation": operation, "kind": kind, "label": label,
                                       "probability": probability, "confidence": confidence, "jev_ms": latencyMs,
                                       "text_ms": textLatencyMs, "shot_ms": shotMs, "input_tokens": inputTokens,
                                       "requests": requests, "url": url, "observe_ms": observeMs, "decide_ms": decideMs,
-                                      "act_ms": actMs, "settle_ms": settleMs, "burst": burst]
+                                      "act_ms": actMs, "settle_ms": settleMs, "burst": burst,
+                                      "answered_by": answeredBy, "fallbacks": fallbacks]
             out["text"] = text ?? NSNull()
             out["page_changed"] = pageChanged.map { $0 as Any } ?? NSNull()
             out["box_hit"] = boxHit.map { $0 as Any } ?? NSNull()
@@ -621,6 +626,8 @@ enum Ultrafast {
             if textLatencyMs > 0 { s += String(format: " + %.0f ms text", textLatencyMs) }
             if inputTokens > 0 { s += ", \(inputTokens) tok" }
             if let boxHit { s += boxHit ? ", box hit" : ", box missed" }
+            if decideMs > 0 { s += String(format: ", decide %.0f ms", decideMs) }
+            if fallbacks > 0 { s += ", \(fallbacks) fallback\(fallbacks == 1 ? "" : "s")" }
             s += ")"
             if let changed = pageChanged { s += changed ? " → page changed" : sent ? " → sent, no change shown" : " → no change" }
             return s
@@ -1971,6 +1978,11 @@ enum Ultrafast {
         let started = Date()
         /// Joins this run's SEARCH_JEV_LOG lines to its end (and to jev_run's JSON).
         let runID = UUID().uuidString.lowercased()
+        /// Every Jev call this run makes (Jev.calls), for each decision's
+        /// answered_by and fallbacks; `decided` keeps one entry per decision,
+        /// the DONEs and stale ones that never become steps included.
+        let calls = Jev.Calls()
+        private(set) var decided: [[String: Any]] = []
         /// How much of the picture Jev gets (Vision), and which Jev; the
         /// defaults are this Mac's (intelligence.json), a run can say otherwise.
         let vision: Vision
@@ -2061,7 +2073,7 @@ enum Ultrafast {
             var observeMs = 0.0, decideMs = 0.0, actMs = 0.0, settleMs = 0.0, shotMs = 0.0
             var textMs = 0.0, textCalls = 0, textReused = 0, textModel = ""
             /// Waiting before the same control again; what the router billed (text model, LLM decider).
-            var waitMs = 0.0, llmIn = 0, llmOut = 0, llmModel = "", llmUsd = 0.0
+            var waitMs = 0.0, llmIn = 0, llmOut = 0, llmModel = "", llmUsd = 0.0, fallbacks = 0
             var settles = 0, settlesCapped = 0
             var answerMs = 0.0
         }
@@ -2134,6 +2146,10 @@ enum Ultrafast {
         /// taken, or nil when the decision ended the run or the page went
         /// stale and was read again.
         func tick() async throws -> Step? {
+            try await Jev.$calls.withValue(calls) { try await logged() }
+        }
+
+        private func logged() async throws -> Step? {
             guard JevLog.folder != nil else { return try await advance() }
             // Fork (jev-log): this decision's Jev calls are written once it is
             // carried out (an action went in, or its DONE/BLOCKED ended the run) or dropped.
@@ -2228,6 +2244,7 @@ enum Ultrafast {
             autofillAvailable = available.autofill
             let asking = trace.phase(.ask, strategy.llm ? "Asking the model which move" : seeing.needsBox ? "Asking Jev which move, and where" : seeing.usesPicture ? "Asking Jev which move, with a picture" : "Asking Jev which move")
             let decideStarted = Date()
+            let callsBefore = calls.mark
             var decision: Decision
             if strategy.llm {
                 do {
@@ -2266,11 +2283,19 @@ enum Ultrafast {
             }
             let decideMs = Date().timeIntervalSince(decideStarted) * 1000
             spent.decideMs += decideMs
+            let answeredModels = calls.models(since: callsBefore.answered)
+            let answeredList = answeredModels.isEmpty && !decision.model.isEmpty ? [decision.model] : answeredModels
+            let fallbacks = max(0, calls.mark.sent - callsBefore.sent - 1)
+            spent.fallbacks += fallbacks
+            decided.append(["n": decisions, "operation": decision.operation, "decide_ms": decideMs, "jev_ms": decision.latencyMs,
+                            "answered_by": answeredList, "fallbacks": fallbacks])
             spent.jevMs += decision.latencyMs
             spent.tokens += decision.inputTokens
             spent.requests += decision.requests
             if !decision.model.isEmpty { answeredBy = decision.model }
             JevLog.tick?.chosen = ["operation": decision.operation, "target": decision.target ?? NSNull()]
+            JevLog.tick?.decideMs = decideMs
+            JevLog.tick?.fallbacks = fallbacks
             if strategy.llm { spent.llmIn += decision.inputTokens; spent.llmOut += decision.outputTokens; spent.llmUsd += decision.costUsd; spent.llmModel = decision.model }
             // The ms column says how long Jev took; the box's fate is news.
             trace.close(phase: asking, detail: decision.boxHit.map { $0 ? "box hit" : "box missed" })
@@ -2625,6 +2650,8 @@ enum Ultrafast {
             step.box = decision.box
             step.observeMs = observeMs
             step.decideMs = decideMs
+            step.answeredBy = answeredList
+            step.fallbacks = fallbacks
             step.actMs = actMs
             step.waitMs = waitMs
             // Logged before the next read: a navigation there must not erase what was done.
@@ -2755,7 +2782,8 @@ enum Ultrafast {
                                       "pictured": pictured, "doubts": doubts, "wait_ms": spent.waitMs,
                                       "resends_stopped": resendsStopped, "sent": history.filter(\.sent).count,
                                       "llm_in_tokens": spent.llmIn, "llm_out_tokens": spent.llmOut, "llm_usd": spent.llmUsd,
-                                      "answer_ms": spent.answerMs, "covered": coveredRefusals]
+                                      "answer_ms": spent.answerMs, "covered": coveredRefusals, "fallbacks": spent.fallbacks,
+                                      "answered_by": decided.flatMap { $0["answered_by"] as? [String] ?? [] }.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }]
             if !spent.textModel.isEmpty { out["text_model"] = spent.textModel }
             if !spent.llmModel.isEmpty { out["llm_model"] = spent.llmModel }
             if !boxes.isEmpty { out["box_hits"] = boxes.filter { $0 }.count; out["box_asked"] = boxes.count }
@@ -2767,7 +2795,7 @@ enum Ultrafast {
         func json() -> [String: Any] {
             var out: [String: Any] = ["status": status, "note": note, "goal": goal, "elapsed_ms": elapsedMs, "run_id": runID,
                                       "actions": history.count, "decisions": decisions, "totals": totals,
-                                      "steps": history.map(\.json),
+                                      "steps": history.map(\.json), "decide": decided,
                                       "page": ["url": tab.address?.absoluteString ?? "about:blank", "title": tab.title]]
             if let model { out["asked_model"] = model }
             if let doneCheck { out["done_check"] = doneCheck }

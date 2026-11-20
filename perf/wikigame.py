@@ -177,7 +177,8 @@ def play(copper, game, arm, max_steps, verbose=True):
         "at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "game": f"{start} → {target}", "start": start, "target": target,
         "arm": arm["name"], "vision": arm["vision"], "model_asked": arm["model"],
-        "model": totals.get("model", ""),
+        "model": totals.get("model", ""), "answered_by": totals.get("answered_by"), "fallbacks": totals.get("fallbacks"),
+        "decide_ms": [d.get("decide_ms") for d in run.get("decide", [])],
         "status": run.get("status"), "note": run.get("note", ""), "run_id": run.get("run_id"),
         "done": run.get("status") == "done" and reached and not cheated,
         "reached": reached, "cheated": cheated,
@@ -189,7 +190,8 @@ def play(copper, game, arm, max_steps, verbose=True):
         "box_hits": totals.get("box_hits"), "box_asked": totals.get("box_asked"),
         "final_url": page.get("url"), "final_title": page.get("title"),
         "steps": [{"n": s.get("n"), "op": s.get("operation"), "label": (s.get("label") or "")[:80],
-                   "p": s.get("probability"), "jev_ms": s.get("jev_ms"), "tok": s.get("input_tokens"),
+                   "p": s.get("probability"), "jev_ms": s.get("jev_ms"), "decide_ms": s.get("decide_ms"),
+                   "answered_by": s.get("answered_by"), "fallbacks": s.get("fallbacks"), "tok": s.get("input_tokens"),
                    "box_hit": s.get("box_hit"), "changed": s.get("page_changed")} for s in steps],
     }
     if error:
@@ -201,6 +203,8 @@ def play(copper, game, arm, max_steps, verbose=True):
         print(f"  {arm['name']:<22} {mark:<18} {out['wall_ms'] or 0:>7} ms  {out['actions'] or 0:>2} actions"
               f"  jev {int(out['jev_ms'] or 0):>6} ms  {out['input_tokens'] or 0:>7} tok"
               + (f"  box {out['box_hits']}/{out['box_asked']}" if out.get("box_asked") else "")
+              + (f"  decide p50 {int(median(out['decide_ms']))} ms" if out["decide_ms"] else "")
+              + f"  by {','.join(out['answered_by'] or []) or '?'}  fallbacks {out['fallbacks'] or 0}"
               + (f"  — {out['note'][:70]}" if out["status"] not in ("done",) and out["note"] else ""),
               flush=True)
     return out

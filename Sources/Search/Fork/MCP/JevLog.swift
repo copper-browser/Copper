@@ -29,6 +29,9 @@ enum JevLog {
         private var calls: [[String: Any]] = []
         private var hiddenValues: [String] = []
         var chosen: [String: Any]?
+        /// The whole decision's wall clock (retries, second asks included) and its retry/second-ask count.
+        var decideMs: Double?
+        var fallbacks = 0
 
         init(run: String?, step: Int, strategy: String) {
             self.run = run
@@ -73,7 +76,14 @@ enum JevLog {
         guard let folder else { return }
         let calls = tick.take()
         guard !calls.isEmpty else { return }
-        write(calls.map { var c = $0; c["chosen"] = tick.chosen ?? NSNull(); c["executed"] = executed; return c }, to: folder)
+        write(calls.map {
+            var c = $0
+            c["chosen"] = tick.chosen ?? NSNull()
+            c["executed"] = executed
+            c["decide_ms"] = tick.decideMs.map { ($0 * 10).rounded() / 10 } ?? NSNull()
+            c["fallbacks"] = tick.fallbacks
+            return c
+        }, to: folder)
     }
 
     /// A run's end, joined to its calls by run_id.

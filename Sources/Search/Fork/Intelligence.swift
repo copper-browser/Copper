@@ -210,7 +210,23 @@ final class Intelligence: ObservableObject {
     /// What every caller uses: this Mac's keys with Copper Cloud's merged
     /// in (Intelligence.merge) — the cloud's gateway key, address and lane
     /// whenever it provides a gateway key. Never saved.
-    var effective: Keys { Intelligence.merge(local: keys, cloud: cloud).keys }
+    var effective: Keys { Intelligence.probe(Intelligence.merge(local: keys, cloud: cloud).keys) }
+
+    /// Fork (jev-url): SEARCH_JEV_URL / SEARCH_JEV_MODEL point a test or dev
+    /// world's Jev at another server (mini-jev) with no setting; never the
+    /// browser in use (Store.world nil). The TypeSafe key never goes there:
+    /// SEARCH_JEV_KEY is sent instead, or a placeholder.
+    nonisolated static func probe(_ keys: Keys, env: [String: String] = ProcessInfo.processInfo.environment,
+                                  world: String? = Store.world) -> Keys {
+        guard world != nil else { return keys }
+        var out = keys
+        if let url = env["SEARCH_JEV_URL"], !url.isEmpty {
+            out.jevEndpoint = url
+            out.jevKey = env["SEARCH_JEV_KEY"].flatMap { $0.isEmpty ? nil : $0 } ?? "probe"
+        }
+        if let model = env["SEARCH_JEV_MODEL"], !model.isEmpty { out.jevModel = model }
+        return out
+    }
     /// Where each key and address comes from: local, cloud, or none/default;
     /// and `lane`: cloud or local.
     var sources: [String: String] { Intelligence.merge(local: keys, cloud: cloud).sources }
@@ -630,6 +646,21 @@ enum Jev {
         var centerY: Double { (top + bottom) / 2 }
     }
 
+    /// Fork (jev-timing): every call a decision makes (`Session.tick` binds
+    /// one per run), counted as it goes out, and the model each answer came
+    /// back with, so a run can say who answered and how many calls were
+    /// retries or second asks.
+    final class Calls: @unchecked Sendable {
+        private let lock = NSLock()
+        private var sentCount = 0
+        private var answered: [String] = []
+        func sent() { lock.lock(); sentCount += 1; lock.unlock() }
+        func answer(_ model: String) { lock.lock(); answered.append(model); lock.unlock() }
+        var mark: (sent: Int, answered: Int) { lock.lock(); defer { lock.unlock() }; return (sentCount, answered.count) }
+        func models(since: Int) -> [String] { lock.lock(); defer { lock.unlock() }; return Array(answered[min(since, answered.count)...]) }
+    }
+    @TaskLocal static var calls: Calls?
+
     struct Answer {
         var choices: [String: Choice] = [:]
         var nouls: [String: Double] = [:]
@@ -706,6 +737,7 @@ enum Jev {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let started = Date()
+        calls?.sent()
         let (data, response) = try await URLSession.shared.data(for: request)
         let latency = Date().timeIntervalSince(started) * 1000
         guard let http = response as? HTTPURLResponse else { throw Failure(kind: "transport", detail: "no HTTP response") }
@@ -724,6 +756,7 @@ enum Jev {
         }
         if let usage = payload["usage"] as? [String: Any] { out.inputTokens = (usage["input_tokens"] as? Int) ?? 0 }
         out.model = payload["model"] as? String ?? ""
+        calls?.answer(out.model.isEmpty ? "?" : out.model)
         for (name, raw) in answers {
             guard let a = raw as? [String: Any] else { continue }
             if let box = a["box"] as? [String: Any],
