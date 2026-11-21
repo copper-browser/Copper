@@ -397,6 +397,7 @@ private struct TabPill: View {
                 .padding(.horizontal, 7)
                 .padding(.vertical, 6)
                 .frame(width: span)
+                .overlay(alignment: .topTrailing) { PinLightDot(title: tab.title, live: live).padding(3) } // Fork (pin-light)
             } else {
                 loose
             }

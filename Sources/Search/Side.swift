@@ -596,6 +596,7 @@ private struct PinSquare: View {
             }
         }
         .frame(width: width, height: height)
+        .overlay(alignment: .topTrailing) { PinLightDot(title: tab.title, live: live).padding(5) } // Fork (pin-light)
         .background {
             if live {
                 // The live row's paper, ring and lift, without its bar: a
