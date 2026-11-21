@@ -138,6 +138,8 @@ enum SettingsIndex {
         e(.general, "Copper on this Mac", "Correct spelling as you type", "macOS's autocorrect inside pages",
           ["spelling", "spellcheck", "spell check", "autocorrect", "auto correct", "typos", "capitalise", "capitalize"], "general.autocorrect",
           toggle: pref(\.autocorrect)),
+        e(.general, "Copper on this Mac", "Morning page", "Opens once a day, in the first window after 3 AM",
+          ["daily page", "newspaper", "morning", "start page", "home page", "homepage", "startup page", "first window"], "general.daily"),
         e(.general, "Moving in", "Move in from another browser", "Tabs, spaces, bookmarks, history and passwords from the other browsers on this Mac",
           ["import", "flow", "chrome", "arc", "safari", "export", "reading list", "migrate", "switch browsers", "bookmarks import", "transfer"], "general.flow"),
         e(.general, "Moving in", "Browsing history", "Typed addresses complete from Arc or Chrome history",

@@ -303,6 +303,9 @@ struct SettingsPanel: View {
                     Switch(on: $prefs.autocorrect)
                 }
                 .settingsAnchor("general.autocorrect")
+                Rule()
+                DailyPageLine() // Fork (daily-page)
+                    .settingsAnchor("general.daily")
             }
             downloads // Fork (settings-merge): was its own page
             SettingsSection("Moving in") {
