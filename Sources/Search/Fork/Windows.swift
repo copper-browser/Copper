@@ -185,6 +185,7 @@ enum Windows {
             Spaces.shared.frontChanged(browser)
             MCP.shared.follow(browser)
         }
+        DailyPage.windowUp(browser) // the morning page, once a day
     }
 
     /// The browser window in front, or the first one.
