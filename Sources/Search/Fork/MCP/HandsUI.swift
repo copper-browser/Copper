@@ -193,6 +193,8 @@ struct DriveSlot: View {
         let here = shown.flatMap { drive.hands(on: $0) }
         let onShown = drive.live && drive.run.map { shown.contains($0.tabID) } == true
         VStack(spacing: 0) {
+            // Fork (approve): a card or a hand-off waiting on one of this window's tabs.
+            if !browser.folded { NeedsYouPill(browser: browser).padding(.horizontal, SideBar.inset).padding(.top, 6) }
             if agent.open || browser.folded {
                 EmptyView() // the pane's live band has the Stop; folded, the page has the pill
             } else if !here.isEmpty {

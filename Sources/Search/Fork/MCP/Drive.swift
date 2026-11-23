@@ -293,6 +293,7 @@ final class Drive: ObservableObject {
     /// next call is refused, for `refusal` seconds, so it stops and says so.
     func stop() {
         guard live, let run else { return }
+        Approve.shared.deny(tab: run.tabID) // Fork (approve): Stop is a no to a card waiting on that tab
         switch run.driver {
         case .jev:
             stopRequested = true

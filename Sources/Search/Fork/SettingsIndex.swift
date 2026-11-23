@@ -229,6 +229,10 @@ enum SettingsIndex {
         Binding(get: { Agent.shared.config.pageContext }, set: { Agent.shared.config.pageContext = $0 })
     }
 
+    private static func askBefore(_ kind: Approve.Kind) -> (Browser) -> Binding<Bool> {
+        { _ in Binding(get: { Approve.asking(kind) }, set: { Store.settings.set($0, forKey: "approve." + kind.rawValue) }) }
+    }
+
     private static let agents: [SettingsEntry] = [
         e(.agents, "Outside agents", "Let agents drive this window", "Only apps on this Mac — agents in your terminal or editor act in your tabs",
           ["mcp", "mcp server", "automation", "playwright", "claude code", "cursor", "phi", "proxy", "bot", "remote control", "enable", "disable", "agent access",
@@ -250,6 +254,15 @@ enum SettingsIndex {
           ["turbo", "speed", "faster", "quick", "burst", "glide"], "agents.jevfast", fallback: "agents.jev.more"),
         e(.agents, "Jev", "What Jev sees", "Text only, a picture of the page, the picture with numbers, or a Box",
           ["screenshot", "image", "picture", "vision", "marks", "box", "set of marks", "bounding box"], "agents.jevvision", fallback: "agents.jev.more"),
+        // Fork (approve): Fork/MCP/Approve.swift
+        e(.agents, "Ask before", "Payments", "An agent shows you a card and waits before it pays, buys, places an order or checks out",
+          ["approve", "approval", "confirm", "pay", "payment", "buy", "checkout", "purchase", "ask before", "permission"], "agents.ask.pay", toggle: askBefore(.pay)),
+        e(.agents, "Ask before", "Sending", "An agent waits for your yes before it sends, posts or replies in your name",
+          ["approve", "send", "post", "email", "message", "reply", "in my name", "ask before"], "agents.ask.send", toggle: askBefore(.send)),
+        e(.agents, "Ask before", "Deleting", "An agent waits for your yes before it deletes, trashes or erases",
+          ["approve", "delete", "trash", "erase", "remove", "ask before"], "agents.ask.delete", toggle: askBefore(.delete)),
+        e(.agents, "Ask before", "Booking", "An agent waits for your yes before it books or reserves",
+          ["approve", "book", "reserve", "reservation", "appointment", "ask before"], "agents.ask.book", toggle: askBefore(.book)),
         e(.agents, "Agent apps", "Connect an agent app", "Linked agent apps get these tools for the bots you grant",
           ["agent link", "linked app", "bots", "grant", "personal token", "remote", "agents app"], "agents.links"),
         e(.agents, "Agent apps", "Add an agent app", "Paste its address and a personal token",

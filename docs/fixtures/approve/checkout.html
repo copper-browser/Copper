@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Checkout · Northside Roasters</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --ink: #1d1b19; --muted: #6b6660; --line: #e7e2dc; --brand: #2f5d50; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 -apple-system, system-ui, sans-serif; color: var(--ink); background: #f6f3ef; }
+  header { padding: 18px 40px; border-bottom: 1px solid var(--line); background: #fff; font-weight: 650; letter-spacing: .2px; }
+  main { display: grid; grid-template-columns: 1fr 340px; gap: 28px; max-width: 920px; margin: 32px auto; padding: 0 24px; }
+  section { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 22px 24px; }
+  h2 { font-size: 15px; margin: 0 0 14px; }
+  label { display: block; font-size: 12.5px; color: var(--muted); margin: 12px 0 5px; }
+  input { width: 100%; font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: #fbfaf8; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .line { display: flex; justify-content: space-between; padding: 6px 0; color: var(--muted); }
+  .total { color: var(--ink); font-weight: 650; border-top: 1px solid var(--line); margin-top: 8px; padding-top: 12px; }
+  button { margin-top: 20px; width: 100%; font: inherit; font-weight: 600; padding: 13px; border: 0; border-radius: 10px; background: var(--brand); color: #fff; cursor: pointer; }
+  button.quiet { background: #fff; color: var(--ink); border: 1px solid var(--line); margin-top: 10px; }
+  #done { display: none; color: var(--brand); font-weight: 600; margin-top: 14px; }
+</style>
+<header>Northside Roasters</header>
+<main>
+  <section>
+    <h2>Payment</h2>
+    <form id="pay">
+      <label for="name">Name on card</label>
+      <input id="name" autocomplete="cc-name" value="Collin Rijock">
+      <label for="num">Card number</label>
+      <input id="num" name="cardnumber" autocomplete="cc-number" value="4242 4242 4242 4242">
+      <div class="row">
+        <div><label for="exp">Expiry</label><input id="exp" autocomplete="cc-exp" value="04 / 29"></div>
+        <div><label for="cvc">CVC</label><input id="cvc" autocomplete="cc-csc" value="•••"></div>
+      </div>
+      <button id="go" type="submit">Pay $42.00</button>
+      <p id="done">Paid. Your order is on its way.</p>
+    </form>
+  </section>
+  <section>
+    <h2>Order summary</h2>
+    <div class="line"><span>Ethiopia Guji, 340 g</span><span>$22.00</span></div>
+    <div class="line"><span>Colombia Huila, 340 g</span><span>$16.00</span></div>
+    <div class="line"><span>Shipping</span><span>$4.00</span></div>
+    <div class="line total"><span>Total</span><span>$42.00</span></div>
+    <button id="details" class="quiet" type="button">Order details</button>
+  </section>
+</main>
+<script>
+  var paid = 0;
+  document.getElementById('pay').addEventListener('submit', function (e) {
+    e.preventDefault();
+    paid += 1;
+    document.title = 'paid ' + paid;
+    document.getElementById('done').style.display = 'block';
+  });
+  document.getElementById('details').addEventListener('click', function () { document.title = 'details'; });
+</script>
+</html>

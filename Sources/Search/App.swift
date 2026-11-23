@@ -371,6 +371,7 @@ struct ContentView: View {
         VStack(spacing: 8) {
             clearTabsToast
             announcement
+            ApproveSlot(browser: browser) // Fork (approve): an agent's payment, message, deletion or booking waits for you (Fork/MCP/Approve.swift)
             HandoffSlot(browser: browser) // Fork (agent-handoff): an agent handing a step to you (Fork/MCP/Handoff.swift)
             CaptureSlot(browser: browser, desk: browser.capture) // Fork (page-capture): asks, a refusal to undo, macOS's own "no" (Fork/Capture/CaptureBar.swift)
             StoreOffer(browser: browser)
@@ -816,6 +817,9 @@ struct ContentView: View {
         // Fork (settings-revamp): while Settings is open, ⌘F, Esc (the query
         // before the panel), ↑ ↓ ↩ over results and type-to-search are its own.
         if browser.tuning, SettingsKeys.take(event, in: browser) { return true }
+
+        // Fork (approve): ↩ approves and ⎋ denies an agent's card over the page in front.
+        if Approve.shared.key(event, in: browser) { return true }
 
         // Escape puts the page back. On a blank tab there is no page to put
         // back, so it belongs to whatever else wants it.
