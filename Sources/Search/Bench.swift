@@ -326,6 +326,11 @@ final class Bench {
                     answer(["cleared": count, "undo": count > 0])
                 case "undo":
                     answer(["restored": ClearTabs.shared.undo(in: browser)])
+                case "tidy":
+                    // Fork (tidy): `tabs tidy [local]`, local = by site, no model (Fork/Tidy.swift).
+                    Task { answer(await Tidy.shared.tidy(in: browser, local: request["arg"] as? String == "local")) }
+                case "untidy":
+                    answer(["restored": Tidy.shared.undo(in: browser)])
                 default:
                     answer(["error": "unknown tabs operation \(op)"])
                 }

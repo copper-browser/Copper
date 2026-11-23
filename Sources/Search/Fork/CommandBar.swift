@@ -41,6 +41,7 @@ enum CommandBar {
             .init(id: "reopen", name: "Reopen Closed Tab", glyph: "arrow.uturn.backward") { $0.reopen() },
             .init(id: "close", name: "Close Tab", glyph: "xmark") { b in if let t = b.active { b.close(t) } },
             .init(id: "clear-tabs", name: "Clear Tabs", glyph: "arrow.down") { ClearTabs.shared.clear(in: $0) },
+            .init(id: "tidy-tabs", name: "Tidy Tabs", glyph: "sparkles") { b in Task { await Tidy.shared.tidy(in: b) } }, // Fork/Tidy.swift
             .init(id: "pin", name: "Pin Tab", glyph: "pin") { b in if let t = b.active { b.pin(t) } },
             .init(id: "bookmark", name: "Bookmark This Page", glyph: "bookmark") { $0.bookmarkCurrent() },
             .init(id: "sidebar", name: "Toggle Sidebar", glyph: "sidebar.left") { $0.toggleSidebar() },
