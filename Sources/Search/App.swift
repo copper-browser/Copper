@@ -370,6 +370,7 @@ struct ContentView: View {
     private var bars: some View {
         VStack(spacing: 8) {
             clearTabsToast
+            TidyToast(browser: browser) // Fork (tidy): Tidied N tabs · Undo (Fork/Tidy.swift)
             announcement
             HandoffSlot(browser: browser) // Fork (agent-handoff): an agent handing a step to you (Fork/MCP/Handoff.swift)
             CaptureSlot(browser: browser, desk: browser.capture) // Fork (page-capture): asks, a refusal to undo, macOS's own "no" (Fork/Capture/CaptureBar.swift)
@@ -967,6 +968,10 @@ struct ContentView: View {
             // pointing. Everywhere else undo belongs to the page.
             if ClearTabs.shared.undoCount(in: browser) != nil {
                 ClearTabs.shared.undo(in: browser)
+                return true
+            }
+            if Tidy.shared.undoLine(in: browser) != nil { // Fork (tidy): and Tidy's, while its pill is up
+                Tidy.shared.undo(in: browser)
                 return true
             }
             guard browser.veiling else { return false }
