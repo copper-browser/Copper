@@ -250,7 +250,7 @@ struct GroundRide: NSViewRepresentable {
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
         /// The ground of slide `serial` on its way out, or nil: at rest.
-        func show(_ leaving: SpaceTheme?, serial: Int, dark: Bool, span: CGFloat?, sheer: Bool) {
+        func show(_ leaving: SpaceTheme?, serial: Int, dark: Bool, span: CGFloat?, sheer: Bool = false) {
             guard let leaving else {
                 guard riding != nil else { return }
                 riding = nil
