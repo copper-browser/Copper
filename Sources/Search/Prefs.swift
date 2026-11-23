@@ -156,8 +156,9 @@ final class Preferences: ObservableObject {
         }
         let width = store.object(forKey: "sidebar.width") as? Double ?? Double(Metrics.side)
         sideWidth = min(Metrics.sideMax, max(Metrics.sideMin, CGFloat(width)))
-        sheer = store.object(forKey: "sheer") as? Bool ?? true
-        Sheer.shared.chosen = sheer
+        let sheers = store.object(forKey: "sheer") as? Bool ?? true
+        sheer = sheers
+        Sheer.shared.chosen = sheers
         // Fork (polish r5): tabs always wear the site's icon; the old
         // "glyph" choice (letters or icons) is gone, and a stored "letters"
         // is simply not read. The key itself still marks an older install (below).
