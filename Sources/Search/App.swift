@@ -301,7 +301,7 @@ struct ContentView: View {
             } else if sidebar {
                 WindowGround(browser: browser) // Fork (page-frame): the space's ground under the column and round the page
             } else {
-                Palette.ground
+                StripGround(browser: browser) // Fork (sheer): glass or the solid ground
             }
 
             HStack(spacing: 0) {
@@ -728,7 +728,7 @@ struct ContentView: View {
         // window only has to be the ground colour that goes with it.
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
-        window.backgroundColor = Palette.NS.ground
+        Sheer.dress(window) // Fork (sheer): clear while it holds glass, else the ground colour
         // The strip does the dragging, so the page underneath can't be grabbed
         // by accident while selecting text.
         window.isMovableByWindowBackground = false

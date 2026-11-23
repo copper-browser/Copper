@@ -400,6 +400,7 @@ struct SplitStage: View {
     @State private var spill = PaneSpill.none
     @ObservedObject private var agent = Agent.shared
     @ObservedObject private var trace = Drive.shared
+    @ObservedObject private var sheer = Sheer.shared
 
     /// The stage, and the agent's pane beside it when it is open — the one
     /// conversation, where whatever drives the page (Jev, an agent on the
@@ -608,7 +609,7 @@ struct SplitStage: View {
     /// rather than as the window with two lines scratched into it.
     private var backdrop: some View {
         ZStack {
-            Palette.ground
+            if !sheer.on(in: browser) { Palette.ground } // Fork (sheer): over the window's glass, the wash alone
             wash
         }
     }

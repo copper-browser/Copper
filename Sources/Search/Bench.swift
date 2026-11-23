@@ -538,6 +538,11 @@ final class Bench {
             out["panes"] = ["agent": Agent.shared.open, "jev": Drive.shared.paneOpen, "split": Split.shared.on]
             // The column folded away, out for a look, and the lights with it (see Fold.swift).
             out["folded"] = browser.folded
+            // Fork (sheer): the setting, whether this window's ground is glass, and the window's own state.
+            out["sheer"] = ["chosen": browser.prefs.sheer, "on": Sheer.shared.on(in: browser), "refused": Sheer.shared.refused,
+                            "opaque": Windows.window(of: browser)?.isOpaque ?? true,
+                            "glazed": Windows.window(of: browser).map(Sheer.glazed) ?? false,
+                            "fullScreen": Windows.window(of: browser).map { $0.styleMask.contains(.fullScreen) } ?? false]
             out["peeking"] = browser.peeking
             out["lightsHidden"] = Fold.titlebar?.isHidden ?? false
             out["recent"] = Recent.shared.order.compactMap { id in
@@ -703,6 +708,10 @@ final class Bench {
             }
             if let on = request["sidebar"] as? Bool { browser.prefs.sidebar = on }
             if let on = request["folded"] as? Bool { browser.folded = on }
+            if let on = request["sheer"] as? Bool { browser.prefs.sheer = on } // Fork (sheer)
+            // `ui fullscreen on|off`: the window into or out of full screen, as the green light does. (Fork: sheer)
+            if let on = request["fullscreen"] as? Bool, let window = Windows.window(of: browser),
+               window.styleMask.contains(.fullScreen) != on { window.toggleFullScreen(nil) }
             if let on = request["peek"] as? Bool { browser.peeking = on }
             // `ui focus none`: the keyboard to the window itself, as after a
             // click on the column — for keys whose meaning depends on who has

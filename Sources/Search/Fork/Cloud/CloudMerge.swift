@@ -361,6 +361,7 @@ enum CloudMerge {
 enum CloudSettingsKeys {
     static let allowed: [String] = [
         "look",             // light / dark / system
+        "sheer",            // see-through window
         "sidebar",          // tabs down the left
         "tabs.switching",   // ⌃Tab: the row or most recent
         "tabs.sleep",       // put idle tabs to sleep
