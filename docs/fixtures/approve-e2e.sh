@@ -10,6 +10,8 @@
 #   3. Again, Approve → the call says "approved" and the page was paid once.
 #   4. Again, no answer: after approve.timeout (5 s here) it counts as denied.
 #   5. browser_press_key Enter in the card form asks the same way (Deny).
+#   6. APPROVE_JEV=1 (keys from the "Copper (dev)" world): jev_run "pay" asks
+#      on Jev's click too; Deny ends the run blocked, nothing paid.
 #
 # APPROVE_SHOT=PATH also takes a picture of the window while the card waits.
 # COPPER_APP=/path/Copper.app runs another build. Ports: MCP $COPPER_MCP_PORT
@@ -49,7 +51,18 @@ curl -fsS -o /dev/null "http://127.0.0.1:$port/checkout.html" || fail "page serv
 
 mkdir -p "$folder"
 token=$(python3 -c "import secrets; print(secrets.token_hex(32))")
-printf '{"enabled":true,"port":%s,"token":"%s","announces":false,"jev":false}' "$mcp_port" "$token" >"$folder/agent.json"
+jev=false
+if [ "${APPROVE_JEV:-0}" = 1 ]; then
+  jev=true
+  # Only the Jev and text-model keys, from the dev world (the coverage harness's way); never printed.
+  python3 - "$HOME/Library/Application Support/Copper (dev)/intelligence.json" "$folder/intelligence.json" <<'PY'
+import json, os, sys
+dev = json.load(open(sys.argv[1]))
+keep = {k: dev[k] for k in ("jevKey", "jevEndpoint", "jevModel", "routerKey", "routerURL", "routerModel", "textModel") if k in dev}
+with os.fdopen(os.open(sys.argv[2], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f: json.dump(keep, f)
+PY
+fi
+printf '{"enabled":true,"port":%s,"token":"%s","announces":false,"jev":%s}' "$mcp_port" "$token" "$jev" >"$folder/agent.json"
 defaults write "$suite" bench -bool true
 defaults write "$suite" welcomed -bool true
 defaults write "$suite" approve.timeout -float 5
@@ -76,7 +89,7 @@ text = " ".join(c.get("text", "") for c in r.get("content", []))
 print(("err" if r.get("isError") else "ok") + "\t" + text.replace("\n", " "))' "$raw"
 }
 asks() { bench agent approve 2>/dev/null | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("asks", [])))'; }
-wait_ask() { for _ in {1..60}; do [ "$(asks)" != "[]" ] && return 0; sleep 0.1; done; return 1; }
+wait_ask() { for _ in $(seq 1 "${1:-60}"); do [ "$(asks)" != "[]" ] && return 0; sleep 0.1; done; return 1; }
 title() { mcp browser_evaluate '{"function":"() => document.title"}' | cut -f2; }
 
 r=$(mcp browser_navigate "{\"url\":\"http://127.0.0.1:$port/checkout.html\"}")
@@ -137,4 +150,18 @@ wait "$call"
 r=$(cat "$tmp/r5")
 [ "${r%%$'\t'*}" = err ] && [[ "$r" == *denied* ]] && [[ "$(title)" == *"paid 1"* ]] || fail "Return: $r"
 echo "ok 5 Return in a card form asks, deny holds it"
+
+if [ "${APPROVE_JEV:-0}" = 1 ]; then
+  # A fresh checkout: the one above already shows "Paid", which Jev would call done.
+  mcp browser_navigate "{\"url\":\"http://127.0.0.1:$port/checkout.html?jev\"}" >/dev/null
+  mcp jev_run '{"goal":"Pay for the order with the card already filled in: click Pay $42.00 once."}' >"$tmp/r6" &
+  call=$!
+  wait_ask 600 || { wait "$call"; fail "no card for Jev's click: $(cat "$tmp/r6")"; }
+  echo "   card: $(asks)"
+  bench agent approve no >/dev/null
+  wait "$call"
+  r=$(cat "$tmp/r6")
+  [[ "$r" == *denied* ]] && [[ "$(title)" != *paid* ]] || fail "Jev deny: $r"
+  echo "ok 6 Jev's click asks too; deny ends the run: $(echo "$r" | cut -f2 | cut -c1-140)"
+fi
 echo "PASS approve-e2e"
