@@ -467,7 +467,8 @@
                                        (welcome stays up in a headless test world too),
                                        look light|dark|system, sidebar on|off, folded on|off, peek on|off,
                                        tabswitch row|recent, page general|tabs (which Settings page), focus none (the keyboard to the window itself), width N (the sidebar),
-                                       addressHover on|off (the sidebar's address pill as under the pointer), clearHover on|off (force the Clear divider visible)
+                                       addressHover on|off (the sidebar's address pill as under the pointer), clearHover on|off (force the Clear divider visible),
+                                       sheer on|off (the see-through window), fullscreen on|off
 
 Needs Settings › General › "Let a script drive Copper" switched on in the
 running app. IDs are the first characters of a tab's id, as `tabs` prints
