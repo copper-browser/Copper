@@ -40,6 +40,9 @@ struct SpaceGround: View {
     let dark: Bool
     /// Fork (page-frame): a picture's width, when the ground is the window's (ThemeBackdrop.Still).
     var span: CGFloat? = nil
+    /// Fork (sheer): the window's glass is under this ground — a space that
+    /// clears (Sheer.clears) is its colour laid thin over it.
+    var sheer = false
 
     /// The grounds on screen, the incoming first: one at rest, two while a
     /// slide is on. Keyed by space, so the ground on screen when a slide
@@ -63,7 +66,7 @@ struct SpaceGround: View {
             // so there is no edge, only a change. A timed slide animates `t`:
             // SwiftUI moves the one opacity, frame by frame, and runs no body.
             ForEach(layers) { layer in
-                Still(theme: layer.theme, dark: dark, span: span)
+                Still(theme: layer.theme, dark: dark, span: span, sheer: sheer && Sheer.clears(layer.theme))
                     .equatable()
                     .opacity(layer.incoming ? 1 : 1 - x)
             }
@@ -75,7 +78,10 @@ struct SpaceGround: View {
                 .mask { if let span { ThemeBackdrop.Still.fade(span) } else { Rectangle() } }
                 .frame(maxWidth: .infinity, alignment: .leading)
             ForEach(layers) { layer in
-                Veil(tone: layer.theme.tone, grain: layer.theme.grain)
+                let thin = sheer && Sheer.clears(layer.theme)
+                // Fork (sheer): the tone as thin as the colour, and no grain
+                // over glass — the overlay grain greyed it to a flat sheet.
+                Veil(tone: layer.theme.tone * (thin ? Sheer.tint : 1), grain: thin ? 0 : layer.theme.grain)
                     .equatable()
                     .opacity(layer.incoming ? 1 : 1 - x)
             }
@@ -84,10 +90,11 @@ struct SpaceGround: View {
     }
 
     /// One still ground on its own, as `body` stacks it (GroundRide).
-    static func whole(_ theme: SpaceTheme, dark: Bool, span: CGFloat?) -> some View {
-        ZStack {
-            Still(theme: theme, dark: dark, span: span)
-            Veil(tone: theme.tone, grain: theme.grain)
+    static func whole(_ theme: SpaceTheme, dark: Bool, span: CGFloat?, sheer: Bool = false) -> some View {
+        let thin = sheer && Sheer.clears(theme)
+        return ZStack {
+            Still(theme: theme, dark: dark, span: span, sheer: thin)
+            Veil(tone: theme.tone * (thin ? Sheer.tint : 1), grain: thin ? 0 : theme.grain)
         }
         .clipped()
     }
@@ -97,7 +104,15 @@ struct SpaceGround: View {
         let theme: SpaceTheme
         let dark: Bool
         let span: CGFloat?
-        var body: some View { ThemeBackdrop.Still(theme: theme, dark: dark, span: span) }
+        /// Fork (sheer): the colour alone, thin, over the window's glass.
+        var sheer = false
+        var body: some View {
+            if sheer {
+                ThemeBackdrop.Colour(theme: theme, dark: dark).opacity(Sheer.tint)
+            } else {
+                ThemeBackdrop.Still(theme: theme, dark: dark, span: span)
+            }
+        }
     }
 
     /// One space's tone and grain, the same.
@@ -166,13 +181,16 @@ struct SpaceGroundView: View {
     let dark: Bool
     /// Fork (page-frame): the column's width when this is the window's ground.
     var span: CGFloat? = nil
+    /// Fork (sheer): the window's ground is glass (Fork/Sheer.swift).
+    var sheer = false
     @ObservedObject private var slide = SpaceSlide.shared
     @ObservedObject private var spaces = Spaces.shared
 
-    init(browser: Browser, dark: Bool, span: CGFloat? = nil) {
+    init(browser: Browser, dark: Bool, span: CGFloat? = nil, sheer: Bool = false) {
         self.browser = browser
         self.dark = dark
         self.span = span
+        self.sheer = sheer
     }
 
     var body: some View {
@@ -189,9 +207,13 @@ struct SpaceGroundView: View {
         // switch to or from an animated space fades as it did.
         let ride = on && slide.riding && from.id != to.id && from.look.motion == nil && to.look.motion == nil
         let out = ride ? to : from
+        // Fork (sheer): the glass only while a space on screen clears; its
+        // side of light and dark is the arriving column's, so its ink reads.
+        let glass = sheer && (Sheer.clears(from.look) || Sheer.clears(to.look))
         SpaceGround(from: out.look, to: to.look, fromKey: out.id.uuidString, toKey: to.id.uuidString,
-                    t: on && !ride ? slide.phase : 1, dark: dark, span: span)
-            .overlay { GroundRide(leaving: ride ? from.look : nil, serial: slide.serial, dark: dark, span: span) }
+                    t: on && !ride ? slide.phase : 1, dark: dark, span: span, sheer: glass)
+            .overlay { GroundRide(leaving: ride ? from.look : nil, serial: slide.serial, dark: dark, span: span, sheer: glass) }
+            .background { if glass { Glass(dark: SpaceTint(theme: to.look, dark: dark).dark) } }
     }
 }
 
@@ -204,6 +226,7 @@ struct GroundRide: NSViewRepresentable {
     let serial: Int
     let dark: Bool
     let span: CGFloat?
+    var sheer = false
     static let fadeKey = "copper.ground.ride"
 
     final class Box: NSView {
@@ -227,7 +250,7 @@ struct GroundRide: NSViewRepresentable {
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
         /// The ground of slide `serial` on its way out, or nil: at rest.
-        func show(_ leaving: SpaceTheme?, serial: Int, dark: Bool, span: CGFloat?) {
+        func show(_ leaving: SpaceTheme?, serial: Int, dark: Bool, span: CGFloat?, sheer: Bool) {
             guard let leaving else {
                 guard riding != nil else { return }
                 riding = nil
@@ -238,7 +261,7 @@ struct GroundRide: NSViewRepresentable {
             }
             guard riding != serial else { return }
             riding = serial
-            host.rootView = AnyView(SpaceGround.whole(leaving, dark: dark, span: span))
+            host.rootView = AnyView(SpaceGround.whole(leaving, dark: dark, span: span, sheer: sheer))
             isHidden = false
             layer?.add(GroundRide.fade(), forKey: GroundRide.fadeKey)
         }
@@ -246,7 +269,7 @@ struct GroundRide: NSViewRepresentable {
 
     func makeNSView(context: Context) -> Box { Box(frame: .zero) }
 
-    func updateNSView(_ box: Box, context: Context) { box.show(leaving, serial: serial, dark: dark, span: span) }
+    func updateNSView(_ box: Box, context: Context) { box.show(leaving, serial: serial, dark: dark, span: span, sheer: sheer) }
 
     /// Out, on the slide's curve, and held out until the slide takes it away.
     static func fade() -> CABasicAnimation {

@@ -299,6 +299,14 @@ struct SettingsPanel: View {
                 }
                 .settingsAnchor("general.appearance")
                 Rule()
+                // Fork (sheer): Fork/Sheer.swift
+                Line("See-through window", Sheer.shared.refused
+                     ? "Off while Reduce transparency or Increase contrast is on in Accessibility"
+                     : "The desktop shows, blurred, through the sidebar and round the page") {
+                    Switch(on: $prefs.sheer)
+                }
+                .settingsAnchor("general.sheer")
+                Rule()
                 Line("Correct spelling as you type", "macOS's autocorrect inside pages — the one that capitalises for you") {
                     Switch(on: $prefs.autocorrect)
                 }

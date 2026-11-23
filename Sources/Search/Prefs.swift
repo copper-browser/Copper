@@ -46,6 +46,14 @@ final class Preferences: ObservableObject {
     @Published var sideWidth: CGFloat {
         didSet { store.set(Double(sideWidth), forKey: "sidebar.width") }
     }
+    /// Fork (sheer): the desktop shows through the column and round the
+    /// page (Fork/Sheer.swift). On unless turned off.
+    @Published var sheer: Bool {
+        didSet {
+            store.set(sheer, forKey: "sheer")
+            Sheer.shared.chosen = sheer
+        }
+    }
     /// Whether Control-Tab follows the row or the tabs used most recently.
     @Published var tabSwitching: TabSwitching {
         didSet { store.set(tabSwitching.rawValue, forKey: "tabs.switching") }
@@ -148,6 +156,8 @@ final class Preferences: ObservableObject {
         }
         let width = store.object(forKey: "sidebar.width") as? Double ?? Double(Metrics.side)
         sideWidth = min(Metrics.sideMax, max(Metrics.sideMin, CGFloat(width)))
+        sheer = store.object(forKey: "sheer") as? Bool ?? true
+        Sheer.shared.chosen = sheer
         // Fork (polish r5): tabs always wear the site's icon; the old
         // "glyph" choice (letters or icons) is gone, and a stored "letters"
         // is simply not read. The key itself still marks an older install (below).

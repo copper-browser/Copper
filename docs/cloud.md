@@ -219,6 +219,7 @@ shape (`CloudSettingsKeys` in `Fork/Cloud/CloudMerge.swift`):
 | Key | Setting |
 |---|---|
 | `look` | Light / Dark / System |
+| `sheer` | See-through window |
 | `sidebar` | Tabs in a sidebar |
 | `tabs.switching` | ⌃Tab: next in the row or most recent |
 | `tabs.sleep` | Put idle tabs to sleep |

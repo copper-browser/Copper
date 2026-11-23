@@ -237,6 +237,7 @@ enum CloudApply {
         let p = browser.prefs
         let values: [String: String] = [
             "look": p.look.rawValue,
+            "sheer": String(p.sheer),
             "sidebar": String(p.sidebar),
             "tabs.switching": p.tabSwitching.rawValue,
             "tabs.sleep": String(p.sleepsTabs),
@@ -254,6 +255,7 @@ enum CloudApply {
         func bool(_ key: String) -> Bool? { values[key].map { $0 == "true" } }
         if let v = values["look"].flatMap(Look.init(rawValue:)), v != p.look { p.look = v }
         if let v = bool("sidebar"), v != p.sidebar { p.sidebar = v }
+        if let v = bool("sheer"), v != p.sheer { p.sheer = v }
         if let v = values["tabs.switching"].flatMap(TabSwitching.init(rawValue:)), v != p.tabSwitching { p.tabSwitching = v }
         if let v = bool("tabs.sleep"), v != p.sleepsTabs { p.sleepsTabs = v }
         if let v = values["spaces.swipe"].flatMap(SwipeDirection.init(rawValue:)), v != p.swipeDirection { p.swipeDirection = v }

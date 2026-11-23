@@ -82,6 +82,7 @@ extension PageView {
 struct WindowGround: View {
     let browser: Browser
     @ObservedObject var prefs: Preferences
+    @ObservedObject private var sheer = Sheer.shared // Fork (sheer)
     @Environment(\.colorScheme) private var scheme
 
     init(browser: Browser) {
@@ -89,7 +90,7 @@ struct WindowGround: View {
         prefs = browser.prefs
     }
 
-    var body: some View { SpaceGroundView(browser: browser, dark: scheme == .dark, span: prefs.sideWidth) }
+    var body: some View { SpaceGroundView(browser: browser, dark: scheme == .dark, span: prefs.sideWidth, sheer: sheer.on(in: browser)) }
 }
 
 /// One page as a card: rounded, hairlined, lifted off the ground.

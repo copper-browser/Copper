@@ -209,6 +209,7 @@ enum SettingsBrowseBench {
         return [
             "look": prefs.look.rawValue,
             "autocorrect": prefs.autocorrect,
+            "sheer": prefs.sheer,
             "webkitAutocorrect": UserDefaults.standard.bool(forKey: "WebAutomaticSpellingCorrectionEnabled"),
             "bench": prefs.bench,
             "sidebar": prefs.sidebar,
