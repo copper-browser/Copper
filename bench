@@ -107,6 +107,7 @@
     ./bench agent seed chat|running|jev|driver|cutoff|empty   a made-up conversation in the agent pane, for pictures (no model)
     ./bench agent expand all|none      open or fold every activity row and driver card
     ./bench agent turns N              the agent's tool-call rounds per question (Settings › Agents); `agent chat` shows the budget in force
+    ./bench agent approve [yes|no]     the approve cards waiting on the user (Fork/MCP/Approve.swift), or answer the oldest
     ./bench drive [status|stop|resume|clear|pane on|off]
     ./bench drive fake NAME THREAD… [tab N|ID] [--for S] [--doing WORDS…]   a stand-in agent's hand on a tab; drive card N|off; drive unfake
                                        who is driving the page (Jev, an agent, a bot) and every row of the timeline

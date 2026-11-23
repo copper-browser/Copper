@@ -725,6 +725,7 @@ extension Tools.Ultrafast {
         guard x >= 0, y >= 0, x < Double(web.bounds.width) / max(web.pageZoom, 0.01), y < Double(web.bounds.height) / max(web.pageZoom, 0.01) else {
             throw Tools.Failure(text: "The box is outside the page; nothing executed.")
         }
+        if text == nil { try await Approve.gate(tab, at: CGPoint(x: x, y: y)) } // Fork (approve)
         if glide { await Tools.Trail.glide(web, x: x, y: y) }
         Tools.Trail.click(web, x: x, y: y)
         let zoom = web.pageZoom

@@ -424,13 +424,16 @@ enum Tools {
             return [.text("\(pageLine(tab))\n\n\(fence(text))" + snapshotHints(text))]
         case "browser_click":
             let target = try locator(args)
-            let rect = try await Page.prepare(web, target)
+            var rect = try await Page.prepare(web, target)
             let button = (args["button"] as? String) ?? "left"
             let double = (args["doubleClick"] as? Bool) ?? false
             let mods = Input.modifiers(from: args["modifiers"] as? [String] ?? [])
             // cosmetic only: the target outlined and named, the pointer
             // brought to it, the press marked — what the user sees of the call.
             trail(web, rect, label: args["element"] as? String, operation: "CLICK")
+            // Fork (approve): a pay, send, delete or book click waits for the user's yes (Approve.swift).
+            let approved = try await Approve.gate(tab, at: CGPoint(x: rect.midX / web.pageZoom, y: rect.midY / web.pageZoom))
+            if approved != nil { rect = try await Page.prepare(web, target) }
             if AgentTabs.onScreen(tab) { await Trail.glide(web, x: rect.midX / web.pageZoom, y: rect.midY / web.pageZoom) }
             Trail.click(web, x: rect.midX / web.pageZoom, y: rect.midY / web.pageZoom)
             let asked = before(web)
@@ -440,7 +443,7 @@ enum Tools {
                 _ = try await Page.js(web, at: target, "window.__copper.click(\(Page.quote(target.script)), \(double), \(Page.quote(button)))")
             }
             try await settle(tab, budget: 3, since: asked)
-            return [.text("Clicked \(args["element"] as? String ?? target.label). \(pageLine(tab))")]
+            return [.text((approved.map { $0 + " " } ?? "") + "Clicked \(args["element"] as? String ?? target.label). \(pageLine(tab))")]
         case "browser_mouse_click_xy":
             // Playwright's vision tool: a point, not an element — for canvases and maps.
             guard let x = try number(args, "x", within: 100_000), let y = try number(args, "y", within: 100_000) else {
@@ -452,6 +455,7 @@ enum Tools {
             }
             let point = CGPoint(x: x * web.pageZoom, y: y * web.pageZoom)
             trail(web, CGRect(origin: point, size: .zero).insetBy(dx: -6, dy: -6), label: args["element"] as? String, operation: "CLICK")
+            let approved = try await Approve.gate(tab, at: CGPoint(x: x, y: y)) // Fork (approve)
             if AgentTabs.onScreen(tab) { await Trail.glide(web, x: x, y: y) }
             Trail.click(web, x: x, y: y)
             let button = (args["button"] as? String) ?? "left"
@@ -462,7 +466,7 @@ enum Tools {
                 _ = try await Page.js(web, Self.clickAt(x, y))
             }
             try await settle(tab, budget: 3, since: asked)
-            return [.text("Clicked (\(Int(x)), \(Int(y))) on the page's \(pageWords(hit)). \(pageLine(tab))")]
+            return [.text((approved.map { $0 + " " } ?? "") + "Clicked (\(Int(x)), \(Int(y))) on the page's \(pageWords(hit)). \(pageLine(tab))")]
         case "browser_hover":
             let target = try locator(args)
             let rect = try await Page.prepare(web, target)
@@ -510,12 +514,14 @@ enum Tools {
             // the field sounds like a secret, the same fence the link progress uses.
             Trail.typed(web, x: rect.midX / web.pageZoom, y: rect.midY / web.pageZoom,
                         text: JevProgress.looksSecret(((args["element"] as? String) ?? "") + " " + target.script) ? "•••" : text)
+            var approved: String?
             if submit {
+                approved = try await Approve.gate(tab, at: nil) // Fork (approve): Return in a form that pays or sends
                 if Input.canPost(to: web) { Input.key(web, "Enter", modifiers: []) }
                 else { _ = try await Page.js(web, at: target, "window.__copper.submit(\(Page.quote(target.script)))") }
                 try await settle(tab, budget: 3)
             }
-            return [.text("Typed into \(args["element"] as? String ?? target.label)\(submit ? " and submitted" : ""). \(pageLine(tab))")]
+            return [.text((approved.map { $0 + " " } ?? "") + "Typed into \(args["element"] as? String ?? target.label)\(submit ? " and submitted" : ""). \(pageLine(tab))")]
         case "browser_fill_form":
             guard let fields = args["fields"] as? [[String: Any]] else { throw Failure(text: "fields required") }
             var lines: [String] = []
@@ -545,6 +551,9 @@ enum Tools {
                 throw Failure(text: "Unknown key \"\(key)\". Use a key name (\(Input.keyNames)), one character, or a combination such as Shift+Tab or Meta+a. To type text, use browser_type.")
             }
             let mods = Input.modifiers(from: args["modifiers"] as? [String] ?? [])
+            // Fork (approve): Return in a form that pays or sends waits for the user's yes.
+            var approved: String?
+            if ["enter", "return"].contains(Input.split(key, modifiers: mods).key.lowercased()) { approved = try await Approve.gate(tab, at: nil) }
             if Input.canPost(to: web) {
                 Input.key(web, key, modifiers: mods)
             } else {
@@ -553,7 +562,7 @@ enum Tools {
                 _ = try await Page.js(web, "window.__copper.key(\(Page.quote(name)), \(held))")
             }
             try await settle(tab, budget: 2)
-            return [.text("Pressed \(key). \(pageLine(tab))")]
+            return [.text((approved.map { $0 + " " } ?? "") + "Pressed \(key). \(pageLine(tab))")]
         case "browser_handle_dialog":
             guard let accept = args["accept"] as? Bool else { throw Failure(text: "accept (true or false) required") }
             return [.text(AgentDialogs.handle(tab, accept: accept, text: args["promptText"] as? String))]

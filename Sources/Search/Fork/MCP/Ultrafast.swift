@@ -1893,6 +1893,8 @@ enum Ultrafast {
                 Trail.click(web, x: x, y: y)
                 return false
             }
+            // Fork (approve): a pay, send, delete or book click waits for the user's yes (Approve.swift).
+            if kind == "click" { try await Approve.gate(tab, at: CGPoint(x: x, y: y)) }
             var px = x, py = y
             if glide {
                 // cosmetic, and the one wait: the pointer travels to the target.
@@ -2564,6 +2566,15 @@ enum Ultrafast {
                                                probability: decision.probability, confidence: decision.confidence,
                                                pageChanged: nil, stale: true, candidates: decision.candidates))
                 if coveredRefusals > 3 { status = "blocked"; note = "Every control Jev chose had something drawn over it (\(over.by))" }
+                return nil
+            } catch let denied as Approve.Denied {
+                // Fork (approve): the user said no to this click; the run ends here, nothing sent.
+                if let acting { trace.close(phase: acting) }
+                status = "blocked"
+                note = denied.text
+                trace.outcome(Drive.Outcome(operation: operation, label: "denied: " + label, text: text,
+                                               probability: decision.probability, confidence: decision.confidence,
+                                               pageChanged: nil, stale: false, candidates: decision.candidates))
                 return nil
             } catch let stale as Stale {
                 if let actStarted { spent.actMs += Date().timeIntervalSince(actStarted) * 1000 }

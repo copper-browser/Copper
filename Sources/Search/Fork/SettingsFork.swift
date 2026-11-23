@@ -519,6 +519,7 @@ struct AgentsPage: View {
         VStack(alignment: .leading, spacing: 26) {
             AgentsServerSection()
             AgentsJevSection(browser: browser)
+            AgentsAskSection() // Fork (approve): Fork/MCP/Approve.swift
             AgentsLinksSection()
             AgentsPaneSection()
             AgentsTerminalSection()
