@@ -132,7 +132,8 @@ final class ClearTabsDividerHover: ObservableObject {
 /// The slim seam above Today. At rest it is exactly the plain hairline —
 /// same height, so a space with loose tabs doesn't push its rows down on a
 /// switch. Hovering it shows a small round button at its end, drawn over
-/// the seam rather than beside it, so nothing moves.
+/// the seam rather than beside it, so nothing moves. With three loose tabs
+/// or more, "Tidy" stands at its end (Fork/Tidy.swift), in the same 1 pt.
 struct ClearTabsDivider: View {
     let browser: Browser
     let tint: SpaceTint
@@ -142,34 +143,44 @@ struct ClearTabsDivider: View {
 
     var body: some View {
         let shown = over || hover.forced
-        Rectangle()
-            .fill(tint.hairline)
-            .frame(height: 1)
-            .padding(.horizontal, SideBar.rowInset)
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
-            .overlay(alignment: .trailing) {
-                Button {
-                    ClearTabs.shared.clear(in: browser)
-                } label: {
-                    Image(systemName: "arrow.down")
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(tint.muted)
-                        .frame(width: 16, height: 16)
-                        .background(tint.hover, in: Circle())
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .help("Clear \(count) tab\(count == 1 ? "" : "s")")
-                .padding(.trailing, SideBar.rowInset)
-                .opacity(shown ? 1 : 0)
-                .allowsHitTesting(shown)
-                .accessibilityHidden(!shown)
+        let tidy = count >= Tidy.least
+        HStack(spacing: 4) {
+            Rectangle()
+                .fill(tint.hairline)
+                .frame(height: 1)
+                .overlay(alignment: .trailing) { clear(shown) }
+            if tidy {
+                // Taller than its 1 pt frame on purpose: it overhangs the seam's padding instead of growing it.
+                TidyButton(browser: browser, tint: tint).frame(height: 1)
             }
-            .onHover { over = $0 }
-            .animation(.easeOut(duration: 0.12), value: shown)
-            .accessibilityLabel("Clear \(count) tabs")
-            .accessibilityHint("Closes loose tabs in this space")
+        }
+        .padding(.leading, SideBar.rowInset)
+        .padding(.trailing, tidy ? 4 : SideBar.rowInset)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .onHover { over = $0 }
+        .animation(.easeOut(duration: 0.12), value: shown)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func clear(_ shown: Bool) -> some View {
+        Button {
+            ClearTabs.shared.clear(in: browser)
+        } label: {
+            Image(systemName: "arrow.down")
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundStyle(tint.muted)
+                .frame(width: 16, height: 16)
+                .background(tint.hover, in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help("Clear \(count) tab\(count == 1 ? "" : "s")")
+        .opacity(shown ? 1 : 0)
+        .allowsHitTesting(shown)
+        .accessibilityHidden(!shown)
+        .accessibilityLabel("Clear \(count) tabs")
+        .accessibilityHint("Closes loose tabs in this space")
     }
 }
 

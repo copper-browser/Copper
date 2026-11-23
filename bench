@@ -3,6 +3,7 @@
 
     ./bench tabs                       every tab, yours and the bench's
     ./bench tabs clear|undo             clear loose tabs in this window's current space, or undo it
+    ./bench tabs tidy [local]|untidy    file those tabs into folders (local: by site, no model), or undo it
     ./bench open URL                   a bench tab at the end of the row → its id
     ./bench pin ID [LETTER] [--window N]
                                        pin a tab: it joins the one set of pins every space shows
@@ -586,9 +587,10 @@ def main(argv):
             args = args[:at] + args[at + 2:]
         request["text"] = args[0] if args else ""
     elif verb == "tabs":
-        if len(args) > 1 or (args and args[0] not in ("clear", "undo")):
-            sys.exit("usage: bench tabs [clear|undo]")
+        if len(args) > 2 or (args and args[0] not in ("clear", "undo", "tidy", "untidy")) or (len(args) == 2 and args != ["tidy", "local"]):
+            sys.exit("usage: bench tabs [clear|undo|tidy [local]|untidy]")
         if args: request["op"] = args[0]
+        if len(args) == 2: request["arg"] = args[1]
     elif verb == "newtab":
         flags = {"--go", "--keep", "--json", "--type"}
         rest, i = [], 0
@@ -1004,6 +1006,10 @@ def main(argv):
             print(f"cleared {answer['cleared']} tab(s)")
         if "restored" in answer:
             print(f"restored {answer['restored']} tab(s)")
+        if "tidied" in answer:
+            print(f"tidied {answer['tidied']} tab(s) by {answer.get('by', '-')}{': ' + answer['error'] if answer.get('error') else ''}")
+            for made in answer.get("folders", []):
+                print(f"  {made['name']}: {' '.join(made['tabs'])}")
     elif verb == "tabs":
         for tab in answer.get("tabs", []):
             mark = "⚗" if tab.get("bench") else ("●" if tab.get("active") else " ")
