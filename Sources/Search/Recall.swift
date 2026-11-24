@@ -43,7 +43,9 @@ struct HistoryPanel: View {
     @Bindable var browser: Browser
 
     @FocusState private var hunting: Bool
-    @State private var traces: [History.Trace] = []
+    // Fork (history-panel-perf): found off the main thread, drawn a page at
+    // a time — every place at once (20,000 after a move from Arc) hung ⌘Y.
+    @StateObject private var finder = HistoryFinder()
     @State private var clearing = false
     /// Fork (polish r5): a site's mark asked for (`Marks.want`) lands here.
     @ObservedObject private var marks = Marks.ticker
@@ -51,8 +53,8 @@ struct HistoryPanel: View {
     var body: some View {
         // Fork (ui-system): empty is a state (symbol, line, one way to fill
         // it) with no search, count or Clear; the list is as tall as it is.
-        let none = traces.isEmpty && browser.recallHunt.isEmpty
-        Plate("History", width: 600, footed: !traces.isEmpty || clearing, close: { browser.recalling = false }) {
+        let none = finder.ready && finder.total == 0 && browser.recallHunt.isEmpty
+        Plate("History", width: 600, footed: !finder.rows.isEmpty || clearing, close: { browser.recalling = false }) {
             VStack(alignment: .leading, spacing: 14) {
                 if none && !clearing {
                     EmptyState("clock", "No history yet", "Pages you visit show up here, by day.") {
@@ -65,16 +67,16 @@ struct HistoryPanel: View {
                     Hunt(text: $browser.recallHunt, prompt: "Search everywhere you have been", focus: $hunting)
                 }
 
-                if traces.isEmpty {
-                    if !none { EmptyState("magnifyingglass", "No matches", "Nothing you have visited matches “\(browser.recallHunt)”.") }
+                if finder.rows.isEmpty {
+                    if finder.ready && !none { EmptyState("magnifyingglass", "No matches", "Nothing you have visited matches “\(browser.recallHunt)”.") }
                 } else {
                     Fitted {
-                        VStack(alignment: .leading, spacing: 14) {
-                            ForEach(days, id: \.0) { day, rows in
+                        LazyVStack(alignment: .leading, spacing: 14) {
+                            ForEach(finder.days) { day in
                                 VStack(alignment: .leading, spacing: 6) {
-                                    Caption(day)
+                                    Caption(day.title)
                                     Card {
-                                        ForEach(Array(rows.enumerated()), id: \.element.id) { index, trace in
+                                        ForEach(Array(day.rows.enumerated()), id: \.element.id) { index, trace in
                                             if index > 0 { Rule() }
                                             Row(
                                                 trace: trace,
@@ -85,15 +87,25 @@ struct HistoryPanel: View {
                                                 forget: {
                                                     browser.history.forget(trace.key)
                                                     CloudSync.shared.historyForgot(trace.key) // Fork (cloud-history-delete): its rows on Copper Cloud too
-                                                    refresh()
+                                                    refresh(keep: true)
                                                 }
                                             )
                                         }
                                     }
                                 }
                             }
+                            // The next page, as the list is scrolled to its end.
+                            if finder.more {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 6)
+                                    .id(finder.rows.count) // a new one per page, so each page's end asks again
+                                    .onAppear { finder.next() }
+                            }
                         }
                         .padding(.bottom, 2)
+                        .id(finder.answer)
                     }
                 }
             }
@@ -102,7 +114,7 @@ struct HistoryPanel: View {
                 sweeps
             } else {
                 HStack {
-                    Text(traces.count == 1 ? "1 page" : "\(traces.count) pages")
+                    Text(finder.total == 1 ? "1 page" : "\(finder.total.formatted()) pages")
                         .font(.system(size: 12))
                         .foregroundStyle(Palette.muted)
                     Spacer()
@@ -116,7 +128,9 @@ struct HistoryPanel: View {
             refresh()
         }
         .onChange(of: browser.recallHunt) { _, _ in refresh() }
-        .onChange(of: traces.map(\.url)) { _, urls in Marks.want(urls) } // Fork (polish r5): a site's real icon, not a globe, wherever it can be had
+        // Fork (polish r5): a site's real icon, not a globe, wherever it can
+        // be had — for the lines drawn, not for all of history.
+        .onReceive(finder.$rows) { rows in Marks.want(rows.map(\.url)) }
     }
 
     /// Three separate things, worded so nobody has to guess which one signs
@@ -148,16 +162,8 @@ struct HistoryPanel: View {
         .transition(.opacity)
     }
 
-    private var days: [(String, [History.Trace])] {
-        let calendar = Calendar.current
-        let grouped = Dictionary(grouping: traces) { calendar.startOfDay(for: $0.last) }
-        return grouped.keys.sorted(by: >).map { day in
-            (When.day(day), grouped[day]!.sorted { $0.last > $1.last })
-        }
-    }
-
-    private func refresh() {
-        traces = browser.history.everything(matching: browser.recallHunt)
+    private func refresh(keep: Bool = false) {
+        finder.find(browser.recallHunt, in: browser.history, keep: keep)
     }
 
     /// One line. A title, where it came from, and when — the three things you
