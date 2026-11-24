@@ -37,6 +37,12 @@ enum Shots {
         /// Absolute, `~` expanded; a folder ends in `/` (`absolute`). Which
         /// file it becomes is settled when the picture is saved (`save`).
         var filename: String?
+        /// The viewport for this picture alone, in CSS pixels (`copper shot
+        /// --size`); put back after.
+        var viewport: CGSize?
+        /// prefers-color-scheme for this picture alone: true dark, false
+        /// light (`copper shot --scheme`); put back after.
+        var dark: Bool?
     }
 
     /// No side of a picture above this many pixels…
@@ -70,6 +76,20 @@ enum Shots {
             ask.scale = scale
         }
         if let path = text(args["filename"]) { ask.filename = try absolute(path) }
+        // The CLI's --size and --scheme: kept out of the listed schema (shared
+        // with Linux and Windows, and inside the tools/list budget).
+        if let raw = present(args["viewport"]) {
+            let fields = raw as? [String: Any]
+            guard let width = fields.flatMap({ numeric($0["width"]) }), let height = fields.flatMap({ numeric($0["height"]) }),
+                  (100...8000).contains(width), (100...8000).contains(height) else {
+                throw Failure(text: "viewport needs width and height: CSS pixels from 100 to 8000")
+            }
+            ask.viewport = CGSize(width: width.rounded(), height: height.rounded())
+        }
+        if let raw = present(args["colorScheme"]) {
+            guard let scheme = raw as? String, ["light", "dark"].contains(scheme) else { throw Failure(text: "colorScheme must be light or dark") }
+            ask.dark = scheme == "dark"
+        }
         return ask
     }
 

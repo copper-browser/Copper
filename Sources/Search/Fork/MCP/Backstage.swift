@@ -328,7 +328,7 @@ final class Backstage {
                 if focus, !window.isVisible { _ = ensureWindow() }
                 // Already here; keep it the size of the stage it would be on,
                 // and the one the keyboard goes to inside this window.
-                if let bounds = window.contentView?.bounds, web.frame != bounds { web.frame = bounds }
+                if let bounds = window.contentView?.bounds, web.frame != bounds, !Tools.Page.posed.contains(ObjectIdentifier(web)) { web.frame = bounds }
                 if focus, window.firstResponder !== web { window.makeFirstResponder(web) }
             } else if hung[tab.id] != nil {
                 // You took it to your stage.
@@ -429,8 +429,12 @@ final class Backstage {
     /// With no stage to match (headless, or nothing loaded in front): a
     /// laptop's worth, or SEARCH_BACKSTAGE_SIZE=WxH — a benchmark runs at
     /// the other side's viewport (perf/hillclimb/agentbench: 1120x780).
+    /// Headless with SEARCH_HEADLESS_SIZE and no SEARCH_BACKSTAGE_SIZE: that
+    /// size, so the agent's page is the size the launch asked for.
     private static let unstaged: NSSize = {
-        let parts = (ProcessInfo.processInfo.environment["SEARCH_BACKSTAGE_SIZE"] ?? "").lowercased().split(separator: "x").compactMap { Double($0) }
+        let environment = ProcessInfo.processInfo.environment
+        let raw = environment["SEARCH_BACKSTAGE_SIZE"] ?? (Headless.on ? environment["SEARCH_HEADLESS_SIZE"] : nil) ?? ""
+        let parts = raw.lowercased().split(separator: "x").compactMap { Double($0) }
         if parts.count == 2, parts[0] >= 320, parts[1] >= 240 { return NSSize(width: parts[0], height: parts[1]) }
         return NSSize(width: 1280, height: 800)
     }()
@@ -478,7 +482,7 @@ final class Backstage {
         let size = Backstage.stageSize
         if window.contentView?.bounds.size != size || Parking.intersectsAScreen(window.frame) { place(window, size: size) }
         if let content = window.contentView {
-            for view in content.subviews where view.frame != content.bounds { view.frame = content.bounds }
+            for view in content.subviews where view.frame != content.bounds && !Tools.Page.posed.contains(ObjectIdentifier(view)) { view.frame = content.bounds }
         }
     }
 
