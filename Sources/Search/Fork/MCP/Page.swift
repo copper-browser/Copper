@@ -252,20 +252,59 @@ enum Page {
     /// by growing the view to the page for the moment of the picture (`grown`).
     @MainActor
     static func screenshot(_ web: WKWebView, _ ask: Tools.Shots.Ask, target: Tools.Locator?) async throws -> Picture {
+        guard ask.viewport != nil || ask.dark != nil, web.window != nil else { return try await shoot(web, ask, target: target) }
+        // `copper shot --size/--scheme`: the view set to that viewport and
+        // appearance for this picture alone, then put back as it was.
         let zoom = max(web.pageZoom, 0.01)
-        let viewport = CGRect(x: 0, y: 0, width: web.bounds.width / zoom, height: web.bounds.height / zoom)
+        let before = web.frame, appearance = web.appearance
+        let scrolled = try? await scroll(web)
+        posed.insert(ObjectIdentifier(web))
+        var held: CGSize?
+        if let dark = ask.dark {
+            web.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            // Until the page's media queries say so (a second at most), then one painted frame.
+            let deadline = Date().addingTimeInterval(1)
+            while Date() < deadline, (try? await raw(web, "matchMedia('(prefers-color-scheme: dark)').matches", counted: false) as? Bool) != dark {
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+        }
+        if let viewport = ask.viewport {
+            held = CGSize(width: (viewport.width * zoom).rounded(), height: (viewport.height * zoom).rounded())
+            await resize(web, to: held!)
+        }
+        await frame(web)
+        let result: Result<Picture, Error>
+        do { result = .success(try await shoot(web, ask, target: target, holding: held)) } catch { result = .failure(error) }
+        posed.remove(ObjectIdentifier(web))
+        web.appearance = appearance
+        web.frame = before
+        if let scrolled {
+            _ = try? await raw(web, "window.scrollTo({ left: \(scrolled.x), top: \(scrolled.y), behavior: 'instant' }); true", counted: false)
+        }
+        return try result.get()
+    }
+
+    /// Views a picture has sized for the moment: Backstage leaves their frame alone.
+    @MainActor static var posed: Set<ObjectIdentifier> = []
+
+    /// The picture, with the view as it is (or held at `holding`, points).
+    @MainActor
+    private static func shoot(_ web: WKWebView, _ ask: Tools.Shots.Ask, target: Tools.Locator?, holding: CGSize? = nil) async throws -> Picture {
+        let zoom = max(web.pageZoom, 0.01)
+        let bounds = holding ?? web.bounds.size
+        let viewport = CGRect(x: 0, y: 0, width: bounds.width / zoom, height: bounds.height / zoom)
         // A tab no window holds (an empty tab with no page yet) has no size to draw.
         guard web.window != nil, viewport.width >= 1, viewport.height >= 1 else {
             throw Tools.Failure(text: "this tab isn't drawn anywhere yet, so there is nothing to picture: open a page in it (browser_navigate), or work in a tab of your own (browser_tabs new)")
         }
         switch ask.subject {
         case .view where !ask.fullPage:
-            return try await draw(web, viewport, ask)
+            return try await draw(web, viewport, ask, holding: holding)
         case .region(let region) where !ask.fullPage:
             guard let area = Tools.Shots.area(region, padding: ask.padding, within: viewport) else {
                 throw Tools.Failure(text: "the region is outside the viewport")
             }
-            return try await draw(web, area, ask)
+            return try await draw(web, area, ask, holding: holding)
         case .view, .region:
             // The whole page, as wide as the view. A lazy page draws a section
             // only when it scrolls into view, so it is walked a screen at a
@@ -280,7 +319,7 @@ enum Page {
                 }
                 area = cut
             }
-            guard page.height > viewport.height + 0.5 else { return try await draw(web, area, ask) }
+            guard page.height > viewport.height + 0.5 else { return try await draw(web, area, ask, holding: holding) }
             return try await grown(web, to: page.size) { held in
                 // As tall as the page, the view has no room left to scroll
                 // and the page's coordinates are the view's. A page past
@@ -301,7 +340,7 @@ enum Page {
                 guard let area = Tools.Shots.area(first.area, padding: 0, within: viewport) else {
                     throw Tools.Failure(text: "\(target.label) is outside the viewport, to the side")
                 }
-                return try await draw(web, area, ask)
+                return try await draw(web, area, ask, holding: holding)
             }
             // Taller than the view (or its padding off it): the view grown to
             // the page, and the element measured again there.

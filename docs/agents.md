@@ -173,9 +173,20 @@ for Linux and Windows use too (`Fork/MCP/Shots.swift`), and says when the
 image here is not the picture:
 `Screenshot 520×280 PNG at scale 2 of .pricing-card. Saved to /Users/x/Desktop/card.png. The image here is 260×140 at scale 1; the file has the full picture.`
 
+`copper shot --size WxH` lays the page out at a W×H CSS-pixel viewport and
+`--scheme light|dark` makes it see `prefers-color-scheme` light or dark, for
+that one picture: the view is resized (the page's `innerWidth`/`innerHeight`
+are W and H) and given that appearance, the picture waits until the page's
+media queries say so, and the view, its appearance and its scroll are put
+back after. Both work with every other option (`--full` is then W wide). At
+scale 1 the file is W×H pixels whatever the screen; `--hd` makes it 2W×2H.
+They are arguments of `browser_take_screenshot` too (`viewport: {width,
+height}`, `colorScheme`), left out of its listed schema.
+
 ```sh
 copper shot ~/Desktop/card.png --selector '.pricing-card' --padding 12 --hd
 copper shot ~/Desktop/ --region 0,0,800,600 --scale 3   # a folder: copper-YYYYMMDD-HHMMSS.png in it
+copper shot /tmp/phone-dark.png --size 390x844 --scheme dark   # 390×844 px, the page in dark mode
 ```
 
 ### Files and browser state

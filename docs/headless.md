@@ -61,7 +61,9 @@ window and parks it:
   against.
 
 `SEARCH_HEADLESS_SIZE=WxH` sets the parked window's size (default `1440x900`; the page's viewport
-is that less the sidebar). The parked frame is never written to the window autosave, so the
+is that less the sidebar). An agent's own tab is drawn backstage instead, with no sidebar: when
+`SEARCH_HEADLESS_SIZE` is set its viewport is W×H too (`SEARCH_BACKSTAGE_SIZE` still wins), else
+1280×800. For one picture at another size or colour scheme: `copper shot --size 390x844 --scheme dark`. The parked frame is never written to the window autosave, so the
 windowed app on the same Mac comes back where it was. A screen change or anything that moves the
 window back onto a display puts it back in its parking spot.
 
@@ -79,7 +81,7 @@ headless before SwiftUI builds a window; `MCP.start(for:)` finishes it once the 
 |---|---|
 | `--headless`, `SEARCH_HEADLESS=1` | headless mode (`1`, `true`, `yes`, `on`) |
 | `SEARCH_HEADLESS_WINDOW` | `offscreen` (default) or `hidden` |
-| `SEARCH_HEADLESS_SIZE` | parked window size, `WxH`, default `1440x900` |
+| `SEARCH_HEADLESS_SIZE` | parked window size, `WxH`, default `1440x900`; also an agent tab's viewport (else 1280×800) |
 | `SEARCH_MCP_PORT` | listen on this port instead of `agent.json`'s, without writing it back. Works in any mode; the CLI and `--mcp-stdio` honour it too (the CLI's older `COPPER_AGENT_PORT` still wins when both are set) |
 | `SEARCH_HEADLESS_DEBUG` | extra parking/occlusion lines in the log |
 

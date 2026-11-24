@@ -337,6 +337,13 @@ enum CLI {
                         return bad("shot --region needs X,Y,W,H: four numbers in CSS pixels — \(usage)")
                     }
                     arguments["region"] = ["x": x, "y": y, "width": w, "height": h]
+                case "--size":
+                    let sides = next(&args, &i)?.lowercased().split(separator: "x", omittingEmptySubsequences: false).map { Double($0) }
+                    guard let sides, sides.count == 2, let w = sides[0], let h = sides[1] else { return bad("shot --size needs WxH in CSS pixels (390x844) — \(usage)") }
+                    arguments["viewport"] = ["width": w, "height": h]
+                case "--scheme":
+                    guard let value = next(&args, &i), ["light", "dark"].contains(value) else { return bad("shot --scheme needs light or dark — \(usage)") }
+                    arguments["colorScheme"] = value
                 case "--padding", "--scale":
                     guard let value = next(&args, &i).flatMap(Double.init), value.isFinite else { return bad("shot \(flag) needs a number — \(usage)") }
                     arguments[String(flag.dropFirst(2))] = value
@@ -556,7 +563,7 @@ enum CLI {
     }
 
     /// `copper shot`'s options, for its help line and its usage errors.
-    private static let shotUsage = "[PATH] [--full] [--jpeg] [--ref REF | --selector CSS [--frame F] | --region X,Y,W,H] [--padding N] [--scale N | --hd]"
+    private static let shotUsage = "[PATH] [--full] [--jpeg] [--ref REF | --selector CSS [--frame F] | --region X,Y,W,H] [--padding N] [--scale N | --hd] [--size WxH] [--scheme light|dark]"
 
     /// A screenshot's path as the shell meant it: `~` expanded, a relative
     /// one made absolute against the working directory, a trailing `/` (a
@@ -1774,12 +1781,14 @@ enum CLI {
       text                                      read page text
       find TEXT                                 find matching page elements
       shot [PATH] [--full] [--jpeg] [--ref REF | --selector CSS [--frame F] | --region X,Y,W,H]
-           [--padding N] [--scale N | --hd]
+           [--padding N] [--scale N | --hd] [--size WxH] [--scheme light|dark]
                                                 save a screenshot (default /tmp/copper-<time>.png): the viewport,
                                                 the whole page (--full), one element or a region in CSS px (the
                                                 page's with --full), with --padding px round it. --scale 1-4
                                                 draws it again at that many pixels per CSS px (--hd = 2);
-                                                a folder PATH gets copper-YYYYMMDD-HHMMSS.png in it
+                                                a folder PATH gets copper-YYYYMMDD-HHMMSS.png in it.
+                                                --size 390x844 lays the page out at that viewport (CSS px) and
+                                                --scheme dark|light sets prefers-color-scheme, for this shot only
       eval 'JS'                                 evaluate JavaScript
       click REF | --selector CSS                click an element
       type REF TEXT [--submit]                  type into an element

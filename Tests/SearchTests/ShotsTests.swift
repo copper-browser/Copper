@@ -48,6 +48,17 @@ private func refusal(_ args: [String: Any]) -> String? {
     #expect(refusal(["scale": 1]) == nil && refusal(["scale": 4]) == nil && refusal(["padding": 0]) == nil)
 }
 
+@Test func shotsTakeAViewportAndAColorScheme() throws {
+    // copper shot --size 390x844 --scheme dark (kept out of the listed schema).
+    let ask = try Shots.parse(["viewport": ["width": 390, "height": 844], "colorScheme": "dark", "fullPage": true])
+    #expect(ask.viewport == CGSize(width: 390, height: 844) && ask.dark == true && ask.fullPage)
+    #expect(try Shots.parse(["colorScheme": "light"]).dark == false)
+    #expect(try Shots.parse([:]).viewport == nil && Shots.parse([:]).dark == nil)
+    #expect(refusal(["viewport": ["width": 50, "height": 844]]) == "viewport needs width and height: CSS pixels from 100 to 8000")
+    #expect(refusal(["viewport": ["width": 390]]) == "viewport needs width and height: CSS pixels from 100 to 8000")
+    #expect(refusal(["colorScheme": "sepia"]) == "colorScheme must be light or dark")
+}
+
 @Test func shotsTakeHomeAndAbsolutePaths() throws {
     let home = NSHomeDirectory()
     #expect(try Shots.absolute("~/Desktop/shot.png") == home + "/Desktop/shot.png")
