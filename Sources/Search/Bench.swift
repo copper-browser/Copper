@@ -308,6 +308,10 @@ final class Bench {
             // Fork (backdrop): the column's scene — its process and its clock.
             BackdropWeb.bench(answer: answer)
 
+        case "page":
+            // Fork (page-tools): clean copies, the link menu, Share, Translate (Fork/PageShare.swift).
+            PageTools.bench(request, in: browser, answer: answer)
+
         case "share":
             // Fork (tab-share): shares, the picker, test answers, pictures (Fork/TabShare/TabShareBench.swift).
             TabShareBench.handle(request, in: browser, answer: answer)
