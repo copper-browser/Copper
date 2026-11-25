@@ -16,13 +16,16 @@
 #   5. ⌥⌘→ and ⌥⌘← (real key events through the app) switch to the next and
 #      previous space, and the profile in front follows.
 #
-# ./build.sh first unless COPPER_SKIP_BUILD=1.
+# ./build.sh first unless COPPER_SKIP_BUILD=1. PROFILES_SHOTS=DIR keeps
+# pictures of the extension's Profiles switches (light and dark).
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 world="profiles-$$"
 folder="$HOME/Library/Application Support/Copper ($world)"
 domain="com.collinrijock.copper.test.$world"
 port="${PROFILES_PORT:-4611}"
+shots="${PROFILES_SHOTS:-}"
+[ -n "$shots" ] && mkdir -p "$shots"
 tmp="$(mktemp -d)"
 pid=""
 server=""
@@ -159,6 +162,12 @@ space Home
 visit "$home" "$web/home.html?2"
 [ "$(mark "$home")" = none ] || fail "a Work extension ran in Home's page"
 ok "2a installed with Work in front: runs in Work's tab only"
+if [ -n "$shots" ]; then
+  bench ext-manager expand "$ext" >/dev/null
+  bench ext-manager picture "$shots/extension-profiles-light.png" light >/dev/null
+  bench ext-manager picture "$shots/extension-profiles-dark.png" dark >/dev/null
+  bench ext-manager expand none >/dev/null
+fi
 bench ext-manager profiles "$ext" all >/dev/null
 await_runs "$ext" '["","Work"]' || fail "with every profile on, it runs in $(runs "$ext")"
 visit "$home" "$web/home.html?3"
