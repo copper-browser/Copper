@@ -189,7 +189,7 @@ struct DriveSlot: View {
     @ObservedObject private var agent = Agent.shared
 
     var body: some View {
-        let shown = (activeID.map { [$0] } ?? []) + (split.side.map { [$0] } ?? [])
+        let shown = (activeID.map { [$0] } ?? []) + split.panes.filter { $0 != activeID } // Fork (ardia split): every pane
         let here = shown.flatMap { drive.hands(on: $0) }
         let onShown = drive.live && drive.run.map { shown.contains($0.tabID) } == true
         VStack(spacing: 0) {

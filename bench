@@ -422,7 +422,18 @@
                                        Translate Page on the tab in front (answers when done, or after 20 s with
                                        how far it got), Show Original, Never Translate This Site; state = the
                                        tab's translation and the menu bar's page-tool items
-    ./bench split [ID|off]           split the stage with tab ID (toggle with none)
+    ./bench split [ID [left|right|top|bottom]|off]
+                                       split the stage with tab ID at that edge, or add it as one more pane
+                                       (up to three; toggle with none) → panes, stacked, shares, frames
+    ./bench split flip|rotate|even|separate [ID]|shares A,B[,C]|link URL|click SELECTOR|state
+                                       flip the panes, row ↔ stack, even them, take one (or all) out, set
+                                       their shares, open URL as a ⌥-click would, a real ⌥-click on
+                                       SELECTOR in the page in front, or only report
+    ./bench split hover ID X Y | drop ID | drag ID X Y [hold]
+                                       carry sidebar row ID over the page at X,Y (fractions of the page
+                                       area) as a drag would → the edge it would land at; then let go;
+                                       drag does it with real mouse events from the row (test worlds;
+                                       `sections release` lets go of a held one)
     ./bench little [open [URL]|copper [N]|close [N]|shot N PATH]
                                        Little Copper windows (⌥⌘N): list, open one, Open in Copper, close, a PNG
     ./bench peek [open URL|click SELECTOR|key ⎋|⌘↩|⌥⌘↩|tab|split|close|pins on|off]
@@ -601,7 +612,7 @@ def main(argv):
             args = args[:1] + [os.path.abspath(args[1])] + args[2:]
         request["arg"] = " ".join(args[1:]) if len(args) > 1 else ""
     elif verb == "split":
-        request["arg"] = args[0] if args else ""
+        request["arg"] = " ".join(args)
     elif verb == "swipe":
         request["arg"] = " ".join(args) if args else "left"
     elif verb == "mouse":
