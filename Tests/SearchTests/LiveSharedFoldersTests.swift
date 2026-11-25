@@ -186,9 +186,11 @@ private func shared(_ u: String, _ f: String = "", _ i: Double = 1) -> String {
     #expect(made.lastPathComponent == "Trip")
     let second = try SharedFolders.makeDirectory(in: root.appendingPathComponent("Copper Shared"), named: "Trip", chain: "OTHER", scope: "S")
     #expect(second.lastPathComponent == "Trip 2")
-    #expect(SharedFolders.find(chain: keys.chain, name: "Trip", in: root)?.path == made.path)
+    // /var and /private/var are the same folder; a listing says the second.
+    func real(_ url: URL?) -> String? { url?.resolvingSymlinksInPath().path }
+    #expect(real(SharedFolders.find(chain: keys.chain, name: "Trip", in: root)) == real(made))
     // Without the name, or under the name iCloud gave a folder shared with you.
-    #expect(SharedFolders.find(chain: keys.chain, name: nil, in: root)?.path == made.path)
+    #expect(real(SharedFolders.find(chain: keys.chain, name: nil, in: root)) == real(made))
     #expect(SharedFolders.find(chain: "NOPE", name: "Trip", in: root) == nil)
     #expect(SharedFolders.safeName("../a/b:c") == "-a-b-c")
     #expect(SharedFolders.safeName("  ") == "Shared Folder")
