@@ -233,6 +233,7 @@ final class SharedFolders: ObservableObject {
     private var tabKeys: [String: [Tab.ID: String]] = [:]
     private var watchers: [String: DispatchSourceFileSystemObject] = [:]
     private var timer: DispatchWorkItem?
+    private var due: Date?
     private var ticker: Timer?
     private var running = false
     private var again = false
@@ -397,8 +398,18 @@ extension SharedFolders {
     /// A cycle in `seconds`, unless one is due sooner.
     func schedule(_ seconds: Double) {
         guard browser != nil, !bindings.isEmpty else { return }
+        let when = Date().addingTimeInterval(seconds)
+        // Never later: a sidebar that keeps changing must not push the cycle off for ever.
+        if timer != nil, let due, due <= when { return }
         timer?.cancel()
-        let work = DispatchWorkItem { [weak self] in Task { await self?.cycleAll() } }
+        due = when
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                self?.timer = nil
+                self?.due = nil
+            }
+            Task { await self?.cycleAll() }
+        }
         timer = work
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
     }
