@@ -51,6 +51,8 @@ enum FlowAccess {
     /// Any other browser with no folder is simply not listed.
     static let bundles: [String: String] = [
         "Chrome": "com.google.Chrome",
+        "Opera": "com.operasoftware.Opera", "Helium": "net.imput.helium", "Comet": "ai.perplexity.comet",
+        "Firefox": "org.mozilla.firefox", "Zen": "app.zen-browser.zen",
     ]
 
     /// Whether the browser's app is on this Mac. A test run answers from

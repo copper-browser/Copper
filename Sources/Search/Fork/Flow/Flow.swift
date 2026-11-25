@@ -7,7 +7,7 @@ import WebKit
 /// A detected source shown in the Flow picker: a Chromium profile root
 /// (Chrome, Arc, …) or Safari.
 struct FlowSource: Identifiable, Hashable {
-    enum Kind: Hashable { case chromium, safari }
+    enum Kind: Hashable { case chromium, safari, gecko }
 
     let source: Chromium.Source
     let profiles: [String]
@@ -25,7 +25,11 @@ struct FlowSource: Identifiable, Hashable {
     var id: String { source.name }
     var name: String { source.name }
     var isSafari: Bool { kind == .safari }
-    var glyph: String { isSafari ? "safari" : isArc ? "a.circle" : "globe" }
+    /// Firefox or Zen (`FlowFirefox`): no keychain key, its own files.
+    var isGecko: Bool { kind == .gecko }
+    /// Its tabs come over as spaces (Arc's, Zen's), not one per window.
+    var hasSpaces: Bool { isArc || source.name == "Zen" }
+    var glyph: String { isSafari ? "safari" : isArc ? "a.circle" : isGecko ? "flame" : "globe" }
     var profileCount: Int { profiles.count }
     var root: URL { isSafari ? safariRoots.library : rootOverride ?? source.root }
     /// All the pure rules in FlowState need of it.
@@ -448,8 +452,26 @@ final class Flow: ObservableObject {
             guard hasPreferences else { return empty() }
             return FlowSource(source: source, profiles: profiles, isArc: isArc, locked: false, rootOverride: override)
         }
-        guard let safari = safari(roots: roots, only: only, forced: forced, export: safariExport) else { return chromium }
-        return chromium + [safari]
+        let gecko: [FlowSource] = FlowFirefox.known.compactMap { source in
+            if let only, !only.contains(source.name) { return nil }
+            let override = roots[source.name].flatMap { fm.fileExists(atPath: $0.path) ? $0 : nil }
+            let root = override ?? source.root
+            let empty = FlowAccess.installed(source.name)
+                ? FlowSource(source: source, profiles: [], isArc: false, locked: false, rootOverride: override, empty: true, kind: .gecko)
+                : nil
+            switch forced[source.name] ?? FlowAccess.state(of: root) {
+            case .locked:
+                return FlowSource(source: source, profiles: [], isArc: false, locked: true, rootOverride: override, kind: .gecko)
+            case .missing:
+                return empty
+            case .readable:
+                let profiles = FlowFirefox.profiles(at: root).map(\.path)
+                guard !profiles.isEmpty else { return empty }
+                return FlowSource(source: source, profiles: profiles, isArc: false, locked: false, rootOverride: override, kind: .gecko)
+            }
+        }
+        guard let safari = safari(roots: roots, only: only, forced: forced, export: safariExport) else { return chromium + gecko }
+        return chromium + gecko + [safari]
     }
 
     /// Safari's card. Safari comes with macOS, so it is always listed:
@@ -568,6 +590,7 @@ final class Flow: ObservableObject {
         if source.isSafari {
             return FlowSafari.haul(FlowSafari.collect(direct: source.safariDirect, export: source.export))
         }
+        if source.isGecko { return FlowFirefox.haul(root: source.root, name: source.name) }
         var haul = FlowModel.Haul()
         do {
             if source.isArc {
@@ -615,7 +638,9 @@ final class Flow: ObservableObject {
     }
 
     /// The switches as they will act: kinds the browser has none of, off.
-    var effectiveChoice: FlowModel.Choice { choice.fitted(to: counted) }
+    var effectiveChoice: FlowModel.Choice {
+        selected?.isGecko == true ? FlowFirefox.usable(choice.fitted(to: counted)) : choice.fitted(to: counted)
+    }
 
     /// Performs each choice independently. A failure is a line in the report,
     /// never a reason to abandon the remaining data.
@@ -646,7 +671,8 @@ final class Flow: ObservableObject {
         let look = safari.map(FlowSafari.look)
         // Fork (move-in-polish): only what this browser has; empty kinds stay off.
         let read = previewed == source.id && lastHaulSource == source.id ? lastHaul : nil
-        let choice = safari == nil ? self.choice.fitted(to: read) : FlowSafari.usable(self.choice, direct: source.safariDirect != nil, look: look)
+        var choice = safari == nil ? self.choice.fitted(to: read) : FlowSafari.usable(self.choice, direct: source.safariDirect != nil, look: look)
+        if source.isGecko { choice = FlowFirefox.usable(choice) }
         var steps = FlowStep.steps(for: choice)
         phase = .moving(steps)
         await pause()
@@ -669,7 +695,7 @@ final class Flow: ObservableObject {
             report.facts.tabsChosen = true
             report.facts.windowsRead = haul.spaces.count
             report.facts.windowsEmpty = haul.spaces.filter { $0.tabs.isEmpty }.count
-            report.facts.windowsAreSpaces = source.isArc
+            report.facts.windowsAreSpaces = source.hasSpaces
             report.facts.tabsWhy = haul.tabsTrouble
             // A window of only new-tab pages is a line in the summary, not
             // an empty space.
@@ -756,6 +782,8 @@ final class Flow: ObservableObject {
 
         if let safari, choice.passwords, let csv = safari.passwordsCSV {
             await movePasswordsCSV(csv, source: source.name, report: &report, steps: &steps)
+        } else if source.isGecko, choice.passwords || choice.cookies {
+            await moveGeckoSecrets(source, choice: choice, worn: profilesWorn(by: source, haul: haul), report: &report, steps: &steps)
         } else if safari == nil, choice.passwords || choice.cookies || choice.passkeys {
             await moveSecrets(source, reader: reader, choice: choice, worn: profilesWorn(by: source, haul: haul),
                               report: &report, steps: &steps)
@@ -793,6 +821,7 @@ final class Flow: ObservableObject {
 
         report.notes.append(contentsOf: haul.notes.filter { !$0.contains("bookmarks") && !$0.contains("places") })
         if let look { report.stayed = FlowSafari.stayed(look) }
+        report.stayed += haul.stays
         browser.redraw()
         Session.write(now: true, Spaces.shared.shape(visible: browser.tabs, active: browser.activeID))
         noteMoved(source.name, at: Date())
@@ -879,6 +908,39 @@ final class Flow: ObservableObject {
             if choice.passkeys { legs.passkeys = Result { try FlowPasskeys.read(reader, key: key, profiles: profiles) } }
             return legs
         }.value
+        await landSecrets(legs, from: source, seams: seams, report: &report, steps: &steps)
+    }
+
+    /// Firefox and Zen: no key to ask macOS for. Passwords are unlocked with
+    /// the profile's own key4.db, cookies aren't encrypted; both are read off
+    /// the main actor and land where a Chromium move's do.
+    private func moveGeckoSecrets(_ source: FlowSource, choice: FlowModel.Choice, worn: [String],
+                                  report: inout Report, steps: inout [FlowStep]) async {
+        report.facts.passwordsChosen = choice.passwords
+        report.facts.cookiesChosen = choice.cookies
+        for category in [FlowSummary.Category.passwords, .cookies] { mark(category, .working, "reading…", &steps) }
+        let root = source.root
+        let legs = await Task.detached(priority: .userInitiated) { () -> SecretLegs in
+            var legs = SecretLegs()
+            if choice.passwords { legs.logins = Result { try FlowFirefox.logins(root: root) } }
+            if choice.cookies {
+                let all = FlowFirefox.cookies(root: root)
+                legs.cookies = .success(FlowFirefox.oneEach(all))
+                for name in worn { legs.worn.append((name, all.filter { $0.profile == name })) }
+            }
+            return legs
+        }.value
+        if case .failure(FlowFirefox.Trouble.primaryPassword) = legs.logins {
+            report.facts.passwordsWhy = "they're behind \(source.name)'s Primary Password — export them from about:logins and drop the file on Move in"
+        }
+        await landSecrets(legs, from: source, seams: FlowSecrets.seams, report: &report, steps: &steps)
+    }
+
+    /// What a move's secrets came to, into Copper: the passwords into the
+    /// keychain, the sign-ins into the shared jar and the jars of the
+    /// profiles its spaces wear, the passkeys beside the passwords.
+    private func landSecrets(_ legs: SecretLegs, from source: FlowSource, seams: Bool,
+                             report: inout Report, steps: inout [FlowStep]) async {
         let sink = FlowSecrets.sink
         switch legs.logins {
         case .success(let found):
@@ -904,7 +966,7 @@ final class Flow: ObservableObject {
             // run's stand-in has nothing there to list.
             if !seams { browser(for: report)?.relist() }
         case .failure:
-            report.facts.passwordsWhy = "couldn't read \(source.name)'s saved passwords"
+            if report.facts.passwordsWhy == nil { report.facts.passwordsWhy = "couldn't read \(source.name)'s saved passwords" }
         case nil: break
         }
         finish(.passwords, report.facts, &steps)
@@ -1372,7 +1434,7 @@ final class Flow: ObservableObject {
             return importHistoryNow(named: source, limit: limit, rootOverride: root, in: browser)
         case "sources":
             refreshSources(autoScan: false)
-            return ["sources": sources.map { ["name": $0.name, "profiles": $0.profiles, "profileCount": $0.profileCount, "isArc": $0.isArc, "glyph": $0.glyph, "locked": $0.locked, "empty": $0.empty, "root": $0.root.path, "kind": $0.isSafari ? "safari" : "chromium", "export": $0.export?.path ?? "", "readable": $0.readable] }]
+            return ["sources": sources.map { ["name": $0.name, "profiles": $0.profiles, "profileCount": $0.profileCount, "isArc": $0.isArc, "glyph": $0.glyph, "locked": $0.locked, "empty": $0.empty, "root": $0.root.path, "kind": $0.isSafari ? "safari" : $0.isGecko ? "gecko" : "chromium", "export": $0.export?.path ?? "", "readable": $0.readable] }]
         case "root" where (request["source"] as? String)?.caseInsensitiveCompare(FlowSafari.name) == .orderedSame:
             // A copy of Safari's files, read as if Copper had Full Disk
             // Access: `Safari/` + `Container/`, or `none` to let go of it.
@@ -1392,7 +1454,7 @@ final class Flow: ObservableObject {
         case "root":
             guard Store.testing else { return ["error": "flow root only works in a test run"] }
             guard let name = request["source"] as? String,
-                  let source = Chromium.known.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }),
+                  let source = (Chromium.known + FlowFirefox.known).first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }),
                   let path = request["path"] as? String
             else { return ["error": "root needs a known source and path"] }
             let root = URL(fileURLWithPath: path).standardizedFileURL
@@ -1601,7 +1663,7 @@ final class Flow: ObservableObject {
             // every file a move reads; `locked` / `clear` (test runs) make it
             // locked without touching the folder, or let it be read again.
             guard let name = request["source"] as? String,
-                  let known = Chromium.known.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame })
+                  let known = (Chromium.known + FlowFirefox.known).first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame })
             else { return ["error": "access needs --source NAME"] }
             switch request["state"] as? String ?? "" {
             case "locked":
@@ -1667,7 +1729,7 @@ final class Flow: ObservableObject {
             // A file dropped on the export pane, or picked there.
             guard let path = request["path"] as? String else { return ["error": "file needs --path FILE"] }
             let name = (request["source"] as? String).flatMap { name in
-                (Chromium.known.map(\.name) + [FlowSafari.name]).first { $0.caseInsensitiveCompare(name) == .orderedSame }
+                ((Chromium.known + FlowFirefox.known).map(\.name) + [FlowSafari.name]).first { $0.caseInsensitiveCompare(name) == .orderedSame }
             } ?? exporting?.name ?? "Chrome"
             guard !fileBusy else { return ["error": "a file is already being read"] }
             takeFile(URL(fileURLWithPath: path), from: name, into: browser)

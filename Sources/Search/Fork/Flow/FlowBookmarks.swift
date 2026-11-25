@@ -141,8 +141,8 @@ enum FlowBookmarks {
     @MainActor static func relinquish(touching ids: [Bookmark.ID], in roots: [Bookmark]) {
         let touched = Set(roots.filter { root in ids.contains { contains($0, in: root) } }.map(\.id))
         guard !touched.isEmpty else { return }
-        // Every source that keeps a record: the Chromium family and Safari.
-        for name in Chromium.known.map(\.name) + [FlowSafari.name] {
+        // Every source that keeps a record: the Chromium family, Firefox's and Safari.
+        for name in (Chromium.known + FlowFirefox.known).map(\.name) + [FlowSafari.name] {
             let file = Store.file("flow-bookmarks-\(name.lowercased()).json")
             guard let data = try? Data(contentsOf: file),
                   var owned = try? JSONDecoder().decode([Bookmark].self, from: data) else { continue }
