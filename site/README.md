@@ -1,11 +1,16 @@
 # Copper — website
 
-The static landing page for [Copper](https://github.com/copper-browser/Copper), meant to be
-served by GitHub Pages at `https://copper-browser.github.io/Copper/` and by Exowatt AWS
-(S3 + CloudFront, [`infra/site-aws.yml`](../infra/site-aws.yml)) at `https://copper.exowatt.com`.
+The static website for [Copper](https://github.com/copper-browser/Copper), served by Exowatt AWS
+(S3 + CloudFront, [`infra/site-aws.yml`](../infra/site-aws.yml)) at `https://copper.exowatt.com`
+(canonical) and by GitHub Pages at `https://copper-browser.github.io/Copper/` (mirror).
+[`docs/website.md`](../docs/website.md) has the rules.
 
-- `index.html` — the whole page: inline CSS and a little vanilla JS. No framework, no build
-  step, no external fonts, CDNs or trackers.
+- `index.html` — the home page: inline CSS and a little vanilla JS. No framework, no external
+  fonts, CDNs or trackers.
+- `<page>/index.html` — subpages (`privacy/`, `press/`, …), each copied from `_page-template.html`
+  and sharing `assets/pages.css` + `assets/pages.js`. `404.html` is served for any missing path.
+- `robots.txt`; `sitemap.xml` is written by `.github/scripts/site_build.py` at deploy.
+- `press/copper-icon-1024.png` — the app icon at 1024 px, taken from the release's `AppIcon.icns`.
 - `assets/` — real captures of Copper, the app icon, favicons and the 1200×630 `og.jpg`
   social card:
   - `copper-hero-{1280,1920}.webp` + `copper-hero-sm.webp` — the hero: the whole Copper
@@ -19,16 +24,18 @@ served by GitHub Pages at `https://copper-browser.github.io/Copper/` and by Exow
   `prefers-reduced-motion` only the poster shows.
 - `.nojekyll` — serve the files as they are.
 
-Pushing a change under `site/` to `fork` deploys it: `.github/workflows/site.yml` checks that
-every `assets/` file the page references exists, then publishes `site/` with GitHub Pages
-(Source: GitHub Actions). Pull requests that touch `site/` run the same check without deploying.
+Pushing a change under `site/` to `fork` deploys it: `.github/workflows/site.yml` runs
+`.github/scripts/site_build.py` (version, release notes, sitemap) and its `--check` (assets, links,
+anchors, header/footer match the template), then publishes `site/` to both hosts. Pull requests
+that touch `site/` run the same build and check without deploying.
 
-Every path is relative, so the page works from the Pages URL, from any subpath, and straight
-from `file://`.
+Every path is relative (404.html: relative to its `<base>`, the canonical root), so the pages work from either
+host and any subpath.
 
 ## Preview locally
 
 ```sh
+python3 .github/scripts/site_build.py --check
 python3 -m http.server -d site
 ```
 
