@@ -248,7 +248,11 @@
                                        let go (or held, for a picture of where it would land); target says
                                        where; picture is the window as a PNG, nothing brought forward
     ./bench sections drop ID Y [hold]|drop end
-                                       a Today row let go over the column at Y (its own space)
+                                       a Today row let go over the column at Y (its own space); over the
+                                       middle of a top-level Saved row it makes a folder of the two (onto)
+    ./bench sections cleanup|restore ID|all|cleaned PATH [dark]
+                                       ⌥⌘K's Clean Up now (into Recently Cleaned); a Recently Cleaned entry,
+                                       or all of this space's, back into Today; the list as a PNG
     ./bench flow sources               browsers Flow can see
     ./bench flow scan --source Chrome  cheap site counts (no keychain prompt)
     ./bench flow bookmarks              actual imported tree, order and site count (test world)
@@ -400,7 +404,28 @@
     ./bench about status|feedback|default|copy pairing|clipboard
                                        Send Feedback's prefilled page, Make default (refused in a test run),
                                        and where Settings' Copy and Open went in a test world
+    ./bench page clean URL             the address without its trackers, and as a Markdown link
+    ./bench page copy [address|markdown|highlight]
+                                       ⇧⌘C, ⌥⇧⌘C or Copy Link to Highlight on the tab in front → what was copied
+                                       (a test world's own pasteboard)
+    ./bench page linkmenu SELECTOR     a right-click's contextmenu event on that link, then WebKit's Copy Link
+                                       as Copper swaps it → what it copies
+    ./bench page share [close]         File › Share… on the tab in front → the services the picker offered
+    ./bench page translate [LANG]|original|never|state
+                                       Translate Page on the tab in front (answers when done, or after 20 s with
+                                       how far it got), Show Original, Never Translate This Site; state = the
+                                       tab's translation and the menu bar's page-tool items
     ./bench split [ID|off]           split the stage with tab ID (toggle with none)
+    ./bench little [open [URL]|copper [N]|close [N]|shot N PATH]
+                                       Little Copper windows (⌥⌘N): list, open one, Open in Copper, close, a PNG
+    ./bench peek [open URL|click SELECTOR|key ⎋|⌘↩|⌥⌘↩|tab|split|close|pins on|off]
+                                       Peek (⇧-click): what is up, open one over the active tab, a real ⇧-click on
+                                       SELECTOR there, a key through the app's monitor, keep it as a tab (⌘↩) or a
+                                       split (⌥⌘↩), put it away (⎋); pins: a pin's links to other sites peek
+    ./bench atc [add site=S [app=BUNDLE] [space=N] [open=tab|window|little]|else [space=N] [open=…]|clear|
+                 try URL [APP]|route URL [APP]|last|from PID]
+                                       Air Traffic Control: the rules, add one, Everything else, what a link from
+                                       APP would do, route one for real (as from another app), the last routed
     ./bench mouse back|forward|middle [X Y] [--shift] [--window N]
                                        a click of that mouse button at window point X Y (top-left
                                        origin; the page's middle by default), through the app's routing;
@@ -558,6 +583,9 @@ def main(argv):
         request["arg"] = " ".join(args[1:]) if len(args) > 1 else ""
     elif verb == "backdrop":
         pass
+    elif verb == "page":
+        request["op"] = args[0] if args else "state"
+        request["arg"] = " ".join(args[1:])
     elif verb == "canvas":
         request["op"] = args[0] if args else "list"
         if request["op"] == "rowmenu" and len(args) > 2:
@@ -665,6 +693,9 @@ def main(argv):
         words = [a for a in args if a != "--table"]
         request["op"] = words[0] if words else "state"
         request["arg"] = " ".join(words[1:]) if len(words) > 1 else ""
+    elif verb in ("little", "peek", "atc"):  # Fork (ardia: windows)
+        request["op"] = args[0] if args else ("state" if verb == "peek" else "list")
+        request["arg"] = " ".join(args[1:]) if len(args) > 1 else ""
     elif verb in ("spaces", "groups", "sections", "agent", "ai", "updates", "bw", "op", "downloads", "drive", "ext-manager", "windows", "pace", "calendar", "pins", "covers"):
         request["op"] = args[0] if args else ("status" if verb in ("updates", "bw", "op", "drive", "pace", "covers") else "state" if verb == "calendar" else "list")
         request["arg"] = " ".join(args[1:]) if len(args) > 1 else ""
@@ -972,6 +1003,8 @@ def main(argv):
             print("sections check: " + ("ok" if not fails else f"{len(fails)} failure(s)"))
             for f in fails: print("  ✗ " + f)
             return 1 if fails else 0
+        if answer.get("path") and request.get("op") == "cleaned":
+            print(answer["path"]); return 0
         for k in ("drop", "seeded", "released", "held"):
             if k in answer: print(f"{k}: {answer[k]}")
         if "archived" in answer:
@@ -989,6 +1022,12 @@ def main(argv):
         if answer.get("saved"): print("saved, in order (z = put down / asleep):")
         for t in answer.get("saved", []):
             print(f"  {'●' if t.get('live') else ' '} {t['id']}  {'z' if t.get('asleep') else ' '}  {t['title'] or '—'}" + (f"  [{t['group']}]" if t.get('group') else ""))
+        if "restored" in answer: print(f"restored: {answer['restored']}")
+        for k, y in sorted(answer.get("rows", {}).items(), key=lambda r: r[1]):
+            print(f"  row {k}  middle y {y:.1f}")
+        if answer.get("cleaned"): print(f"recently cleaned ({len(answer['cleaned'])}), newest first:")
+        for c in answer.get("cleaned", []):
+            print(f"    {c['id']}  {c['minutes']}m  {c['title'] or '—'}  {c['url']}")
     elif verb == "pins" and "pins" in answer:
         for p in answer["pins"]:
             state = "asleep" if p.get("asleep") else ("loaded" if p.get("built") else "no page")
