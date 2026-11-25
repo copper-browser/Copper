@@ -29,6 +29,10 @@ import AppKit
 //    start — was turned away for not being http, so Finder activated Copper
 //    and nothing happened. A .webloc (or Windows' .url) is read for the
 //    address inside it; a page file opens as itself.
+//
+// 4. (Ardia parity) Air Traffic Control's rules have their say first, in
+//    `land`: a space, and a tab, a new window or Little Copper
+//    (Fork/AirTraffic.swift).
 @MainActor
 enum LinkRelay {
     /// `Links.take`, first line. True when this process is a probe (a test
@@ -84,7 +88,7 @@ enum LinkRelay {
     /// "In front" is the stacking order, not who was last key: with Settings
     /// or another panel key, the browser window just behind it is the one
     /// you are looking at. A window in the Dock counts after any on screen.
-    static func land(_ url: URL, first: Browser?) {
+    static func land(_ url: URL, from app: String? = nil, first: Browser?) {
         let shown = Windows.all.filter { Windows.window(of: $0)?.isVisible == true }
         let stacked = NSApp.orderedWindows.lazy.filter(\.isVisible).compactMap { Windows.owner(of: $0) }.first
         let docked = Windows.all.first { Windows.window(of: $0)?.isMiniaturized == true }
@@ -94,6 +98,12 @@ enum LinkRelay {
             ?? docked
             ?? first
             ?? Windows.main
+        // Fork (ardia: windows): Air Traffic Control — a rule's Little Copper or
+        // new window takes the link here; a rule's space is chosen in `target`.
+        if AirTraffic.shared.route(url, from: app, in: target) {
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
         target.arrive(url)
         if let window = Windows.window(of: target) ?? (target.primary ? Links.window : nil) {
             // Closed with the app still running (or put in the Dock): the
