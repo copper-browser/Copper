@@ -502,8 +502,17 @@ final class Shortcuts: ObservableObject {
 
 extension View {
     /// Fork (ardia-shortcuts): the command's key from the table, or none.
-    @MainActor func shortcut(_ command: MenuCommand) -> some View {
-        keyboardShortcut(Shortcuts.shared.table.combo(command)?.keyboardShortcut)
+    func shortcut(_ command: MenuCommand) -> some View { modifier(ShortcutKey(command: command)) }
+}
+
+/// Each item watches the table itself, so a new key reaches its menu item
+/// whether or not the menu around it is drawn again.
+private struct ShortcutKey: ViewModifier {
+    let command: MenuCommand
+    @ObservedObject var keys = Shortcuts.shared
+
+    func body(content: Content) -> some View {
+        content.keyboardShortcut(keys.table.combo(command)?.keyboardShortcut)
     }
 }
 
@@ -562,9 +571,12 @@ extension Shortcuts {
                 "stored": Store.settings.dictionary(forKey: "shortcuts") ?? [:]]
     }
 
-    /// Every item in the menu bar with a key: its title → "⌥⌘U".
+    /// Every item in the menu bar with a key: its title → "⌥⌘U". Each menu
+    /// is brought up to date first, as AppKit does before it opens one or
+    /// matches a key against it (SwiftUI fills its menus then).
     private static func menuKeys(_ menu: NSMenu?) -> [String: String] {
         var out: [String: String] = [:]
+        if let menu { menu.delegate?.menuNeedsUpdate?(menu); menu.update() }
         for item in menu?.items ?? [] {
             if let submenu = item.submenu { out.merge(menuKeys(submenu)) { a, _ in a } }
             guard !item.keyEquivalent.isEmpty, let key = KeyCombo.key(item.keyEquivalent) else { continue }
