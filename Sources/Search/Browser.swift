@@ -2573,6 +2573,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
                 decisionHandler(.cancel)
                 return
             }
+            if Peek.wants(action, from: webView, in: self) { Peek.open(url, over: self); decisionHandler(.cancel); return } // Fork (ardia: windows): ⇧-click peeks (Fork/Peek.swift)
             if flags.contains(.option), let from = tab(for: webView) { Split.shared.openLink(url, from: from, in: self); decisionHandler(.cancel); return } // Fork (ardia split): ⌥-click opens the link in a new pane
         }
 

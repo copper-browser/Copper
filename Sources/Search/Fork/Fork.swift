@@ -77,6 +77,9 @@ enum Fork {
             if request["op"] as? String == "servers" { Task { await Servers.shared.reload() }; return ["reloading": true] }
             return MCP.shared.bench(request)
         case "windows": return Windows.bench(request)
+        case "little": return Little.bench(request) // Fork (ardia: windows)
+        case "peek": return Peek.bench(request, in: Windows.current) // Fork (ardia: windows)
+        case "atc": return AirTraffic.bench(request) // Fork (ardia: windows)
         case "ai":
             // `ai` reports; `ai lane key|claude`; `ai tier haiku|sonnet|opus`;
             // `ai router URL KEY MODEL` configures a probe-world router.

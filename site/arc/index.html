@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moving from Arc to Copper, a free and open source Arc alternative for Mac</title>
+<meta name="description" content="Arc stops working on December 22, 2026. Copper is a free, open source Mac browser that moves in your Arc spaces, pins, folders, themes and sign-ins.">
+<link rel="canonical" href="https://copper.exowatt.com/arc/">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#F8F2EA" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0C0A09" media="(prefers-color-scheme: dark)">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Copper">
+<meta property="og:title" content="Moving from Arc to Copper, a free and open source Arc alternative for Mac">
+<meta property="og:description" content="Arc stops working on December 22, 2026. Copper is a free, open source Mac browser that moves in your Arc spaces, pins, folders, themes and sign-ins.">
+<meta property="og:url" content="https://copper.exowatt.com/arc/">
+<meta property="og:image" content="https://copper.exowatt.com/assets/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Moving from Arc to Copper, a free and open source Arc alternative for Mac">
+<meta name="twitter:description" content="Arc stops working on December 22, 2026. Copper is a free, open source Mac browser that moves in your Arc spaces, pins, folders, themes and sign-ins.">
+<meta name="twitter:image" content="https://copper.exowatt.com/assets/og.jpg">
+<link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32.png">
+<link rel="icon" type="image/png" sizes="64x64" href="../assets/favicon-64.png">
+<link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
+<link rel="stylesheet" href="../assets/pages.css">
+<script>
+  document.documentElement.classList.add('js');
+  try { var t = localStorage.getItem('copper-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+<script src="../assets/pages.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="../"><img src="../assets/icon-96.webp" alt="" width="30" height="30">Copper</a>
+    <nav aria-label="Pages">
+      <ul class="nav-links">
+        <li><a href="../try/">Try it</a></li>
+        <li><a href="../benchmarks/">Benchmarks</a></li>
+        <li><a href="../arc/" aria-current="page">Moving from Arc</a></li>
+        <li><a href="../release-notes/">Changelog</a></li>
+        <li><a href="https://github.com/copper-browser/Copper">GitHub</a></li>
+      </ul>
+    </nav>
+    <div class="nav-end">
+      <button class="theme" type="button" id="theme" aria-label="Switch to dark appearance">
+        <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+        <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
+      </button>
+      <a class="btn btn-sm" href="../#install">Download</a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap page-head">
+    <span class="kicker">Moving from Arc</span>
+    <h1>Keep your spaces. <em>Bring&nbsp;them&nbsp;over.</em></h1>
+    <p class="lead">The Browser Company is shutting Arc down on December 22, 2026. Copper is a free, open source Mac browser with spaces, pins and folders down the side, and it moves your Arc setup in with one sheet.</p>
+    <p style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px">
+      <a class="btn" href="../#install">Download Copper</a>
+      <a class="btn btn-quiet" href="../try/">Try the window first</a>
+    </p>
+    <p class="muted small" style="margin-top: 14px">macOS 14 or later · Apple Silicon or Intel · MIT licensed</p>
+  </div>
+
+  <section class="wrap section" aria-labelledby="carried-title">
+    <div class="section-head">
+      <h2 id="carried-title">What comes over</h2>
+      <p>Move in reads Arc's files on your Mac and never changes them. Arc doesn't need to be open.</p>
+    </div>
+    <div class="table" style="margin-top: 24px">
+      <table>
+        <thead><tr><th scope="col">In Arc</th><th scope="col">In Copper</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Spaces</th><td>A space each, with its name, its emoji and its theme: up to three colours, the intensity and the grain.</td></tr>
+          <tr><th scope="row">Space profiles</th><td>A space that used its own Arc profile keeps its own sign-ins in Copper too.</td></tr>
+          <tr><th scope="row">Favorites</th><td>Pins at the top of the column.</td></tr>
+          <tr><th scope="row">Pinned tabs</th><td>The space's Saved tabs, in Arc's order.</td></tr>
+          <tr><th scope="row">Folders</th><td>Folders, nested ones and empty ones included, open or shut as you left them.</td></tr>
+          <tr><th scope="row">Today's tabs</th><td>Open tabs in the space. They don't load until you click them.</td></tr>
+          <tr><th scope="row">Split views</th><td>Split views of two pages. A third or fourth pane comes over as a tab beside them.</td></tr>
+          <tr><th scope="row">History</th><td>Every page you visited, up to 20,000 places, for address suggestions.</td></tr>
+          <tr><th scope="row">Passwords, passkeys, sign-ins</th><td>Into your macOS keychain, and cookies so you stay signed in. macOS asks you once before Copper can use Arc's key.</td></tr>
+          <tr><th scope="row">Site data</th><td>What sites keep in the page, like settings and drafts.</td></tr>
+          <tr><th scope="row">Extensions</th><td>Chrome Web Store extensions install again in the background, on or off as they were. Needs macOS 15.4 or later.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted small" style="margin-top: 16px">Moving in again later adds only what is new. Undo takes back the tabs and spaces a move added.</p>
+  </section>
+
+  <section class="wrap section" aria-labelledby="same-title">
+    <div class="section-head"><h2 id="same-title">What feels the same</h2></div>
+    <ul class="cards" style="margin-top: 24px">
+      <li class="card"><h3>The column</h3><p>Pins, the space's name, Saved and Today down the left, on the space's colour. The page sits beside it as a card.</p></li>
+      <li class="card"><h3>Spaces that slide</h3><p>A swipe or <kbd>⌃1</kbd>–<kbd>⌃9</kbd> slides the column to the next space, as in Arc. Each one has its own colour and icon.</p></li>
+      <li class="card"><h3>Split view</h3><p><kbd>⇧⌘D</kbd> puts two tabs side by side.</p></li>
+      <li class="card"><h3>One box for everything</h3><p><kbd>⌘T</kbd> and <kbd>⌘K</kbd> open one card for tabs, history and search.</p></li>
+      <li class="card"><h3>Out of the way</h3><p><kbd>⌘S</kbd> hides the column. <kbd>⇧⌘S</kbd> moves the tabs to the top if you'd rather.</p></li>
+      <li class="card"><h3>A canvas in a tab</h3><p>Where Arc had Easels, Copper has Canvas: a whiteboard in a tab with notes, images and live websites.</p></li>
+    </ul>
+  </section>
+
+  <section class="wrap section" aria-labelledby="missing-title">
+    <div class="prose">
+      <h2 id="missing-title" style="margin-top: 0">What doesn't</h2>
+      <ul>
+        <li><strong>WebKit, not Chromium.</strong> Copper runs on the engine inside macOS, the one Safari uses. Chrome extensions run on WebKit's extension engine, with the Chrome APIs it lacks filled in.</li>
+        <li><strong>Next release:</strong> Peek (⇧-click), Little Copper (⌥⌘N) and Air Traffic Control link rules are built and ship in the next update. Boosts aren't built.</li>
+        <li><strong>Not moved:</strong> Arc's archived tabs. Without Arc's keychain key, spaces still arrive, signed out.</li>
+        <li><strong>Not notarized yet.</strong> Releases are signed with Copper's own certificate. <a href="../#install">Install</a> says how to open it the first time.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="wrap section" aria-labelledby="switch-title">
+    <div class="prose">
+      <h2 id="switch-title" style="margin-top: 0">How to switch</h2>
+      <ol>
+        <li><a href="../#install">Download Copper</a>, or <code>brew install --cask copper-browser/copper/copper</code>. Keep Arc installed.</li>
+        <li>In Copper's first window, pick <strong>Arc</strong> under Move in from. Later, it's <kbd>⌘K</kbd> › Flow, or View › Move in from Another Browser… (<kbd>⌥⇧⌘I</kbd>).</li>
+        <li>Leave the switches on and press <strong>Bring over</strong>. When macOS asks to use Arc's saved passwords, choose Allow.</li>
+        <li>Make Copper your default browser, so links from Mail and Slack open there.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="wrap section" aria-labelledby="when-title">
+    <div class="section-head">
+      <h2 id="when-title">Arc's last weeks</h2>
+      <p>The dates as The Browser Company gives them.</p>
+    </div>
+    <div class="table" style="margin-top: 24px">
+      <table>
+        <tbody>
+          <tr><th scope="row">October 22, 2026</th><td>No new Arc accounts.</td></tr>
+          <tr><th scope="row">November 23, 2026</th><td>Arc Search on iOS and Android loses its AI features, sign-in and sync. Arc on Mac and Windows starts showing reminders.</td></tr>
+          <tr><th scope="row">December 15, 2026</th><td>Last day to ask for a copy of your Arc account data, or its deletion.</td></tr>
+          <tr><th scope="row">December 22, 2026</th><td>Arc stops working on Mac and Windows. Accounts are deactivated, and their personal data is deleted within 30 days.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted small" style="margin-top: 16px">Sources: <a href="https://arc.net/">A farewell to Arc</a> on arc.net and <a href="https://resources.arc.net/hc/en-us/articles/44412972248471-Arc-Sunset-Key-Dates-and-What-to-Expect">Arc Sunset: Key Dates and What to Expect</a> in the Arc Help Center, both by The Browser Company. Move in while Arc still opens, so you can check what came over against it.</p>
+    <p class="muted small" style="margin-top: 10px">Copper is not affiliated with The Browser Company. Arc is their trademark.</p>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-id"><img src="../assets/icon-96.webp" alt="" width="28" height="28"><span>Copper, made by <a href="https://collinrijock.com">Collin</a> and <a href="https://felipearce.dev">Felipe</a>. MIT licensed.</span></div>
+    <ul class="links" aria-label="Project">
+      <li><a href="https://github.com/copper-browser/Copper">Source code</a></li>
+      <li><a href="../#install">Download</a></li>
+      <li><a href="../try/">Try the demo</a></li>
+      <li><a href="../benchmarks/">Benchmarks</a></li>
+      <li><a href="../arc/">Moving from Arc</a></li>
+      <li><a href="../release-notes/">Changelog</a></li>
+      <li><a href="../press/">Press kit</a></li>
+      <li><a href="../privacy/">Privacy</a></li>
+      <li><a href="https://github.com/copper-browser/Copper/issues/new">Report a bug</a></li>
+    </ul>
+  </div>
+</footer>
+</body>
+</html>
