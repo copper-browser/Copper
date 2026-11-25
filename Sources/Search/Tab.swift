@@ -484,7 +484,10 @@ final class Tab: ObservableObject, Identifiable {
         passkeys.tab = self
         images.tab = self
         shop.tab = self
-        ears.watch(web) { [weak self] on in self?.noisy = on }
+        ears.watch(web) { [weak self] on in
+            self?.noisy = on
+            if let self { MiniPlayer.shared.heard(self, on) } // Fork (ardia polish): the sidebar's player (Fork/MiniPlayer.swift)
+        }
         return web
     }
 

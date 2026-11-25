@@ -9,6 +9,7 @@
 #   6. None of 2–5 asked anyone for completions ("cats" alone does, once).
 #   7. Settings' engine: DuckDuckGo words go to DuckDuckGo, ⌘K's too.
 #   8. Settings search finds the engine row.
+#   9. Search suggestions off: typing in ⌘L, ⌘K and ⌘T asks no engine anything.
 #
 # A fresh SEARCH_PROBE world; ./build.sh first unless COPPER_SKIP_BUILD=1.
 # SHOTS=DIR keeps pictures of the card and Settings; TRACES=1 prints typing traces.
@@ -20,7 +21,7 @@ domain="com.collinrijock.copper.test.$world"
 tmp="$(mktemp -d)"
 pid=""
 cleanup() {
-  [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+  [ -n "$pid" ] && { kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; } || true # still writing its folder until it exits
   defaults delete "$domain" >/dev/null 2>&1 || true
   rm -f "$HOME/Library/Preferences/$domain.plist"
   rm -rf "$folder" "$tmp"
@@ -149,6 +150,32 @@ echo "ok 7 DuckDuckGo picked: ⌘T and ⌘K search it"
 # 8. Settings search.
 bench settings search "duckduckgo" --table | head -1 | grep -q "general" || fail "Settings search: $(bench settings search duckduckgo --table | head -2)"
 echo "ok 8 Settings search 'duckduckgo' → $(bench settings search "duckduckgo" --table | head -1 | tr -s ' ')"
+
+# 9. Search suggestions off (DuckDuckGo, which has them, still picked).
+kill "$pid"
+wait "$pid" 2>/dev/null || true
+defaults write "$domain" search.suggest -bool false
+launch
+[ "$(bench settings browse prefs | python3 -c 'import json,sys; print(json.load(sys.stdin)["searchSuggestions"])')" = False ] || fail "the switch did not turn off"
+id="$(bench open "file://$root/docs/fixtures/keys.html")"
+bench wait "$id" 10 >/dev/null
+bench select "$id" >/dev/null
+field
+bench key "$id" "copper browser" --app >/dev/null
+sleep 1
+bench key "$id" "⎋" --app >/dev/null
+bench bar "copper browser" >/dev/null
+for text in "c" "ca" "cats" "copper browser" "what is my ip"; do card "$text" --settle 1.2; done
+[ "$(asks)" = 0 ] || fail "with suggestions off, $(asks) completions were asked for"
+[ "$(picked url)" = "https://duckduckgo.com/?q=what%20is%20my%20ip" ] || fail "with suggestions off, the search row → '$(picked url)'"
+bench settings search "search suggestions" --table | head -1 | grep -q "general" || fail "Settings search: $(bench settings search "search suggestions" --table | head -2)"
+bench settings index check >"$tmp/index.json"
+python3 - "$tmp/index.json" <<'EOF2' || fail "Settings index check: $(grep -o '"[^"]*suggest[^"]*"' "$tmp/index.json" | head -3)"
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert not [f for f in d["failures"] if "suggest" in f], d["failures"]
+EOF2
+echo "ok 9 suggestions off: ⌘L, ⌘K and ⌘T typing asked $(asks) times; the search row still searches DuckDuckGo"
 
 if [ -n "${SHOTS:-}" ]; then
   mkdir -p "$SHOTS"

@@ -20,7 +20,7 @@ It was built by a design studio that spends its whole day in a browser and was t
 
 ## What it does
 
-- **One field.** Type an address and you go there; type words and you search, with the engine you pick in Settings › General. It works out sums (`2*21`), opens `doc.new` and the other `.new` shortcuts, and takes DuckDuckGo's !bangs (`!w paris`, or `yt` then Tab). It finishes addresses from your own history — and from Arc's or Chrome's, whole, once you press **Bring in** under Settings › General — and from every tab you keep in any space, and never sends what you type anywhere until you press Return.
+- **One field.** Type an address and you go there; type words and you search, with the engine you pick in Settings › General. It works out sums (`2*21`), opens `doc.new` and the other `.new` shortcuts, and takes DuckDuckGo's !bangs (`!w paris`, or `yt` then Tab). It finishes addresses from your own history — and from Arc's or Chrome's, whole, once you press **Bring in** under Settings › General — and from every tab you keep in any space. The address field (`⌘L`) sends nothing you type until you press Return. In a new tab (`⌘T`), what you have typed goes to your search engine as you type, for its suggestions, as in Safari and Chrome; **Search suggestions** in Settings › General turns that off. Sums, `.new` and !bangs are never sent.
 - **Tabs that stay out of the way.** Pin the pages you keep open all day and they shrink to a letter or their icon. Tabs from your last session come back instantly and cost nothing until you click them. `⌘K` lists your open tabs by name. The tab you are on is unmistakable — paper on the column, a bar in the space's colour, a heavier title — and the column scrolls to it whenever the selection moves. `⌃Tab` walks the row, or, from Settings › Tabs, flips between the tabs you used most recently ([docs/tabs.md](docs/tabs.md)).
 - **Spaces.** Rows of tabs with a name, an icon, a colour the whole column wears, and optionally a profile of their own. A labelled header, icon chips at the foot, **Edit Space…** for everything, delete that offers to keep the tabs ([docs/spaces.md](docs/spaces.md)).
 - **Reading mode.** `⌥⌘R` strips a page down to the article. `⇧⌘R` clears the current site's cache and reloads from origin; `⇧⌘I` opens Web Inspector's element picker.
@@ -41,7 +41,7 @@ On purpose:
 
 - No extension you have to install to feel at home. Blocking ads, hiding clutter, reading mode, picture-in-picture and passwords are built in; extensions are there for everything else.
 - No sync, no account, no cloud — unless you link it to a Copper Cloud instance you run yourself, which is off until you turn it on and never carries passwords. Otherwise your tabs, history and passwords are on your Mac and nowhere else.
-- No telemetry, no analytics, no crash reports sent anywhere. The only things that leave your Mac are the pages you ask for, their icons, and one small request a day to see whether there is a newer version.
+- No analytics, no tracking, no crash reports sent anywhere. The only things that leave your Mac are the pages you ask for, their icons, the update check, and one anonymous ping a day so we can count active users: Copper's version, the macOS version and the chip, with no ID, no IP kept and no addresses ([docs/telemetry.md](docs/telemetry.md)). Turn it off in Settings › Privacy › Usage.
 - One window. Tabs are the only kind of "new" there is.
 
 ## Privacy, concretely
@@ -53,6 +53,7 @@ On purpose:
 | Cookies and site data | WebKit's own store for the app | The sites that set them, as in any browser. |
 | Extensions | Unpacked in `~/Library/Application Support/Copper/Extensions/`, their data in WebKit's extension store | Each extension, within the permissions you accepted when adding it. |
 | Copper Cloud (only if you link it) | The domains you switched on, on the instance you linked — encrypted at rest with your account's key; the link and session token in `cloud.json` (0600) | You, and that instance's operator. |
+| The daily ping (on unless you turn it off) | One counter per day at `copper.exowatt.com/ping`: how many Copper first pinged that day, week or month, by version, macOS and chip. On your Mac, only the day of the last ping. | Copper's maintainers, as totals. No ID or IP is kept. |
 | Anything else | Nowhere. There is no server. | — |
 
 A **private tab** (`⇧⌘N`) has its own cookie jar and leaves nothing behind when it closes.

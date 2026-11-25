@@ -18,8 +18,9 @@ switched on. Releases are now signed with one certificate of Copper's own, and t
 sure every update keeps that true. Why and how releases are signed: [releasing.md](releasing.md).
 
 `Updates.requirement` is `Signing.requirement(forBundleID:)` (`Fork/Signing.swift`): for the
-release id, `identifier "com.collinrijock.copper" and certificate leaf = H"<release
-certificate's SHA-1>"`; for any other id (a development build, a test copy), `identifier
+release id, `identifier "com.collinrijock.copper" and (certificate leaf = H"<release
+certificate's SHA-1>" or <a Developer ID of Copper's team>)` — the second half since the bridge
+release (releasing.md › Moving to Developer ID); for any other id (a development build, a test copy), `identifier
 "<that id>"`. The updater checks it twice:
 
 - **Staging** (`fetchAndStage`), after the checksum, identity, version and `codesign --verify

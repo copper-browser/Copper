@@ -428,6 +428,8 @@ enum Fork {
                 // The sidebar's update pill, forced into each state (Fork/UpdatePill.swift).
                 let words = (request["arg"] as? String ?? "").split(separator: " ").map(String.init)
                 return UpdatePill.shared.bench(words, in: browser)
+            case "whatsnew": // Fork (ardia polish): the card after an update (Fork/UpdateNews.swift)
+                return UpdateNews.shared.bench((request["arg"] as? String ?? "").split(separator: " ").map(String.init))
             default: return ["error": "unknown updates operation \(op)"]
             }
         case "drive":

@@ -101,6 +101,9 @@
     ./bench updates pill [available|downloading [F]|ready|installing|failed [swap] [WHY]|off] [v=VERSION]
                                        the sidebar's update pill forced into a state (its clicks are
                                        rehearsed, never real); pill click|later|unsnooze|notes [TEXT]|replay
+    ./bench updates whatsnew [launch PREVIOUS|show [VERSION] [NOTES…]|close|reset]
+                                       the card after an update: what it shows; a launch as if PREVIOUS ran
+                                       last; forced up; put away; forget the last version seen
     ./bench downloads [open|close|cancel ID|retry ID|clear|start URL]
     ./bench render bitwarden|onepassword[-app|-password|-service|-dark]|managers[-dark]|picker|picker-live|agent|agent-dark|drive|hands|hands-dark|pill|pill-dark PATH [HOST]
                                        one card drawn to a PNG on its own, no window brought forward
@@ -425,6 +428,13 @@
                                        Translate Page on the tab in front (answers when done, or after 20 s with
                                        how far it got), Show Original, Never Translate This Site; state = the
                                        tab's translation and the menu bar's page-tool items
+    ./bench page offer [yes|no|never|reset]
+                                       the once-a-site "Translate this page?" banner: what it shows, answer it,
+                                       or forget the sites offered
+    ./bench player [toggle|skip N|hide|go|away|back]
+                                       the sidebar's mini player (a tab you left that plays): what it shows,
+                                       play/pause, ±N s, put it away, go to the tab; away/back = the window was
+                                       left (the video floats) / came back (it lands)
     ./bench split [ID [left|right|top|bottom]|off]
                                        split the stage with tab ID at that edge, or add it as one more pane
                                        (up to three; toggle with none) → panes, stacked, shares, frames
@@ -724,6 +734,9 @@ def main(argv):
         words = [a for a in args if a != "--table"]
         request["op"] = words[0] if words else "state"
         request["arg"] = " ".join(words[1:]) if len(words) > 1 else ""
+    elif verb == "player":  # Fork (ardia polish): Fork/MiniPlayer.swift
+        request["op"] = args[0] if args else "state"
+        request["arg"] = " ".join(args[1:])
     elif verb in ("little", "peek", "atc"):  # Fork (ardia: windows)
         request["op"] = args[0] if args else ("state" if verb == "peek" else "list")
         request["arg"] = " ".join(args[1:]) if len(args) > 1 else ""
@@ -798,7 +811,7 @@ def main(argv):
         if len(args) != 2: sys.exit("usage: bench ui KEY VALUE")
         key, value = args
         if key == "width": request[key] = float(value)
-        elif key in ("look", "focus", "tabswitch", "page"): request[key] = value
+        elif key in ("look", "focus", "tabswitch", "page", "welcomepage"): request[key] = value
         else: request[key] = value in ("on", "true", "1", "yes")
     elif verb in ("ext-add", "ext-press", "ext-remove", "ext-reload"):
         if len(args) != 1: sys.exit(f"usage: bench {verb} ID")
