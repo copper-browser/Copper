@@ -15,7 +15,7 @@ private func rule(_ to: String, _ style: String, _ text: String, parts: Int = 1)
     return #"{"id": "R", "destination": \#(to), "sourceComponents": [\#(Array(repeating: part, count: parts).joined(separator: ","))]}"#
 }
 
-private let routing = data(#"{"rules": [\#([
+private let routingRules = [
     rule(dest("space", recent), "contains", "meet.google.com"),
     rule(dest("space", space("S-WORK")), "contains", "jira.example/browse"),
     rule(dest("littleArc", recent), "contains", "https://www.docs.example/"),
@@ -25,20 +25,22 @@ private let routing = data(#"{"rules": [\#([
     rule(dest("space", recent), "startsWith", "x.example"),
     rule(dest("space", recent), "contains", "a.example", parts: 2),
     rule(dest("space", #"{"profile": {"_0": "P-1"}}"#), "contains", "profile.example"),
-].joined(separator: ","))], "defaultDestination": \#(dest("littleArc", recent)), "version": 1}"#)
+].joined(separator: ",")
+private let routing = data(#"{"rules": [\#(routingRules)], "defaultDestination": \#(dest("littleArc", recent)), "version": 1}"#)
 
 private func archived(_ at: Double, _ url: String, _ source: String, title: String? = nil, saved: String = "Saved") -> String {
     let custom = title.map { #""\#($0)""# } ?? "null"
     return #""A", {"archivedAt": \#(at), "reason": "manual", "source": \#(source), "sidebarItem": {"id": "A", "title": \#(custom), "data": {"tab": {"savedURL": "\#(url)", "savedTitle": "\#(saved)"}}}}"#
 }
 
-private let archive = data(#"{"version": 1, "items": [\#([
+private let archiveItems = [
     archived(100, "https://old-news.example/", #"{"space": {"_0": "S-PERSONAL"}}"#),
     archived(300, "https://report.example/q3", #"{"space": {"_0": "S-WORK"}}"#, title: "Report", saved: "Q3 report"),
     archived(400, "https://little.example/", #"{"littleArc": {}}"#),
     archived(500, "file:///Users/someone/notes.txt", #"{"space": {"_0": "S-WORK"}}"#),
     #""B", {"archivedAt": 600, "reason": "manual", "source": {"unknown": {}}, "sidebarItem": {"id": "B", "data": {"list": {}}}}"#,
-].joined(separator: ","))]}"#)
+].joined(separator: ",")
+private let archive = data(#"{"version": 1, "items": [\#(archiveItems)]}"#)
 
 @Test @MainActor func arcRulesKeepTheirOrderAndLeaveOutWhatArcCantMean() {
     var read = FlowArcExtras.Read()
