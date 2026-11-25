@@ -123,8 +123,9 @@ git checkout site/index.html             # the build rewrote the version; don't 
 ```
 
 Check every page at 1440 (light and dark), 834, 390 and 360 px: `document.documentElement.scrollWidth <=
-innerWidth`, no console errors or failed requests, the copy buttons, the ⌘K palette and the
-hide-banner demo in "Try it here", and the theme toggle. Playwright's bundled Chromium cannot
+innerWidth`, no console errors or failed requests, the live demo loads and its cue turns to "Told
+you." on the first click, Send to my Mac shows only on phones and tablets, the FAQ opens, and the
+copy buttons and theme toggle work. Playwright's bundled Chromium cannot
 play H.264, so check the videos in Safari or Chrome.
 
 ## Launch graphics
