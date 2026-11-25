@@ -122,9 +122,10 @@ struct FlowSheet: View {
                 }
                 // Under the switches it is about, in the part that scrolls,
                 // so a short window keeps its room for the list. Safari's
-                // passwords come from its export: macOS asks nothing.
+                // passwords come from its export, Firefox's from its own
+                // key4.db: macOS asks nothing.
                 if flow.choice.passwords || flow.choice.passkeys || flow.choice.cookies,
-                   let source = flow.selected, !source.isSafari {
+                   let source = flow.selected, !source.isSafari, !source.isGecko {
                     Text("macOS will ask once to let Copper use \(source.name)'s saved passwords and sign-ins. Say Allow; the window keeps working while it asks.")
                         .font(.system(size: 11.5)).foregroundStyle(Palette.muted)
                         .fixedSize(horizontal: false, vertical: true)
