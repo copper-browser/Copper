@@ -1301,8 +1301,10 @@ def report(args):
     dates = sorted({s["at"][:10] for s in samples})
     out = {"date": dates[-1] if dates else None, "span": [dates[0], dates[-1]] if dates else None,
            "machine": meta and meta["machine"], "harness": HARNESS, "browsers": meta and meta["browsers"], "rows": rows,
+           # quiet: samples whose phase began with the lock taken and the load under the limit (--quiet); with the
+           # lock held the item's own browsers raise the load, so load1 is read as each item starts, after the last.
            "conditions": {"load1Median": round(statistics.median([s["conditions"]["load1"] for s in samples]), 2) if samples else None,
-                          "samples": len(samples)},
+                          "samples": len(samples), "quiet": sum(1 for s in samples if s["conditions"].get("locked"))},
            "method": "perf/xbench/README.md"}
     if args.json:
         json.dump(out, open(args.json, "w"), indent=1)
