@@ -48,6 +48,7 @@ struct AppCommands: Commands {
     /// Fork (perf): the History menu's own source, watched here rather than
     /// through every change of the browser (Browser.init).
     @ObservedObject private var history: History
+    @ObservedObject private var keys = Shortcuts.shared // Fork (ardia-shortcuts): every key below is the table's (Fork/Shortcuts.swift)
     private var browser: Browser { focused ?? main }
 
     init(main: Browser) {
@@ -60,41 +61,41 @@ struct AppCommands: Commands {
         // Tabs, and windows for more rows of them. (Fork: windows)
         CommandGroup(replacing: .newItem) {
             Button("New Tab") { browser.launch() } // Fork: the ⌘T card (Fork/Launcher)
-                .keyboardShortcut("t")
+                .shortcut(.newTab)
             Button("New Window") { Windows.newWindow() }
-                .keyboardShortcut("n")
+                .shortcut(.newWindow)
             Button("New Little Copper Window") { Little.open(nil) } // Fork (ardia: windows): Fork/Little.swift
-                .keyboardShortcut("n", modifiers: [.command, .option])
+                .shortcut(.newLittle)
             Button("New Private Tab") { browser.newShyTab() }
-                .keyboardShortcut("n", modifiers: [.command, .shift])
+                .shortcut(.newPrivateTab)
             Button("New Canvas") { CanvasTabs.newCanvas(in: browser) } // Fork (canvas): ⌃⇧E is Arc's, and free here
-                .keyboardShortcut("e", modifiers: [.control, .shift])
+                .shortcut(.newCanvas)
             Button("Reopen Closed Tab") { browser.reopen() }
-                .keyboardShortcut("t", modifiers: [.command, .shift])
+                .shortcut(.reopenTab)
                 .disabled(browser.ghosts.isEmpty)
             Divider()
             Button("Open Address…") { browser.edit() }
-                .keyboardShortcut("l")
+                .shortcut(.openAddress)
             Divider()
             Button("Close Tab") { if let tab = browser.active { browser.close(tab) } }
-                .keyboardShortcut("w")
+                .shortcut(.closeTab)
         }
         CommandGroup(replacing: .printItem) {
             ShareItem(browser: browser) // Fork (page-tools): File › Share… (Fork/PageShare.swift)
             Button("Print…") { browser.printPage() }
-                .keyboardShortcut("p")
+                .shortcut(.print)
                 .disabled(browser.active?.isBlank ?? true)
         }
         CommandGroup(after: .pasteboard) {
             Divider()
             Button("Find on Page…") { browser.openFind() }
-                .keyboardShortcut("f")
+                .shortcut(.find)
                 .disabled(browser.active?.isBlank ?? true)
             Button("Find Next") { browser.look(forward: true) }
-                .keyboardShortcut("g")
+                .shortcut(.findNext)
                 .disabled(!browser.finding)
             Button("Find Previous") { browser.look(forward: false) }
-                .keyboardShortcut("g", modifiers: [.command, .shift])
+                .shortcut(.findPrevious)
                 .disabled(!browser.finding)
         }
         CommandGroup(replacing: .toolbar) {
@@ -102,84 +103,88 @@ struct AppCommands: Commands {
                 get: { browser.prefs.sidebar },
                 set: { _ in browser.toggleSidebar() }
             ))
-            .keyboardShortcut("s", modifiers: [.command, .shift])
+            .shortcut(.tabsInSidebar)
             // Folded away, not moved (see Fold.swift).
             Button(browser.folded ? "Show Sidebar" : "Hide Sidebar") { browser.toggleFold() }
-                .keyboardShortcut("s")
+                .shortcut(.foldSidebar)
                 .disabled(!browser.prefs.sidebar)
             Divider()
             Button("Reload Page") { browser.reload() }
-                .keyboardShortcut("r")
+                .shortcut(.reload)
             Button("Hard Reload") { browser.hardReload() }
-                .keyboardShortcut("r", modifiers: [.command, .shift])
+                .shortcut(.hardReload)
             Button("Reading Mode") { browser.toggleReader() }
-                .keyboardShortcut("r", modifiers: [.command, .option])
+                .shortcut(.readingMode)
             TranslateItems(browser: browser) // Fork (page-tools): Translate Page / Show Original, Never Translate This Site (Fork/Translate.swift)
             Button("Inspect Element") { browser.inspectElement() }
-                .keyboardShortcut("i", modifiers: [.command, .shift])
+                .shortcut(.inspect)
             Button("Float Video") { browser.toggleFloat() }
-                .keyboardShortcut("p", modifiers: [.command, .shift])
+                .shortcut(.floatVideo)
             Divider()
             Button("Hide Elements…") { browser.toggleHiding() }
-                .keyboardShortcut("h", modifiers: [.command, .shift])
+                .shortcut(.hideElements)
             Button("Hidden on This Site…") { browser.reviewing.toggle() }
-                .keyboardShortcut("u", modifiers: [.command, .shift])
+                .shortcut(.hiddenOnSite)
             Divider()
             Button("Zoom In") { browser.zoom(by: 1.1) }
-                .keyboardShortcut("+")
+                .shortcut(.zoomIn)
             Button("Zoom Out") { browser.zoom(by: 1 / 1.1) }
-                .keyboardShortcut("-")
+                .shortcut(.zoomOut)
             Button("Actual Size") { browser.resetZoom() }
-                .keyboardShortcut("0")
+                .shortcut(.actualSize)
         }
         CommandMenu("Tabs") {
             Button("Back") { browser.back() }
-                .keyboardShortcut("[")
+                .shortcut(.back)
                 .disabled(browser.active?.canGoBack != true)
             Button("Forward") { browser.forward() }
-                .keyboardShortcut("]")
+                .shortcut(.forward)
                 .disabled(browser.active?.canGoForward != true)
             Divider()
             Button("Next Tab") { browser.step(1) }
-                .keyboardShortcut("]", modifiers: [.command, .shift])
+                .shortcut(.nextTab)
             Button("Previous Tab") { browser.step(-1) }
-                .keyboardShortcut("[", modifiers: [.command, .shift])
+                .shortcut(.previousTab)
             Button("Search Tabs…") { browser.summon() }
-                .keyboardShortcut("k")
+                .shortcut(.searchTabs)
             Divider()
             if let tab = browser.active {
                 if tab.pin == nil {
                     Button("Pin Tab") { browser.pin(tab) }
+                        .shortcut(.pinTab)
                         .disabled(tab.isBlank)
                 } else {
                     Button("Change Letter") { browser.editLetter(tab) }
                     Button("Unpin Tab") { browser.unpin(tab) }
+                        .shortcut(.pinTab)
                 }
             }
             Button("Duplicate Tab") { browser.duplicate() }
-                .keyboardShortcut("d")
+                .shortcut(.duplicateTab)
                 .disabled(browser.active?.isBlank ?? true)
             Button("Copy Address") { browser.copyAddress() }
-                .keyboardShortcut("c", modifiers: [.command, .shift])
+                .shortcut(.copyAddress)
                 .disabled(browser.active?.isBlank ?? true)
             CopyLinkItems(browser: browser) // Fork (page-tools): Copy as Markdown ⌥⇧⌘C, Copy Link to Highlight (Fork/CleanLinks.swift)
             Button("Paste and Go") { browser.pasteAndGo() }
-                .keyboardShortcut("v", modifiers: [.command, .shift])
+                .shortcut(.pasteAndGo)
             Divider()
             Button("Close Other Tabs") { if let tab = browser.active { browser.closeOthers(but: tab) } }
+                .shortcut(.closeOtherTabs)
                 .disabled(browser.tabs.count < 2)
             Button("Clear Tabs") { ClearTabs.shared.clear(in: browser) }
-                .keyboardShortcut("k", modifiers: [.command, .shift])
+                .shortcut(.clearTabs)
                 .disabled(ClearTabs.shared.clearable(in: browser).isEmpty)
-            Button("Clean Up Tabs") { Cleaned.shared.cleanUp(in: browser) }.keyboardShortcut("k", modifiers: [.command, .option]) // Fork (ardia-tabs): Ardia's ⌥⌘K, into Recently Cleaned
+            Button("Clean Up Tabs") { Cleaned.shared.cleanUp(in: browser) }.shortcut(.cleanUp) // Fork (ardia-tabs): Ardia's ⌥⌘K, into Recently Cleaned
             Button("Stop Sound in Tab") { browser.pauseMedia() }
-                .keyboardShortcut("m", modifiers: [.command, .shift])
+                .shortcut(.stopSound)
         }
         CommandMenu("Bookmarks") {
             Button("Add This Page") { browser.bookmarkCurrent() }
-                .keyboardShortcut("b", modifiers: [.command, .shift])
+                .shortcut(.addBookmark)
                 .disabled(browser.active?.isBlank ?? true)
             Button("Show Bookmarks…") { browser.bookmarking = true }
+                .shortcut(.showBookmarks)
             Divider()
             BookmarkTree(nodes: browser.bookmarks.roots) { browser.visit($0) }
         }
@@ -206,24 +211,28 @@ struct AppCommands: Commands {
             }
             Divider()
             Button("Show History…") { browser.recalling = true }
-                .keyboardShortcut("y")
+                .shortcut(.history)
             Button("Downloads…") { browser.showDownloads() } // Fork (ui-flows r3)
-                .keyboardShortcut("j", modifiers: [.command, .shift])
+                .shortcut(.downloads)
             Button("Open Downloads Folder") { browser.openDownloadsFolder() }
+                .shortcut(.downloadsFolder)
             Divider()
             Button("Clear History") { browser.clearHistory() }
+                .shortcut(.clearHistory)
         }
         CommandGroup(after: .appSettings) {
             Button("Settings…") { browser.tuning = true }
-                .keyboardShortcut(",")
+                .shortcut(.settings)
             Button("Welcome…") { browser.welcoming = true }
+                .shortcut(.welcome)
             Button("Passwords…") { browser.managing = true }
-                .keyboardShortcut("l", modifiers: [.command, .option])
+                .shortcut(.passwords)
             Button("Search Accounts…") { browser.vaultOpen.toggle() } // Fork (vault-popup): Bitwarden's own shortcut for its popup
-                .keyboardShortcut("y", modifiers: [.command, .shift])
+                .shortcut(.searchAccounts)
         }
         CommandGroup(replacing: .help) {
             Button("Send Feedback…") { Links.writeFeedback() }
+                .shortcut(.feedback)
         }
     }
 }
@@ -806,6 +815,9 @@ struct ContentView: View {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
 
+        // Fork (ardia-shortcuts): a Settings › Shortcuts row recording keys hears them first.
+        if Shortcuts.shared.take(event) { return true }
+
         // Fork (voice): Escape cancels a dictation before anything else hears
         // it, and ⌃⇧D is the agent pane's while it is open (Fork/Voice/VoiceKeys.swift).
         if VoiceKeys.take(event) { return true }
@@ -907,6 +919,11 @@ struct ContentView: View {
             return true
         }
 
+        // Fork (ardia-shortcuts): the key's command, from the one table the
+        // menus read (Fork/Shortcuts.swift) — wherever Settings › Shortcuts
+        // moved it. The commands not run here are the menu's.
+        if let command = Shortcuts.shared.table.command(for: event), let taken = run(command, event) { return taken }
+
         guard flags.contains(.command) else { return false }
         let shifted = flags.contains(.shift)
 
@@ -914,62 +931,6 @@ struct ContentView: View {
         guard !flags.contains(.option), !flags.contains(.control) else { return false }
 
         switch key {
-        case "t" where !shifted:
-            browser.launch() // Fork: the ⌘T card (Fork/Launcher)
-        case "t" where shifted:
-            browser.reopen()
-        case "c" where shifted:
-            browser.copyAddress()
-        case "d" where !shifted:
-            browser.duplicate()
-        case "n" where shifted:
-            browser.newShyTab()
-        case "n" where !shifted:
-            Windows.newWindow() // Fork: windows
-        case "y" where !shifted:
-            browser.recalling.toggle()
-        case "j" where shifted:
-            browser.showDownloads(toggling: true) // Fork (ui-flows r3): the popover from the column
-        case "v" where shifted:
-            browser.pasteAndGo()
-        case "p" where !shifted:
-            browser.printPage()
-        case "f" where !shifted:
-            browser.openFind()
-        case "g":
-            browser.look(forward: !shifted)
-        case "m" where shifted:
-            browser.pauseMedia()
-        case "p" where shifted:
-            browser.toggleFloat()
-        case "k" where !shifted:
-            // Held down, ⌘K walks the list a step at a time; letting go of ⌘
-            // takes wherever it stopped.
-            if browser.editing, !browser.offers.isEmpty {
-                browser.stepSummon()
-            } else {
-                // A page with its own ⌘K keeps it; the app acts only when the
-                // page hands the key back unused. (Fork: PageFirst.)
-                if PageFirst.lend(event) { return false }
-                browser.summon()
-            }
-        case "s" where shifted:
-            browser.toggleSidebar()
-        case "s" where !shifted:
-            // The strip has nothing to fold; ⌘S stays the page's (see Fold.swift).
-            guard browser.prefs.sidebar else { return false }
-            browser.toggleFold()
-        case "b" where shifted:
-            browser.bookmarkCurrent()
-        case "," where !shifted:
-            browser.tuning.toggle()
-        case "h" where shifted:
-            browser.toggleHiding()
-        case "u" where shifted:
-            browser.reviewing.toggle()
-        case "k" where shifted:
-            guard !ClearTabs.shared.clearable(in: browser).isEmpty else { return false }
-            ClearTabs.shared.clear(in: browser)
         case "z" where !shifted:
             // Clear's undo owns ⌘Z while its pill is up; otherwise only while
             // pointing. Everywhere else undo belongs to the page.
@@ -983,27 +944,6 @@ struct ContentView: View {
             }
             guard browser.veiling else { return false }
             browser.undoHiding()
-        // ⌘+ arrives as "=" or "+" depending on the keyboard; both mean bigger.
-        case "=", "+":
-            browser.zoom(by: 1.1)
-        case "-":
-            browser.zoom(by: 1 / 1.1)
-        case "0":
-            browser.resetZoom()
-        case "w" where !shifted:
-            if let tab = browser.active { browser.close(tab) }
-        case "l" where !shifted:
-            browser.edit()
-        case "r" where !shifted:
-            browser.reload()
-        case "r" where shifted:
-            browser.hardReload()
-        case "i" where shifted:
-            browser.inspectElement()
-        case "[":
-            shifted ? browser.step(-1) : browser.back()
-        case "]":
-            shifted ? browser.step(1) : browser.forward()
         default:
             // ⌘1 through ⌘9: the ninth is the last one, however many there are.
             if let number = Int(key), (1...9).contains(number), !shifted {
@@ -1015,6 +955,66 @@ struct ContentView: View {
             // LineKeys asks who has the keyboard.)
             if LineKeys.isLineKey(event) { return LineKeys.take(event, in: browser) }
             return false
+        }
+        return true
+    }
+
+    /// Fork (ardia-shortcuts): the commands this monitor runs itself, on
+    /// whatever key the table gives them, before a page can take the key;
+    /// nil leaves the key to the menu bar, which carries the rest.
+    private func run(_ command: MenuCommand, _ event: NSEvent) -> Bool? {
+        switch command {
+        case .newTab: browser.launch() // Fork: the ⌘T card (Fork/Launcher)
+        case .reopenTab: browser.reopen()
+        case .copyAddress: browser.copyAddress()
+        case .duplicateTab: browser.duplicate()
+        case .newPrivateTab: browser.newShyTab()
+        case .newWindow: Windows.newWindow() // Fork: windows
+        case .history: browser.recalling.toggle()
+        case .downloads: browser.showDownloads(toggling: true) // Fork (ui-flows r3): the popover from the column
+        case .pasteAndGo: browser.pasteAndGo()
+        case .print: browser.printPage()
+        case .find: browser.openFind()
+        case .findNext: browser.look(forward: true)
+        case .findPrevious: browser.look(forward: false)
+        case .stopSound: browser.pauseMedia()
+        case .floatVideo: browser.toggleFloat()
+        case .searchTabs:
+            // Held down, ⌘K walks the list a step at a time; letting go of ⌘
+            // takes wherever it stopped.
+            if browser.editing, !browser.offers.isEmpty {
+                browser.stepSummon()
+            } else {
+                // A page with its own ⌘K keeps it; the app acts only when the
+                // page hands the key back unused. (Fork: PageFirst.)
+                if PageFirst.lend(event) { return false }
+                browser.summon()
+            }
+        case .tabsInSidebar: browser.toggleSidebar()
+        case .foldSidebar:
+            // The strip has nothing to fold; ⌘S stays the page's (see Fold.swift).
+            guard browser.prefs.sidebar else { return false }
+            browser.toggleFold()
+        case .addBookmark: browser.bookmarkCurrent()
+        case .settings: browser.tuning.toggle()
+        case .hideElements: browser.toggleHiding()
+        case .hiddenOnSite: browser.reviewing.toggle()
+        case .clearTabs:
+            guard !ClearTabs.shared.clearable(in: browser).isEmpty else { return false }
+            ClearTabs.shared.clear(in: browser)
+        case .zoomIn: browser.zoom(by: 1.1)
+        case .zoomOut: browser.zoom(by: 1 / 1.1)
+        case .actualSize: browser.resetZoom()
+        case .closeTab: if let tab = browser.active { browser.close(tab) }
+        case .openAddress: browser.edit()
+        case .reload: browser.reload()
+        case .hardReload: browser.hardReload()
+        case .inspect: browser.inspectElement()
+        case .back: browser.back()
+        case .forward: browser.forward()
+        case .nextTab: browser.step(1)
+        case .previousTab: browser.step(-1)
+        default: return nil
         }
         return true
     }

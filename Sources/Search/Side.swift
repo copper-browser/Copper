@@ -193,7 +193,7 @@ struct SideBar: View {
             HStack(spacing: 0) {
                 Color.clear.frame(width: 4 + Metrics.sideLights)
                     .allowsHitTesting(false)
-                Door(icon: "sidebar.left", help: "Hide Sidebar   ⌘S", size: 28, ink: tint.ink, glow: tint.hover, glyph: 15) {
+                Door(icon: "sidebar.left", help: "Hide Sidebar" + Shortcuts.hint(.foldSidebar), size: 28, ink: tint.ink, glow: tint.hover, glyph: 15) {
                     browser.toggleFold()
                 }
                 Color.clear.frame(maxWidth: .infinity).allowsHitTesting(false)
@@ -1015,14 +1015,14 @@ struct SideAddress: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Change the address   ⌘L")
+            .help("Change the address" + Shortcuts.hint(.openAddress)) // Fork (ardia-shortcuts)
             if downloads.doorShowing || downloads.showsDoor(in: browser) { // Fork (ui-flows r3): ⌘⇧J opens the list here even before a first download
                 DownloadsDoor(browser: browser, size: 24, arrowEdge: .bottom)
                     .transition(.scale(scale: 0.8).combined(with: .opacity))
             }
             // Fork (lean-foot): the Accounts key, out with the extensions — and kept while its popup is up.
             if hovering || bench.forced || browser.vaultOpen {
-                Door(icon: "key.horizontal", help: "Accounts   ⇧⌘Y", ink: tint.ink, glow: tint.hover) {
+                Door(icon: "key.horizontal", help: "Accounts" + Shortcuts.hint(.searchAccounts), ink: tint.ink, glow: tint.hover) {
                     browser.vaultOpen.toggle()
                 }
                 .popover(isPresented: $browser.vaultOpen, arrowEdge: .bottom) { VaultPopup(browser: browser) }

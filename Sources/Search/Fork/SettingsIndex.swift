@@ -40,7 +40,7 @@ extension SettingsPanel.Page {
 
     var group: Group {
         switch self {
-        case .general, .tabs, .spaces, .extensions: return .browsing
+        case .general, .tabs, .spaces, .extensions, .shortcuts: return .browsing // Fork (ardia-shortcuts)
         case .intelligence, .agents: return .copper
         case .passwords, .privacy: return .data
         case .cloud, .about: return .about // Fork (settings-merge): Copper Cloud beside About
@@ -50,7 +50,7 @@ extension SettingsPanel.Page {
     /// The rail's order inside each group. `allCases` keeps upstream's order
     /// (and the stored `settings.page` values); this is only how it is drawn.
     static let railOrder: [SettingsPanel.Page] = [
-        .general, .tabs, .spaces, .extensions,
+        .general, .tabs, .spaces, .extensions, .shortcuts,
         .intelligence, .agents,
         .passwords, .privacy,
         .cloud, .about,
@@ -68,7 +68,8 @@ extension SettingsPanel.Page {
         case .extensions: return "Chrome extensions, and the addons your Copper Cloud assigns."
         case .passwords: return "Saved sign-ins, password managers, passkeys and what agents may use."
         case .privacy: return "Blocking ads and trackers, site permissions, and clearing what sites keep."
-        case .about: return "The version you have, what's new, feedback and shortcuts."
+        case .about: return "The version you have, what's new and feedback."
+        case .shortcuts: return "Every menu command and its keys. Click one to give it new ones."
         }
     }
 
@@ -86,7 +87,8 @@ extension SettingsPanel.Page {
         case .extensions: return ["add-ons", "addons", "addon", "plugins", "chrome web store", "agent sidebar", "web app"]
         case .passwords: return ["pw", "pwd", "logins", "keychain", "autofill", "credentials", "password manager"]
         case .privacy: return ["security", "tracking", "data", "clear"]
-        case .about: return ["version", "credits", "help", "shortcuts", "update", "updates", "upgrade", "release"]
+        case .about: return ["version", "credits", "help", "update", "updates", "upgrade", "release"]
+        case .shortcuts: return ["keyboard shortcuts", "shortcuts", "hotkeys", "keys", "keyboard", "key bindings", "rebind", "remap", "cheat sheet"]
         }
     }
 
@@ -126,6 +128,7 @@ enum SettingsIndex {
         general, downloads, tabs, spaces, intelligence, voice, agents, cloud,
         extensions, passwords, privacy, updates, about,
         AirTrafficSettingsIndex.entries, // Fork (ardia: windows): Fork/AirTrafficSettings.swift
+        ShortcutsSettingsIndex.entries, // Fork (ardia-shortcuts): Fork/ShortcutsSettings.swift
         AddonSettingsIndex.entries, // Fork (addons): Fork/Addons/AddonUI.swift — last, so Copper's own update rows win a tie
     ].flatMap { $0 }
 
@@ -487,42 +490,5 @@ enum SettingsIndex {
         e(.about, "Diagnostics", "Copy crash report", "Copies the last crash's summary and breadcrumbs, or shows its report in Finder",
           ["copy report", "reveal in finder", "ips", "diagnostic report", "crash log", "symbolicate"],
           "about.crash", fallback: "about.feedback"),
-        e(.about, "Keyboard shortcuts", "Keyboard shortcuts", "Every keystroke Copper answers to",
-          ["shortcuts", "hotkeys", "keys", "keyboard", "key bindings", "cheat sheet"], "about.shortcuts"),
-    ] + SettingsShortcuts.all.map { shortcut in
-        e(.about, "Keyboard shortcuts", shortcut.does, shortcut.keys,
-          ["keyboard shortcut", "shortcut", "hotkey", "keys"] + shortcut.words, "about.shortcuts")
-    }
-}
-
-/// The keystrokes About lists — the same list search finds.
-enum SettingsShortcuts {
-    struct Shortcut {
-        let keys: String
-        let does: String
-        var words: [String] = []
-    }
-
-    static let all: [Shortcut] = [
-        .init(keys: "⌘L", does: "Address", words: ["location", "url bar", "omnibox"]),
-        .init(keys: "⌘K", does: "Switch tab", words: ["command bar", "tab search", "palette"]),
-        .init(keys: "⌘T  ⌘W  ⇧⌘T", does: "New, close, reopen tab", words: ["new tab", "close tab", "reopen closed tab"]),
-        .init(keys: "⌘N  ⇧⌘N", does: "New window, new private tab", words: ["new window", "private tab", "private browsing"]),
-        .init(keys: "⌥⌘N  ⇧-click", does: "Little Copper, peek at a link", words: ["little copper", "little arc", "small window", "peek", "preview link"]), // Fork (ardia: windows)
-        .init(keys: "⌃⇧E", does: "New canvas", words: ["whiteboard", "new board"]),
-        .init(keys: "⌘D", does: "Duplicate tab", words: ["duplicate", "copy tab"]),
-        .init(keys: "⇧⌘C", does: "Copy the address", words: ["copy url", "copy link"]),
-        .init(keys: "⇧⌘K", does: "Clear tabs", words: ["close tabs", "clean up tabs"]),
-        .init(keys: "⇧⌘B", does: "Bookmark this page", words: ["add bookmark"]),
-        .init(keys: "⌘Y", does: "History", words: ["show history"]),
-        .init(keys: "⇧⌘J", does: "Downloads", words: ["show downloads"]),
-        .init(keys: "⇧⌘S", does: "Tabs in a sidebar", words: ["toggle sidebar", "vertical tabs"]),
-        .init(keys: "⌘S", does: "Fold the sidebar away", words: ["hide sidebar", "collapse"]),
-        .init(keys: "⌥⌘R", does: "Reading mode", words: ["reader", "reader mode"]),
-        .init(keys: "⇧⌘R", does: "Hard reload", words: ["refresh", "clear cache reload"]),
-        .init(keys: "⇧⌘I", does: "Inspect element", words: ["web inspector", "devtools", "developer tools"]),
-        .init(keys: "⇧⌘H", does: "Hide something on this site", words: ["zap", "hide element", "block element"]),
-        .init(keys: "⇧⌘P", does: "Float the video", words: ["picture in picture", "pip"]),
-        .init(keys: "⌘,", does: "Settings", words: ["preferences", "settings"]),
     ]
 }

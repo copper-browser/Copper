@@ -253,8 +253,8 @@ struct NewItemMenu: View {
 
     var body: some View {
         Button("New Tab") { browser.launch() }
-            .keyboardShortcut("t")
+            .shortcut(.newTab) // Fork (ardia-shortcuts)
         Button("New Canvas") { CanvasTabs.newCanvas(in: browser) }
-            .keyboardShortcut("e", modifiers: [.control, .shift])
+            .shortcut(.newCanvas)
     }
 }

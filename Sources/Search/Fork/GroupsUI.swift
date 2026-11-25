@@ -400,6 +400,7 @@ struct GroupMenu: View {
 struct GroupCommands: Commands {
     let browser: Browser
     @ObservedObject var groups = Groups.shared
+    @ObservedObject var keys = Shortcuts.shared // Fork (ardia-shortcuts)
 
     var body: some Commands {
         CommandMenu("Groups") {
@@ -408,11 +409,12 @@ struct GroupCommands: Commands {
                 let group = groups.create(named: Fork.brand(tab.address?.host()))
                 groups.assign(tab, to: group, in: browser)
             }
-            .keyboardShortcut("g", modifiers: [.control, .shift])
+            .shortcut(.newGroup)
             .disabled(browser.active?.isBlank ?? true)
             Button("Remove from Group") {
                 if let tab = browser.active { groups.takeOut(tab, in: browser) }
             }
+            .shortcut(.removeFromGroup)
             .disabled(browser.active.map { groups.group(of: $0) == nil } ?? true)
             if !groups.all.isEmpty {
                 Divider()

@@ -36,9 +36,11 @@ final class PageShare: NSObject, NSSharingServicePickerDelegate {
 /// File › Share…, above Print (App.swift).
 struct ShareItem: View {
     let browser: Browser
+    @ObservedObject var keys = Shortcuts.shared // Fork (ardia-shortcuts)
 
     var body: some View {
         Button("Share…") { browser.sharePage() }
+            .shortcut(.share)
             .disabled(browser.active?.isBlank ?? true)
     }
 }
