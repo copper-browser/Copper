@@ -140,8 +140,8 @@ struct SpaceHeader: View {
         // icon is its own door, to Settings › Spaces; the rest is the menu.
         HStack(spacing: 0) {
             Button { SpaceEditing.shared.open(space.id) } label: {
-                SpaceGlyph(space: space, size: 16, dark: scheme == .dark, ink: tint.mark, bare: true) // Fork (uib): the chip the foot shows, at 16 pt
-                    .frame(width: 24, height: 24)
+                SpaceGlyph(space: space, size: 16.ui, dark: scheme == .dark, ink: tint.mark, bare: true) // Fork (uib): the chip the foot shows, at 16 pt
+                    .frame(width: 24.ui, height: 24.ui)
                     .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(overMark ? tint.hover : .clear))
                     .contentShape(Rectangle())
             }
@@ -183,14 +183,14 @@ struct SpaceHeader: View {
             if over {
                 let n = spaces.count(of: space.id, in: browser)
                 Text("\(n) tab\(n == 1 ? "" : "s")")
-                    .font(.system(size: 11))
+                    .font(.system(size: 11.ui))
                     .foregroundStyle(tint.muted) // Fork (uitype): words never in faint
                     .transition(.opacity)
             }
             Image(systemName: "ellipsis")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 11.ui, weight: .semibold))
                 .foregroundStyle(tint.heading)
-                .frame(width: 16)
+                .frame(width: 16.ui)
                 .opacity(over ? 1 : 0)
         }
         .frame(height: SideBar.row)
@@ -351,7 +351,7 @@ struct SpaceStrip<Tools: View>: View {
                let space = spaces.all.first(where: { $0.id == id }) {
                 let rect = geo[anchor]
                 let text = Text(space.title)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 11.ui, weight: .medium))
                     .foregroundStyle(ink.ink)
                     .lineLimit(1)
                     .padding(.horizontal, 8)
@@ -376,9 +376,9 @@ struct SpaceStrip<Tools: View>: View {
     private var plus: some View {
         Button(action: newSpace) {
             Image(systemName: "plus")
-                .font(.system(size: 15, weight: .regular))
+                .font(.system(size: 15.ui, weight: .regular))
                 .foregroundStyle(ink.muted)
-                .frame(width: 28, height: 28)
+                .frame(width: 28.ui, height: 28.ui)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -429,12 +429,12 @@ struct SpaceChip: View {
     /// one word for "this one". (Fork: space-chips)
     var plate: Color? = nil
 
-    static let size: CGFloat = 28
-    static let gap: CGFloat = 5
+    static var size: CGFloat { 28.ui } // Fork (ardia layout): at the interface size
+    static var gap: CGFloat { 5.ui }
     /// The mark inside the chip: a 20 pt tile with an 11 pt initial, or the
     /// space's chosen icon at the same size. At 17 the initial came out
     /// 9 pt on a 15 pt tile, too small to read at a glance.
-    static let tile: CGFloat = 20
+    static var tile: CGFloat { 20.ui }
 
     /// Fork (uib): Arc's foot — the current space in its colour on the live
     /// pill, the others quieter until the pointer is on one.
@@ -459,7 +459,7 @@ struct SpaceChip: View {
         if space.emoji == nil, space.symbol == nil {
             let tint = SpaceTint(space: space, dark: dark)
             Text(space.letter)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 11.ui, weight: .semibold))
                 .foregroundStyle(tint.tileInk)
                 .frame(width: SpaceChip.tile, height: SpaceChip.tile)
                 // Fork (hc6): only the tile goes quiet; a faded letter drew 2.8:1 on it, a full one ≥3.

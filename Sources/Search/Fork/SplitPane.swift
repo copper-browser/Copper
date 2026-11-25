@@ -31,9 +31,11 @@ enum SplitMetrics {
     /// The air between the two cards.
     static let gutter: CGFloat = 8
     /// The air around the pair, inside the page area.
-    static let margin: CGFloat = 7
+    static var margin: CGFloat { frame.margin }
     /// A card's corner. Between Arc's and the window's own.
-    static let corner: CGFloat = 11
+    static var corner: CGFloat { frame.corner }
+    /// Fork (ardia layout): Settings › General › Page frame (`Preferences.pageFrame`).
+    static var frame = PageFrameSize.standard
     /// The strip of chrome each card carries — over the page's top, and only
     /// while the pointer is in the pane's top `reach` (Fork: uiflows r4).
     static let bar: CGFloat = 32
@@ -45,6 +47,36 @@ enum SplitMetrics {
     /// How wide the invisible line between the cards is to the pointer —
     /// the gutter is only 8, which is a hard thing to hit on purpose.
     static let grip: CGFloat = 18
+}
+
+/// Fork (ardia layout): how much of the space's ground shows round the page:
+/// the default 7 pt and 11 pt corners, a thin 3 pt, or none — the page edge
+/// to edge with square corners (the window's own corner rounds it).
+enum PageFrameSize: String, CaseIterable, Identifiable {
+    case off = "none", thin, standard
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .off: return "None"
+        case .thin: return "Thin"
+        case .standard: return "Default"
+        }
+    }
+    var margin: CGFloat {
+        switch self {
+        case .off: return 0
+        case .thin: return 3
+        case .standard: return 7
+        }
+    }
+    var corner: CGFloat {
+        switch self {
+        case .off: return 0
+        case .thin: return 8
+        case .standard: return 11
+        }
+    }
 }
 
 /// One pane: its toolbar, its page, its outline.
@@ -59,6 +91,7 @@ struct SplitCard: View {
     let size: CGSize
     /// Fork (motion): the pane has finished sliding in.
     var landed = true
+    var pageFrame = SplitMetrics.frame // Fork (ardia layout): a new page frame draws the card again
     /// Fork (uiflows r4): the pointer is in the pane's top `reach`: its bar
     /// shows over the page (120 ms in and out). At rest the page has the
     /// whole card, as Arc's split panes do.

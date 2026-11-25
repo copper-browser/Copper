@@ -37,8 +37,8 @@ struct GroupedRows: View {
 
     private var drag: SideDrag { SideDrag.of(browser) }
 
-    static let row: CGFloat = 34 // Fork (uitype): Arc's ~34 with 14 pt titles (was 37 with 15)
-    static let gap: CGFloat = 4
+    static var row: CGFloat { 34.ui } // Fork (uitype): Arc's ~34 with 14 pt titles (was 37 with 15); Fork (ardia layout): at the interface size
+    static var gap: CGFloat { 4.ui }
 
     private var loose: [Tab] {
         browser.tabs.filter { $0.pin == nil && (only?.contains($0.id) ?? true) }
@@ -275,21 +275,21 @@ struct GroupHead: View {
                     Image(systemName: "folder.fill").foregroundStyle(paper)
                     Image(systemName: "folder").foregroundStyle(colour)
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 7, weight: .heavy))
+                        .font(.system(size: 7.ui, weight: .heavy))
                         .foregroundStyle(colour)
                         .offset(y: 1.5)
                 }
             }
-            .font(.system(size: 15))
+            .font(.system(size: 15.ui))
             .opacity(hovering ? 0 : 1)
 
             Image(systemName: "chevron.right")
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 9.ui, weight: .semibold))
                 .foregroundStyle(tint.muted)
                 .rotationEffect(.degrees(group.collapsed ? 0 : 90))
                 .opacity(hovering ? 1 : 0)
         }
-        .frame(width: 16, height: 16)
+        .frame(width: 16.ui, height: 16.ui)
     }
 
     var body: some View {
@@ -305,7 +305,7 @@ struct GroupHead: View {
             // when the pointer asks.
             if group.collapsed, count > 0, hovering {
                 Text("\(count)")
-                    .font(.system(size: 11))
+                    .font(.system(size: 11.ui))
                     .foregroundStyle(tint.muted) // Fork (uitype): words never in faint
                     .padding(.trailing, 9)
                     .transition(.opacity)

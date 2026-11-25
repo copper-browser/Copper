@@ -215,6 +215,9 @@ enum SettingsBrowseBench {
             "webkitAutocorrect": UserDefaults.standard.bool(forKey: "WebAutomaticSpellingCorrectionEnabled"),
             "bench": prefs.bench,
             "sidebar": prefs.sidebar,
+            "sideRight": prefs.sideRight, // Fork (ardia layout)
+            "interfaceSize": prefs.interfaceSize.rawValue,
+            "pageFrame": prefs.pageFrame.rawValue,
             "tabSwitching": prefs.tabSwitching.rawValue,
             "swipeDirection": prefs.swipeDirection.rawValue,
             "sleepsTabs": prefs.sleepsTabs,

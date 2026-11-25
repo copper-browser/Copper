@@ -107,6 +107,7 @@ struct AppCommands: Commands {
             Button(browser.folded ? "Show Sidebar" : "Hide Sidebar") { browser.toggleFold() }
                 .keyboardShortcut("s")
                 .disabled(!browser.prefs.sidebar)
+            Toggle("Sidebar on the Right", isOn: Binding(get: { browser.prefs.sideRight }, set: { _ in browser.toggleSide() })) // Fork (ardia layout)
             Divider()
             Button("Reload Page") { browser.reload() }
                 .keyboardShortcut("r")
@@ -310,20 +311,10 @@ struct ContentView: View {
                 StripGround(browser: browser) // Fork (sheer): glass or the solid ground
             }
 
-            HStack(spacing: 0) {
-                // The column of tabs, in the way that has one. It takes the
-                // full height, so the traffic lights sit in its own corner
-                // rather than over the page.
-                if sidebar {
-                    if launch.dressed {
-                        SideBar(browser: browser, prefs: browser.prefs, grounded: false) // Fork (page-frame): the window draws its ground
-                            .transition(.move(edge: .leading))
-                    } else {
-                        // Fork (launch): the column's place, empty, until the restored page has painted.
-                        Color.clear.frame(width: browser.prefs.sideWidth)
-                    }
-                }
-
+            // Fork (ardia layout): the column on either side — one view on its
+            // side of a ZStack, the page padded clear of it, so changing sides
+            // moves the column rather than making a second one.
+            ZStack(alignment: right ? .topTrailing : .topLeading) {
                 VStack(spacing: 0) {
                     // Room for the traffic lights, and for the strip when there
                     // is one. The page starts under it, not behind it — a page
@@ -333,7 +324,7 @@ struct ContentView: View {
 
                     // One stage, always.
                     if let tab = browser.active {
-                        SplitStage(browser: browser, active: tab, inset: sidebar, framed: band > 0) // Fork (page-frame; uitype: the top-tab page is a card too)
+                        SplitStage(browser: browser, active: tab, inset: sidebar, right: right, framed: band > 0) // Fork (page-frame; uitype: the top-tab page is a card too)
                             .overlay {
                                 if recent.showing {
                                     RecentStrip(browser: browser)
@@ -360,15 +351,28 @@ struct ContentView: View {
                         Palette.ground
                     }
                 }
+                // Fork (launch): the column's place stays clear until the restored page has painted.
+                .padding(browser.prefs.columnEdge, sidebar ? browser.prefs.sideWidth : 0)
+
+                // The column of tabs, in the way that has one. It takes the
+                // full height, so the traffic lights sit in its own corner
+                // rather than over the page.
+                if sidebar, launch.dressed {
+                    SideBar(browser: browser, prefs: browser.prefs, grounded: false) // Fork (page-frame): the window draws its ground
+                        .id(browser.prefs.interfaceSize) // Fork (ardia layout): every row drawn again at the new size
+                        .transition(.move(edge: right ? .trailing : .leading))
+                }
             }
 
             if !browser.prefs.sidebar, browser.active?.immersed != true {
                 TabBar(browser: browser)
+                    .id(browser.prefs.interfaceSize) // Fork (ardia layout)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
         .ignoresSafeArea()
         .animation(Motion.glide, value: browser.prefs.sidebar)
+        .animation(Motion.glide, value: browser.prefs.sideRight)
         .animation(.easeOut(duration: 0.12), value: browser.active?.immersed)
     }
 
@@ -398,12 +402,13 @@ struct ContentView: View {
     /// column's address field, or under the strip's far end where the
     /// passwords door is — not at the foot of the window.
     private var offerSlot: some View {
-        ZStack(alignment: sidebar ? .topLeading : .topTrailing) {
+        let left = sidebar && !right // Fork (ardia layout): beside a right column, off its left edge
+        return ZStack(alignment: left ? .topLeading : .topTrailing) {
             Color.clear.allowsHitTesting(false)
             if let offer = browser.offering {
                 keepAsking(offer)
                     .padding(.top, band + 8)
-                    .padding(sidebar ? .leading : .trailing, sidebar ? browser.prefs.sideWidth + 8 : 14)
+                    .padding(left ? .leading : .trailing, sidebar ? browser.prefs.sideWidth + 8 : 14)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
@@ -419,7 +424,7 @@ struct ContentView: View {
                 // Centred on the page, not on the window. The column of tabs
                 // is not what the field is standing over, and dimming it along
                 // with the page says otherwise.
-                .padding(.leading, sidebar ? browser.prefs.sideWidth : 0)
+                .padding(browser.prefs.columnEdge, sidebar ? browser.prefs.sideWidth : 0)
                 // Fork (ui-flows): ⌘K's card draws its own arrival (solid, no
                 // ghost; Fork/CommandPalette) and leaves in one quick fade.
                 // Fork (perf): otherwise a fade. A scale redrew every letter on
@@ -457,7 +462,7 @@ struct ContentView: View {
         if browser.managing {
             sheet { PasswordsPanel(browser: browser) } close: { browser.managing = false }
         }
-        FlowBackdrop(browser: browser, column: sidebar ? browser.prefs.sideWidth : 0) // Fork (ui-flows r3): Move in's, the same backdrop
+        FlowBackdrop(browser: browser, column: sidebar ? browser.prefs.sideWidth : 0, right: right) // Fork (ui-flows r3): Move in's, the same backdrop
         if browser.reviewing {
             // No dimming for this one: the whole point is to keep looking at
             // the page while the list offers to put things back on it.
@@ -478,10 +483,10 @@ struct ContentView: View {
     var body: some View {
         window_
             // The column folded away, and out again at the edge (see Fold.swift).
-            .overlay(alignment: .leading) { Fold(browser: browser, prefs: browser.prefs) }
+            .overlay(alignment: right ? .trailing : .leading) { Fold(browser: browser, prefs: browser.prefs) }
             // Fork (update-pill): the folded column's update badge.
-            .overlay(alignment: .bottomLeading) { UpdateCorner(browser: browser, prefs: browser.prefs) }
-            .overlay(alignment: .bottomLeading) { CloudHoldCorner(browser: browser, prefs: browser.prefs) } // Fork (cloud): the spaces brake's prompt with no column
+            .overlay(alignment: right ? .bottomTrailing : .bottomLeading) { UpdateCorner(browser: browser, prefs: browser.prefs) }
+            .overlay(alignment: right ? .bottomTrailing : .bottomLeading) { CloudHoldCorner(browser: browser, prefs: browser.prefs) } // Fork (cloud): the spaces brake's prompt with no column
             .overlay(alignment: .bottom) { bars }
             .overlay { offerSlot }
             .overlay { field }
@@ -491,6 +496,11 @@ struct ContentView: View {
             .animation(Motion.settle, value: browser.fieldShowing)
             .background(WindowSetup { window = $0; dress($0) })
             .onChange(of: browser.prefs.sidebar) { _, _ in
+                DispatchQueue.main.async { measureLights() }
+            }
+            // Fork (ardia layout): the lights ride a right column (Lights.swift).
+            .onChange(of: browser.prefs.lightsColumn) { _, _ in
+                if let window { Lights.refresh(window) }
                 DispatchQueue.main.async { measureLights() }
             }
             // Stepping away to another app: macOS draws its own resting
@@ -679,12 +689,12 @@ struct ContentView: View {
             ZStack {
                 // Fork (ui-flows r3): the one backdrop (Fork/ModalBackdrop.swift):
                 // the page card blurred and dimmed, the column left crisp.
-                ModalBackdrop(column: column, tap: close)
+                ModalBackdrop(column: column, right: right, tap: close)
                 content
                     .frame(maxHeight: fitted ? max(280, room.size.height * 0.7) : nil)
                     // Over the page card, beside the column; Settings, wider,
                     // keeps the window's middle.
-                    .padding(.leading, fitted ? column : 0)
+                    .padding(browser.prefs.columnEdge, fitted ? column : 0)
                     .transition(.scale(scale: 0.97).combined(with: .opacity))
             }
             .frame(width: room.size.width, height: room.size.height)
@@ -696,6 +706,9 @@ struct ContentView: View {
     private var sidebar: Bool {
         browser.prefs.sidebar && !browser.folded && browser.active?.immersed != true
     }
+
+    /// Fork (ardia layout): the column (shown, folded or peeking) is on the right.
+    private var right: Bool { browser.prefs.sidebar && browser.prefs.sideRight }
 
     /// The column has its own corner for the lights, so the page beside it
     /// starts at the very top; the strip needs a band.
@@ -749,7 +762,7 @@ struct ContentView: View {
         // height, in both modes, without a toolbar's rounder corners — see
         // Lights.swift. The column's first row is the strip's height too, so
         // its three doors sit on the lights' line.
-        Lights.keep(window) { measureLights() }
+        Lights.keep(window, column: { [browser] in browser.prefs.lightsColumn }) { measureLights() }
         DispatchQueue.main.async { measureLights() }
 
         // The traffic lights are drawn — measured, they paint themselves — but
