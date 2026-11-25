@@ -228,7 +228,9 @@ struct SettingsPanel: View {
                             IntelligencePage(browser: browser) // Fork
                             VoicePage(browser: browser) // Fork (settings-merge): Fork/Voice/VoiceSettings.swift
                         case .agents: AgentsPage(browser: browser) // Fork
-                        case .cloud: CloudPage(browser: browser) // Fork
+                        case .cloud:
+                            ICloudSyncPage(browser: browser) // Fork (icloud): Fork/FolderSync/FolderSyncSettings.swift
+                            CloudPage(browser: browser) // Fork
                         case .extensions:
                             ExtensionsPage(browser: browser)
                             AddonsPage(browser: browser) // Fork (settings-merge): Fork/Addons/AddonUI.swift

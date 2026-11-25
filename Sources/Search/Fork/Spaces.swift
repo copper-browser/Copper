@@ -1074,6 +1074,7 @@ final class Spaces: ObservableObject {
         SessionGuard.beginRestore()
         defer { SessionGuard.finishRestore() }
         defer { CloudSync.shared.start(for: browser) } // Fork (cloud): sync starts once yesterday's rows are back
+        defer { FolderSync.shared.start(for: browser) } // Fork (icloud): Fork/FolderSync/
         if let spaces = saved.spaces, !spaces.isEmpty {
             all = spaces
             rows = Dictionary(uniqueKeysWithValues: spaces.map { ($0.id, []) })
