@@ -1058,6 +1058,7 @@ final class Browser: NSObject {
         if prefs.bench { Bench.shared.start(for: self) }
         MCP.shared.start(for: self) // Fork: agents drive this window
         Updates.shared.start(for: self) // Fork: Copper feed updates
+        Ping.start(for: self) // Fork (telemetry): the anonymous daily ping
         welcoming = !prefs.welcomed
         // Once a day, quietly: is there a newer one?
         Updater.shared.checkIfDue { [weak self] line in self?.announce(line) }

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Privacy · Copper, the open source Mac browser</title>
-<meta name="description" content="What Copper sends (the pages you ask for and an update check), where everything it keeps is, and what this website knows: no analytics, no trackers.">
+<meta name="description" content="What Copper sends (the pages you ask for, an update check and one anonymous daily ping), where everything it keeps is, and what this website knows: no analytics, no trackers.">
 <link rel="canonical" href="https://copper.exowatt.com/privacy/">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#F8F2EA" media="(prefers-color-scheme: light)">
@@ -12,14 +12,14 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Copper">
 <meta property="og:title" content="Privacy · Copper, the open source Mac browser">
-<meta property="og:description" content="What Copper sends (the pages you ask for and an update check), where everything it keeps is, and what this website knows: no analytics, no trackers.">
+<meta property="og:description" content="What Copper sends (the pages you ask for, an update check and one anonymous daily ping), where everything it keeps is, and what this website knows: no analytics, no trackers.">
 <meta property="og:url" content="https://copper.exowatt.com/privacy/">
 <meta property="og:image" content="https://copper.exowatt.com/assets/og.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Privacy · Copper, the open source Mac browser">
-<meta name="twitter:description" content="What Copper sends (the pages you ask for and an update check), where everything it keeps is, and what this website knows: no analytics, no trackers.">
+<meta name="twitter:description" content="What Copper sends (the pages you ask for, an update check and one anonymous daily ping), where everything it keeps is, and what this website knows: no analytics, no trackers.">
 <meta name="twitter:image" content="https://copper.exowatt.com/assets/og.jpg">
 <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32.png">
 <link rel="icon" type="image/png" sizes="64x64" href="../assets/favicon-64.png">
@@ -60,7 +60,7 @@
   <div class="wrap page-head">
     <span class="kicker">Privacy</span>
     <h1>What leaves <em>your Mac.</em></h1>
-    <p class="lead">Copper has no accounts, no analytics and no servers of ours. This page says what the app sends, where everything it keeps is, and what this website knows about you.</p>
+    <p class="lead">Copper has no accounts and no analytics, and the only server of ours it talks to counts one anonymous ping a day. This page says what the app sends, where everything it keeps is, and what this website knows about you.</p>
   </div>
 
   <section class="wrap section" aria-labelledby="sends">
@@ -71,7 +71,8 @@
         <li><strong>An update check</strong> to Copper's GitHub releases, at launch and every six hours. A newer build is downloaded from there too.</li>
         <li><strong>Nothing you type in the address field</strong> (<kbd>⌘L</kbd>) until you press Return.</li>
         <li><strong>What you type in a new tab</strong> (<kbd>⌘T</kbd>), as you type it, to the search engine you picked, so it can suggest searches, as Safari and Chrome do. Turn off <strong>Search suggestions</strong> in Settings › General and <kbd>⌘T</kbd> sends nothing before Return either. Sums, <code>.new</code> shortcuts and !bangs are never sent.</li>
-        <li><strong>No analytics and no crash reports.</strong> Copper sends neither, anywhere.</li>
+        <li><strong>One anonymous ping a day</strong> to <code>copper.exowatt.com/ping</code>, so we know how many people use Copper: the Copper version, the macOS version (like 15.1), the chip (arm64 or x86_64), and whether it is the first ping this day, week or month, or ever. There is no ID, nothing about you or your pages, and the server keeps only daily totals, never your IP address. The only thing kept on your Mac is the day of the last ping. Turn it off in Settings › Privacy › Usage.</li>
+        <li><strong>No other analytics and no crash reports.</strong> Copper sends nothing else, anywhere.</li>
       </ul>
       <p>Everything else is off until you turn it on, and then goes only where you pointed it:</p>
       <ul>
@@ -97,6 +98,7 @@
           <tr><th scope="row">Cookies and site data</th><td>WebKit's own store for the app</td><td>The sites that set them, as in any browser.</td></tr>
           <tr><th scope="row">Extensions</th><td>Unpacked in Copper's own folder, their data in WebKit's extension store</td><td>Each extension, within the permissions you accepted.</td></tr>
           <tr><th scope="row">Copper Cloud, only if you link it</th><td>The parts you switched on, on the instance you linked, encrypted at rest with your account's key</td><td>You, and that instance's operator.</td></tr>
+          <tr><th scope="row">The daily ping</th><td>Daily totals at <code>copper.exowatt.com</code> (Amazon, us-east-1); the day of the last ping on your Mac</td><td>Copper's maintainers, as totals. No ID or IP is kept.</td></tr>
           <tr><th scope="row">Anything else</th><td>Not stored or sent.</td><td>No one.</td></tr>
         </tbody>
       </table>
