@@ -986,9 +986,13 @@ class Quiet:
         self.enabled, self.limit, self.fd = enabled, limit, None
 
     def take(self, deadline):
+        """Waits for the lock to be free with the load under the limit, then holds the lock. The token bench is asked
+        to hold its next run (PAUSE) while the lock is free and the load low, and for as long as rounds keep coming;
+        after 15 minutes without a quiet Mac it is let go for 10."""
         if not self.enabled:
             return True
-        said, paused, rest = 0, None, 0
+        said, rest = 0, 0
+        paused_at = time.time() if os.path.exists(PAUSE) else None
         while time.time() < deadline:
             fd = os.open(LOCK, os.O_RDONLY | os.O_CREAT, 0o644)
             try:
@@ -1004,13 +1008,12 @@ class Quiet:
                     return True
                 fcntl.flock(fd, fcntl.LOCK_UN)
                 os.close(fd)
-            # Ask the token bench to hold its next run only when it may be what keeps the Mac busy.
-            if paused is None and free and load1() < 2 * self.limit + 2 and time.time() > rest:
+            if paused_at is None and free and load1() < 2 * self.limit + 2 and time.time() > rest:
                 self.pause()
-                paused = time.time()
-            elif paused is not None and time.time() - paused > 900:
+                paused_at = time.time()
+            elif paused_at is not None and time.time() - paused_at > 900:
                 self.unpause()
-                paused, rest = None, time.time() + 600
+                paused_at, rest = None, time.time() + 600
             if time.time() - said > 300:
                 log(f"waiting for a quiet Mac: lock {'free' if free else 'held'}, load {load1():.2f}")
                 said = time.time()
@@ -1029,11 +1032,12 @@ class Quiet:
         return {"load1": round(load1(), 2), "locked": self.fd is not None}
 
     def release(self):
+        # PAUSE stays: the next item usually follows at once, and a token run started in between would keep the
+        # Mac busy for minutes. take() lets the token bench go if no quiet Mac comes within 15 minutes.
         if self.fd is not None:
             fcntl.flock(self.fd, fcntl.LOCK_UN)
             os.close(self.fd)
             self.fd = None
-            self.unpause()
 
     def done(self):
         self.release()
