@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import Testing
 @testable import Search
 
@@ -47,8 +48,8 @@ struct ShortcutTableTests {
         #expect(KeyCombo("") == nil)
         #expect(KeyCombo("⌘") == nil)
         #expect(KeyCombo("⌘AB") == nil)
-        #expect(KeyCombo("⌃⌥←")?.keyboardShortcut == .init(.leftArrow, modifiers: [.control, .option]))
-        #expect(KeyCombo("⇧⌘D")?.keyboardShortcut == .init("d", modifiers: [.command, .shift]))
+        #expect(KeyCombo("⌃⌥←")?.keyboardShortcut == KeyboardShortcut(.leftArrow, modifiers: [.control, .option]))
+        #expect(KeyCombo("⇧⌘D")?.keyboardShortcut == KeyboardShortcut("d", modifiers: [.command, .shift]))
     }
 
     @Test func aRebindingMovesTheKeyAndFreesTheOldOne() throws {

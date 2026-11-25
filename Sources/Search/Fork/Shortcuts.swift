@@ -106,7 +106,7 @@ struct KeyCombo: Hashable {
     /// so the key under it is tried too; ⌘+ is typed ⇧= on most keyboards,
     /// and ⌘= has always been Zoom In's as well.
     static func candidates(_ event: NSEvent) -> [KeyCombo] {
-        guard let typed = event.charactersIgnoringModifiers, let key = key(typed) else { return [] }
+        guard let typed = event.charactersIgnoringModifiers, let key = Self.key(typed) else { return [] }
         let mods = Mods(event.modifierFlags)
         var out = [KeyCombo(key, mods)]
         if mods.contains(.shift), key.count == 1, !key.first!.isLetter {
@@ -554,8 +554,11 @@ extension Shortcuts {
             ["id": c.rawValue, "title": c.title, "menu": c.menu, "key": keys.table.combo(c)?.text ?? "",
              "standard": c.standard?.text ?? "", "changed": keys.table.isChanged(c)]
         }
-        return ["commands": commands, "overrides": keys.table.overrides, "recording": keys.recording?.rawValue ?? NSNull(),
-                "note": keys.note.map { ["command": $0.command.rawValue, "keys": $0.combo?.text ?? "", "text": $0.text] as [String: Any] } ?? NSNull(),
+        var note: Any = NSNull()
+        if let n = keys.note { note = ["command": n.command.rawValue, "keys": n.combo?.text ?? "", "text": n.text] }
+        var recording: Any = NSNull()
+        if let r = keys.recording { recording = r.rawValue }
+        return ["commands": commands, "overrides": keys.table.overrides, "recording": recording, "note": note,
                 "stored": Store.settings.dictionary(forKey: "shortcuts") ?? [:]]
     }
 
