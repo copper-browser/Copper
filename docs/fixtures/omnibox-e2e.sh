@@ -21,7 +21,7 @@ domain="com.collinrijock.copper.test.$world"
 tmp="$(mktemp -d)"
 pid=""
 cleanup() {
-  [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+  [ -n "$pid" ] && { kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; } || true # still writing its folder until it exits
   defaults delete "$domain" >/dev/null 2>&1 || true
   rm -f "$HOME/Library/Preferences/$domain.plist"
   rm -rf "$folder" "$tmp"
