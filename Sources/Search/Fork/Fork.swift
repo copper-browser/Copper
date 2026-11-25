@@ -116,13 +116,8 @@ enum Fork {
                     "claudeReady": Intelligence.shared.claudeReady, "sources": Intelligence.shared.sources,
                     "answeredBy": Intelligence.shared.answeredModel ?? ""]
         case "split":
-            // `split` toggles; `split ID` opens beside the active tab; `split off` closes.
-            let arg = request["arg"] as? String ?? ""
-            if arg == "off" { Split.shared.close() }
-            else if arg.isEmpty { Split.shared.toggle(in: browser) }
-            else if let tab = browser.tabs.first(where: { $0.id.uuidString.lowercased().hasPrefix(arg.lowercased()) }) { Split.shared.open(with: tab, in: browser) }
-            else { return ["error": "no tab \(arg)"] }
-            return ["side": Split.shared.side.map { String($0.uuidString.prefix(8)).lowercased() } ?? "", "active": browser.activeID.map { String($0.uuidString.prefix(8)).lowercased() } ?? ""]
+            // `split` toggles; `split ID [left|right|top|bottom]` opens or joins; see Split.bench.
+            return Split.shared.bench(request["arg"] as? String ?? "", in: browser)
         case "bar":
             // What ⌘K would offer for this text, without the keyboard.
             let started = DispatchTime.now().uptimeNanoseconds

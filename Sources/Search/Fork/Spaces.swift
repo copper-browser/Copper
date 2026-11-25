@@ -245,7 +245,7 @@ final class Spaces: ObservableObject {
     /// tab shown elsewhere is one to avoid landing on without meaning to.
     func shown(_ tab: Tab, outside browser: Browser) -> Bool {
         browsers.contains { other in
-            other !== browser && (other.activeID == tab.id || (Split.shared.holder === other && Split.shared.side == tab.id))
+            other !== browser && (other.activeID == tab.id || Split.shared.shows(tab.id, in: other))
         }
     }
 
@@ -406,7 +406,7 @@ final class Spaces: ObservableObject {
     /// window's side pane leaves that pane for the same reason.
     func claim(_ tab: Tab, for browser: Browser) {
         for other in browsers where other !== browser {
-            if Split.shared.holder === other, Split.shared.side == tab.id { Split.shared.release(tab.id) }
+            if Split.shared.shows(tab.id, in: other) { Split.shared.release(tab.id) }
             guard other.activeID == tab.id else { continue }
             let rest = other.tabs.filter { $0.id != tab.id }
             if let fallback = pick(from: rest, remembered: nil, for: other, steal: false) {
@@ -1041,7 +1041,7 @@ final class Spaces: ObservableObject {
             entry.saved = tab.pin == nil ? Sections.shared.isSaved(tab) : nil
             entry.seen = Sections.shared.lastSeen(tab).timeIntervalSince1970
             entry.active = tab.id == activeID ? true : nil
-            entry.split = Split.shared.token(for: tab.id, alive: alive)
+            (entry.split, entry.pane) = Split.shared.session(for: tab.id, alive: alive) // Fork (ardia split): its place in the split, too
             return entry
         }
         func put(_ tabs: [Tab], _ id: UUID, _ activeID: Tab.ID?, visible: Bool) {
@@ -1074,6 +1074,7 @@ final class Spaces: ObservableObject {
         SessionGuard.beginRestore()
         defer { SessionGuard.finishRestore() }
         defer { CloudSync.shared.start(for: browser) } // Fork (cloud): sync starts once yesterday's rows are back
+        defer { FolderSync.shared.start(for: browser) } // Fork (icloud): Fork/FolderSync/
         if let spaces = saved.spaces, !spaces.isEmpty {
             all = spaces
             rows = Dictionary(uniqueKeysWithValues: spaces.map { ($0.id, []) })
@@ -1084,6 +1085,7 @@ final class Spaces: ObservableObject {
         pinHome = [:]
         var restored: [UUID: (tabs: [Tab], active: Tab.ID?)] = [:]
         var splits: [UUID: [Tab.ID]] = [:]
+        var slots: [Tab.ID: SplitSlot] = [:] // Fork (ardia split): each pane's place in its split
         var activePin: Tab.ID?
         Sections.shared.clear()
 
@@ -1126,7 +1128,7 @@ final class Spaces: ObservableObject {
             Sections.shared.restore(tab, saved: true, seen: entry.seen)
             PinsAwake.restored(tab, from: entry) // Fork (covers): a big pin left asleep stays asleep
             Groups.shared.restore(tab, group: entry.group)
-            if let token = entry.split { splits[token, default: []].append(tab.id) }
+            if let token = entry.split { splits[token, default: []].append(tab.id); slots[tab.id] = entry.pane }
             pins.append(tab)
             pinHome[tab.id] = made
             kept[key] = tab
@@ -1146,7 +1148,7 @@ final class Spaces: ObservableObject {
             // something you kept, so the whole column comes back as Saved.
             Sections.shared.restore(tab, saved: entry.saved ?? true, seen: entry.seen)
             Groups.shared.restore(tab, group: entry.group)
-            if let token = entry.split { splits[token, default: []].append(tab.id) }
+            if let token = entry.split { splits[token, default: []].append(tab.id); slots[tab.id] = entry.pane }
             var row = restored[id] ?? ([], nil)
             row.tabs.append(tab)
             // Upstream's file has no `active` flag — its `active` index does.
@@ -1162,7 +1164,7 @@ final class Spaces: ObservableObject {
         for (space, row) in restored where space != current {
             if let active = row.active { activeByBrowserSpace[ObjectIdentifier(browser), default: [:]][space] = active }
         }
-        Split.shared.restore(splits)
+        Split.shared.restore(splits, slots: slots)
         let mine = projection(current)
         setProjection(mine, in: browser)
         Recent.shared.rebuild(from: browser.tabs)
@@ -1224,6 +1226,7 @@ struct ForkCommands: Commands {
                 .keyboardShortcut("i", modifiers: [.command, .shift, .option])
             Button(split.on ? "Close Split View" : "Split View") { split.toggle(in: browser) }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
+            Menu("Split Panes") { SplitMenu(browser: browser) }.disabled(!split.on) // Fork (ardia split): flip, stack, even, separate
             Button(agent.open ? "Close Agent" : "Agent") { agent.toggle() }
                 .keyboardShortcut("e", modifiers: [.command])
             Button("Ask About This Page") { agent.askOnPage(in: browser) }

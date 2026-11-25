@@ -64,7 +64,7 @@ extension SettingsPanel.Page {
         case .spaces: return "Each space's name, look, icon and profile. Drag the chips to reorder."
         case .intelligence: return "The model the agent thinks with, Jev's quick clicks, and voice."
         case .agents: return "Let agents in your terminal, editor or other apps use this browser."
-        case .cloud: return "Connect, sign in, then choose what follows you between Macs."
+        case .cloud: return "iCloud sync with a recovery phrase, or a Copper Cloud you run: choose what follows you between Macs."
         case .extensions: return "Chrome extensions, and the addons your Copper Cloud assigns."
         case .passwords: return "Saved sign-ins, password managers, passkeys and what agents may use."
         case .privacy: return "Blocking ads and trackers, site permissions, and clearing what sites keep."
@@ -82,7 +82,7 @@ extension SettingsPanel.Page {
                                     "voice", "dictation", "dictate", "speech", "transcription", "push to talk", "hold to talk",
                                     "microphone", "mic", "talk", "conversational", "speech model"]
         case .agents: return ["mcp", "proxy", "bot", "bots", "automation", "agent"]
-        case .cloud: return ["sync", "account", "canvas", "devices", "backup"]
+        case .cloud: return ["sync", "account", "canvas", "devices", "backup", "icloud", "icloud drive", "recovery phrase"]
         case .extensions: return ["add-ons", "addons", "addon", "plugins", "chrome web store", "agent sidebar", "web app"]
         case .passwords: return ["pw", "pwd", "logins", "keychain", "autofill", "credentials", "password manager"]
         case .privacy: return ["security", "tracking", "data", "clear"]
@@ -144,6 +144,8 @@ enum SettingsIndex {
           toggle: pref(\.autocorrect)),
         e(.general, "Copper on this Mac", "Morning page", "Opens once a day, in the first window after 3 AM",
           ["daily page", "newspaper", "morning", "start page", "home page", "homepage", "startup page", "first window"], "general.daily"),
+        e(.general, "Search", "Search engine", "Where words go when they aren't an address — Google, DuckDuckGo, Bing, Kagi, Perplexity, Ecosia, Brave or your own",
+          ["search engine", "default search", "google", "duckduckgo", "ddg", "bing", "kagi", "perplexity", "ecosia", "brave", "custom search", "bangs", "calculator"], "general.search"),
         e(.general, "Moving in", "Move in from another browser", "Tabs, spaces, bookmarks, history and passwords from the other browsers on this Mac",
           ["import", "flow", "chrome", "arc", "safari", "export", "reading list", "migrate", "switch browsers", "bookmarks import", "transfer"], "general.flow"),
         e(.general, "Moving in", "Browsing history", "Typed addresses complete from Arc or Chrome history",
@@ -319,6 +321,9 @@ enum SettingsIndex {
     // MARK: cloud
 
     private static let cloud: [SettingsEntry] = [
+        e(.cloud, "iCloud sync", "iCloud sync", "End-to-end encrypted through your iCloud Drive, keyed by a 24-word recovery phrase",
+          ["icloud", "icloud drive", "recovery phrase", "recovery kit", "end-to-end", "e2e", "encrypted sync", "sync folder",
+           "dropbox", "turn on sync", "enter recovery phrase", "stop syncing"], "icloud.sync"),
         e(.cloud, "Copper Cloud", "Where you are", "Connect, sign in, then choose what syncs",
           ["steps", "setup", "progress"], "cloud.steps"),
         e(.cloud, "Connect", "Connect to an instance", "Paste a link code, a join link or a pairing code from another Mac",

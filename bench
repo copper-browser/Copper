@@ -381,6 +381,9 @@
     ./bench cloud sso discover [CODE]|state|cancel
                                        Copper Cloud: link a probe world to an instance, sign in, sync;
                                        mint a one-time code for another Mac, list or revoke them
+    ./bench icloud status|folder PATH|on|join WORD…|phrase|off [delete]|now|set DOMAIN on|off|doc DOMAIN|log|files
+    ./bench icloud setting KEY VALUE|unbookmark URL|picture PATH [dark] [kit]|kit PATH
+                                       iCloud sync (serverless, end-to-end encrypted, a folder + a 24-word phrase)
     ./bench passkeys list|count|forget --id ID|answer yes|no|ask
                                        Copper's own test-world passkeys (no private keys in list)
     ./bench mcp transcript begin|append TEXT|live on|off|forget|share on|off|state
@@ -419,7 +422,18 @@
                                        Translate Page on the tab in front (answers when done, or after 20 s with
                                        how far it got), Show Original, Never Translate This Site; state = the
                                        tab's translation and the menu bar's page-tool items
-    ./bench split [ID|off]           split the stage with tab ID (toggle with none)
+    ./bench split [ID [left|right|top|bottom]|off]
+                                       split the stage with tab ID at that edge, or add it as one more pane
+                                       (up to three; toggle with none) → panes, stacked, shares, frames
+    ./bench split flip|rotate|even|separate [ID]|shares A,B[,C]|link URL|click SELECTOR|state
+                                       flip the panes, row ↔ stack, even them, take one (or all) out, set
+                                       their shares, open URL as a ⌥-click would, a real ⌥-click on
+                                       SELECTOR in the page in front, or only report
+    ./bench split hover ID X Y | drop ID | drag ID X Y [hold]
+                                       carry sidebar row ID over the page at X,Y (fractions of the page
+                                       area) as a drag would → the edge it would land at; then let go;
+                                       drag does it with real mouse events from the row (test worlds;
+                                       `sections release` lets go of a held one)
     ./bench little [open [URL]|copper [N]|close [N]|shot N PATH]
                                        Little Copper windows (⌥⌘N): list, open one, Open in Copper, close, a PNG
     ./bench peek [open URL|click SELECTOR|key ⎋|⌘↩|⌥⌘↩|tab|split|close|pins on|off]
@@ -598,7 +612,7 @@ def main(argv):
             args = args[:1] + [os.path.abspath(args[1])] + args[2:]
         request["arg"] = " ".join(args[1:]) if len(args) > 1 else ""
     elif verb == "split":
-        request["arg"] = args[0] if args else ""
+        request["arg"] = " ".join(args)
     elif verb == "swipe":
         request["arg"] = " ".join(args) if args else "left"
     elif verb == "mouse":
@@ -676,6 +690,10 @@ def main(argv):
     elif verb == "cloud":
         request["op"] = args[0] if args else "status"
         if request["op"] == "picture" and len(args) > 1: args[1] = os.path.abspath(args[1])
+        request["arg"] = " ".join(args[1:]) if len(args) > 1 else ""
+    elif verb == "icloud":
+        request["op"] = args[0] if args else "status"
+        if request["op"] in ("picture", "kit", "folder") and len(args) > 1: args[1] = os.path.abspath(os.path.expanduser(args[1]))
         request["arg"] = " ".join(args[1:]) if len(args) > 1 else ""
     elif verb == "voice":
         request["op"] = args[0] if args else "status"
@@ -947,7 +965,7 @@ def main(argv):
     elif verb == "settings" and request["op"] == "search" and "--table" in args:
         for r in answer.get("results", []):
             print(f"{r['rank']:>2}  {r['score']:>6}  {r['page']:<12} {r['marked']}")
-    elif verb == "cloud":
+    elif verb in ("cloud", "icloud"):
         print(json.dumps(answer, ensure_ascii=False, sort_keys=True, indent=2))
     elif request.get("do") == "newtab" and request.get("type"):
         if request.get("json"):

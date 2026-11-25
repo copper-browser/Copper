@@ -40,6 +40,8 @@ enum SplitMetrics {
     static let reach: CGFloat = 36
     /// A card never gets narrower than this, however far the handle is pulled.
     static let least: CGFloat = 220
+    /// Fork (ardia split): nor, stacked, shorter than this.
+    static let leastTall: CGFloat = 140
     /// How wide the invisible line between the cards is to the pointer —
     /// the gutter is only 8, which is a hard thing to hit on purpose.
     static let grip: CGFloat = 18
@@ -233,6 +235,7 @@ struct SplitBar: View {
         // A click anywhere on the bar is a click into the pane.
         .contentShape(Rectangle())
         .onTapGesture { Split.shared.touched(tab, in: browser) }
+        .contextMenu { SplitMenu(browser: browser, tab: tab) } // Fork (ardia split)
     }
 
     private var doors: some View {
@@ -262,14 +265,40 @@ struct SplitBar: View {
     }
 }
 
-/// The line between the panes: nothing at all until the pointer finds it,
-/// then a short soft bar you can pull. Double-click puts it back in the
-/// middle.
+/// Fork (ardia split): what a pane's bar offers on a right-click, and the
+/// menu bar's Split Panes menu.
+struct SplitMenu: View {
+    let browser: Browser
+    /// The pane the menu was opened on; nil from the menu bar.
+    var tab: Tab? = nil
+
+    var body: some View {
+        let split = Split.shared
+        Button("Flip Panes") { split.flip() }
+        Button(split.stacked ? "Put Panes Side by Side" : "Stack Panes") { split.rotate() }
+        Button("Make Panes Even") { withAnimation(Motion.glide) { split.even() } }
+        Divider()
+        if let tab, split.panes.count > 2 {
+            Button("Separate This Pane") { split.separate(tab, in: browser) }
+        }
+        Button("Separate All Panes") { split.close() }
+    }
+}
+
+/// The line between two panes: nothing at all until the pointer finds it,
+/// then a short soft bar you can pull. Double-click makes every pane the
+/// same size.
 struct SplitHandle: View {
     @ObservedObject var split = Split.shared
-    /// The width the fraction is measured against, and where it starts.
+    /// Fork (ardia split): which divider — the one after pane `divider`.
+    var divider = 0
+    /// The length the shares are measured against, and where the panes
+    /// start along it in `Split.space`.
     let span: CGFloat
     let inset: CGFloat
+    /// Fork (ardia split): a stacked split's dividers lie across the stage.
+    var stacked = false
+    var least = SplitMetrics.least
 
     @State private var over = false
     @State private var dragging = false
@@ -280,21 +309,23 @@ struct SplitHandle: View {
             Color.clear
             Capsule(style: .continuous)
                 .fill(Palette.ink.opacity(showing ? 0.3 : 0))
-                .frame(width: 4, height: 54)
+                .frame(width: stacked ? 54 : 4, height: stacked ? 4 : 54)
         }
-        .frame(width: SplitMetrics.grip)
+        .frame(width: stacked ? nil : SplitMetrics.grip, height: stacked ? SplitMetrics.grip : nil)
         .contentShape(Rectangle())
         .onHover { inside in
             over = inside
-            inside ? NSCursor.resizeLeftRight.push() : NSCursor.pop()
+            let cursor = stacked ? NSCursor.resizeUpDown : NSCursor.resizeLeftRight
+            inside ? cursor.push() : NSCursor.pop()
         }
         .gesture(
             DragGesture(minimumDistance: 1, coordinateSpace: .named(Split.space))
                 .onChanged { drag in
                     dragging = true
-                    let least = SplitMetrics.least / max(span, 1)
-                    let want = (drag.location.x - inset) / max(span, 1)
-                    split.fraction = min(1 - least, max(least, want))
+                    // Where the divider is, along the span: the gutters before it, and half its own, taken out.
+                    let along = stacked ? drag.location.y : drag.location.x
+                    let at = along - inset - CGFloat(divider) * SplitMetrics.gutter - SplitMetrics.gutter / 2
+                    split.pull(divider, to: at, span: span, least: least)
                 }
                 .onEnded { _ in dragging = false }
         )
@@ -303,7 +334,7 @@ struct SplitHandle: View {
         // fight over the same pointer.
         .simultaneousGesture(
             TapGesture(count: 2).onEnded {
-                withAnimation(Motion.glide) { split.fraction = 0.5 }
+                withAnimation(Motion.glide) { split.even() }
             }
         )
         .animation(Motion.quick, value: showing)
