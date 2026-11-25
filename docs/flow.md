@@ -1,7 +1,8 @@
 # Move in (Flow)
 
 Move in is Copper's one sheet for bringing your tabs, bookmarks, history,
-passwords and sign-ins over from Chrome, Safari or Arc. It reads the other
+passwords and sign-ins over from Chrome, Safari, Arc, Firefox or Zen (and the
+other Chromium browsers: Dia, Brave, Edge, Vivaldi, Opera, Helium, Comet). It reads the other
 browser's files on this Mac (or a file it exported) and never changes them.
 Why it is built the way it is — the live demo where it brought nothing and
 the sheet cycled — is in
@@ -25,6 +26,7 @@ they read into Copper.
 | `FlowChromeTabs.swift`, `FlowChromium.swift`, `FlowBookmarks.swift`, `FlowCookies.swift`, `FlowPasskeys.swift`, `FlowExtensions.swift`, `FlowExtensionState.swift`, `FlowLocalStorage.swift` | the Chrome-family readers (Arc and other Chromium browsers share them) |
 | `FlowArc.swift` | Arc's sidebar (`StorableSidebar.json`): spaces, pins, folders |
 | `FlowSafari.swift`, `FlowSafariFormats.swift` | Safari as a source; its plist, `History.db`, tabs database and export zip |
+| `FlowFirefox.swift` | Firefox and Zen as sources: `profiles.ini`, mozLz4 session files, `places.sqlite`, `cookies.sqlite`, `logins.json` + `key4.db` |
 | `FlowBookmarksHTML.swift` | the one bookmarks-HTML parser, for Chrome's export and Safari's |
 | `FlowBench.swift` | small helpers for `bench flow` answers |
 
@@ -133,6 +135,30 @@ So **Allow in System Settings…**, while the folder is locked, first clears
 Copper's own App Data record (`tccutil reset SystemPolicyAppDataDetailed
 <bundle id>`; the locked record grants nothing) and lists the folder once, so
 the record the switch changes carries the running signature.
+
+### Firefox and Zen
+
+Mozilla's browsers keep everything in the profile folder, nothing in the
+keychain, so a move asks macOS for nothing. Every profile in `profiles.ini`
+with a `places.sqlite` is read; the one this install opens comes first and
+its spaces share Copper's jar, as Chrome's `Default` does.
+
+- **Open tabs**: the newest of `sessionstore-backups/recovery.jsonlz4`
+  (while it runs), `sessionstore.jsonlz4` (after a quit) and Zen's
+  `zen-sessions.jsonlz4`, mozLz4 (an 8-byte magic, the size, one LZ4 block)
+  around session JSON. Firefox: a space per window, pinned tabs as pins,
+  tab groups with their colour. Zen: a space per Zen space with its name and
+  emoji, Essentials as pins, a space's pinned tabs as Saved, Glance
+  previews left out. Private windows never come.
+- **Bookmarks and history** from `places.sqlite`, **sign-ins** from
+  `cookies.sqlite`, each copied with its `-wal` (the newest rows while the
+  browser runs). Container and partitioned cookies stay.
+- **Passwords** from `logins.json`, unlocked with the profile's `key4.db`
+  the way NSS does with no Primary Password (PBKDF2-SHA256 + AES-256-CBC;
+  SHA-1 + 3DES in profiles from before 2019). Behind a Primary Password
+  they stay, and the summary says to export them from about:logins and drop
+  the CSV on the export pane. Sites marked "never save" come too.
+- Add-ons only run in Firefox; the summary names them. Site data isn't read.
 
 ### Safari
 

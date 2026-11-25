@@ -248,7 +248,11 @@
                                        let go (or held, for a picture of where it would land); target says
                                        where; picture is the window as a PNG, nothing brought forward
     ./bench sections drop ID Y [hold]|drop end
-                                       a Today row let go over the column at Y (its own space)
+                                       a Today row let go over the column at Y (its own space); over the
+                                       middle of a top-level Saved row it makes a folder of the two (onto)
+    ./bench sections cleanup|restore ID|all|cleaned PATH [dark]
+                                       ⌥⌘K's Clean Up now (into Recently Cleaned); a Recently Cleaned entry,
+                                       or all of this space's, back into Today; the list as a PNG
     ./bench flow sources               browsers Flow can see
     ./bench flow scan --source Chrome  cheap site counts (no keychain prompt)
     ./bench flow bookmarks              actual imported tree, order and site count (test world)
@@ -996,6 +1000,8 @@ def main(argv):
             print("sections check: " + ("ok" if not fails else f"{len(fails)} failure(s)"))
             for f in fails: print("  ✗ " + f)
             return 1 if fails else 0
+        if answer.get("path") and request.get("op") == "cleaned":
+            print(answer["path"]); return 0
         for k in ("drop", "seeded", "released", "held"):
             if k in answer: print(f"{k}: {answer[k]}")
         if "archived" in answer:
@@ -1013,6 +1019,12 @@ def main(argv):
         if answer.get("saved"): print("saved, in order (z = put down / asleep):")
         for t in answer.get("saved", []):
             print(f"  {'●' if t.get('live') else ' '} {t['id']}  {'z' if t.get('asleep') else ' '}  {t['title'] or '—'}" + (f"  [{t['group']}]" if t.get('group') else ""))
+        if "restored" in answer: print(f"restored: {answer['restored']}")
+        for k, y in sorted(answer.get("rows", {}).items(), key=lambda r: r[1]):
+            print(f"  row {k}  middle y {y:.1f}")
+        if answer.get("cleaned"): print(f"recently cleaned ({len(answer['cleaned'])}), newest first:")
+        for c in answer.get("cleaned", []):
+            print(f"    {c['id']}  {c['minutes']}m  {c['title'] or '—'}  {c['url']}")
     elif verb == "pins" and "pins" in answer:
         for p in answer["pins"]:
             state = "asleep" if p.get("asleep") else ("loaded" if p.get("built") else "no page")

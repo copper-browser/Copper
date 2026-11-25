@@ -21,6 +21,8 @@ final class ClearTabs: ObservableObject {
         let ghostIDs: Set<UUID>
         let blankID: Tab.ID?
         let expires: Date
+        /// Fork (ardia-tabs): the Recently Cleaned entries the clear made, gone again on Undo.
+        var cleaned: Set<UUID> = []
     }
 
     private var snapshots: [ObjectIdentifier: Snapshot] = [:]
@@ -69,6 +71,7 @@ final class ClearTabs: ObservableObject {
         let active = browser.activeID
         let space = Spaces.shared.current(in: browser)
         var ghostIDs = Set<UUID>()
+        let cleaned = Cleaned.shared.add(entries.map(\.tab), space: space) // Fork (ardia-tabs): kept a week past the Undo
 
         // Inactive pages first keeps the normal close landing path simple; the
         // active page is closed through exactly the same Browser.close method.
@@ -87,7 +90,7 @@ final class ClearTabs: ObservableObject {
         let key = ObjectIdentifier(browser)
         let snapshot = Snapshot(entries: entries, active: active, space: space,
                                 ghostIDs: ghostIDs, blankID: blankID,
-                                expires: Date().addingTimeInterval(6))
+                                expires: Date().addingTimeInterval(6), cleaned: cleaned)
         snapshots[key] = snapshot
         generation += 1
         let work = DispatchWorkItem { [weak self] in
@@ -109,6 +112,7 @@ final class ClearTabs: ObservableObject {
         expiry[key]?.cancel()
         expiry[key] = nil
         snapshots[key] = nil
+        Cleaned.shared.drop(snapshot.cleaned)
         if Spaces.shared.current(in: browser) != snapshot.space {
             Spaces.shared.select(snapshot.space, in: browser)
         }
