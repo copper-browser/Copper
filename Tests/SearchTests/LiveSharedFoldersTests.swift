@@ -84,30 +84,30 @@ private func item(_ n: Int, _ updated: String, review: Bool = false, mine: Bool 
 
 // MARK: - shared folders: the merge
 
-private func link(_ u: String, _ f: String = "", _ i: Double = 1) -> String {
+private func shared(_ u: String, _ f: String = "", _ i: Double = 1) -> String {
     SyncRecords.encode(SharedLink(u: u, t: u, f: f, i: i))
 }
 
 @Test func threeWayMerge() {
     let name = SyncRecords.encode(["n": "Reading"])
-    let base = ["name": name, "ln:a": link("https://a"), "ln:b": link("https://b")]
+    let base = ["name": name, "ln:a": shared("https://a"), "ln:b": shared("https://b")]
     // Here: b deleted, c added. There: a moved into a subfolder, d added.
-    let local = ["name": name, "ln:a": link("https://a"), "ln:c": link("https://c")]
-    let remote = ["name": name, "ln:a": link("https://a", "Deep"), "ln:b": link("https://b"), "ln:d": link("https://d")]
+    let local = ["name": name, "ln:a": shared("https://a"), "ln:c": shared("https://c")]
+    let remote = ["name": name, "ln:a": shared("https://a", "Deep"), "ln:b": shared("https://b"), "ln:d": shared("https://d")]
     let plan = SharedPlan.plan(local: local, base: base, remote: remote)
     #expect(Set(plan.ops.map(\.k)) == ["ln:b", "ln:c"])
     #expect(plan.ops.first { $0.k == "ln:b" }?.v == nil)
     #expect(Set(plan.apply.map(\.key)) == ["ln:a", "ln:d"])
-    #expect(plan.base["ln:b"] == nil && plan.base["ln:c"] != nil && plan.base["ln:a"] == link("https://a", "Deep"))
+    #expect(plan.base["ln:b"] == nil && plan.base["ln:c"] != nil && plan.base["ln:a"] == shared("https://a", "Deep"))
     #expect(plan.held.isEmpty)
 }
 
 @Test func bothChangedThisSideWinsAndNothingComesBackAgain() {
-    let base = ["ln:a": link("https://a")]
-    let plan = SharedPlan.plan(local: ["ln:a": link("https://a", "Mine")], base: base, remote: ["ln:a": link("https://a", "Theirs")])
+    let base = ["ln:a": shared("https://a")]
+    let plan = SharedPlan.plan(local: ["ln:a": shared("https://a", "Mine")], base: base, remote: ["ln:a": shared("https://a", "Theirs")])
     #expect(plan.ops.map(\.k) == ["ln:a"] && plan.apply.isEmpty)
     // The next cycle, with both sides agreeing: nothing to do.
-    let next = SharedPlan.plan(local: ["ln:a": link("https://a", "Mine")], base: plan.base, remote: ["ln:a": link("https://a", "Mine")])
+    let next = SharedPlan.plan(local: ["ln:a": shared("https://a", "Mine")], base: plan.base, remote: ["ln:a": shared("https://a", "Mine")])
     #expect(next.ops.isEmpty && next.apply.isEmpty)
 }
 
@@ -119,10 +119,10 @@ private func link(_ u: String, _ f: String = "", _ i: Double = 1) -> String {
 
 @Test func aFlattenedFolderIsHeldNotDeletedForEveryone() {
     var base: [String: String] = [:]
-    for n in 0..<6 { base["ln:\(n)"] = link("https://\(n)") }
-    let plan = SharedPlan.plan(local: ["ln:0": link("https://0")], base: base, remote: base)
+    for n in 0..<6 { base["ln:\(n)"] = shared("https://\(n)") }
+    let plan = SharedPlan.plan(local: ["ln:0": shared("https://0")], base: base, remote: base)
     #expect(plan.ops.isEmpty && plan.held.count == 5 && plan.base == base)
-    let through = SharedPlan.plan(local: ["ln:0": link("https://0")], base: base, remote: base, letThrough: true)
+    let through = SharedPlan.plan(local: ["ln:0": shared("https://0")], base: base, remote: base, letThrough: true)
     #expect(through.ops.count == 5 && through.ops.allSatisfy { $0.v == nil })
     // Three at once is a person tidying.
     let tidy = SharedPlan.plan(local: base.filter { !["ln:1", "ln:2", "ln:3"].contains($0.key) }, base: base, remote: base)
@@ -144,7 +144,7 @@ private func link(_ u: String, _ f: String = "", _ i: Double = 1) -> String {
     }
     let name = SyncRecords.encode(["n": "Trip"])
     // A shares two links.
-    var localA = ["name": name, "ln:1": link("https://one"), "ln:2": link("https://two")]
+    var localA = ["name": name, "ln:1": shared("https://one"), "ln:2": shared("https://two")]
     var planA = SharedPlan.plan(local: localA, base: [:], remote: live(replicaA))
     var both = [replicaA, replicaB]
     send(planA.ops, clock: &clockA, device: "A", seq: &seqA, to: &both)
@@ -157,7 +157,7 @@ private func link(_ u: String, _ f: String = "", _ i: Double = 1) -> String {
     var baseB = planB.base
     // At once: A removes one, B adds one.
     localA["ln:2"] = nil
-    localB["ln:3"] = link("https://three", "", 3)
+    localB["ln:3"] = shared("https://three", "", 3)
     planA = SharedPlan.plan(local: localA, base: baseA, remote: live(replicaA))
     planB = SharedPlan.plan(local: localB, base: baseB, remote: live(replicaB))
     both = [replicaA, replicaB]
