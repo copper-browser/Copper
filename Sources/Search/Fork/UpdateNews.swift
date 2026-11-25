@@ -93,11 +93,41 @@ struct UpdateNewsSlot: View {
     }
 }
 
+/// With the tabs across the top, or the column folded away: the same card
+/// in the window's bottom-left corner, over the page (App.swift).
+struct UpdateNewsCorner: View {
+    let browser: Browser
+    @ObservedObject var prefs: Preferences
+    @ObservedObject private var news = UpdateNews.shared
+    @ObservedObject private var updates = Updates.shared
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var still
+
+    var body: some View {
+        let off = !prefs.sidebar || (browser.folded && !browser.peeking)
+        ZStack(alignment: .bottomLeading) {
+            if off, let version = news.version {
+                UpdateNewsCard(browser: browser, version: version, notes: news.notes(updates),
+                               tint: SpaceTint(space: Spaces.shared.space(in: browser), dark: scheme == .dark), solid: true)
+                    .frame(width: 280)
+                    .padding(12)
+                    .transition(still ? .opacity : .offset(y: 10).combined(with: .opacity))
+            }
+        }
+        .animation(still ? .easeOut(duration: 0.2) : Motion.glide, value: off && news.version != nil)
+    }
+}
+
 private struct UpdateNewsCard: View {
     let browser: Browser
     let version: String
     let notes: String?
     let tint: SpaceTint
+    /// Over the page rather than on the column: the window's own ground and ink.
+    var solid = false
+
+    private var ink: Color { solid ? Palette.ink : tint.ink }
+    private var muted: Color { solid ? Palette.muted : tint.muted }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -115,14 +145,14 @@ private struct UpdateNewsCard: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(tint.muted)
+                .foregroundStyle(muted)
                 .help("Close")
                 .accessibilityLabel("Close")
             }
-            .foregroundStyle(tint.ink)
+            .foregroundStyle(ink)
             Text(notes ?? "You're on \(version) now.")
                 .font(.system(size: 11.5))
-                .foregroundStyle(tint.muted)
+                .foregroundStyle(muted)
                 .lineSpacing(1.5)
                 .lineLimit(6)
                 .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
@@ -135,14 +165,15 @@ private struct UpdateNewsCard: View {
             } label: {
                 Text("Everything that changed")
                     .font(.system(size: 11.5, weight: .medium))
-                    .foregroundStyle(tint.ink)
+                    .foregroundStyle(ink)
                     .underline()
             }
             .buttonStyle(.plain)
         }
         .padding(10)
-        .background(tint.pill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .shadow(color: tint.lift, radius: 2, y: 1)
+        .background(solid ? Palette.ground : tint.pill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay { if solid { RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 1) } }
+        .shadow(color: solid ? .black.opacity(0.12) : tint.lift, radius: solid ? 16 : 2, y: solid ? 5 : 1)
         .accessibilityElement(children: .contain)
     }
 }

@@ -487,6 +487,7 @@ struct ContentView: View {
             .overlay(alignment: .leading) { Fold(browser: browser, prefs: browser.prefs) }
             // Fork (update-pill): the folded column's update badge.
             .overlay(alignment: .bottomLeading) { UpdateCorner(browser: browser, prefs: browser.prefs) }
+            .overlay(alignment: .bottomLeading) { UpdateNewsCorner(browser: browser, prefs: browser.prefs) } // Fork (ardia polish): What's New off the column (Fork/UpdateNews.swift)
             .overlay(alignment: .bottomLeading) { CloudHoldCorner(browser: browser, prefs: browser.prefs) } // Fork (cloud): the spaces brake's prompt with no column
             .overlay(alignment: .bottom) { bars }
             .overlay { offerSlot }

@@ -62,7 +62,7 @@ def png(path, rgb, n=64):
 png(f"{site}/art.png", (214, 110, 60))
 PY
 cat >"$tmp/site/player.html" <<'HTML'
-<!doctype html><title>Tone radio</title><body style="font:16px -apple-system;padding:40px">
+<!doctype html><meta charset="utf-8"><title>Tone radio</title><body style="font:16px -apple-system;padding:40px">
 <h1>Tone radio</h1><audio id="a" src="tone.wav" loop controls></audio>
 <script>
 navigator.mediaSession.metadata = new MediaMetadata({ title: 'A Quiet Tone', artist: 'Copper Fixtures', album: 'Polish', artwork: [{ src: 'art.png', sizes: '64x64', type: 'image/png' }] });
@@ -84,14 +84,14 @@ function start(muted) {
 </script></body>
 HTML
 cat >"$tmp/site/fr.html" <<'HTML'
-<!doctype html><html lang="fr"><title>Le Jardin des Plantes</title><body style="font:16px Georgia;padding:40px;max-width:640px">
+<!doctype html><html lang="fr"><meta charset="utf-8"><title>Le Jardin des Plantes</title><body style="font:16px Georgia;padding:40px;max-width:640px">
 <h1>Le Jardin des Plantes</h1>
 <p>Le Jardin des Plantes est le principal jardin botanique de France. Il a été créé en 1635 par Guy de La Brosse, médecin du roi Louis XIII, pour y cultiver des plantes médicinales.</p>
 <p>Ouvert au public en 1640, il abrite aujourd'hui des serres, une ménagerie, des galeries d'histoire naturelle et des milliers d'espèces venues du monde entier. Les promeneurs y viennent en toute saison.</p>
 </body></html>
 HTML
 cat >"$tmp/site/en.html" <<'HTML'
-<!doctype html><html lang="en"><title>The Botanical Garden</title><body style="font:16px Georgia;padding:40px;max-width:640px">
+<!doctype html><html lang="en"><meta charset="utf-8"><title>The Botanical Garden</title><body style="font:16px Georgia;padding:40px;max-width:640px">
 <h1>The Botanical Garden</h1>
 <p>The garden was founded in 1635 to grow medicinal plants, and it opened to the public a few years later. Today it holds glasshouses, a small zoo and natural history galleries.</p>
 <p>Visitors come in every season to walk among thousands of species gathered from all over the world.</p>
@@ -112,6 +112,7 @@ pid=$!
 for _ in {1..60}; do bench tabs >/dev/null 2>&1 && break; sleep 0.5; done
 bench tabs >/dev/null 2>&1 || fail "headless bench did not start (log: $(tail -1 "$tmp/copper.log"))"
 curl -fsS "$site/player.html" >/dev/null || fail "page server did not start"
+bench ui sidebar on >/dev/null # the player and the card live in the column
 
 # A page as a person's tab (not the bench's), in front; its id once loaded.
 visit() {
@@ -184,6 +185,7 @@ w="$(bench updates whatsnew launch 0.9)"
 [ "$(echo "$w" | json 'd["showing"]')" = True ] || fail "no card after 0.9 → current: $w"
 bench updates whatsnew show 1.0.20261125.140 "Little Copper and Peek pages go into History, and the sidebar has a mini player for the tab you left playing." >/dev/null
 sleep 1; shot whats-new
+if [ -n "$shots" ]; then bench ui sidebar off >/dev/null; sleep 1; shot whats-new-tabstrip; bench ui sidebar on >/dev/null; fi
 w="$(bench updates whatsnew launch "$(echo "$w" | json 'd["current"]')")"
 [ "$(echo "$w" | json 'd["showing"]')" = False ] || fail "a card on a relaunch of the same version: $w"
 echo "ok what's new: shown after 0.9 → $(echo "$w" | json 'd["current"]'), not on a relaunch"
