@@ -75,9 +75,11 @@ bench key "$id" "↩" --app >/dev/null
 [ "$(pbpaste)" = 42 ] || fail "⌘L 2*21 Return left '$(pbpaste)' on the clipboard"
 field
 bench key "$id" "!w paris" --app >/dev/null
-bench key "$id" "↩" --app >/dev/null
-for _ in {1..20}; do bench tabs | grep -q "wikipedia.org" && break; sleep 0.5; done
-bench tabs | grep -q "wikipedia.org" || fail "⌘L !w paris did not go to Wikipedia: $(bench tabs | grep -m1 '"url"')"
+bench probe | grep -q '"typed": "!w paris"' || fail "⌘L: '!w paris' did not reach the field ($(bench probe | grep '"typed"'))"
+bench key "$id" "↩" --app >"$tmp/return.json"
+went=""
+for _ in {1..20}; do bench tabs >"$tmp/tabs.txt"; grep -q "wikipedia.org" "$tmp/tabs.txt" && { went=1; break; }; sleep 0.5; done
+[ -n "$went" ] || fail "⌘L !w paris ↩ did not go to Wikipedia: tabs $(tr '\n' ' ' <"$tmp/tabs.txt"); after ↩ $(tr -d '\n ' <"$tmp/return.json"); probe $(bench probe | grep -E '"typed"|"field"' | tr -d '\n ')"
 echo "ok 1 ⌘L 2*21 ↩ copied 42; !w paris ↩ went to Wikipedia"
 
 # 2. A sum.
