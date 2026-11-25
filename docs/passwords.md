@@ -109,6 +109,13 @@ is wiped (including identity/card values) when you lock the vault.
 The under-field picker combines keychain and Bitwarden candidates. Select a row
 to fill it.
 
+**Profiles.** A space with a profile keeps its own keychain logins: a password
+saved in a Work tab is offered and filled only in Work's tabs, while the ones
+saved in Shared (and every one from before profiles had their own) are offered
+everywhere. Settings › Passwords lists the profile in front's. Bitwarden and
+1Password are the same vault in every profile. Details: docs/spaces.md ›
+Profiles.
+
 **Two-step codes.** Click a one-time-code box and the list shows a *Two-step
 code* row for every Bitwarden login on the site that has an authenticator key;
 the account you just signed in with in that tab comes first, since the code
