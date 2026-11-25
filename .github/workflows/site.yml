@@ -28,6 +28,7 @@ jobs:
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
           python3 .github/scripts/site_build.py --test
+          if [ -f .github/scripts/release_notes.py ]; then python3 .github/scripts/release_notes.py --selftest; fi
           python3 .github/scripts/site_build.py
       - name: check every page (assets, links, anchors, header/footer match the template)
         run: python3 .github/scripts/site_build.py --check
