@@ -29,9 +29,9 @@ SHORT = {"copper": "Copper", "safari": "Safari", "chrome": "Chrome", "ardia": "A
 GROUPS = [
     ("launch", "Launch", "From <code>open</code> with the browser closed, as a click on its Dock icon or on a link in another app would start it.",
      ["launch-window", "launch-restore", "launch-link"]),
-    ("memory", "Memory", "Everything the browser runs, added up: the app, its helpers, the GPU and network processes and one web process per tab.",
+    ("memory", "Memory", "Everything the browser runs, added up: the app, its helpers, the GPU and network processes and the pages’ web processes. Read 30 seconds after launch, 10 seconds after the 10th tab loaded, 15 seconds after the 20th, and 30 seconds after closing back to one.",
      ["memory-1", "memory-10", "memory-20", "memory-closed"]),
-    ("idle", "Idle", "A minute of doing nothing, 30 seconds after the last page loaded; every page runs a one-second timer. With the Mac’s screen locked, Copper and Safari draw nothing here while Chrome and Ardia draw their front tab: read these with <a href=\"#method\">the locked screen</a> in mind.",
+    ("idle", "Idle", "A minute of doing nothing, right after the 1-tab and 20-tab memory readings; every page runs a one-second timer. With the Mac’s screen locked, Copper and Safari draw nothing here while Chrome and Ardia draw their front tab: read these with <a href=\"#method\">the locked screen</a> in mind.",
      ["idle-cpu-1", "idle-cpu-20", "idle-wakeups-1", "idle-wakeups-20", "idle-power-1", "idle-power-20",
       "idle-cpu-1-steady", "idle-cpu-20-steady", "idle-wakeups-1-steady", "idle-wakeups-20-steady"]),
     ("speed", "Speed", "Speedometer 3.1, Apple, Google and Mozilla’s benchmark of web app responsiveness, served from the same Mac.",
