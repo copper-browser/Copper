@@ -1,12 +1,13 @@
 #!/bin/bash
 # Stamp the release version into a built Copper.app, sign it with Copper's
-# release certificate, and zip it.
+# Developer ID, notarize it, staple the ticket, and zip it.
 #
 #   COPPER_SIGN_IDENTITY=<sha1> [COPPER_SIGN_KEYCHAIN=<path>] \
+#   COPPER_NOTARY_KEY=<AuthKey.p8> COPPER_NOTARY_KEY_ID=<id> COPPER_NOTARY_ISSUER=<uuid> \
 #     release/package-app.sh <path/to/Copper.app> <version> <out-dir> [arm64|x86_64]
 #
 # Writes to <out-dir>, for <arch> (default arm64, the CPU the binary must be):
-#   copper-<version>-macos-<arch>.zip          ditto --keepParent archive
+#   copper-<version>-macos-<arch>.zip          ditto --keepParent archive (stapled app)
 #   copper-<version>-macos-<arch>.zip.sha256   "<hex>  <zip name>" (shasum format)
 # and prints `has_cli=true|false` on stdout (whether the bundle ships the
 # `copper` CLI shim at Contents/Resources/bin/copper — the cask renders its
@@ -23,14 +24,18 @@
 # Disk Access, Files & Folders, Automation — and a keychain item's "Always
 # Allow" under the app's designated requirement. Ad hoc, that requirement is
 # the hash of this one build, so every update dropped them all. Signed with the
-# one certificate in release/ and the explicit requirement in
-# release/designated-requirement.txt, every release satisfies the same
-# requirement and the grants carry over. The identity is that certificate's
-# SHA-1, so a secret that holds any other certificate fails here. Flags and
-# entitlements are what they were ad hoc: none (no hardened runtime).
+# explicit requirement in release/designated-requirement.txt (Copper's
+# identifier and any Developer ID of Copper's team), every release satisfies
+# the same requirement and the grants carry over, through a renewed
+# certificate too. Gatekeeper opens a notarized app with the hardened runtime
+# and a secure timestamp, and the entitlements in Copper.entitlements are what
+# the runtime would otherwise refuse (camera, microphone, calendars, location,
+# Apple Events). The identity is the certificate's SHA-1, so a secret that
+# holds any other certificate fails here.
 #
-# Without COPPER_SIGN_IDENTITY the bundle is signed ad hoc, for trying this
-# script out; the release workflow refuses to publish such a bundle.
+# Without COPPER_SIGN_IDENTITY the bundle is signed ad hoc and not notarized,
+# for trying this script out; the release workflow refuses to publish such a
+# bundle.
 set -euo pipefail
 
 app="${1:?usage: package-app.sh <Copper.app> <version> <out-dir>}"
@@ -66,23 +71,27 @@ if [ -n "$identity" ]; then
     *"identifier \"$bundle_id\" "*) ;;
     *) echo "bundle id $bundle_id is not the release's ($requirement) — build with COPPER_RELEASE=1" >&2; exit 1 ;;
   esac
-  # The updater inside checks every later release against the same
-  # certificate (Fork/Signing.swift). A bundle that pins another one would
-  # refuse the next update, so it is not signed at all.
-  leaf="$(printf '%s' "$requirement" | sed -n 's/.*certificate leaf = H"\([0-9a-fA-F]*\)".*/\1/p')"
-  [ -n "$leaf" ] || { echo "no certificate leaf hash in designated-requirement.txt" >&2; exit 1; }
-  if ! LC_ALL=C grep -a -q -F "$leaf" "$app/Contents/MacOS/Copper"; then
-    echo "the app's updater does not pin $leaf (Fork/Signing.swift) — refusing to sign it with that certificate" >&2
+  # The updater inside checks every later release against the same team
+  # (Fork/Signing.swift). A bundle that pins another one would refuse the
+  # next update, so it is not signed at all.
+  team="$(printf '%s' "$requirement" | sed -n 's/.*certificate leaf\[subject\.OU\] = "\([0-9A-Z]*\)".*/\1/p')"
+  [ -n "$team" ] || { echo "no team (certificate leaf[subject.OU]) in designated-requirement.txt" >&2; exit 1; }
+  if ! LC_ALL=C grep -a -q -F "$team" "$app/Contents/MacOS/Copper"; then
+    echo "the app's updater does not pin team $team (Fork/Signing.swift) — refusing to sign it for that team" >&2
     exit 1
   fi
+  # A Developer ID release that isn't notarized is one Gatekeeper refuses.
+  for var in COPPER_NOTARY_KEY COPPER_NOTARY_KEY_ID COPPER_NOTARY_ISSUER; do
+    [ -n "${!var:-}" ] || { echo "$var is not set: a Developer ID release is notarized (docs/releasing.md)" >&2; exit 1; }
+  done
   keychain=()
   if [ -n "${COPPER_SIGN_KEYCHAIN:-}" ]; then keychain=(--keychain "$COPPER_SIGN_KEYCHAIN"); fi
   # Inside out: anything nested (nothing today) with the identity, then the
-  # app itself with the explicit requirement — given to --deep, the
-  # requirement would be stamped on nested code it can't describe.
-  codesign --force --deep --timestamp=none --sign "$identity" ${keychain[@]+"${keychain[@]}"} "$app"
-  codesign --force --timestamp=none --sign "$identity" ${keychain[@]+"${keychain[@]}"} \
-    -r="designated => $requirement" "$app"
+  # app itself with the entitlements and the explicit requirement — given to
+  # --deep, they would be stamped on nested code they don't describe.
+  codesign --force --deep --options runtime --timestamp --sign "$identity" ${keychain[@]+"${keychain[@]}"} "$app"
+  codesign --force --options runtime --timestamp --entitlements "$here/../Copper.entitlements" \
+    --sign "$identity" ${keychain[@]+"${keychain[@]}"} -r="designated => $requirement" "$app"
   codesign --verify --deep --strict -R="$requirement" "$app"
   echo "signed  $(codesign -d -r- "$app" 2>/dev/null | sed -n 's/^designated => /designated => /p')" >&2
 else
@@ -99,6 +108,28 @@ mkdir -p "$out"
 zip="$out/copper-${version}-macos-${arch}.zip"
 rm -f "$zip" "$zip.sha256"
 ditto -c -k --keepParent "$app" "$zip"
+if [ -n "$identity" ]; then
+  # Apple's notary service looks the zip over; its ticket is stapled to the
+  # app, so Gatekeeper accepts it offline too, and the zip is made again
+  # around the stapled app.
+  notary="$(mktemp -d)"
+  trap 'rm -rf "$notary"' EXIT
+  xcrun notarytool submit "$zip" --key "$COPPER_NOTARY_KEY" --key-id "$COPPER_NOTARY_KEY_ID" \
+    --issuer "$COPPER_NOTARY_ISSUER" --wait --timeout 45m --output-format json > "$notary/submit.json" || true
+  status="$(plutil -extract status raw -o - "$notary/submit.json" 2>/dev/null || true)"
+  id="$(plutil -extract id raw -o - "$notary/submit.json" 2>/dev/null || true)"
+  echo "notary  $arch: ${status:-no answer} (${id:-no id})" >&2
+  if [ "$status" != Accepted ]; then
+    cat "$notary/submit.json" >&2
+    [ -z "$id" ] || xcrun notarytool log "$id" --key "$COPPER_NOTARY_KEY" --key-id "$COPPER_NOTARY_KEY_ID" \
+      --issuer "$COPPER_NOTARY_ISSUER" >&2 || true
+    exit 1
+  fi
+  xcrun stapler staple "$app" >&2
+  xcrun stapler validate "$app" >&2
+  rm -f "$zip"
+  ditto -c -k --keepParent "$app" "$zip"
+fi
 ( cd "$out" && shasum -a 256 "$(basename "$zip")" > "$(basename "$zip").sha256" )
 
 echo "stamped $(plutil -extract CFBundleShortVersionString raw -o - "$plist") (build $(plutil -extract CFBundleVersion raw -o - "$plist"))" >&2

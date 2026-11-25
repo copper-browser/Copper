@@ -28,16 +28,18 @@ name: release
 #                                               `copper crashes show N --symbolicate` (atos);
 #                                               nothing installs or downloads it on its own
 #
-# Signing (docs/releasing.md): every release is signed with Copper's own
-# certificate (release/copper-release-signing.cer; the p12 is the
-# COPPER_SIGNING_P12_BASE64 / COPPER_SIGNING_P12_PASSWORD secrets, imported into a
-# throwaway keychain on this runner and deleted after) and the explicit
-# designated requirement in release/designated-requirement.txt. The requirement
-# is the same for every release, so macOS keeps a person's grants (Full Disk
-# Access, Files & Folders, Automation) and keychain "Always Allow" across
-# updates, and Copper's updater refuses anything that doesn't satisfy it. Not a
-# Developer ID and not notarized: the cask and the installer still clear the
-# quarantine flag.
+# Signing (docs/releasing.md): every release is signed with Copper's Developer
+# ID (release/copper-developer-id.cer; the p12 is the
+# COPPER_DEVELOPER_ID_P12_BASE64 / COPPER_DEVELOPER_ID_P12_PASSWORD secrets,
+# imported into a throwaway keychain on this runner and deleted after), the
+# hardened runtime, Copper.entitlements and the explicit designated requirement
+# in release/designated-requirement.txt (Copper's identifier and any Developer ID
+# of Copper's team). The requirement is the same for every release, so macOS
+# keeps a person's grants (Full Disk Access, Files & Folders, Automation) and
+# keychain "Always Allow" across updates, and Copper's updater refuses anything
+# that doesn't satisfy it. Each zip is notarized (the App Store Connect API key in
+# COPPER_NOTARY_KEY_BASE64 / _KEY_ID / _ISSUER) and the ticket stapled to the
+# app, so Gatekeeper opens a download as it is: no xattr step anywhere.
 #
 # publish=false (a dry run) builds, signs, checks and launches the release
 # exactly the same way and keeps the zip as this run's artifact. No tag, no
@@ -87,7 +89,8 @@ jobs:
     # GitHub-hosted macOS arm64 runners often sit unassigned for 15 min and
     # cancel ("not acquired by Runner of type hosted"); Copper's own Mac doesn't.
     runs-on: ${{ inputs.runner || 'copper-mini' }}
-    timeout-minutes: 60
+    # Notarizing two zips adds a few minutes, more when Apple is slow.
+    timeout-minutes: 90
     steps:
       - name: Publish or dry run
         id: mode
@@ -165,24 +168,28 @@ jobs:
           test -d build/x86_64/Copper.app/Contents/Resources/Search_Search.bundle
           test "$(plutil -extract CFBundleIdentifier raw -o - build/x86_64/Copper.app/Contents/Info.plist)" = com.collinrijock.copper
 
-      - name: Signing keychain (this runner only)
+      - name: Signing keychain and notary key (this runner only)
         id: keychain
         env:
-          P12_BASE64: ${{ secrets.COPPER_SIGNING_P12_BASE64 }}
-          P12_PASSWORD: ${{ secrets.COPPER_SIGNING_P12_PASSWORD }}
+          P12_BASE64: ${{ secrets.COPPER_DEVELOPER_ID_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.COPPER_DEVELOPER_ID_P12_PASSWORD }}
+          NOTARY_KEY_BASE64: ${{ secrets.COPPER_NOTARY_KEY_BASE64 }}
         run: |
           set -euo pipefail
-          if [ -z "$P12_BASE64" ] || [ -z "$P12_PASSWORD" ]; then
-            echo "::error::COPPER_SIGNING_P12_BASE64 / COPPER_SIGNING_P12_PASSWORD are not set. A release is never ad-hoc signed (docs/releasing.md)."
+          if [ -z "$P12_BASE64" ] || [ -z "$P12_PASSWORD" ] || [ -z "$NOTARY_KEY_BASE64" ]; then
+            echo "::error::COPPER_DEVELOPER_ID_P12_BASE64 / COPPER_DEVELOPER_ID_P12_PASSWORD / COPPER_NOTARY_KEY_BASE64 are not set. A release is never ad-hoc signed or un-notarized (docs/releasing.md)."
             exit 1
           fi
           umask 077
           keychain="${RUNNER_TEMP}/copper-signing.keychain-db"
           p12="${RUNNER_TEMP}/copper-signing.p12"
-          # Before anything can fail: the delete step needs the path, and the
+          notary_key="${RUNNER_TEMP}/copper-notary.p8"
+          # Before anything can fail: the delete step needs the paths, and the
           # decoded p12 never outlives this step.
           echo "keychain=${keychain}" >> "$GITHUB_OUTPUT"
+          echo "notary_key=${notary_key}" >> "$GITHUB_OUTPUT"
           trap 'rm -f "$p12"' EXIT
+          printf '%s' "$NOTARY_KEY_BASE64" | base64 --decode > "$notary_key"
           pass="$(openssl rand -hex 24)"
           printf '%s' "$P12_BASE64" | base64 --decode > "$p12"
           security create-keychain -p "$pass" "$keychain"
@@ -194,21 +201,23 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$pass" "$keychain" >/dev/null
           # On the search list too, so codesign can build the identity's chain.
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
-          # The secret's certificate is the one release/ pins (hashes are public).
-          want="$(shasum -a 1 release/copper-release-signing.cer | cut -d' ' -f1)"
-          grep -q "certificate leaf = H\"${want}\"" release/designated-requirement.txt \
-            || { echo "::error::release/designated-requirement.txt does not name release/copper-release-signing.cer (${want})"; exit 1; }
+          # The secret's certificate is the one in release/ (hashes are public),
+          # and its team is the one the requirement names.
+          want="$(shasum -a 1 release/copper-developer-id.cer | cut -d' ' -f1)"
+          team="$(openssl x509 -inform der -in release/copper-developer-id.cer -noout -subject | sed -n 's/.*OU *= *\([0-9A-Z]*\).*/\1/p')"
+          grep -q "certificate leaf\[subject.OU\] = \"${team}\"" release/designated-requirement.txt \
+            || { echo "::error::release/designated-requirement.txt does not name release/copper-developer-id.cer's team (${team:-none})"; exit 1; }
           identities="$(security find-identity -p codesigning "$keychain")"
           case "$(printf '%s' "$identities" | tr 'A-F' 'a-f')" in
             *"$want"*) ;;
             *)
-              echo "::error::the signing secret does not hold the certificate release/ pins (${want}). Rotating? See docs/releasing.md."
+              echo "::error::the signing secret does not hold the certificate in release/ (${want}). Renewed? See docs/releasing.md."
               printf '%s\n' "$identities" | sed 's/"[^"]*".*$//'
               exit 1
               ;;
           esac
           echo "identity=${want}" >> "$GITHUB_OUTPUT"
-          echo "signing identity ${want} (Copper Release Signing) in a keychain of this run only"
+          echo "signing identity ${want} (Developer ID Application, team ${team}) in a keychain of this run only"
 
       - name: Stamp version, sign, zip
         id: package
@@ -218,6 +227,9 @@ jobs:
           X86_64_ZIP_NAME: ${{ steps.meta.outputs.x86_64_zip_name }}
           COPPER_SIGN_IDENTITY: ${{ steps.keychain.outputs.identity }}
           COPPER_SIGN_KEYCHAIN: ${{ steps.keychain.outputs.keychain }}
+          COPPER_NOTARY_KEY: ${{ steps.keychain.outputs.notary_key }}
+          COPPER_NOTARY_KEY_ID: ${{ secrets.COPPER_NOTARY_KEY_ID }}
+          COPPER_NOTARY_ISSUER: ${{ secrets.COPPER_NOTARY_ISSUER }}
         run: |
           set -euo pipefail
           out="${RUNNER_TEMP}/upload"
@@ -239,13 +251,14 @@ jobs:
           plutil -p build/Copper.app/Contents/Info.plist | grep -E 'CFBundle(ShortVersionString|Version|Identifier)'
           plutil -p build/x86_64/Copper.app/Contents/Info.plist | grep -E 'CFBundle(ShortVersionString|Version|Identifier)'
 
-      - name: Delete the signing keychain
+      - name: Delete the signing keychain and notary key
         if: always() && steps.keychain.outputs.keychain != ''
         env:
           KEYCHAIN: ${{ steps.keychain.outputs.keychain }}
+          NOTARY_KEY: ${{ steps.keychain.outputs.notary_key }}
         run: |
           security delete-keychain "$KEYCHAIN" || true
-          rm -f "$KEYCHAIN" "${RUNNER_TEMP}/copper-signing.p12"
+          rm -f "$KEYCHAIN" "${RUNNER_TEMP}/copper-signing.p12" "$NOTARY_KEY"
           security list-keychains -d user
 
       - name: Check the signature (the shipped zips)
@@ -269,17 +282,34 @@ jobs:
             test "$(lipo -archs "$app/Contents/MacOS/Copper")" = "$arch"
             # The designated requirement macOS will file grants under: the same
             # text for every release, and for both CPUs.
-            dr="$(codesign -d -r- "$app" 2>/dev/null | sed -n 's/^designated => //p')"
+            dr="$(codesign -d -r- "$app" 2>/dev/null | sed -n 's/^designated => //p' | sed 's: /\* exists \*/::g')"
             echo "designated => ${dr}"
             [ "$dr" = "$req" ] || { echo "::error::${arch}: designated requirement is '${dr}', expected '${req}'"; exit 1; }
-            # What an installed Copper from before signing checks (Updates.swift
-            # stage + reverify): integrity alone. The first signed update must pass it.
+            # Integrity alone, as every Copper checks first (Updates.swift).
             codesign --verify --deep --strict "$app"
-            # What every Copper from now on checks before it swaps.
+            # What every Copper from the switch on checks before it swaps.
             codesign --verify --deep --strict -R="$req" "$app"
-            codesign -dvv "$app" 2>&1 | grep -E '^(Identifier|Format|CodeDirectory|Authority|Signature|TeamIdentifier|Runtime)' || true
-            entitlements="$(codesign -d --entitlements - "$app" 2>/dev/null || true)"
-            [ -z "$entitlements" ] || { echo "::error::${arch}: entitlements appeared; releases carry none"; echo "$entitlements"; exit 1; }
+            # What a bridge release checks (its Signing.releaseRequirement):
+            # Copper's old certificate or the team's Developer ID.
+            bridge='identifier "com.collinrijock.copper" and (certificate leaf = H"76264b1f74fbc16100eb71c855edd6d4165c4fbe" or (anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] and certificate leaf[field.1.2.840.113635.100.6.1.13] and certificate leaf[subject.OU] = "95X7XYUVNX"))'
+            codesign --verify --deep --strict -R="$bridge" "$app"
+            details="$(codesign -dvv "$app" 2>&1)"
+            printf '%s\n' "$details" | grep -E '^(Identifier|Format|CodeDirectory|Authority|Signature|Timestamp|TeamIdentifier|Runtime)' || true
+            printf '%s\n' "$details" | grep -q '^CodeDirectory.*(runtime)' || { echo "::error::${arch}: no hardened runtime"; exit 1; }
+            printf '%s\n' "$details" | grep -q '^Timestamp=' || { echo "::error::${arch}: no secure timestamp"; exit 1; }
+            # The entitlements are Copper.entitlements, no more, no less.
+            codesign -d --entitlements - --xml "$app" 2>/dev/null > "${RUNNER_TEMP}/entitlements-${arch}.plist"
+            python3 -c 'import plistlib, sys; a, b = (plistlib.load(open(f, "rb")) for f in sys.argv[1:]); print(sorted(b)); sys.exit(a != b)' \
+                Copper.entitlements "${RUNNER_TEMP}/entitlements-${arch}.plist" \
+              || { echo "::error::${arch}: entitlements are not Copper.entitlements"; exit 1; }
+            # Notarized and stapled: Gatekeeper opens it, offline too.
+            xcrun stapler validate "$app"
+            assessment="$(spctl -a -vvv -t exec "$app" 2>&1 || true)"
+            echo "$assessment"
+            case "$assessment" in
+              *"accepted"*"source=Notarized Developer ID"*) ;;
+              *) echo "::error::${arch}: Gatekeeper does not accept it as a notarized Developer ID app"; exit 1 ;;
+            esac
             echo "cdhash $(codesign -dvvv "$app" 2>&1 | sed -n 's/^CDHash=//p' | head -1)"
           done
 
@@ -288,7 +318,7 @@ jobs:
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
           set -euo pipefail
-          # A self-signed release must start like an ad-hoc one did: open the
+          # A notarized release must start like an ad-hoc one did: open the
           # unzipped bundle headless in a test world and ask it its version.
           app="${RUNNER_TEMP}/check/Copper.app"
           world=release-check
@@ -490,7 +520,7 @@ jobs:
           curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/copper-install.sh | sh
           \`\`\`
 
-          or download the zip for your Mac below — \`${ZIP_NAME}\` for Apple Silicon, \`${X86_64_ZIP_NAME}\` for Intel — unzip, move Copper.app to /Applications and run \`xattr -cr /Applications/Copper.app\` once (signed with Copper's own certificate, not notarized).
+          or download the zip for your Mac below — \`${ZIP_NAME}\` for Apple Silicon, \`${X86_64_ZIP_NAME}\` for Intel — unzip and move Copper.app to /Applications (signed with Copper's Developer ID and notarized by Apple).
 
           macOS 14 Sonoma or later, Apple Silicon or Intel. Already installed? Copper updates itself — Settings › Updates.
 

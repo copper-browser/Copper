@@ -1255,11 +1255,6 @@ Jev said <span class="ok">DONE</span>, 96% sure
     </div>
     <p class="dl-note" id="dl-note" hidden></p>
     <div class="dl-panel" id="dl-mac" role="tabpanel" aria-labelledby="dl-tab-here">
-    <div class="notice" id="build-from-source">
-      <p><strong>A notarized Mac build is coming soon.</strong> For now, build Copper yourself from source. You need macOS 14 or later and Xcode 16.</p>
-      <div class="cmd"><code>git clone https://github.com/<wbr>copper-browser/<wbr>Copper.git &amp;&amp; cd Copper &amp;&amp; ./<wbr>build.sh &amp;&amp; open build/<wbr>Copper.app</code><button class="copy" type="button" data-copy="git clone https://github.com/copper-browser/Copper.git &amp;&amp; cd Copper &amp;&amp; ./build.sh &amp;&amp; open build/Copper.app" aria-label="Copy the build command"><svg class="i-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="i-check" aria-hidden="true"><use href="#i-check"/></svg><span>Copy</span></button></div>
-      <p>It builds Copper.app into the build folder and opens it. The downloads below work today too and are not notarized yet. <a href="https://github.com/copper-browser/Copper#building-it">Source and build notes on GitHub</a></p>
-    </div>
     <div class="install">
       <div class="method">
         <h3>Homebrew <small>Recommended</small></h3>
@@ -1284,10 +1279,7 @@ Jev said <span class="ok">DONE</span>, 96% sure
           </div>
           <p class="dl-other" id="dl-other">Intel Mac? <a href="https://github.com/copper-browser/Copper/releases/latest/download/copper-macos-x86_64.zip">Download for Intel</a>, or see <a href="#dl-all" data-dl-all>all downloads</a>.</p>
           <p>Unzip it and drag Copper.app to Applications.</p>
-          <div class="notice">
-            <p><strong>About the first launch.</strong> Copper builds are ad-hoc signed and not yet notarized. Homebrew and the installer clear the quarantine flag for you. After a manual download, run this once, or right-click Copper and choose Open:</p>
-            <div class="cmd"><code>xattr -cr <span class="nw">/Applications/Copper.app</span></code><button class="copy" type="button" data-copy="xattr -cr /Applications/Copper.app" aria-label="Copy the xattr command"><svg class="i-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="i-check" aria-hidden="true"><use href="#i-check"/></svg><span>Copy</span></button></div>
-          </div>
+          <p>Copper is signed with its Developer ID and notarized by Apple, so it opens like any Mac app.</p>
         </div>
       </div>
     </div>

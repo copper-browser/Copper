@@ -8,7 +8,7 @@
 #   COPPER_RELEASE=1 ./build.sh release app
 #                              the same, as Copper itself (com.collinrijock.copper):
 #                                what .github/workflows/release.yml builds and then
-#                                signs with Copper's release certificate
+#                                signs with Copper's Developer ID and notarizes
 #   ./build.sh release dmg     + build/Copper.dmg and build/Copper.zip, signed
 #                                with Developer ID if there is one in the keychain
 #   ./build.sh release ship    + both notarised, the DMG stapled
@@ -191,6 +191,11 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <string>Copper shows your next meetings when you rest the pointer on a Google Calendar pin. They are read on this Mac and never sent anywhere.</string>
   <key>NSDownloadsFolderUsageDescription</key>
   <string>Files you download are saved to your Downloads folder.</string>
+  <!-- A link from another app is handed to the Copper already running as an
+       Apple Event (Fork/LinkRelay.swift); under the hardened runtime macOS
+       wants a sentence for the Automation prompt, should it ever ask. -->
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Copper passes links you open to the Copper window that is already running.</string>
 </dict>
 </plist>
 PLIST
@@ -199,8 +204,9 @@ PLIST
 # runtime Gatekeeper insists on for anything notarised; otherwise ad-hoc,
 # which is enough for the app to run on the machine that built it — and
 # which the updater refuses to swap anything in under. A release is signed
-# again afterwards, with Copper's own certificate and a designated requirement
-# that stays the same from release to release (release/package-app.sh).
+# again afterwards, with Copper's Developer ID and a designated requirement
+# that stays the same from release to release, and notarized
+# (release/package-app.sh).
 IDENTITY="${SEARCH_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null \
   | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"' || true)}"
 if [ -n "$IDENTITY" ]; then

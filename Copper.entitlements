@@ -2,11 +2,17 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <!-- The hardened runtime refuses the camera and the microphone unless the
-       app says up front that pages may ask for them. -->
+  <!-- Releases run with the hardened runtime (notarization requires it), which
+       refuses these unless the app says up front that it may use them. -->
+  <!-- Pages may ask for the camera and the microphone; dictation uses the microphone. -->
   <key>com.apple.security.device.camera</key><true/>
   <key>com.apple.security.device.audio-input</key><true/>
   <!-- The Calendar pin's card reads your next meetings (Fork/CalendarPeek.swift). -->
   <key>com.apple.security.personal-information.calendars</key><true/>
+  <!-- Pages may ask where you are (Fork/MCP/Permissions.swift, per site). -->
+  <key>com.apple.security.personal-information.location</key><true/>
+  <!-- Links and reopens are handed to the running Copper as Apple Events
+       (Fork/LinkRelay.swift, Fork/Instance.swift). -->
+  <key>com.apple.security.automation.apple-events</key><true/>
 </dict>
 </plist>

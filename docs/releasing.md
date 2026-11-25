@@ -2,8 +2,8 @@
 
 *How a Copper release is built and signed, why the signature has to stay the same from one
 release to the next, how development builds stay out of the installed Copper's way, and how to
-rotate the certificate. Files: `build.sh`, `release/package-app.sh`,
-`release/designated-requirement.txt`, `release/copper-release-signing.cer`,
+renew the certificate. Files: `build.sh`, `release/package-app.sh`,
+`release/designated-requirement.txt`, `release/copper-developer-id.cer`, `Copper.entitlements`,
 `.github/workflows/release.yml`, `release/release-local.sh`, `Sources/Search/Fork/Signing.swift`,
 `Sources/Search/Fork/Updates.swift`.*
 
@@ -17,8 +17,9 @@ gh workflow run release.yml -R copper-browser/Copper -f ref=fork -f runner=macos
 
 The workflow builds on Copper's own Mac, a self-hosted runner labelled `copper-mini`
 (`COPPER_RELEASE=1 ./build.sh release app`), stamps
-`<VERSION>.<YYYYMMDD>.<run>` into the bundle, signs it with Copper's release certificate,
-checks the signature on the zipped bytes, launches the zipped app headless and asks `/health`
+`<VERSION>.<YYYYMMDD>.<run>` into the bundle, signs it with Copper's Developer ID, has Apple
+notarize it and staples the ticket, checks the signature and Gatekeeper's verdict on the zipped
+bytes, launches the zipped app headless and asks `/health`
 for its version, and then publishes the zip, its `.sha256`, `copper-version.json`,
 `copper-install.sh` and the dSYM as a `v<version>` release. The updater, the curl installer and
 the Homebrew tap all read that release.
@@ -85,7 +86,9 @@ In the workflow's order:
    version is `<VERSION>.<UTC YYYYMMDD>.<n>`, `n` one more than the highest trailing number of
    any `v…` tag or release in the repository, so it never takes a number the workflow used or
    sorts below one. `--version` picks it instead; it must be new, and to publish, above the
-   latest. The key and its password must be in `~/.config/copper-signing`, mode 0600.
+   latest. The Developer ID `.p12`, its password and the notary key must be in
+   `~/.config/copper-developer-id`, mode 0600 (*How a release is signed*), and the `.p12` must hold
+   `release/copper-developer-id.cer`.
 2. **Build on the mini** (`felipe-exowatt@100.112.175.26`, over Tailscale). The commit's tree
    goes to a job folder on its external disk, `/Volumes/Farm/farm-exowatt/copper-release/`, or
    wherever `COPPER_RELEASE_REMOTE_DIR` says (quoted, `~/` is the mini's home: the internal disk
@@ -104,15 +107,17 @@ In the workflow's order:
    `~/.cache/copper-release/`). It reads the `.p12` and `p12-password` where they are
    (`--p12-file`, `--p12-password-file`): no keychain, and the key is never copied, printed or
    sent anywhere. The rest is `package-app.sh`'s: stamp the version into `Info.plist`, refuse a
-   bundle that isn't `com.collinrijock.copper` or doesn't pin the certificate, and sign with no
-   hardened runtime, no entitlements, no timestamp and the explicit requirement (compiled with
-   `csreq -r release/designated-requirement.txt -b …`, which is the form rcodesign takes).
+   bundle that isn't `com.collinrijock.copper` or doesn't pin the team, and sign with the
+   hardened runtime, `Copper.entitlements`, Apple's timestamp and the explicit requirement
+   (compiled with `csreq -r release/designated-requirement.txt -b …`, which is the form rcodesign
+   takes). Then `xcrun notarytool submit --wait` with `AuthKey_<id>.p8` and `notary-issuer`, the
+   ticket stapled and the zip made again, as on the runner.
    build.sh's ad-hoc signature is removed first, because rcodesign carries an existing
    signature's flags and entitlements over. `--exclude 'Contents/Resources/**'` keeps rcodesign
    from signing the SwiftPM resource bundle in `Resources` as a bundle of its own; codesign's
    rules treat `Resources` as data, and the bundle's files are sealed one by one, as before.
-4. **Check, package, launch.** The workflow's *Check the signature* on the zipped bytes (plus: no
-   code-signature flags, signed by *Copper Release Signing*); the versioned and stable zips and
+4. **Check, package, launch.** The workflow's *Check the signature* on the zipped bytes (plus: the
+   hardened runtime and no other flag, signed by a Developer ID of the team); the versioned and stable zips and
    their `.sha256`s; the dSYMs; `copper-version.json`, written by the workflow's own code and
    held to the fields of the manifest `releases/latest` serves; `copper-install.sh`. The zips are
    `ditto -c -k --norsrc --noextattr --noqtn --noacl --keepParent`: the laptop gives every file a
@@ -135,14 +140,16 @@ Everything lands in `build/release-local/<version>/` (gitignored): `assets/` is 
 release uploads, `release-notes.md` its text, `logs/` the mini's build and launch output and
 rcodesign's. The job folder on the mini is deleted at the end, whatever happened.
 
-**What differs from a workflow release.** Only the signer. The requirement, the flags (none),
+**What differs from a workflow release.** Only the signer. The requirement, the flags (the
+hardened runtime), the entitlements,
 the sealed resources (the same `CodeResources`), the certificate and the signed attributes are
 the same, and `codesign` verifies both the same way. rcodesign hashes code in 4 KB pages where
 codesign uses 16 KB for arm64 (x86_64 is 4 KB in both), so the arm64 signature is about
 140 KB instead of 36. That is not part of the designated requirement: macOS keeps a person's
 grants and an installed Copper's updater accepts the bundle exactly as it does a workflow
 release (`codesign --verify --deep --strict -R=…`), and the kernel checks 4 KB pages on Apple
-silicon as it does on Intel. The first dry run was rehearsed against the real thing: Copper
+silicon as it does on Intel. (Notarizing an rcodesign signature is rcodesign's documented use.)
+The first dry run was rehearsed against the real thing: Copper
 1.0.20261110.104 as released, headless in a test world pointed at a stub feed, staged the
 rcodesign-signed 1.0.20261110.105 and passed the pre-swap check (`updates dry-run on`, then
 `updates upgrade`).
@@ -154,34 +161,56 @@ the release here.
 
 ## How a release is signed
 
-- **The certificate.** One self-signed code-signing certificate, `CN=Copper Release Signing`
-  (RSA 3072, SHA-256, `extendedKeyUsage=codeSigning`, valid 2026-10-07 → 2036-10-04). The
-  public half is `release/copper-release-signing.cer`; its SHA-1 is
-  `76264b1f74fbc16100eb71c855edd6d4165c4fbe`. It is not a Developer ID and the app is not
-  notarized, so the installer and the cask still clear the quarantine flag (`xattr -cr`).
-- **The private key** exists in two places: the repository secrets
-  `COPPER_SIGNING_P12_BASE64` (the password-protected `.p12`, base64) and
-  `COPPER_SIGNING_P12_PASSWORD`, and Felipe's copy (offline, and in `~/.config/copper-signing`
-  on his laptop, where `release/release-local.sh` signs from). It is never in the repository.
-- **On the runner.** *Signing keychain* decodes the p12 into a keychain made for that run
-  (random password, on the search list only for the run), checks that the certificate in it is
-  the one `release/` names, and *Delete the signing keychain* removes it again (`if: always()`).
+- **The certificate.** A **Developer ID Application** certificate of Copper's Apple Developer
+  team: `Developer ID Application: Collin Rijock (95X7XYUVNX)`, issued by Apple's *Developer ID
+  Certification Authority* (G2 Sub-CA), valid 2026-11-25 → 2027-12-25. The public half is
+  `release/copper-developer-id.cer`; its SHA-1 is `d6852ec5c7b2cad290909e6414fb66a9b7678e72`.
+  Only the team's Account Holder can make one, on developer.apple.com (the App Store Connect
+  API answers *"can only be performed by the Account Holder"*); the API can fetch it once it
+  exists (`GET /v1/certificates`).
+- **The keys** exist in two places: Copper's Mac mini, `~/.config/copper-developer-id/` (0600:
+  `devid.key` and its CSR, `copper-developer-id.p12` with the G2 intermediate inside,
+  `p12-password`, and the notary key `AuthKey_<key id>.p8` with `notary-issuer`), and the
+  repository secrets `COPPER_DEVELOPER_ID_P12_BASE64` / `COPPER_DEVELOPER_ID_P12_PASSWORD`,
+  `COPPER_NOTARY_KEY_BASE64` / `COPPER_NOTARY_KEY_ID` / `COPPER_NOTARY_ISSUER`. The notary key is
+  an App Store Connect team key, *Copper notarize*, with the Developer role (the least
+  notarytool takes) and nothing else. Neither is ever in the repository.
+- **On the runner.** *Signing keychain and notary key* decodes the p12 into a keychain made for
+  that run (random password, on the search list only for the run) and the notary key into the
+  run's temporary folder, checks that the certificate in the p12 is the one `release/` holds and
+  that the requirement names its team, and *Delete the signing keychain and notary key* removes
+  both again (`if: always()`).
 - **The requirement.** `release/package-app.sh` signs with the certificate's SHA-1 and an
   explicit designated requirement, the one line in `release/designated-requirement.txt`:
 
   ```
-  designated => identifier "com.collinrijock.copper" and certificate leaf = H"76264b1f74fbc16100eb71c855edd6d4165c4fbe"
+  designated => identifier "com.collinrijock.copper" and anchor apple generic
+    and certificate 1[field.1.2.840.113635.100.6.2.6] and certificate leaf[field.1.2.840.113635.100.6.1.13]
+    and certificate leaf[subject.OU] = "95X7XYUVNX"
   ```
 
-  It signs inside-out (`--deep` with the identity, then the app itself with `-r`), no hardened
-  runtime, no entitlements, no timestamp — the flags the ad-hoc releases had, so WebKit, its JIT
-  and the extensions run exactly as before. It refuses to sign a bundle whose id is not
-  `com.collinrijock.copper`, or whose binary does not pin the same certificate
-  (`Signing.releaseCertificate`).
-- **The checks** (*Check the signature*): `codesign -dr -` must print exactly that requirement;
-  `codesign --verify --deep --strict` (what an older Copper checks) and
-  `codesign --verify --deep --strict -R="<requirement>"` (what Copper checks from now on) must
-  pass; there must be no entitlements.
+  That is the requirement Apple's tools give a Developer ID app: Copper's identifier and *any*
+  Developer ID Application certificate Apple issued to the team, so renewing the certificate
+  changes nothing for macOS or the updater (`Signing.releaseRequirement`).
+- **The flags.** The hardened runtime (`--options runtime`), Apple's secure timestamp and the
+  entitlements in `Copper.entitlements` — what the runtime would otherwise refuse: the camera,
+  the microphone, calendars, location (pages ask for these) and Apple Events (links handed to
+  the running Copper, `Fork/LinkRelay.swift`). WebKit's JIT runs in WebKit's own processes, so
+  the app needs no JIT entitlement. It signs inside-out (`--deep` with the identity, then the
+  app itself with the entitlements and `-r`). It refuses to sign a bundle whose id is not
+  `com.collinrijock.copper`, or whose binary does not pin the same team
+  (`Signing.developerTeam`), or without the notary key.
+- **Notarized and stapled.** Each zip goes to Apple's notary service
+  (`xcrun notarytool submit --wait`, a few minutes); on *Accepted* the ticket is stapled to the
+  app (`xcrun stapler staple`) and the zip made again around it, so Gatekeeper opens a download
+  offline too. On anything else the run prints Apple's log (`notarytool log`) and stops. No
+  installer, cask or page clears the quarantine flag any more.
+- **The checks** (*Check the signature*): `codesign -dr -` must print exactly that requirement
+  (Apple's `/* exists */` comments aside); `codesign --verify --deep --strict`, the same with
+  `-R="<requirement>"` (what Copper checks from now on) and with the bridge's requirement (what
+  the last self-signed releases check) must pass; the hardened runtime and a secure timestamp
+  must be there and the entitlements must be `Copper.entitlements`; `xcrun stapler validate`
+  must pass and `spctl -a -vvv -t exec` must say `accepted` and `source=Notarized Developer ID`.
 
 Check any copy by hand:
 
@@ -209,7 +238,7 @@ System Settings (the whole story: [plans/2026-10-07-move-in-and-settings.md](pla
 With the explicit requirement every release satisfies the same DR, so a grant made once keeps
 working through updates. The updater also holds every download to it
 (`Signing.unsatisfied`, in `Updates.fetchAndStage` and again just before the swap): a bundle that
-isn't signed by this certificate as `com.collinrijock.copper` is refused with *"Copper X isn't
+isn't signed by a Developer ID of Copper's team as `com.collinrijock.copper` is refused with *"Copper X isn't
 signed with Copper's release certificate, so it won't replace this one."* A development build or
 a test copy is held to its own identifier instead (it has no certificate to pin);
 `./bench --world W updates requirement TEXT|off` points a test world at another requirement.
@@ -231,15 +260,14 @@ last time: after it, turn Copper on again in System Settings › Privacy & Secur
 Access and Files & Folders, and click Always Allow once more if the keychain asks. After that,
 they stay.
 
-### Moving to Developer ID (the bridge)
+### The move to Developer ID
 
-Releases are moving from Copper's own certificate to a **Developer ID Application** certificate
-of Copper's Apple Developer team (`95X7XYUVNX`), notarized, so Gatekeeper opens a download with
-no `xattr` step. That is a certificate rotation (below), done in two releases:
+Releases moved from Copper's own self-signed certificate (`CN=Copper Release Signing`, SHA-1
+`76264b1f74fbc16100eb71c855edd6d4165c4fbe`, secrets `COPPER_SIGNING_P12_BASE64` /
+`COPPER_SIGNING_P12_PASSWORD`) to the Developer ID, notarized, as a certificate rotation in two
+releases:
 
-1. **The bridge (now).** Releases are still signed with Copper's own certificate and
-   `release/designated-requirement.txt` is unchanged, but the updater accepts either
-   (`Signing.releaseRequirement`):
+1. **The bridge**, still signed with the old certificate, whose updater accepts either:
 
    ```
    identifier "com.collinrijock.copper" and (certificate leaf = H"76264b1f74fbc16100eb71c855edd6d4165c4fbe"
@@ -247,16 +275,14 @@ no `xattr` step. That is a certificate rotation (below), done in two releases:
          and certificate leaf[field.1.2.840.113635.100.6.1.13] and certificate leaf[subject.OU] = "95X7XYUVNX"))
    ```
 
-   The second half is the requirement Apple's tools give a Developer ID app: any Developer ID
-   Application certificate Apple issued to that team, so a renewed certificate still passes.
-2. **The switch** (the next release after the bridge has reached people): signed with the
-   Developer ID, hardened runtime, notarized and stapled; the designated requirement becomes
-   the team's. It costs everyone one re-grant, like the first signed release.
+2. **The switch**: the first release signed with the Developer ID, notarized and stapled. A
+   Copper from before the bridge refuses it (*"isn't signed with Copper's release
+   certificate"*) and its person reinstalls once (curl installer, Homebrew or the zip).
 
-The Developer ID's private key and the notary API key live on Copper's Mac mini in
-`~/.config/copper-developer-id/` (0600) and in the repository secrets
-`COPPER_DEVELOPER_ID_P12_BASE64` / `_PASSWORD`, `COPPER_NOTARY_KEY_BASE64` / `_KEY_ID` /
-`_ISSUER`; the bridge reads none of them.
+The switch changes the DR (from the old certificate to the team), so its grants go one last
+time, as with the first signed release: turn Copper on again in System Settings › Privacy &
+Security › Full Disk Access and Files & Folders, and click Always Allow once more if the
+keychain asks. After that they stay, through certificate renewals too.
 
 ## Development builds have their own identity
 
@@ -283,58 +309,60 @@ A local build that should *be* Copper (rare: only to try the release packaging) 
 `COPPER_RELEASE=1 ./build.sh release app`, then `release/package-app.sh` (ad hoc without
 `COPPER_SIGN_IDENTITY`).
 
-## Rotating the certificate
+## Renewing the certificate
 
-The certificate is good until 2036-10-04. Replace it before then, or at once if the key leaks.
-A new certificate is a new DR, so the release that switches costs everyone one re-grant, like the
-first signed release did.
+The Developer ID expires on 2027-12-25. Renew it before then (Apple allows a few Developer ID
+certificates per team at once, so the old one keeps signing until the new one is in place).
+Because the requirement names the team, not the certificate, a renewal needs no bridge and costs
+nobody a re-grant; a signature made before the expiry stays valid after it, thanks to the secure
+timestamp.
 
-1. On a trusted Mac, with openssl only (no keychain needed):
+1. On Copper's Mac mini, a new key and CSR (openssl only, no keychain):
 
    ```sh
-   umask 077; mkdir -p ~/.config/copper-signing && cd ~/.config/copper-signing
-   # openssl.cnf: CN = Copper Release Signing; basicConstraints = critical, CA:FALSE;
-   # keyUsage = critical, digitalSignature; extendedKeyUsage = critical, codeSigning
-   /usr/bin/openssl genrsa -out release.key 3072
-   /usr/bin/openssl req -new -x509 -config openssl.cnf -key release.key -sha256 -days 3650 -out release.pem
-   /usr/bin/openssl x509 -in release.pem -outform DER -out copper-release-signing.cer
-   /usr/bin/openssl rand -base64 60 | tr -dc 'A-Za-z0-9' | head -c 40 > p12-password
-   /usr/bin/openssl pkcs12 -export -inkey release.key -in release.pem -name "Copper Release Signing" \
-     -out copper-release-signing.p12 -passout file:p12-password \
-     -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1   # what `security import` reads
-   rm release.key; shasum -a 1 copper-release-signing.cer
+   umask 077; cd ~/.config/copper-developer-id
+   /usr/bin/openssl genrsa -out devid.key 2048
+   /usr/bin/openssl req -new -key devid.key -subj "/CN=Copper Developer ID/C=US" -out devid.csr
    ```
 
-2. **Bridge release, still signed with the old certificate.** A Copper already installed
-   refuses any update that isn't signed with the certificate it pins, so first ship one release
-   whose updater accepts both: `Signing.releaseRequirement` becomes
-   `identifier "com.collinrijock.copper" and (certificate leaf = H"<old>" or certificate leaf = H"<new>")`.
-   `release/` and the secrets stay on the old certificate. The same commit relaxes
-   `SigningTests.theUpdaterPinsTheCertificateInRelease`: it expects the single-leaf text of
-   `release/designated-requirement.txt`, and the Swift requirement is now the two-leaf `or`.
-   Let it reach people (a few days).
-3. **The switch.** In one commit: the new `.cer` in `release/`, the new SHA-1 in
-   `release/designated-requirement.txt` and `Signing.releaseCertificate` (the requirement back to
-   the single new leaf), then the secrets:
-   `base64 -i copper-release-signing.p12 | tr -d '\n' | gh secret set COPPER_SIGNING_P12_BASE64 -R copper-browser/Copper`
-   and `gh secret set COPPER_SIGNING_P12_PASSWORD -R copper-browser/Copper < p12-password`,
-   and the new pair in `~/.config/copper-signing` for `release/release-local.sh`.
-   *Signing keychain* fails the run if the secret and `release/` disagree; the local path fails
-   its signature check.
-4. A dry run (`-f publish=false`, or `release/release-local.sh --dry-run`) must show the new
-   requirement on the artifact before the first real release. Anyone who skipped the bridge release reinstalls once (curl installer or
-   Homebrew).
+2. The Account Holder (Collin) signs in at developer.apple.com › Certificates › + ›
+   **Developer ID Application** › G2 Sub-CA and uploads `devid.csr`. The `.cer` can then be
+   fetched with the App Store Connect API (`GET /v1/certificates?filter[certificateType]=DEVELOPER_ID_APPLICATION_G2`,
+   `certificateContent` is the DER, base64).
+3. The p12, with Apple's intermediate inside so `codesign` can build the chain on any runner:
+
+   ```sh
+   curl -fsSLO https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
+   /usr/bin/openssl x509 -inform der -in devid.cer -out devid.pem
+   /usr/bin/openssl x509 -inform der -in DeveloperIDG2CA.cer -out g2ca.pem
+   /usr/bin/openssl rand -base64 60 | tr -dc 'A-Za-z0-9' | head -c 40 > p12-password
+   /usr/bin/openssl pkcs12 -export -inkey devid.key -in devid.pem -certfile g2ca.pem \
+     -name "Developer ID Application: Collin Rijock (95X7XYUVNX)" -out copper-developer-id.p12 \
+     -passout file:p12-password -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1   # what `security import` reads
+   ```
+
+4. In one commit, the new `devid.cer` as `release/copper-developer-id.cer` (the SHA-1 above in this
+   page too); then the secrets:
+   `base64 -i copper-developer-id.p12 | tr -d '\n' | gh secret set COPPER_DEVELOPER_ID_P12_BASE64 -R copper-browser/Copper`
+   and `gh secret set COPPER_DEVELOPER_ID_P12_PASSWORD -R copper-browser/Copper < p12-password`,
+   and the same pair in `~/.config/copper-developer-id` wherever `release/release-local.sh` runs.
+   *Signing keychain and notary key* fails the run if the secret and `release/` disagree; the
+   local path fails its preflight.
+5. A dry run (`-f publish=false`, or `release/release-local.sh --dry-run`) must sign, notarize and
+   pass every check before the next real release.
+
+The notary key doesn't expire; revoke and replace it (App Store Connect › Users and Access ›
+Integrations › Team Keys, role Developer) if it leaks, then `COPPER_NOTARY_KEY_BASE64` (the
+`.p8`, base64), `COPPER_NOTARY_KEY_ID` and the local `AuthKey_<id>.p8`.
+
+**Another team** (Copper moving to a company's account) is a new requirement: that is a rotation
+like the move to Developer ID above — a bridge release whose updater accepts both teams, then the
+switch.
 
 ### Keeping the key
 
-The bridge in step 2 needs the old key: only a release signed with it can teach installed
-Coppers to accept a new certificate. So the `.p12` and its password are kept together, offline,
-outside any repository, beside the repository secrets; the secrets alone can't be read back out
-of GitHub. After a rotation, the new `.p12` and password replace the offline copy and the pair
-in `~/.config/copper-signing` that `release/release-local.sh` signs with; the rest of that
-working folder is emptied.
-
-If the key is lost (or leaks and must not sign again), there is no bridge: ship the switch
-(step 3) directly, and every installed Copper refuses it with *"isn't signed with Copper's
-release certificate"* and the download link. Everyone reinstalls once from the release page,
-the curl installer or the cask, and grants Copper's permissions again.
+The `.p12`, its password and the notary key are kept together on Copper's Mac mini and offline,
+beside the repository secrets; the secrets alone can't be read back out of GitHub. If the
+Developer ID key is lost, renew (above): the requirement names the team, so nothing else
+changes. If it leaks, renew at once and ask Apple Developer Support to revoke the old
+certificate; they set the revocation date, so copies signed before the leak keep opening.
