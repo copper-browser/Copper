@@ -63,6 +63,8 @@ struct AppCommands: Commands {
                 .keyboardShortcut("t")
             Button("New Window") { Windows.newWindow() }
                 .keyboardShortcut("n")
+            Button("New Little Copper Window") { Little.open(nil) } // Fork (ardia: windows): Fork/Little.swift
+                .keyboardShortcut("n", modifiers: [.command, .option])
             Button("New Private Tab") { browser.newShyTab() }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
             Button("New Canvas") { CanvasTabs.newCanvas(in: browser) } // Fork (canvas): ⌃⇧E is Arc's, and free here
@@ -777,6 +779,7 @@ struct ContentView: View {
             // didn't use goes no further — not to the window in front, not to
             // the menus (Fork/MCP/Input.swift `returned`).
             if Input.returned(event) { return nil }
+            if let mine = Little.key(event) { return mine ? nil : event } // Fork (ardia: windows): a Little Copper's or Peek's keys are their own
             // Every window watches the keys; a keystroke is the window's it
             // was typed in, and a panel or popup of no browser's goes to the
             // one in front. (Fork: windows)

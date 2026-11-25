@@ -405,6 +405,16 @@
                                        Send Feedback's prefilled page, Make default (refused in a test run),
                                        and where Settings' Copy and Open went in a test world
     ./bench split [ID|off]           split the stage with tab ID (toggle with none)
+    ./bench little [open [URL]|copper [N]|close [N]|shot N PATH]
+                                       Little Copper windows (⌥⌘N): list, open one, Open in Copper, close, a PNG
+    ./bench peek [open URL|click SELECTOR|key ⎋|⌘↩|⌥⌘↩|tab|split|close|pins on|off]
+                                       Peek (⇧-click): what is up, open one over the active tab, a real ⇧-click on
+                                       SELECTOR there, a key through the app's monitor, keep it as a tab (⌘↩) or a
+                                       split (⌥⌘↩), put it away (⎋); pins: a pin's links to other sites peek
+    ./bench atc [add site=S [app=BUNDLE] [space=N] [open=tab|window|little]|else [space=N] [open=…]|clear|
+                 try URL [APP]|route URL [APP]|last|from PID]
+                                       Air Traffic Control: the rules, add one, Everything else, what a link from
+                                       APP would do, route one for real (as from another app), the last routed
     ./bench mouse back|forward|middle [X Y] [--shift] [--window N]
                                        a click of that mouse button at window point X Y (top-left
                                        origin; the page's middle by default), through the app's routing;
@@ -669,6 +679,9 @@ def main(argv):
         words = [a for a in args if a != "--table"]
         request["op"] = words[0] if words else "state"
         request["arg"] = " ".join(words[1:]) if len(words) > 1 else ""
+    elif verb in ("little", "peek", "atc"):  # Fork (ardia: windows)
+        request["op"] = args[0] if args else ("state" if verb == "peek" else "list")
+        request["arg"] = " ".join(args[1:]) if len(args) > 1 else ""
     elif verb in ("spaces", "groups", "sections", "agent", "ai", "updates", "bw", "op", "downloads", "drive", "ext-manager", "windows", "pace", "calendar", "pins", "covers"):
         request["op"] = args[0] if args else ("status" if verb in ("updates", "bw", "op", "drive", "pace", "covers") else "state" if verb == "calendar" else "list")
         request["arg"] = " ".join(args[1:]) if len(args) > 1 else ""
