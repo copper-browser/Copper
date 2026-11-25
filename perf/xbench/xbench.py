@@ -22,9 +22,9 @@ WebDriver (Safari, which can't run from a copy or a separate profile) and the be
   xbench.py report  --out DIR [--json FILE] [--md FILE]   medians (min–max, n) per row and browser
   xbench.py stop                                           end a running harness cleanly (browsers quit, lock released)
 
-  --quiet   take a round's launches (browsers interleaved and rotated), and then each session and Speedometer run,
-            only while ~/hc/mini.lock is free and the 1-minute load average is under 2, holding the lock meanwhile;
-            ~/hc/ardia-site-bench/PAUSE asks the token bench to hold its next run while the Mac may be about to go quiet.
+  --quiet   each round (browsers interleaved and rotated) queues for ~/hc/mini.lock like the Mac's other jobs, holds it
+            for the whole round, and starts once the 1-minute load average is under 2; ~/hc/ardia-site-bench/PAUSE asks
+            the token bench to hold its next run while the lock is held.
 
 Runs on the Mac (python3, stdlib only). Copies of the browsers live in $XBENCH_APPS (default
 ~/hc/ardia-site-bench/apps-xb): copper/Copper.app, chrome/Google Chrome.app, arc/Arc.app, ardia/Ardia.app, used by
@@ -983,6 +983,23 @@ def load1():
     return os.getloadavg()[0]
 
 
+def lock_until(fd, deadline):
+    """A blocking exclusive flock on fd, given up at the deadline (SIGALRM interrupts the wait)."""
+    def timeout(*a):
+        raise TimeoutError
+
+    old = signal.signal(signal.SIGALRM, timeout)
+    signal.alarm(max(1, int(deadline - time.time())))
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        return True
+    except TimeoutError:
+        return False
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+
+
 class Quiet:
     """Holds ~/hc/mini.lock while the 1-minute load average is under 2 (the same lock every worker on the Mac
     takes for builds and measurements)."""
@@ -991,38 +1008,29 @@ class Quiet:
         self.enabled, self.limit, self.fd = enabled, limit, None
 
     def take(self, deadline):
-        """Waits for the lock to be free with the load under the limit, then holds the lock. The token bench is asked
-        to hold its next run (PAUSE) while the lock is free and the load low, and for as long as rounds keep coming;
-        after 15 minutes without a quiet Mac it is let go for 10."""
+        """Queues for the lock like every other job (a blocking flock: the others wait in `lockf`, which hands the lock
+        to a waiter the moment it is let go, so polling for it would never win), then, holding it, asks the token
+        bench to hold its next run (PAUSE) and waits up to 12 minutes for the 1-minute load average to fall under
+        the limit. If it doesn't, the lock goes back for 2 minutes and the wait starts again."""
         if not self.enabled:
             return True
-        said, rest = 0, 0
-        paused_at = time.time() if os.path.exists(PAUSE) else None
         while time.time() < deadline:
             fd = os.open(LOCK, os.O_RDONLY | os.O_CREAT, 0o644)
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except OSError:
+            log(f"queueing for the Mac's lock (load {load1():.2f})")
+            if not lock_until(fd, deadline):
                 os.close(fd)
-                fd = None
-            free = fd is not None
-            if free:
-                if load1() < self.limit:
-                    self.fd = fd
-                    self.pause()
-                    return True
-                fcntl.flock(fd, fcntl.LOCK_UN)
-                os.close(fd)
-            if paused_at is None and free and load1() < 2 * self.limit + 2 and time.time() > rest:
-                self.pause()
-                paused_at = time.time()
-            elif paused_at is not None and time.time() - paused_at > 900:
-                self.unpause()
-                paused_at, rest = None, time.time() + 600
-            if time.time() - said > 300:
-                log(f"waiting for a quiet Mac: lock {'free' if free else 'held'}, load {load1():.2f}")
-                said = time.time()
-            time.sleep(20)
+                break
+            self.fd = fd
+            self.pause()
+            settle_end = min(deadline, time.time() + 720)
+            while time.time() < settle_end and load1() >= self.limit:
+                time.sleep(10)
+            if load1() < self.limit:
+                return True
+            log(f"lock held but load still {load1():.2f}; letting it go for 2 minutes")
+            self.release()
+            self.unpause()
+            time.sleep(120)
         self.unpause()
         return False
 
@@ -1037,12 +1045,12 @@ class Quiet:
         return {"load1": round(load1(), 2), "locked": self.fd is not None}
 
     def release(self):
-        # PAUSE stays: the next item usually follows at once, and a token run started in between would keep the
-        # Mac busy for minutes. take() lets the token bench go if no quiet Mac comes within 15 minutes.
+        # The token bench runs again while the next round queues (that can take an hour).
         if self.fd is not None:
             fcntl.flock(self.fd, fcntl.LOCK_UN)
             os.close(self.fd)
             self.fd = None
+            self.unpause()
 
     def done(self):
         self.release()
@@ -1133,16 +1141,15 @@ def run(args):
             if time.time() > deadline:
                 log("deadline: stopping; run again to resume")
                 break
-            # The launch phase of a round (a few minutes) holds the lock as one; a session or a Speedometer run
-            # (several minutes each) holds it on its own, so the Mac's other jobs get turns in between.
-            g = (item["round"], item["phase"]) if item["phase"] == "launch" else (item["round"], item["kind"], item["browser"])
+            # One lock hold per interleaved round (all its launches, sessions and Speedometer runs, about 20 minutes).
+            g = item["round"]
             if g != group:
                 quiet.release()
                 if not quiet.take(deadline):
                     log("no quiet Mac before the deadline; stopping")
                     break
                 group = g
-                log(f"round {item['round']} {item['phase']}: {quiet.conditions()}")
+                log(f"round {item['round']}: {quiet.conditions()}")
             b = BROWSERS[item["browser"]]()
             tag = f"{item['key'].replace('/', '-')}-{int(time.time())}"
             sample = dict(item, at=time.strftime("%F %T"), version=b.version(), conditions=quiet.conditions())
@@ -1338,6 +1345,15 @@ def selftest():
     assert not any(i["browser"] == "safari" and i["kind"] == "link" for i in p)
     assert [i["key"] for i in p if i["kind"] == "visible"] == ["r0/visible/copper", "r1/visible/copper"]
     assert not any(i["browser"] == "safari" for i in plan(["copper", "safari"], 1, 1, ["speedometer"]))
+    import tempfile
+    with tempfile.NamedTemporaryFile() as f:  # two open files of one path: their flocks exclude each other
+        a, b = os.open(f.name, os.O_RDONLY), os.open(f.name, os.O_RDONLY)
+        fcntl.flock(a, fcntl.LOCK_EX)
+        t = time.time()
+        assert not lock_until(b, time.time() + 1.2) and time.time() - t >= 0.9
+        fcntl.flock(a, fcntl.LOCK_UN)
+        assert lock_until(b, time.time() + 5)
+        os.close(a), os.close(b)
     print("selftest ok")
 
 
