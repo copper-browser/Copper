@@ -356,6 +356,7 @@ struct SideBar: View {
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SavedDrop.space)) } action: { SideDrag.of(browser).header = $0 } // Fork (saved-drag)
                     if drag.slot { SavedDropSlot(drag: drag, tint: tint) } // Fork (saved-drag): an empty Saved block's drop target
                     rows(kept, homeless: true, block: .saved)
+                    LiveFolderBlock(browser: browser, tint: tint) // Fork (ardia folders): GitHub pull requests, Fork/LiveFoldersUI.swift
                     if !today.isEmpty {
                         if clearCount > 0 {
                             ClearTabsDivider(browser: browser, tint: tint, count: clearCount)
