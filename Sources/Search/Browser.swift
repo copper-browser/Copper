@@ -2573,6 +2573,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
                 decisionHandler(.cancel)
                 return
             }
+            if Peek.wants(action, from: webView, in: self) { Peek.open(url, over: self); decisionHandler(.cancel); return } // Fork (ardia: windows): ⇧-click peeks (Fork/Peek.swift)
         }
 
         // Fork (extension-pages): an extension's page leaving for the web
