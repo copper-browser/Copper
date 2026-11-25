@@ -426,6 +426,7 @@ enum FlowArc {
             var incoming = FlowModel.Space(name: title)
             incoming.hue = orderedTheme.flatMap(hue)
             incoming.profile = profileName(space["profile"])
+            incoming.source = space["id"] as? String
             let custom = space["customInfo"] as? [String: Any]
             incoming.theme = SpaceTheme.arc(custom?["windowTheme"] as? [String: Any])
             incoming.icon = SpaceTheme.arcIcon(custom?["iconType"] as? [String: Any])

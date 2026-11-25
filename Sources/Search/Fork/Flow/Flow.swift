@@ -606,6 +606,10 @@ final class Flow: ObservableObject {
             haul.notes.append(error.localizedDescription)
             haul.tabsTrouble = "couldn't read \(source.name)'s open tabs"
         }
+        if source.isArc {
+            haul.arc = FlowArcExtras.read(folder: source.rootOverride?.deletingLastPathComponent()
+                ?? FlowArc.sidebar.deletingLastPathComponent())
+        }
         haul.extensions = FlowExtensions.read(source.readerSource, profiles: source.profiles)
         haul.passkeyCount = FlowPasskeys.count(source.readerSource, profiles: source.profiles)
         haul.bookmarkCount = FlowBookmarks.count(FlowChromium.bookmarks(in: source).nodes)
@@ -718,6 +722,15 @@ final class Flow: ObservableObject {
             report.tabs = adoption.tabs
             report.spaces = adoption.made.count + adoption.filled.count
             report.groups = adoption.groups
+            // Arc's link rules and archive name its spaces: they land once
+            // those spaces are here.
+            if let arc = haul.arc {
+                let landed = FlowArcExtras.land(arc, adopted: haul.spaces.filter { !$0.tabs.isEmpty }, source: source.name,
+                                                registry: adoption.registry,
+                                                fallback: adoption.landing ?? Spaces.shared.current(in: browser), movedAt: movedAt)
+                report.facts.rulesAdded = landed.rules
+                report.facts.archivedAdded = landed.archived
+            }
             finish(.tabs, report.facts, &steps)
             await pause()
             // The new spaces are the one thing that cannot be re-fetched from
@@ -1525,6 +1538,7 @@ final class Flow: ObservableObject {
                         "landing": report.landing?.uuidString ?? "", "undone": report.undone,
                         "guideOffered": report.guideOffered, "guide": "\(guide)",
                         "tabsSkipped": report.facts.tabsSkipped, "spacesMade": report.facts.spacesMade,
+                        "rulesAdded": report.facts.rulesAdded, "archivedAdded": report.facts.archivedAdded,
                         "spacesFilled": report.facts.spacesFilled, "pinsAdded": report.facts.pinsAdded,
                         "bookmarksNew": report.facts.bookmarksNew, "placesNew": report.facts.placesNew,
                         "passwordsNew": report.facts.passwordsNew ?? -1, "cookiesInStore": report.cookiesInStore, "profileCookies": report.profileCookies,
