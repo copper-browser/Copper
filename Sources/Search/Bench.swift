@@ -534,12 +534,13 @@ final class Bench {
             }
             if let window = Links.window { out["lights"] = Bench.lights(of: window) }
             // Fork (ardia layout): the column's side and sizes, where the column and the page area are (global points).
-            let mids = SideDrag.of(browser).rows.values.map(\.midY).sorted()
+            let rows = SideDrag.of(browser).rows
             let box = { (r: CGRect) in [Int(r.minX.rounded()), Int(r.minY.rounded()), Int(r.width.rounded()), Int(r.height.rounded())] }
             out["layout"] = ["side": browser.prefs.sideRight ? "right" : "left", "size": browser.prefs.interfaceSize.rawValue, "frame": browser.prefs.pageFrame.rawValue,
                              "column": box(SpaceSlide.shared.column(in: browser)), "stage": box(SplitDrop.shared.stages[ObjectIdentifier(browser)] ?? .zero),
                              "window": Links.window.map { [Int($0.frame.width), Int($0.frame.height)] } ?? [],
-                             "pitch": mids.count > 1 ? Double(((mids[1] - mids[0]) * 100).rounded() / 100) : 0] as [String: Any] // the first two rows, centre to centre
+                             "rows": Dictionary(uniqueKeysWithValues: rows.map { (String($0.key.uuidString.prefix(8)).lowercased(), Double(($0.value.midY * 10).rounded() / 10)) }),
+                             "row": Double(SideBar.row)] as [String: Any] // rows: each loose row's centre, as a drag reads it
             out["keysQuieted"] = PageView.quieted
             // Who has the keyboard, and the last link click WebKit reported
             // (its button number and modifiers) — for the mouse-button work. (Fork)

@@ -165,7 +165,16 @@ sleep 0.8
 ok "drop on the page's left edge makes a pane there"
 
 # 5. Interface size and page frame; pictures of both sides at every size, light and dark.
-pitch() { bench probe | python3 -c "import json,sys; print(json.load(sys.stdin)['layout']['pitch'])"; }
+# Rows A and B (one under the other) centre to centre (row + gap), once the column drawn at the new size has handed its frames up.
+pitch() {
+  local want=$1 got=""
+  for _ in {1..20}; do
+    got=$(bench probe | python3 -c "import json,sys; L=json.load(sys.stdin)['layout']; r=L['rows']; print(round(r['$B'] - r['$A'], 2), L['row'], json.dumps(r).replace(' ', ''))")
+    python3 -c "import sys; p, r = float(sys.argv[1]), float(sys.argv[2]); sys.exit(0 if abs(p - r * 38 / 34) < 0.6 else 1)" $got 2>/dev/null && break
+    sleep 0.25
+  done
+  echo "$got"
+}
 for look in light dark; do
   bench ui look "$look" >/dev/null
   for side in right left; do
@@ -174,12 +183,13 @@ for look in light dark; do
       bench ui size "$size" >/dev/null
       sleep 0.8
       shot "$side-$size-$look"
-      [ "$look$side" = lightright ] && echo "$size $(pitch)" >>"$tmp/pitch"
+      [ "$look$side" = lightright ] && echo "$size $(pitch "$size")" >>"$tmp/pitch"
     done
   done
 done
 python3 - "$tmp/pitch" <<'PY' || fail "row pitch by size: $(cat "$tmp/pitch")"
 import sys
+for l in open(sys.argv[1]): print("    ", l.strip())
 p = dict((l.split()[0], float(l.split()[1])) for l in open(sys.argv[1]))
 assert abs(p["default"] - 38) < 0.6 and p["small"] < p["default"] - 3 and p["large"] > p["default"] + 4, p
 print("     row pitch (row + gap):", p)
