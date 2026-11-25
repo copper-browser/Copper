@@ -1,0 +1,10 @@
+{"arm": "copper", "round": 1, "first_window_ms": 597, "idle_s": 45, "idle_total_mb": 63, "idle_app_mb": 40, "processes": 5, "load1": 1.57}
+{"arm": "polar", "round": 1, "first_window_ms": 3962, "idle_s": 45, "idle_total_mb": 380, "idle_app_mb": 40, "processes": 13, "load1": 1.92}
+{"arm": "polar", "round": 2, "first_window_ms": 6727, "idle_s": 45, "idle_total_mb": 332, "idle_app_mb": 40, "processes": 12, "load1": 2.01}
+{"arm": "copper", "round": 2, "first_window_ms": 512, "idle_s": 45, "idle_total_mb": 62, "idle_app_mb": 40, "processes": 5, "load1": 2.29}
+{"arm": "copper", "round": 3, "first_window_ms": 606, "idle_s": 45, "idle_total_mb": 62, "idle_app_mb": 40, "processes": 5, "load1": 1.8}
+{"arm": "polar", "round": 3, "first_window_ms": 4384, "idle_s": 45, "idle_total_mb": 338, "idle_app_mb": 40, "processes": 12, "load1": 2.63}
+{"arm": "polar", "round": 1, "url": "https://example.com/", "first_window_ms": 3640, "idle_s": 45, "idle_total_mb": 387, "idle_app_mb": 40, "processes": 14, "load1": 1.73}
+{"arm": "polar", "round": 2, "url": "https://example.com/", "first_window_ms": 3329, "idle_s": 45, "idle_total_mb": 392, "idle_app_mb": 41, "processes": 14, "load1": 1.2}
+{"arm": "copper", "round": 1, "url": "https://example.com/", "first_window_ms": 537, "idle_s": 45, "idle_total_mb": 111, "idle_app_mb": 47, "processes": 8, "load1": 2.16}
+{"arm": "copper", "round": 2, "url": "https://example.com/", "first_window_ms": 556, "idle_s": 45, "idle_total_mb": 111, "idle_app_mb": 49, "processes": 7, "load1": 1.92}
