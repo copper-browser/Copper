@@ -14,3 +14,6 @@ build/
 # Gauntlet shots are regenerated every round.
 .gauntlet/shots/
 __pycache__/
+
+# Written by .github/scripts/site_build.py in site.yml.
+site/sitemap.xml

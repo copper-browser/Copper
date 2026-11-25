@@ -1,14 +1,19 @@
-# The website — copper-browser.github.io/Copper
+# The website — copper.exowatt.com
 
-Copper's landing page is a single static page in [`site/`](../site), served by GitHub Pages at
-**https://copper-browser.github.io/Copper/** and republished automatically whenever `site/`
-changes on `fork`.
+Copper's website is static HTML in [`site/`](../site): the landing page plus a few subpages
+(`site/<page>/index.html`). It is served from two hosts, both republished automatically whenever
+`site/` changes on `fork` (and once a day):
+
+- **https://copper.exowatt.com/** — Exowatt AWS, S3 + CloudFront ([`infra/site-aws.yml`](../infra/site-aws.yml)).
+  The canonical host: every page's `<link rel=canonical>`, `og:url`, `robots.txt` and `sitemap.xml` point here.
+- **https://copper-browser.github.io/Copper/** — GitHub Pages, a mirror.
 
 ## How it is hosted
 
 | Piece | Setting |
 |---|---|
 | Source of truth | `site/` on branch `fork` |
+| AWS | S3 bucket `copper-site-340752802981` behind CloudFront `E2MR74IJVKSHAD`; a CloudFront Function serves `/x/` as `/x/index.html` and redirects `/x` to `/x/`; a missing file gets `site/404.html` with status 404 |
 | Pages source | **GitHub Actions** (`build_type: workflow`) — no `gh-pages` branch; each deploy is an artifact |
 | HTTPS | Enforced |
 | Jekyll | Off (`site/.nojekyll`) — files are served exactly as committed |
@@ -24,13 +29,21 @@ gh run list -R copper-browser/Copper --workflow site.yml --limit 3
 
 [`.github/workflows/site.yml`](../.github/workflows/site.yml):
 
-1. Runs on every push to `fork` that touches `site/**` (or the workflow itself), on pull
-   requests that touch them (build only, no deploy), and on demand
+1. Runs on every push to `fork` that touches `site/**`, the workflow, `.github/scripts/site_build.py`
+   or `release_notes.py`; on pull requests that touch them (build and check only, no deploy); daily
+   at 09:17 UTC (so a new release's version and notes show up); and on demand
    (`gh workflow run site.yml -R copper-browser/Copper`).
-2. **build:** checks that every `assets/…` file `index.html` references exists, then
+2. **build:** [`.github/scripts/site_build.py`](../.github/scripts/site_build.py) (stdlib Python, no
+   dependencies) writes the latest release's version (from its `copper-version.json`) into
+   `index.html`'s `<span data-version>`, `<a data-version-href href="release-notes/#…">` and JSON-LD
+   `"softwareVersion"`, builds `release-notes/` (`release_notes.py`, when present) and writes
+   `sitemap.xml`. Then `--check` fails the build on a missing asset, a broken relative link or
+   `#anchor`, or a subpage whose header or footer differs from `site/_page-template.html`. A link
+   to a subpage that isn't there yet only warns. The template is removed and
    `actions/upload-pages-artifact` packs `site/`.
 3. **deploy** (pushes to `fork` only): `actions/configure-pages` + `actions/deploy-pages` publish
-   the artifact to the `github-pages` environment. The new page is live within a minute.
+   the artifact to the `github-pages` environment. **aws** runs the same build, syncs `site/` to S3
+   and invalidates CloudFront. Both are live within a minute or two.
 
 `concurrency` keeps one Pages deploy at a time; PR builds cancel superseded runs.
 
@@ -45,12 +58,27 @@ missing asset fails the build step with the file name.
 (`gh api -X POST repos/<owner>/<repo>/pages -f build_type=workflow`, or `-X PUT` if Pages already
 exists) and add `site.yml`.
 
-## Editing the page
+**The CloudFront stack** (the Function, the 404 page, the deploy role) changes only when someone
+with Exowatt admin SSO runs the command at the top of `infra/site-aws.yml`; merging the file does
+not apply it.
 
-- Everything is in `site/index.html`: inline CSS and a little vanilla JS. No framework, no build
-  step, no external fonts, CDNs, analytics or trackers. Assets live in `site/assets/`.
-- Every path is relative (the site lives under `/Copper/`), except `og:image`/`og:url`, which
-  must be absolute (`https://copper-browser.github.io/Copper/...`) for link previews.
+## Editing the pages
+
+- The home page is all in `site/index.html`: inline CSS and a little vanilla JS. No framework, no
+  external fonts, CDNs, analytics or trackers. Assets live in `site/assets/`.
+- **Subpages** are `site/<page>/index.html`, always one folder down, so `../` is the site root on
+  both hosts. Make one by copying [`site/_page-template.html`](../site/_page-template.html) and filling
+  its `{{…}}` slots (title with the keyword, description, the page's path for the canonical URL);
+  put `aria-current="page"` on its own header link. They share `assets/pages.css` (the home page's
+  tokens, header and footer, plus prose, tables and cards) and `assets/pages.js` (theme switch, copy
+  buttons). Keep `<header>` and `<footer>` exactly as in the template: change the template and every
+  page together, or the build fails. Link pages by folder (`../arc/`), never `index.html`.
+- `site/404.html` is served for a missing path at any depth, so it has `<base href="https://copper.exowatt.com/">`
+  and writes its URLs root-relative (`./assets/…`); on the Pages mirror its links lead to the canonical host.
+- Every other path is relative (the mirror lives under `/Copper/`), except canonical,
+  `og:image` and `og:url`, which are absolute on `https://copper.exowatt.com/` for link previews.
+- `robots.txt` and `sitemap.xml` only count at a host's root, so they work on copper.exowatt.com;
+  `sitemap.xml` is generated (not committed) and lists the home page and every subpage.
 - Light and dark follow `prefers-color-scheme`, with a toggle stored in `localStorage`
   (`copper-theme`). Captures come in pairs (`*-dark.*`); `window.copperMedia` in the `<head>`
   picks the pair that matches.
@@ -89,12 +117,15 @@ exists) and add `site.yml`.
 ### Preview and QA before pushing
 
 ```sh
+python3 .github/scripts/site_build.py && python3 .github/scripts/site_build.py --check
 python3 -m http.server 8000 -d site      # then open http://localhost:8000/
+git checkout site/index.html             # the build rewrote the version; don't commit that
 ```
 
-Check at 1440 (light and dark), 834, 390 and 360 px: `document.documentElement.scrollWidth <=
-innerWidth`, no console errors or failed requests, the copy buttons, the ⌘K palette and the
-hide-banner demo in "Try it here", and the theme toggle. Playwright's bundled Chromium cannot
+Check every page at 1440 (light and dark), 834, 390 and 360 px: `document.documentElement.scrollWidth <=
+innerWidth`, no console errors or failed requests, the live demo loads and its cue turns to "Told
+you." on the first click, Send to my Mac shows only on phones and tablets, the FAQ opens, and the
+copy buttons and theme toggle work. Playwright's bundled Chromium cannot
 play H.264, so check the videos in Safari or Chrome.
 
 ## Launch graphics
