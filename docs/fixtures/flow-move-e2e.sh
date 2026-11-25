@@ -328,7 +328,7 @@ arc = sys.argv[1]
 def save(name, doc): json.dump(doc, open(f"{arc}/{name}", "w"))
 def tab(i, url): return [i, {"id": i, "title": None, "data": {"tab": {"savedURL": url, "savedTitle": url}}}]
 items, spaces = [], []
-for sid, name, url in (("S-WORK", "Work", "https://work.invalid/"), ("S-HOME", "Home", "https://home.invalid/")):
+for sid, name, url in (("S-WORK", "Work", "https://work.invalid/"), ("S-ERRANDS", "Errands", "https://errands.invalid/")):
     spaces += [sid, {"id": sid, "title": name, "containerIDs": ["pinned", "P" + sid, "unpinned", "U" + sid]}]
     items += ["P" + sid, {"id": "P" + sid, "childrenIds": []}, "U" + sid, {"id": "U" + sid, "childrenIds": ["T" + sid]}] + tab("T" + sid, url)
 save("StorableSidebar.json", {"sidebar": {"containers": [{"spaces": spaces, "items": items}]}})
@@ -338,7 +338,7 @@ def rule(dest, style, text): return {"id": "R-" + text, "destination": dest, "so
 save("StorableLinkRouting.json", {"version": 1, "defaultDestination": to("littleArc"), "rules": [
     rule(to("space"), "contains", "meet.google.com"),
     rule(to("space", "S-WORK"), "contains", "jira.invalid/browse"),
-    rule(to("littleArc", "S-HOME"), "matches", "calendar.invalid"),
+    rule(to("littleArc", "S-ERRANDS"), "matches", "calendar.invalid"),
     rule(to("space", "S-DELETED"), "contains", "gone.invalid"),
     rule(to("space"), "startsWith", "x.invalid")]})
 now = time.time() - 978307200
@@ -346,7 +346,7 @@ def archived(at, url, source, title): return ["A" + url, {"archivedAt": now - at
     "sidebarItem": {"id": "A" + url, "title": None, "data": {"tab": {"savedURL": url, "savedTitle": title}}}}]
 save("StorableArchiveItems.json", {"version": 1, "items":
     archived(86400 * 30, "https://report.invalid/q3", {"space": {"_0": "S-WORK"}}, "Q3 report")
-    + archived(60, "https://old.invalid/", {"space": {"_0": "S-HOME"}}, "Old news")
+    + archived(60, "https://old.invalid/", {"space": {"_0": "S-ERRANDS"}}, "Old news")
     + archived(30, "https://little.invalid/", {"littleArc": {}}, "From Little Arc")})
 PY
 fi
@@ -399,9 +399,9 @@ if [ -n "$ARC" ]; then
   [ "$CLEANED" = "$ARCHIVED" ] || fail "archivedAdded $ARCHIVED but Recently Cleaned holds $CLEANED"
   if [ "$ARC_GENERATED" = 1 ]; then
     WORK=$(B flow registry --source Arc | jq -r '.registry.work')
-    HOME_SPACE=$(B flow registry --source Arc | jq -r '.registry.home')
+    ERRANDS=$(B flow registry --source Arc | jq -r '.registry.errands')
     check "Arc's rules, in order, to the spaces made" \
-      "[.rules[] | [.site, .space, .open]] == [[\"*meet.google.com*\", \"\", \"tab\"], [\"*jira.invalid/browse*\", \"$WORK\", \"tab\"], [\"calendar.invalid\", \"$HOME_SPACE\", \"little\"]] and .else.space == \"\"" "$ATC"
+      "[.rules[] | [.site, .space, .open]] == [[\"*meet.google.com*\", \"\", \"tab\"], [\"*jira.invalid/browse*\", \"$WORK\", \"tab\"], [\"calendar.invalid\", \"$ERRANDS\", \"little\"]] and .else.space == \"\"" "$ATC"
     check "a link to Jira goes to Work" ".rule == 1 and .space == \"$WORK\"" "$(B atc try https://jira.invalid/browse/X-1)"
     [ "$ARCHIVED" = 3 ] || fail "3 archived tabs expected, $ARCHIVED came"
     # Work: its own (a month old in Arc, kept a week from now) and Little Arc's.
