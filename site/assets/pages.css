@@ -120,7 +120,7 @@ html:not(.js) .theme { display: none; }
 .muted { color: var(--ink-2); }
 .small { font-size: 14.5px; }
 :not(pre) > code { font-size: .88em; padding: .1em .35em; border-radius: 5px; background: var(--sunk); }
-kbd { font-size: .82em; padding: .1em .4em; border-radius: 5px; border: 1px solid var(--line-2); background: var(--surface); }
+kbd { font-size: .86em; padding: .1em .4em; border-radius: 5px; border: 1px solid var(--line-2); background: var(--surface); }
 pre {
   margin: 0; padding: 16px 18px; overflow-x: auto; border-radius: var(--r-m);
   background: var(--term-bg); color: var(--term-ink); font-size: 14px; line-height: 1.55;
@@ -156,7 +156,9 @@ footer .wrap { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2
   .theme { width: 40px; height: 40px; }
   footer .wrap { grid-template-columns: minmax(0, 1fr); }
   .links { justify-content: flex-start; }
-  .links a { display: inline-block; padding-block: 4px; }
+  .links a { display: inline-block; padding-block: 10px; }
+  .links { gap: 0 22px; }
+  .btn-sm { min-height: 40px; }
 }
 @media (max-width: 480px) {
   body { font-size: 16.5px; }

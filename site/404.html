@@ -9,10 +9,9 @@
 <meta name="theme-color" content="#F8F2EA" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0C0A09" media="(prefers-color-scheme: dark)">
 <meta name="robots" content="noindex">
-<script>
-  /* Served for a missing page at any depth on both hosts: point every relative URL at the site root. */
-  (function () { var b = document.createElement('base'); b.href = /\.github\.io$/.test(location.hostname) ? '/Copper/' : '/'; document.head.appendChild(b); })();
-</script>
+<!-- Served for a missing path at any depth on both hosts, so every URL here is relative to the canonical root.
+     A static <base> (not one set from script: browsers fetch ahead of scripts). -->
+<base href="https://copper.exowatt.com/">
 <link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon-32.png">
 <link rel="icon" type="image/png" sizes="64x64" href="./assets/favicon-64.png">
 <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png">

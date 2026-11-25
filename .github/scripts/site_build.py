@@ -108,7 +108,7 @@ def local_target(page, url, site=SITE):
     s = urlsplit(url)
     if s.scheme or url.startswith(("//", "#", "{{")):
         return None, None
-    # 404.html is served at any depth and sets <base> to the site root, so its URLs are root-relative.
+    # 404.html is served at any depth and its <base> is the canonical root, so its URLs are root-relative.
     base = "/" if page.name == "404.html" else "/" + page.relative_to(site).as_posix()
     target = urlsplit(urljoin(base, s.path)).path
     if target.endswith("/"):

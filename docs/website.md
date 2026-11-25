@@ -73,8 +73,8 @@ not apply it.
   tokens, header and footer, plus prose, tables and cards) and `assets/pages.js` (theme switch, copy
   buttons). Keep `<header>` and `<footer>` exactly as in the template: change the template and every
   page together, or the build fails. Link pages by folder (`../arc/`), never `index.html`.
-- `site/404.html` is served for a missing path at any depth, so it sets `<base>` to the site root
-  from script (`/Copper/` on Pages, `/` elsewhere) and writes its URLs root-relative (`./assets/…`).
+- `site/404.html` is served for a missing path at any depth, so it has `<base href="https://copper.exowatt.com/">`
+  and writes its URLs root-relative (`./assets/…`); on the Pages mirror its links lead to the canonical host.
 - Every other path is relative (the mirror lives under `/Copper/`), except canonical,
   `og:image` and `og:url`, which are absolute on `https://copper.exowatt.com/` for link previews.
 - `robots.txt` and `sitemap.xml` only count at a host's root, so they work on copper.exowatt.com;

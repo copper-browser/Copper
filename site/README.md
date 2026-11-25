@@ -29,7 +29,7 @@ Pushing a change under `site/` to `fork` deploys it: `.github/workflows/site.yml
 anchors, header/footer match the template), then publishes `site/` to both hosts. Pull requests
 that touch `site/` run the same build and check without deploying.
 
-Every path is relative (404.html: relative to the `<base>` it sets), so the pages work from either
+Every path is relative (404.html: relative to its `<base>`, the canonical root), so the pages work from either
 host and any subpath.
 
 ## Preview locally
