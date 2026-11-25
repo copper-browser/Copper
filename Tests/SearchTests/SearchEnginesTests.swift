@@ -130,3 +130,26 @@ import Testing
         #expect(!SearchEngines.local(typed), "\(typed)")
     }
 }
+
+// Search suggestions (Settings › General › Search): on by default; off, ⌘T
+// asks no engine anything while you type. Both states in one test, the
+// switch put back as it was.
+@Test func theSuggestionsSwitchStopsEveryAsk() {
+    let store = Store.settings
+    let kept = store.object(forKey: SearchEngines.suggestKey)
+    defer { store.set(kept, forKey: SearchEngines.suggestKey) }
+
+    store.removeObject(forKey: SearchEngines.suggestKey)
+    #expect(SearchEngines.suggests, "on unless turned off")
+    let url = SearchEngines.suggestURL(for: "copper browser")?.absoluteString ?? ""
+    #expect(url.contains("copper%20browser") && url.hasPrefix(SearchEngines.current.suggest?.components(separatedBy: "%s")[0] ?? "-"), "\(url)")
+    for typed in ["2*21", "!w paris", "/history", "https://x.com/a"] {
+        #expect(SearchEngines.suggestURL(for: typed) == nil, "\(typed)")
+    }
+
+    store.set(false, forKey: SearchEngines.suggestKey)
+    #expect(!SearchEngines.suggests)
+    for typed in ["c", "ca", "cats", "copper browser", "new york", "what is my ip"] {
+        #expect(SearchEngines.suggestURL(for: typed) == nil, "\(typed)")
+    }
+}

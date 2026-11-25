@@ -516,6 +516,12 @@ struct SettingsPanel: View {
                 }
                 .settingsAnchor("privacy.capture")
             }
+            SettingsSection("Usage") { // Fork (telemetry): Fork/Ping.swift
+                Line("Send an anonymous daily ping", "Once a day: Copper version, macOS version, chip. No ID, no addresses") {
+                    Switch(on: $prefs.pings)
+                }
+                .settingsAnchor("privacy.ping")
+            }
             SettingsSection("Clear browsing data") {
                 ClearBrowsingDataLines(browser: browser) // Fork (privacy-clear): asks first, every jar — Fork/PrivacySettings.swift
             }
