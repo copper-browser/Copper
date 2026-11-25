@@ -131,6 +131,62 @@ final class Groups: ObservableObject {
         return group
     }
 
+    /// Fork (ardia-tabs): a tab let go onto another (`SavedDrop.Anchor.onto`):
+    /// a new folder of the two, plain like Tidy's so it wears the space's
+    /// colour. Named by their site; two sites with a model set up, the
+    /// model names it as Tidy names its folders (titles and hosts only),
+    /// unless you renamed it first. The caller moves the tab beside `other`.
+    @discardableResult
+    func fold(_ tab: Tab, onto other: Tab) -> TabGroup {
+        let hosts = [other, tab].map { TidyPlan.host($0.address) }
+        let name = Groups.dropName(hosts)
+        let group = adding(named: name, hue: nil)
+        for t in [other, tab] {
+            CloudIntents.shared.touched(t)
+            membership[t.id] = group.id
+        }
+        if Set(hosts.filter { !$0.isEmpty }.map { Fork.brand($0) }).count > 1 {
+            ask(group.id, was: name, titles: [other.title, tab.title], hosts: hosts)
+        }
+        return group
+    }
+
+    /// The name a dropped pair's folder starts with: their site's when they
+    /// share one (`mail.google.com` + `calendar.google.com` is Google), both
+    /// sites' when not, "New Folder" when neither has one.
+    nonisolated static func dropName(_ hosts: [String]) -> String {
+        var brands: [String] = []
+        for host in hosts where !host.isEmpty {
+            let brand = Fork.brand(host)
+            if !brands.contains(brand) { brands.append(brand) }
+        }
+        guard !brands.isEmpty else { return "New Folder" }
+        return TidyPlan.clean(brands.prefix(2).joined(separator: " & "))
+    }
+
+    static let nameInstructions = """
+    You name one browser sidebar folder. You get JSON: "tabs" (each with "i", "title", "host"), the tabs in it. \
+    Answer with JSON only, no prose: {"name":"Folder name"}. The name is 1 to 3 plain words in Title Case, \
+    no emoji, saying what the tabs are for together (a project, a topic, a task), not only their sites.
+    """
+
+    /// The model's name for a dropped pair's folder, within Tidy's budget;
+    /// kept only if the folder still has the name it started with.
+    private func ask(_ id: UUID, was: String, titles: [String], hosts: [String]) {
+        let intelligence = Intelligence.shared
+        guard intelligence.modelReady else { return }
+        let keys = intelligence.effective
+        let model = keys.textModel.isEmpty ? nil : keys.textModel
+        let user = TidyPlan.question(titles: titles, hosts: hosts, existing: [])
+        Task { @MainActor in
+            guard let reply = try? await Router.ask(system: Groups.nameInstructions, user: user, keys: keys,
+                                                    timeout: Tidy.patience, maxTokens: 60, model: model, json: true) else { return }
+            let name = TidyPlan.clean(Router.json(in: reply.text)["name"] as? String ?? "")
+            guard !name.isEmpty, self.group(id)?.name == was else { return }
+            self.rename(id, to: name)
+        }
+    }
+
     /// Into the group, and next to the rest of it: the tab moves to the end
     /// of the group's run in its row, so the header covers all of them. A
     /// pinned tab keeps its place in the pin block and is only labelled.

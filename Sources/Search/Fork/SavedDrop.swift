@@ -66,6 +66,9 @@ enum SavedDrop {
         case beforeFolder(UUID)
         /// Onto a folder's own line: in it, first.
         case into(UUID)
+        /// Fork (ardia-tabs): onto the middle of a top-level tab's line: a new
+        /// folder of the two (`Groups.fold`), the dropped one second.
+        case onto(Tab.ID)
         /// The end of Saved, at the top level: just above the seam.
         case end
     }
@@ -114,6 +117,8 @@ enum SavedDrop {
     static func stays(_ spot: Spot, moving: Tab.ID, in group: UUID?,
                       row: [(id: Tab.ID, pinned: Bool, saved: Bool)],
                       inFolder: (Tab.ID, UUID) -> Bool) -> Bool {
+        // Onto another row always does something (a folder), wherever the row lands.
+        if case .onto(let id) = spot.anchor { return id == moving }
         if spot.anchor == .before(moving) || spot.anchor == .after(moving) { return true }
         guard spot.group == group, let here = row.firstIndex(where: { $0.id == moving }) else { return false }
         return index(for: spot.anchor, moving: moving, row: row, inFolder: inFolder) == here
@@ -145,6 +150,13 @@ enum SavedDrop {
             if rel > 0.75, !collapsed, let next, next.depth > line.depth { return before(next, half) }
             return Spot(anchor: .into(id), group: id, depth: line.depth + 1, y: line.mid)
         case .tab(let id):
+            // Fork (ardia-tabs): the middle of a top-level row is the row
+            // itself — let go there, the two make a folder. Its top and
+            // bottom stay the gaps above and below, as before.
+            let rel = (y - line.top) / max(1, line.bottom - line.top)
+            if line.depth == 0, line.group == nil, rel >= 0.3, rel <= 0.7 {
+                return Spot(anchor: .onto(id), group: nil, depth: 0, y: line.mid)
+            }
             if y < line.mid { return before(line, half) }
             // The lower half: after this row, in its folder. When the next
             // line is a sibling that is the same place as above it.
@@ -175,7 +187,7 @@ enum SavedDrop {
         switch anchor {
         case .before(let id):
             return rest.firstIndex { $0.id == id } ?? endOfSaved
-        case .after(let id):
+        case .after(let id), .onto(let id):
             return rest.firstIndex { $0.id == id }.map { $0 + 1 } ?? endOfSaved
         case .beforeFolder(let group), .into(let group):
             return rest.firstIndex { !$0.pinned && inFolder($0.id, group) } ?? endOfSaved
@@ -199,6 +211,7 @@ enum SavedDrop {
             case .after(let id): out["after"] = String(id.uuidString.prefix(8)).lowercased()
             case .beforeFolder(let id): out["beforeFolder"] = Groups.shared.group(id)?.name ?? ""
             case .into(let id): out["into"] = Groups.shared.group(id)?.name ?? ""
+            case .onto(let id): out["onto"] = String(id.uuidString.prefix(8)).lowercased()
             case .end: out["end"] = true
             }
             return out
@@ -432,14 +445,25 @@ private struct SavedDropPlace: View {
 }
 
 /// Onto a folder's line: the folder lit as if under the pointer, ringed in
-/// the space's colour — the colour of the live row's bar.
+/// the space's colour — the colour of the live row's bar. Onto a tab's
+/// (Fork: ardia-tabs), the tab, lit the same way: the two make a folder.
 struct SavedDropMark: View {
     @ObservedObject var drag: SideDrag
     let tint: SpaceTint
 
+    private var lit: CGRect? {
+        guard case .saved(let spot)? = drag.target else { return nil }
+        switch spot.anchor {
+        case .into(let id): return drag.heads[id]
+        // A little outside the row, so the ring shows round the card riding on it.
+        case .onto(let id): return drag.rows[id]?.insetBy(dx: -3, dy: -3)
+        default: return nil
+        }
+    }
+
     var body: some View {
         GeometryReader { _ in
-            if case .saved(let spot)? = drag.target, case .into(let id) = spot.anchor, let frame = drag.heads[id] {
+            if let frame = lit {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(tint.hover)
                     .overlay {
