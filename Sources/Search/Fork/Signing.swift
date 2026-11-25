@@ -23,9 +23,24 @@ enum Signing {
     /// carry it, so a release never pins a certificate it isn't signed with.
     nonisolated static let releaseCertificate = "76264b1f74fbc16100eb71c855edd6d4165c4fbe"
 
-    /// The designated requirement every Copper release is signed with.
+    /// Copper's Apple Developer team. Releases move from the certificate above
+    /// to a Developer ID of this team, notarized (docs/releasing.md › Moving to
+    /// Developer ID).
+    nonisolated static let developerTeam = "95X7XYUVNX"
+
+    /// Any Developer ID Application certificate Apple issued to that team —
+    /// the requirement Apple's own tools give such an app, so it survives the
+    /// certificate's renewal.
+    nonisolated static var developerIDRequirement: String {
+        "anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] and certificate leaf[field.1.2.840.113635.100.6.1.13] and certificate leaf[subject.OU] = \"\(developerTeam)\""
+    }
+
+    /// What the updater accepts from the release feed. The bridge: releases
+    /// are still signed with `releaseCertificate` (release/designated-requirement.txt),
+    /// and this Copper already accepts the team's Developer ID, so the release
+    /// that switches can replace it.
     nonisolated static var releaseRequirement: String {
-        "identifier \"\(Fork.bundle)\" and certificate leaf = H\"\(releaseCertificate)\""
+        "identifier \"\(Fork.bundle)\" and (certificate leaf = H\"\(releaseCertificate)\" or (\(developerIDRequirement)))"
     }
 
     /// What a downloaded bundle must satisfy before it replaces a running app
