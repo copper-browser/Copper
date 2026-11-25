@@ -2312,7 +2312,7 @@ final class Browser: NSObject {
         summoning = false
         if let id = offer.tab, let tab = tabs.first(where: { $0.id == id }) {
             select(tab)
-        } else {
+        } else if !SearchEngines.run(offer.url, in: self) { // Fork (omnibox): a sum's row copies, not opens
             (active ?? tabs.first)?.go(to: offer.url)
         }
         editing = false
