@@ -47,11 +47,13 @@ final class PageTranslate {
         /// translating, done, same (already in the target language), failed
         var state = "reading"
         var source = ""
+        /// The page's text nodes, the different lines among them, and how many the model has answered.
+        var nodes = 0
+        var lines = 0
         /// installed, supported (needs a download) or unsupported; and which
         /// route had the session: `session` (macOS 26) or `view` (SwiftUI's).
         var languages = ""
         var route = ""
-        var total = 0
         var done = 0
         var note = ""
         var started = Date()
@@ -150,7 +152,7 @@ final class PageTranslate {
             return end(tab, run, "failed", note: "no text", in: browser, say: quietly ? nil : "Nothing on this page to translate")
         }
         let from = Self.name(source), into = Self.name(target)
-        update(tab, run) { $0.source = from; $0.total = texts.count }
+        update(tab, run) { $0.source = from; $0.nodes = texts.count }
         if source.languageCode == target.languageCode {
             return end(tab, run, "same", in: browser, say: quietly ? nil : "This page is already in \(into)")
         }
@@ -197,39 +199,62 @@ final class PageTranslate {
             }
         }
         update(tab, run) { $0.state = "translating" }
-        // Batches of about forty lines: big enough to be quick, small enough
-        // that what is on screen comes back first.
-        var batches: [[TranslationSession.Request]] = [[]]
-        var size = 0
+        // Each line once (a page repeats "modifier" and its menus), in the
+        // page's order: on screen first. The model answers about four short
+        // lines a second, whatever the batching, so each answer goes onto the
+        // page as it comes, a few at a time, and the first in about a second.
+        var copies: [Int: [Int]] = [:], first: [String: Int] = [:], lines: [TranslationSession.Request] = []
         for index in order {
             let text = texts[index].trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { continue }
-            if batches[batches.count - 1].count >= 40 || size >= 2500 { batches.append([]); size = 0 }
-            batches[batches.count - 1].append(.init(sourceText: text, clientIdentifier: String(index)))
-            size += text.count
+            if let seen = first[text] { copies[seen, default: []].append(index); continue }
+            first[text] = index
+            copies[index] = [index]
+            lines.append(.init(sourceText: text, clientIdentifier: String(index)))
         }
-        var trouble: Error?
-        for batch in batches where !batch.isEmpty {
-            guard alive(tab, run) else { return }
-            let answers: [TranslationSession.Response]
-            do { answers = try await session.translations(from: batch) } catch { trouble = error; continue }
-            let pairs: [[Any]] = answers.compactMap { answer in answer.clientIdentifier.flatMap(Int.init).map { [$0, answer.targetText] as [Any] } }
+        update(tab, run) { $0.lines = lines.count }
+        var pending: [[Any]] = [], trouble: Error?
+        func flush() async -> Bool {
+            let pairs = pending
+            pending = []
             let written = try? await web.callAsyncJavaScript(
                 "return window.__copperTranslate ? window.__copperTranslate.put(g, pairs) : -1",
                 arguments: ["g": gen, "pairs": pairs], in: nil, contentWorld: .copper) as? Int
-            guard alive(tab, run) else { return }
             // -1: another page, or Show Original, since this run read it.
-            guard let written, written >= 0 else { return end(tab, run, "failed", note: "page changed", in: browser) }
+            guard alive(tab, run), let written, written >= 0 else { return false }
             update(tab, run) { job in
-                job.done += batch.count
                 if job.firstMs == nil { job.firstMs = Int(Date().timeIntervalSince(job.started) * 1000) }
             }
+            return true
         }
-        let done = jobs[tab.id]?.done ?? 0
-        if done == 0, let trouble {
+        // Twenty lines a call: a Show Original or a new page stops it within one.
+        for start in stride(from: 0, to: lines.count, by: 20) {
+            guard alive(tab, run) else { return }
+            do {
+                for try await answer in session.translate(batch: Array(lines[start..<min(start + 20, lines.count)])) {
+                    guard alive(tab, run) else { return }
+                    for index in answer.clientIdentifier.flatMap(Int.init).flatMap({ copies[$0] }) ?? [] { pending.append([index, answer.targetText]) }
+                    update(tab, run) { $0.done += 1 }
+                    if pending.count >= 6 || jobs[tab.id]?.firstMs == nil {
+                        guard await flush() else { return endChanged(tab, run, browser) }
+                    }
+                }
+            } catch {
+                trouble = error
+                update(tab, run) { $0.note = "\(error)" }
+            }
+            if !pending.isEmpty {
+                guard await flush() else { return endChanged(tab, run, browser) }
+            }
+        }
+        if jobs[tab.id]?.done ?? 0 == 0, let trouble {
             return end(tab, run, "failed", note: "\(trouble)", in: browser, say: "Couldn't translate this page")
         }
         end(tab, run, "done", in: browser, say: quietly ? nil : "Translated from \(jobs[tab.id]?.source ?? "")")
+    }
+
+    private func endChanged(_ tab: Tab, _ run: Int, _ browser: Browser) {
+        if alive(tab, run) { end(tab, run, "failed", note: "page changed", in: browser) }
     }
 
     /// The tab's next pages, translated as they load (a new page ends its load; a scroll or a click in it doesn't).
@@ -291,13 +316,14 @@ final class PageTranslate {
           return /\p{L}/u.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
         } });
         for (var n = walker.nextNode(); n; n = walker.nextNode()) { nodes.push(n); was.push(n.nodeValue); }
-        // On screen or about to be first, then the rest in reading order.
-        var near = [], far = [], h = innerHeight;
+        // On screen or about to be first, then the rest in reading order, then what is hidden (closed menus).
+        var near = [], far = [], hidden = [], h = innerHeight;
         for (var i = 0; i < nodes.length; i++) {
           var r = nodes[i].parentElement ? nodes[i].parentElement.getBoundingClientRect() : null;
-          (r && r.bottom > -h && r.top < 2 * h ? near : far).push(i);
+          if (!r || (!r.width && !r.height)) hidden.push(i);
+          else (r.bottom > -h && r.top < 2 * h ? near : far).push(i);
         }
-        return { gen: gen, lang: document.documentElement.lang || '', texts: was, order: near.concat(far) };
+        return { gen: gen, lang: document.documentElement.lang || '', texts: was, order: near.concat(far, hidden) };
       }
       function put(g, pairs) {
         if (g !== gen) return -1;

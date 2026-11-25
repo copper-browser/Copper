@@ -77,8 +77,8 @@ enum PageTools {
             var out: [String: Any] = ["url": tab?.address?.absoluteString ?? "", "translated": translate.translated(tab),
                                       "never": translate.isNever(tab), "menu": menuItems(), "available": PageTranslate.available]
             if let tab, let job = translate.jobs[tab.id] {
-                out.merge(["state": job.state, "source": job.source, "target": PageTranslate.name(job.target), "nodes": job.total,
-                           "translatedNodes": job.done, "firstMs": job.firstMs ?? -1, "ms": job.ms ?? -1, "note": job.note,
+                out.merge(["state": job.state, "source": job.source, "target": PageTranslate.name(job.target), "nodes": job.nodes,
+                           "lines": job.lines, "answered": job.done, "firstMs": job.firstMs ?? -1, "ms": job.ms ?? -1, "note": job.note,
                            "languages": job.languages, "route": job.route]) { $1 }
             }
             return out
