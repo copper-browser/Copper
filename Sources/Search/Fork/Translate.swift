@@ -55,6 +55,8 @@ final class PageTranslate {
         var languages = ""
         var route = ""
         var done = 0
+        /// Passages whose answer lost its tags and went again node by node.
+        var retried = 0
         var note = ""
         var started = Date()
         var firstMs: Int?
@@ -213,8 +215,8 @@ final class PageTranslate {
         var rank = [Int](repeating: 0, count: texts.count)
         for (place, index) in order.enumerated() { rank[index] = place }
         var passages: [[Int]] = [], size = 0
-        for index in texts.indices where !texts[index].allSatisfy(\.isWhitespace) {
-            if rich, let last = passages.last?.last, blocks.indices.contains(index), blocks[last] == blocks[index], passages[passages.count - 1].count < 60, size < 1200 {
+        for index in texts.indices {
+            if rich, let last = passages.last?.last, blocks.indices.contains(index), blocks[last] == blocks[index], passages[passages.count - 1].count < 80, size < 1500 {
                 passages[passages.count - 1].append(index)
             } else {
                 passages.append([index])
@@ -222,8 +224,22 @@ final class PageTranslate {
             }
             size += texts[index].count
         }
+        // Punctuation and numbers ride with their sentence; on their own they stay as they are.
+        passages.removeAll { passage in !passage.contains { texts[$0].contains(where: \.isLetter) } }
         passages.sort { rank[$0[0]] < rank[$1[0]] }
-        var copies: [Int: [[Int]]] = [:], seen: [String: Int] = [:], lines: [TranslationSession.Request] = []
+        var ids = 0, copies: [Int: [[Int]]] = [:], pieces: [Int: [String]] = [:], seen: [String: Int] = [:], lines: [TranslationSession.Request] = []
+        func request(_ id: Int, _ words: [String]) -> TranslationSession.Request {
+            if #available(macOS 26.4, *), words.count > 1 {
+                var source = AttributedString()
+                for (k, word) in words.enumerated() {
+                    var piece = AttributedString(word)
+                    piece.link = URL(string: "copper-node:\(k)")
+                    source += piece
+                }
+                return .init(sourceText: source, clientIdentifier: String(id))
+            }
+            return .init(sourceText: words.joined(), clientIdentifier: String(id))
+        }
         for passage in passages {
             // HTML's own spacing: runs of white space are one space, none at the passage's ends.
             var words = passage.map { texts[$0].split(whereSeparator: \.isWhitespace).joined(separator: " ") }
@@ -233,20 +249,11 @@ final class PageTranslate {
             }
             let key = words.joined(separator: "\u{1F}")
             if let id = seen[key] { copies[id]?.append(passage); continue }
-            let id = lines.count
-            seen[key] = id
-            copies[id] = [passage]
-            if #available(macOS 26.4, *), passage.count > 1 {
-                var source = AttributedString()
-                for (k, word) in words.enumerated() {
-                    var piece = AttributedString(word)
-                    piece.link = URL(string: "copper-node:\(k)")
-                    source += piece
-                }
-                lines.append(.init(sourceText: source, clientIdentifier: String(id)))
-            } else {
-                lines.append(.init(sourceText: words.joined(), clientIdentifier: String(id)))
-            }
+            seen[key] = ids
+            copies[ids] = [passage]
+            pieces[ids] = words
+            lines.append(request(ids, words))
+            ids += 1
         }
         update(tab, run) { $0.lines = lines.count }
         var pending: [[Any]] = [], trouble: Error?
@@ -263,14 +270,29 @@ final class PageTranslate {
             }
             return true
         }
-        // Twenty lines a call: a Show Original or a new page stops it within one.
-        for start in stride(from: 0, to: lines.count, by: 20) {
+        // Twenty a call: a Show Original or a new page stops it within one.
+        var next = 0
+        while next < lines.count {
             guard alive(tab, run) else { return }
+            let chunk = Array(lines[next..<min(next + 20, lines.count)])
+            next += chunk.count
+            var again: [TranslationSession.Request] = []
             do {
-                for try await answer in session.translate(batch: Array(lines[start..<min(start + 20, lines.count)])) {
+                for try await answer in session.translate(batch: chunk) {
                     guard alive(tab, run) else { return }
-                    for passage in answer.clientIdentifier.flatMap(Int.init).flatMap({ copies[$0] }) ?? [] {
-                        for (index, text) in zip(passage, Self.parts(of: answer, count: passage.count)) { pending.append([index, text]) }
+                    guard let id = answer.clientIdentifier.flatMap(Int.init), let group = copies[id], let words = pieces[id] else { continue }
+                    guard let parts = Self.parts(of: answer, count: words.count) else {
+                        // The answer lost most of its nodes' tags: the passage again, node by node, next.
+                        for (k, word) in words.enumerated() where word.contains(where: \.isLetter) {
+                            copies[ids] = group.map { [$0[k]] }
+                            pieces[ids] = [word.trimmingCharacters(in: .whitespaces)]
+                            again.append(request(ids, pieces[ids] ?? []))
+                            ids += 1
+                        }
+                        continue
+                    }
+                    for passage in group {
+                        for (index, text) in zip(passage, parts) { pending.append([index, text]) }
                     }
                     update(tab, run) { $0.done += 1 }
                     if pending.count >= 6 || jobs[tab.id]?.firstMs == nil {
@@ -280,6 +302,10 @@ final class PageTranslate {
             } catch {
                 trouble = error
                 update(tab, run) { $0.note = "\(error)" }
+            }
+            if !again.isEmpty {
+                lines.insert(contentsOf: again, at: next)
+                update(tab, run) { $0.lines = lines.count; $0.retried += again.count }
             }
             if !pending.isEmpty {
                 guard await flush() else { return endChanged(tab, run, browser) }
@@ -292,20 +318,19 @@ final class PageTranslate {
     }
 
     /// A passage's answer, node by node: each run goes to the node its tag
-    /// names, untagged words to the node before them; one node gets it all.
+    /// names, untagged words to the node before them. Nil when the answer
+    /// kept the tags of fewer than half its nodes (the passage goes again,
+    /// node by node, so its links keep their words).
     @available(macOS 15, *)
-    nonisolated static func parts(of answer: TranslationSession.Response, count: Int) -> [String] {
-        var out = [String](repeating: "", count: count)
+    nonisolated static func parts(of answer: TranslationSession.Response, count: Int) -> [String]? {
         guard count > 1 else { return [answer.targetText] }
-        if #available(macOS 26.4, *), let text = answer.attributedTargetText {
-            var at = 0
-            for run in text.runs {
-                if let k = run.link?.absoluteString.split(separator: ":").last.flatMap({ Int($0) }), k < count { at = k }
-                out[at] += String(text[run.range].characters)
-            }
+        guard #available(macOS 26.4, *), let text = answer.attributedTargetText else { return nil }
+        var out = [String](repeating: "", count: count), tagged = Set<Int>(), at = 0
+        for run in text.runs {
+            if let k = run.link?.absoluteString.split(separator: ":").last.flatMap({ Int($0) }), k < count { at = k; tagged.insert(k) }
+            out[at] += String(text[run.range].characters)
         }
-        if out.allSatisfy(\.isEmpty) { out[0] = answer.targetText }
-        return out
+        return tagged.count * 2 >= count ? out : nil
     }
 
     private func endChanged(_ tab: Tab, _ run: Int, _ browser: Browser) {
@@ -369,7 +394,7 @@ final class PageTranslate {
         restore();
         var walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, { acceptNode: function (n) {
           if (n.nodeType === 1) return skip[n.nodeName.toUpperCase()] || n.getAttribute('translate') === 'no' || n.classList.contains('notranslate') || n.isContentEditable ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP;
-          return /\p{L}/u.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+          return /\S/.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
         } });
         for (var n = walker.nextNode(); n; n = walker.nextNode()) { nodes.push(n); was.push(n.nodeValue); }
         // Each node's block: the nearest ancestor that isn't inline text styling or a link.
