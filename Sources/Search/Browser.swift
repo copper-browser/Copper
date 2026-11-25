@@ -451,7 +451,7 @@ final class Browser: NSObject {
         // Preserve the old synchronous keychain path exactly when Bitwarden
         // (or 1Password — Fork) is not the active destination.
         guard offer.target != .keychain else {
-            guard Vault.save(host: login.host, user: login.user, password: login.password, used: Date(), origin: login.origin) else {
+            guard Vault.save(host: login.host, user: login.user, password: login.password, used: Date(), origin: login.origin, in: login.profile) else { // Fork (ardia profiles): the signing-in tab's
                 announce("The keychain refused it")
                 return
             }
@@ -659,6 +659,10 @@ final class Browser: NSObject {
     /// before the first await — the fill goes there or nowhere.
     func makeNewPassword(in tab: Tab, at target: Tab.FormTarget, page: NewPasswordPage, named: String? = nil,
                          save: Bool = true) async throws -> (made: NewPassword.Made, filled: Int) {
+        // Fork (ardia profiles): kept in, and checked against, the tab's own profile.
+        if Profiles.bound == nil {
+            return try await Profiles.$bound.withValue(Profiles.key(Profiles.of(tab))) { try await makeNewPassword(in: tab, at: target, page: page, named: named, save: save) }
+        }
         let host = target.host
         if save, Credentials.saveTarget != .keychain {
             announce("Saving a strong password to \(Credentials.saveTarget.title)…")
@@ -771,7 +775,7 @@ final class Browser: NSObject {
     }
 
     func forget(_ login: Login) {
-        Vault.forget(host: login.host, user: login.user)
+        Vault.forget(host: login.host, user: login.user, in: login.profile) // Fork (ardia profiles): from its own drawer
         relist()
     }
 
@@ -790,7 +794,7 @@ final class Browser: NSObject {
         case .success(let found):
             var kept = 0
             for login in found.logins
-            where Vault.save(host: login.host, user: login.user, password: login.password, used: login.used) {
+            where Vault.save(host: login.host, user: login.user, password: login.password, used: login.used, in: nil) { // Fork (ardia profiles): imports land in Shared
                 kept += 1
             }
             var never = Vault.never
@@ -1404,7 +1408,7 @@ final class Browser: NSObject {
     /// field — otherwise holding ⌘T leaves a row of identical empty tabs.
     func newTab() {
         // An extension's new tab page, if one asked and you said yes.
-        if #available(macOS 15.4, *), let page = Extensions.shared.newTabPage {
+        if #available(macOS 15.4, *), let page = Extensions.of(profile: Profiles.shown(in: self)).newTabPage { // Fork (ardia profiles): this window's profile's
             open(page, foreground: true)
             summoning = false
             launching = false
@@ -1428,7 +1432,7 @@ final class Browser: NSObject {
         editing = false
         focusRequest += 1
         rememberSession()
-        if #available(macOS 15.4, *) { Extensions.shared.offerNewTabPage(into: tab) }
+        if #available(macOS 15.4, *) { Extensions.of(profile: Profiles.of(tab)).offerNewTabPage(into: tab) }
     }
 
     /// A blank tab given an extension's new tab page: the page needs a view
@@ -1748,7 +1752,9 @@ final class Browser: NSObject {
         guard #available(macOS 15.4, *) else { return nil }
         let url = Extensions.current(url)
         guard url.scheme == Extensions.scheme else { return nil }
-        return Extensions.shared.controller.extensionContext(for: url)?.webViewConfiguration
+        // Fork (ardia profiles): the profile's whose tab is being built, else any that runs it.
+        let building = Extensions.of(profile: Spaces.profileStore.flatMap { Profiles.of(store: $0) })
+        return (building.controller.extensionContext(for: url) ?? Extensions.every.lazy.compactMap { $0.controller.extensionContext(for: url) }.first)?.webViewConfiguration
     }
 
     /// A page for the bench: at the end of the row, behind whatever you are
@@ -2074,19 +2080,20 @@ final class Browser: NSObject {
                 user = NewPassword.account(host: host, named: user, target: Credentials.saveTarget,
                                            pickedHere: signedInWith[tab.id]).user
             }
-            let known = Vault.logins(for: host)
+            let profile = Profiles.of(tab) // Fork (ardia profiles): the tab's profile's logins
+            let known = Vault.logins(for: host, in: profile)
             let target = Credentials.saveTarget
             // Nothing to ask about one that is already known. Only the
             // account with this name is read — one item, not the site's list.
             if target == .keychain, let same = known.first(where: { $0.user == user }) {
                 if let full = Vault.resolve(same), full.password == password {
                     // Fork (origin-save): one kept before its scheme and port were learns them from this sign-in (a bare localhost login becomes an agent's again).
-                    if same.origin == nil, let origin { _ = Vault.save(host: host, user: user, password: password, used: Date(), origin: origin) } else { Vault.touch(full) }
+                    if same.origin == nil, let origin { _ = Vault.save(host: host, user: user, password: password, used: Date(), origin: origin, in: profile) } else { Vault.touch(full) }
                     return
                 }
             }
             let offer = Offer(
-                login: Login(host: host, user: user, password: password, used: nil, origin: origin), // Fork (origin-save)
+                login: Login(host: host, user: user, password: password, used: nil, origin: origin, profile: profile), // Fork (origin-save, ardia profiles)
                 changed: target == .keychain && known.contains { $0.user == user },
                 target: target
             )
@@ -2222,7 +2229,7 @@ final class Browser: NSObject {
     /// where to, and no tab until there is an answer. An extension's new tab
     /// page, when one was allowed to take over, still gets the new tab.
     func launch() {
-        if #available(macOS 15.4, *), Extensions.shared.newTabPage != nil {
+        if #available(macOS 15.4, *), Extensions.of(profile: Profiles.shown(in: self)).newTabPage != nil {
             newTab()
             return
         }
@@ -2862,7 +2869,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
         // fetch looks broken.
         Favicons.shared.fetch(for: tab)
         guard !tab.shy, !tab.bench else { return }
-        history.record(url, title: tab.title)
+        history.record(url, title: tab.title, profile: Profiles.of(tab)) // Fork (ardia profiles): the tab's profile's history
         PageTranslate.shared.consider(tab, in: self) // Fork (ardia polish): the once-a-site offer (Fork/Translate.swift)
     }
 

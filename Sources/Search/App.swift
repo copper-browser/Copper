@@ -906,6 +906,13 @@ struct ContentView: View {
             return true
         }
 
+        // Fork (ardia profiles): ⌥⌘← / ⌥⌘→, Ardia's (and Arc's) keys for the
+        // space — and so the profile — before or after, beside ⌃⌥←/→.
+        if flags.intersection([.command, .option, .control, .shift]) == [.command, .option], event.keyCode == 123 || event.keyCode == 124 {
+            Spaces.shared.step(event.keyCode == 123 ? -1 : 1, in: browser)
+            return true
+        }
+
         // A shortcut an extension registered — ⌥⇧D, ⌃⇧Y — before ours, unless
         // a menu of ours carries the same key (⌘E is the agent's, whatever an
         // extension's manifest suggests; Extensions.take).

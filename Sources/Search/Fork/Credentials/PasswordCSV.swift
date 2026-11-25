@@ -231,7 +231,7 @@ enum PasswordCSV {
         // Fork (keychain-codes): each row's authenticator key goes beside its
         // password; one that makes no code is left out, not guessed at.
         var codes = 0
-        for (host, user, seed) in seeds(text) where Vault.logins(for: host).contains(where: { $0.user == user }) {
+        for (host, user, seed) in seeds(text) where Vault.logins(for: host, in: nil).contains(where: { $0.user == user }) {
             if KeychainCodes.save(seed, host: host, user: user) { codes += 1 }
         }
         return Outcome(kept: result.kept, skipped: found.skipped + result.skipped, codes: codes)

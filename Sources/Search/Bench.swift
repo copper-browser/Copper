@@ -767,11 +767,12 @@ final class Bench {
         switch verb {
         case "extensions":
             answer(["busy": extensions.busy ?? "", "extensions": extensions.installed.map { item -> [String: Any] in
-                let context = extensions.contexts[item.id]
-                let action = context?.action(for: extensions.activeAdapter)
+                let context = extensions.context(item.id) // Fork (ardia profiles): the page in front's profile's first
+                let action = context?.action(for: Extensions.front.activeAdapter)
                 return [
                     "id": item.id, "name": item.name, "version": item.version, "enabled": item.enabled,
                     "loaded": context != nil,
+                    "profiles": item.profiles ?? ["*"], "runs": Extensions.every.filter { $0.contexts[item.id] != nil }.map { Profiles.key($0.profile) }.sorted(),
                     "base": context?.baseURL.absoluteString ?? "",
                     "errors": (context?.errors ?? []).map { error in
                         let e = error as NSError
@@ -855,7 +856,7 @@ final class Bench {
         case "ext-page":
             // One of the extension's own pages in a bench tab, where `eval`
             // runs with the extension's APIs.
-            guard let id = request["id"] as? String, let context = extensions.contexts[id] else {
+            guard let id = request["id"] as? String, let context = extensions.context(id) else {
                 answer(["error": "no such extension loaded"])
                 return
             }
