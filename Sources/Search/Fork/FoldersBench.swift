@@ -18,7 +18,7 @@ import Foundation
 //   shared share NAME             share it: the invite link and words
 //   shared join TEXT              join with an invite link or the words
 //   shared links NAME             what the folder holds here, with its subfolders
-//   shared close NAME URL         close that tab, as a person would
+//   shared close NAME URL…        close those tabs at once, as a person would
 //   shared rename NAME NEW | move NAME URL SUB | stop NAME | let NAME | back NAME
 //   shared now | log | files NAME
 //   shared picture PATH | sheet NAME PATH
@@ -205,10 +205,13 @@ enum FoldersBench {
             guard let top = folder(rest.joined(separator: " ")) else { return answer(["error": "no folder \(rest.joined(separator: " "))"]) }
             answer(["name": top.name, "links": links(top, in: browser)])
         case "close":
-            guard test(), rest.count == 2, let top = folder(rest[0]), let tab = tab(rest[1], in: top, browser: browser) else {
-                return answer(["error": "usage: folders shared close NAME URL"])
+            // Several at once, in one go: what a flattened folder looks like.
+            guard test(), rest.count >= 2, let top = folder(rest[0]) else { return answer(["error": "usage: folders shared close NAME URL…"]) }
+            let tabs = rest.dropFirst().compactMap { tab($0, in: top, browser: browser) }
+            guard tabs.count == rest.count - 1 else { return answer(["error": "not every URL is in \(top.name)"]) }
+            for tab in tabs {
+                if browser.tabs.contains(where: { $0.id == tab.id }) { Sections.shared.closeForGood(tab, in: browser) } else { Spaces.shared.cloudClose(tab, browser: browser) }
             }
-            if browser.tabs.contains(where: { $0.id == tab.id }) { Sections.shared.closeForGood(tab, in: browser) } else { Spaces.shared.cloudClose(tab, browser: browser) }
             answer(["links": links(top, in: browser)])
         case "rename":
             guard test(), rest.count == 2, let top = folder(rest[0]) else { return answer(["error": "usage: folders shared rename NAME NEW"]) }

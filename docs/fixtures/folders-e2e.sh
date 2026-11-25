@@ -51,6 +51,7 @@ world() { # world port: a fresh one
   defaults delete "com.collinrijock.copper.test.$1" >/dev/null 2>&1 || true
   defaults write "com.collinrijock.copper.test.$1" bench -bool true
   defaults write "com.collinrijock.copper.test.$1" welcomed -bool true
+  defaults write "com.collinrijock.copper.test.$1" sidebar -bool true
   : > "/tmp/copper-$1.log"
   launch "$1" "$2"
 }
@@ -162,7 +163,7 @@ check "B has both" 'L=$(links "$WB" Holiday); echo "$L" | grep -q "a-both-$STAMP
 check "and the same five links" '[ "$(links "$WA" Holiday | json "sorted(l[1] for l in d[\"links\"])")" = "$(links "$WB" Holiday | json "sorted(l[1] for l in d[\"links\"])")" ]' 'links "$WA" Holiday; links "$WB" Holiday'
 
 echo "== a flattened folder is held"
-for u in $(links "$WA" Holiday | json "' '.join(l[1] for l in d['links'][1:])"); do B "$WA" folders shared close Holiday "$u" >/dev/null; done
+B "$WA" folders shared close Holiday $(links "$WA" Holiday | json "' '.join(l[1] for l in d['links'][1:])") >/dev/null
 sleep 1; both
 check "A holds the four links it lost at once" 'B "$WA" folders shared | grep -q "held"' 'B "$WA" folders shared'
 check "B still has all five" '[ "$(links "$WB" Holiday | json "len(d[\"links\"])")" = 5 ]' 'links "$WB" Holiday'
@@ -187,7 +188,7 @@ echo "== live folders"
 B "$WA" folders live api "http://127.0.0.1:$GH" >/dev/null
 B "$WA" folders live add >/dev/null; sleep 1
 check "with no token the folder says to add one" 'B "$WA" folders live | grep -q "Add a GitHub token"' 'B "$WA" folders live'
-check "a wrong token is refused" 'B "$WA" folders live token-file "$TMP/wrong" 2>&1 | grep -q "didn.t take the token"' 'B "$WA" folders live token-file "$TMP/wrong" 2>&1'
+check "a wrong token is refused" '{ B "$WA" folders live token-file "$TMP/wrong" 2>&1 || true; } | grep -q "didn.t take the token"' 'B "$WA" folders live token-file "$TMP/wrong" 2>&1'
 LIVE=$(B "$WA" folders live token-file "$TMP/token")
 check "the right token fills it: two review requests, then yours" \
   '[ "$(echo "$LIVE" | json "[i[\"number\"] for i in d[\"folders\"][0][\"items\"]]")" = "[12, 11, 21]" ] && echo "$LIVE" | json "d[\"login\"]" | grep -q octo-e2e' 'echo "$LIVE"'
