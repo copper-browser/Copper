@@ -35,7 +35,8 @@ enum FolderSyncBench {
         case "status":
             answer(status())
         case "folder":
-            guard let path = rest.first else { return answer(["folder": sync.folder.path]) }
+            let path = rest.joined(separator: " ") // a path may have spaces: iCloud Drive's does
+            guard !path.isEmpty else { return answer(["folder": sync.folder.path]) }
             guard !sync.on else { return answer(["error": "sync is on — stop it first"]) }
             sync.choose(folder: URL(fileURLWithPath: (path as NSString).expandingTildeInPath, isDirectory: true))
             answer(["folder": sync.folder.path, "holdsData": SyncVault.holdsData(sync.folder)])

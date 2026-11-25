@@ -84,8 +84,8 @@ echo "== B joins"
 WRONG=$(python3 -c "
 import sys; w=sys.argv[1].split(); w[0],w[1]=w[1],w[0]; print(' '.join(w))" "$PHRASE")
 [ "$WRONG" = "$PHRASE" ] && WRONG="abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art"
-check "a wrong phrase is refused" 'B "$WB" icloud join $WRONG 2>&1 | grep -qi "match\|not valid"' 'B "$WB" icloud join $WRONG 2>&1'
-check "a phrase from nowhere is refused" 'B "$WB" icloud join abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art 2>&1 | grep -qi "match"' 'true'
+check "a wrong phrase is refused" '{ B "$WB" icloud join $WRONG 2>&1 || true; } | grep -qiE "match|not valid"' 'B "$WB" icloud join $WRONG 2>&1'
+check "a phrase from nowhere is refused" '{ B "$WB" icloud join abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art 2>&1 || true; } | grep -qi "match"' 'true'
 B "$WB" cloud bookmark "https://example.com/b-before-$STAMP" "B before" >/dev/null
 check "B joins with A's phrase" 'B "$WB" icloud join $PHRASE | json "d.get(\"on\")" | grep -q True' 'B "$WB" icloud status'
 both
