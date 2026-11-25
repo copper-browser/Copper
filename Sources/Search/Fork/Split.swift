@@ -868,7 +868,8 @@ final class SplitDrop: ObservableObject {
     @Published private(set) var zone: Edge?
     @Published private(set) var count = 1
     private(set) weak var over: Browser?
-    private var carrying: Tab.ID?
+    /// The row in the hand (kept past `clear`, so the preview fades out whole).
+    private(set) var carrying: Tab.ID?
     private var inside = false
 
     /// How far in from an edge counts as at it, as a fraction of the page.
@@ -930,6 +931,7 @@ final class SplitDrop: ObservableObject {
         let edge = zone
         let mine = inside && over === browser && carrying == tab.id
         clear()
+        carrying = nil
         guard mine else { return false }
         if let edge { Split.shared.open(with: tab, in: browser, at: edge) }
         return true
@@ -937,14 +939,14 @@ final class SplitDrop: ObservableObject {
 
     func clear() {
         inside = false
-        carrying = nil
         over = nil
         if zone != nil { withAnimation(Motion.quick) { zone = nil } }
     }
 }
 
 /// Fork (ardia split): where a row carried over the page would land — the
-/// new pane's place, washed and ringed in the space's colour.
+/// new pane's place, its card as it will look before its page paints (the
+/// one that slides in, `SplitGhost`), ringed in the space's colour.
 struct SplitDropPreview: View {
     let browser: Browser
     let tint: SpaceTint
@@ -954,15 +956,18 @@ struct SplitDropPreview: View {
         GeometryReader { geo in
             if drop.over === browser, let edge = drop.zone {
                 let place = SplitDrop.place(edge, in: geo.size, count: drop.count).insetBy(dx: SplitMetrics.margin, dy: SplitMetrics.margin)
-                RoundedRectangle(cornerRadius: SplitMetrics.corner, style: .continuous)
-                    .fill(tint.mark.opacity(0.16))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: SplitMetrics.corner, style: .continuous)
-                            .strokeBorder(tint.mark.opacity(0.75), lineWidth: 2)
-                    }
-                    .frame(width: max(place.width, 1), height: max(place.height, 1))
-                    .offset(x: place.minX, y: place.minY)
-                    .transition(.opacity)
+                let tab = drop.carrying.flatMap { id in browser.tabs.first { $0.id == id } }
+                ZStack {
+                    if let tab { SplitGhost(tab: tab).opacity(0.94) } else { tint.mark.opacity(0.16) }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: SplitMetrics.corner, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: SplitMetrics.corner, style: .continuous)
+                        .strokeBorder(tint.mark.opacity(0.75), lineWidth: 2)
+                }
+                .frame(width: max(place.width, 1), height: max(place.height, 1))
+                .offset(x: place.minX, y: place.minY)
+                .transition(.opacity)
             }
         }
         .allowsHitTesting(false)
@@ -979,8 +984,9 @@ extension Split {
     /// pane); `split off` / `separate` ends it, `separate ID` takes one pane
     /// out; `flip`, `rotate`, `even`, `shares A,B[,C]`; `hover ID X Y` (X, Y
     /// fractions of the page area) carries a row there as a drag from the
-    /// column would, `drop ID` lets go; `link URL` is a ⌥-click on a link in
-    /// the page in front; `state` only reports.
+    /// column would, `drop ID` lets go, `drag ID X Y [hold]` does it with
+    /// real mouse events; `link URL` is what a ⌥-click on a link in the page
+    /// in front does, `click SELECTOR` a real ⌥-click; `state` only reports.
     func bench(_ arg: String, in browser: Browser) -> [String: Any] {
         let words = arg.split(separator: " ").map(String.init)
         func tab(_ key: String?) -> Tab? {
@@ -1021,6 +1027,23 @@ extension Split {
         case "link":
             guard let url = words.dropFirst().first.flatMap(URL.init(string:)), let source = browser.active else { return ["error": "link URL"] }
             openLink(url, from: source, in: browser)
+        case "click":
+            // click SELECTOR: a real ⌥-click (mouse down and up, ⌥ held) on that
+            // element of the page in front, as Peek's bench does its ⇧-click.
+            guard let selector = words.dropFirst().first, let web = browser.active?.built, let window = web.window else { return ["error": "click SELECTOR, with a page in front"] }
+            let find = "(function(){var e=document.querySelector(\(String(reflecting: selector)));if(!e)return null;var r=e.getBoundingClientRect();return [r.left+r.width/2,r.top+r.height/2];})()"
+            web.evaluateJavaScript(find) { answer, _ in
+                MainActor.assumeIsolated {
+                    guard let spot = answer as? [Double], spot.count == 2 else { return }
+                    let at = web.convert(NSPoint(x: spot[0], y: web.isFlipped ? spot[1] : web.bounds.height - spot[1]), to: nil)
+                    for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                        guard let event = NSEvent.mouseEvent(with: type, location: at, modifierFlags: [.option], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                             windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) else { continue }
+                        if type == .leftMouseDown { web.mouseDown(with: event) } else { web.mouseUp(with: event) }
+                    }
+                }
+            }
+            out["clicking"] = selector
         default:
             guard let other = tab(words[0]) else { return ["error": "no tab \(words[0])"] }
             let edges: [String: Edge] = ["left": .leading, "right": .trailing, "top": .top, "bottom": .bottom]

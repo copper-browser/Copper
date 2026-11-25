@@ -8,7 +8,7 @@
 #      a relaunch brings it back stacked, in the same order, on screen.
 #   3. A sidebar row dragged by real mouse events onto the page's right edge
 #      shows where its pane would go, and joins the split when let go.
-#   4. ⌥-click's path (`split link URL`) opens a link in a new pane.
+#   4. A real ⌥-click on a link (`split click SELECTOR`) opens it in a new pane.
 #   5. Separate all: the split ends, every tab stays.
 #
 # A fresh SEARCH_PROBE world, headless; pages from a local server on
@@ -54,7 +54,7 @@ app="${COPPER_APP:-$root/build/Copper.app}/Contents/MacOS/Copper"
 mkdir -p "$tmp/site"
 for p in a:#f4d6c8 b:#cfe3f7 c:#d8f0d2 d:#efe0f7 e:#f7f1c9; do
   n="${p%%:*}"; c="${p#*:}"
-  printf '<!doctype html><title>%s</title><body style="margin:0;background:%s;font:bold 160px -apple-system;display:grid;place-items:center;height:100vh">%s</body>' \
+  printf '<!doctype html><title>%s</title><body style="margin:0;background:%s;font:bold 160px -apple-system;display:grid;place-items:center;height:100vh"><div>%s<br><a id="go" href="e.html" style="font-size:24px">to E</a></div></body>' \
     "$(echo "$n" | tr a-z A-Z)" "$c" "$(echo "$n" | tr a-z A-Z)" >"$tmp/site/$n.html"
 done
 (cd "$tmp/site" && exec python3 -m http.server "$port" --bind 127.0.0.1) >/dev/null 2>&1 &
@@ -188,9 +188,9 @@ sleep 1
 shot 4-dropped
 ok "row dragged to the right edge became a pane"
 
-# 4. ⌥-click's path: a link into a new pane beside the one it came from.
-bench split link "http://127.0.0.1:$port/e.html" >/dev/null
-sleep 1
+# 4. A real ⌥-click on A's link: E opens in a new pane beside A.
+bench split click '#go' >/dev/null
+sleep 1.5
 n=$(state | python3 -c "import json,sys; print(len(json.load(sys.stdin)['panes']))")
 [ "$n" = 3 ] || fail "link did not open a pane: $(state)"
 ok "⌥-click opened a third pane"
