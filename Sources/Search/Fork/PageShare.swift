@@ -66,7 +66,8 @@ enum PageTools {
     /// WebKit builds with its Copy Link: what that item copies now) · `page
     /// share [close]` · `page translate [LANG]` (answers when the page is done,
     /// or after 20 s with how far it got) · `page original` · `page never` ·
-    /// `page state` (the active tab's translation and the menu bar's items).
+    /// `page state` (the active tab's translation and the menu bar's items) ·
+    /// `page offer [yes|no|never|reset]` (the once-a-site banner).
     static func bench(_ request: [String: Any], in browser: Browser, answer: @escaping ([String: Any]) -> Void) {
         let op = request["op"] as? String ?? "state"
         let arg = request["arg"] as? String ?? ""
@@ -131,6 +132,15 @@ enum PageTools {
         case "original":
             if let tab { translate.showOriginal(tab, in: browser) }
             answer(state())
+        case "offer": // Fork (ardia polish): the once-a-site banner — `page offer [yes|no|never|reset]`
+            switch arg {
+            case "yes", "no", "never": translate.answer(arg == "yes", never: arg == "never", in: browser)
+            case "reset": translate.forgetOffers()
+            default: break
+            }
+            let shown = translate.offer(in: browser)
+            answer(["offer": shown.map { ["host": $0.host, "from": $0.from] } ?? [:], "showing": shown != nil,
+                    "offered": translate.offered.sorted(), "never": translate.never.sorted(), "translated": translate.translated(tab)])
         case "never":
             translate.toggleNever(in: browser)
             answer(["never": translate.isNever(tab), "hosts": translate.never.sorted()])

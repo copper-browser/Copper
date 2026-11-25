@@ -105,6 +105,9 @@ struct SideBar: View {
             // the foot, not over the page (Fork/MCP/HandsUI.swift).
             DriveSlot(browser: browser, activeID: browser.activeID)
 
+            MiniPlayerSlot(browser: browser) // Fork (ardia polish): a tab you left that plays (Fork/MiniPlayer.swift)
+            WhatsNewSlot(browser: browser) // Fork (ardia polish): once, after an update (Fork/WhatsNew.swift)
+
             // Fork (update-pill): Arc's update button, just above the foot,
             // only while there is a newer Copper (Fork/UpdatePill.swift).
             UpdatePillSlot(browser: browser)

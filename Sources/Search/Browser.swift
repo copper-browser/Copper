@@ -56,6 +56,9 @@ final class Browser: NSObject {
         }
     }
 
+    /// Fork (ardia polish): the video out now went because you left (`away`), so it comes back when you do.
+    @ObservationIgnored private var awayFloated = false
+
     /// Everything there is to set. Held here so the whole window redraws when
     /// one of them changes.
     private(set) var prefs: Preferences // Fork: windows — one set, shared by every window; observe: tracked, so a view reading it hears `prefs` change (`redraw`)
@@ -1301,6 +1304,7 @@ final class Browser: NSObject {
             }
         }
         floater.onClose = { [weak self] in self?.land() }
+        wireAway() // Fork (ardia polish): Fork/MiniPlayer.swift
     }
 
     /// A window opened with ⌘N shares the canonical Spaces rows. Only its
@@ -1843,8 +1847,57 @@ final class Browser: NSObject {
         lift(active, quietly: true)
     }
 
+    /// Fork (ardia polish): the video floats too when you leave Copper or
+    /// the window is covered, and comes home when you are back with the
+    /// window in front. Never while the screen is locked or asleep, and not
+    /// headless (nobody is looking).
+    private func wireAway() {
+        guard !Headless.on else { return }
+        let center = NotificationCenter.default
+        center.publisher(for: NSApplication.didResignActiveNotification)
+            .sink { [weak self] _ in self?.away(true) }
+            .store(in: &bag)
+        center.publisher(for: NSApplication.didBecomeActiveNotification)
+            .sink { [weak self] _ in self?.away(false) }
+            .store(in: &bag)
+        center.publisher(for: NSWindow.didChangeOcclusionStateNotification)
+            .sink { [weak self] note in
+                guard let self, let window = note.object as? NSWindow, window === Windows.window(of: self) else { return }
+                self.away(!window.occlusionState.contains(.visible))
+            }
+            .store(in: &bag)
+    }
+
+    /// `gone`: Copper went to the back, or the window out of sight. Asked
+    /// again a beat later, so ⌘⇥ there and back, or a lock screen coming
+    /// up, floats nothing. `now` is the bench's (`player away|back`).
+    func away(_ gone: Bool, now: Bool = false) {
+        guard gone else {
+            guard awayFloated, now || (NSApp.isActive && Windows.window(of: self)?.occlusionState.contains(.visible) == true) else { return }
+            awayFloated = false
+            if let id = floating, id == activeID { land() }
+            return
+        }
+        let check = { [weak self] in
+            guard let self, !self.floater.showing, let window = Windows.window(of: self), window.isVisible || now else { return }
+            guard now || !NSApp.isActive || !window.occlusionState.contains(.visible) else { return }
+            guard now || !Browser.screenAway else { return }
+            self.awayFloated = true
+            self.lift(self.active, quietly: true)
+        }
+        if now { check() } else { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: check) }
+    }
+
+    /// The screen locked or the display asleep: nobody to float a video for.
+    private static var screenAway: Bool {
+        if CGDisplayIsAsleep(CGMainDisplayID()) != 0 { return true }
+        let session = CGSessionCopyCurrentDictionary() as? [String: Any]
+        return session?["CGSSessionScreenIsLocked"] as? Bool == true
+    }
+
     /// ⌘⇧P, for lifting one out by hand.
     func toggleFloat() {
+        awayFloated = false // Fork (ardia polish): one lifted by hand stays out until you say
         if floater.showing {
             land()
             return
@@ -1858,11 +1911,11 @@ final class Browser: NSObject {
         // A tab just put down with ⌘W has no page to lift a video out of, and
         // asking it would only build an empty view to ask.
         guard let tab, !tab.isBlank, !tab.asleep, !floater.showing else { return }
-        // On its own, only from a site whose video is the point of the site.
-        // A hero background on a studio's home page is a video too, and it
+        // On its own, from a site whose video is the point of the site — or,
+        // elsewhere, only a video you can hear (Fork (ardia polish)): a hero
+        // background on a studio's home page is a video too, muted, and it
         // followed people around the desktop. ⌘⇧P still lifts from anywhere.
-        if quietly, !Players.knows(tab.address) { return }
-        tab.web.evaluateJavaScript(Isolate.on) { [weak self] answer, _ in
+        tab.web.evaluateJavaScript(Isolate.on(strict: quietly && !Players.knows(tab.address))) { [weak self] answer, _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 guard (answer as? String) == "floating" else {
@@ -2794,6 +2847,8 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
         // A page with nothing to lay out never has a first frame. Done is
         // done, and it is shown.
         (webView as? PageView)?.showFirstFrame()
+        // Fork (ardia polish): a page in Little Copper or Peek is in no row, and goes into History too.
+        if tab(for: webView) == nil, let tab = Little.outside(webView), let url = tab.address, !tab.shy { history.record(url, title: tab.title) }
         guard let tab = tab(for: webView), let url = tab.address else { return }
         Pace.page("finish", bench: tab.bench); if !tab.bench { Launch.shared.pageShown() } // Fork (pace, launch)
         tab.uncover()
@@ -2806,6 +2861,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
         Favicons.shared.fetch(for: tab)
         guard !tab.shy, !tab.bench else { return }
         history.record(url, title: tab.title)
+        PageTranslate.shared.consider(tab, in: self) // Fork (ardia polish): the once-a-site offer (Fork/Translate.swift)
     }
 
     private func fail(_ webView: WKWebView, _ error: Error) {

@@ -2,14 +2,14 @@ import SwiftUI
 import AppKit
 
 /// The first time. Four short pages over the window, in the app's own
-/// language: what this is, what to bring over, how to hold it, and whether
+/// language: what this is, what to bring over, a look to pick, and whether
 /// links from other apps should come here. Nothing is asked twice, and every
 /// page can be skipped.
 struct WelcomePanel: View {
     let browser: Browser
     @ObservedObject var prefs: Preferences
 
-    @State private var page = 0
+    @State private var page = Headless.benchWelcomePage // Fork (ardia polish): 0 but for `bench ui welcomepage N`
     @State private var forward = true
 
     // The default browser.
@@ -107,9 +107,17 @@ struct WelcomePanel: View {
         }
     }
 
+    /// Fork (ardia polish): Ardia's "pick a look" step — light or dark, the
+    /// space's colour, and where the tabs go — all on one page.
     private var hold: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            heading("Two ways to hold it.", "Titles across the top, or down the side. The highlight follows the tab you pick either way, and you can change your mind with ⇧⌘S.")
+        VStack(alignment: .leading, spacing: 18) {
+            heading("Pick a look.", "Light or dark, a colour for this space, and where the tabs go. Settings has all of it later, and ⇧⌘S swaps the tabs' place.")
+            HStack(spacing: 8) {
+                ForEach(Look.allCases) { look in
+                    Choice(title: look.title, chosen: prefs.look == look) { prefs.look = look }
+                }
+            }
+            colours
             HStack(spacing: 12) {
                 Way(title: "Tab strip", sidebar: false, chosen: !prefs.sidebar) {
                     withAnimation(Motion.glide) { prefs.sidebar = false }
@@ -117,6 +125,31 @@ struct WelcomePanel: View {
                 Way(title: "Sidebar", sidebar: true, chosen: prefs.sidebar) {
                     withAnimation(Motion.glide) { prefs.sidebar = true }
                 }
+            }
+        }
+    }
+
+    /// The space's colour, the strip's own swatches (Fork/Spaces.swift `SpaceColour`).
+    private var colours: some View {
+        let space = Spaces.shared.space(in: browser)
+        let worn = SpaceColour.nearest(space.hue)
+        return HStack(spacing: 8) {
+            ForEach(SpaceColour.allCases) { colour in
+                Button {
+                    withAnimation(Motion.glide) { Spaces.shared.tint(space.id, hue: colour.hue) }
+                } label: {
+                    Circle()
+                        .fill(colour.hue.map { Color(hue: $0, saturation: 0.55, brightness: scheme == .dark ? 0.78 : 0.86) } ?? Color.gray)
+                        .frame(width: 20, height: 20)
+                        .overlay(Circle().strokeBorder(Palette.hairline, lineWidth: 1))
+                        .padding(3)
+                        .overlay(Circle().strokeBorder(worn == colour ? Palette.ink : .clear, lineWidth: 1.5))
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .help(colour.name)
+                .accessibilityLabel(colour.name)
+                .accessibilityAddTraits(worn == colour ? .isSelected : [])
             }
         }
     }
@@ -288,6 +321,30 @@ struct WelcomePanel: View {
         }
     }
 
+    /// One of Light, Dark, System.
+    private struct Choice: View {
+        let title: String
+        let chosen: Bool
+        let pick: () -> Void
+        @State private var hovering = false
+
+        var body: some View {
+            Button(action: pick) {
+                Text(title)
+                    .font(.system(size: 13, weight: chosen ? .medium : .regular))
+                    .foregroundStyle(chosen ? Palette.ink : Palette.muted)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(chosen ? Palette.wash : (hovering ? Palette.hover : .clear), in: Capsule())
+                    .overlay(Capsule().strokeBorder(chosen ? Palette.ink.opacity(0.35) : Palette.hairline, lineWidth: 1))
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering = $0 }
+            .accessibilityAddTraits(chosen ? .isSelected : [])
+        }
+    }
+
     private struct Way: View {
         let title: String
         let sidebar: Bool
@@ -325,7 +382,7 @@ struct WelcomePanel: View {
                             .padding(8)
                         }
                     }
-                    .frame(height: 110)
+                    .frame(height: 84) // Fork (ardia polish): shorter, under the look's other rows
                     .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 1))
                     Text(title)
                         .font(.system(size: 13, weight: chosen ? .medium : .regular))
