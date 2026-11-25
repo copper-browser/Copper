@@ -151,7 +151,7 @@ struct Omnibox: View {
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(Palette.muted)
                 case .command:
-                    Image(systemName: "command")
+                    Image(systemName: offer.glyph.isEmpty ? "command" : offer.glyph) // Fork (omnibox): a sum's "="
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(Palette.muted)
                 case .open:
@@ -351,6 +351,16 @@ struct AddressField: NSViewRepresentable {
             textView.selectedRange = NSRange(location: (text as NSString).length, length: 0)
         }
 
+        /// Fork (omnibox): Tab after a site's name — its !bang into the
+        /// field, the caret after it (Browser.searchSite).
+        @MainActor private func site(into control: NSControl, _ textView: NSTextView) -> Bool {
+            guard browser.searchSite() else { return false }
+            synced = browser.typed
+            control.stringValue = browser.typed
+            textView.selectedRange = NSRange(location: (browser.typed as NSString).length, length: 0)
+            return true
+        }
+
         func control(
             _ control: NSControl,
             textView: NSTextView,
@@ -370,7 +380,7 @@ struct AddressField: NSViewRepresentable {
             // to the next and previous section (Fork/CardSections), and → at
             // the end of what you typed takes the completion Tab used to.
             case #selector(NSResponder.insertTab(_:)) where browser.summoning:
-                browser.jumpSection(1)
+                if !site(into: control, textView) { browser.jumpSection(1) } // Fork (omnibox): "yt⇥" searches YouTube
                 return true
             case #selector(NSResponder.insertBacktab(_:)) where browser.summoning:
                 browser.jumpSection(-1)
@@ -388,7 +398,7 @@ struct AddressField: NSViewRepresentable {
             // changes. With nothing on offer, Tab and ⇧Tab do nothing here
             // rather than throw the keyboard somewhere unexpected.
             case #selector(NSResponder.insertTab(_:)):
-                take(into: control, textView)
+                if !site(into: control, textView) { take(into: control, textView) } // Fork (omnibox)
                 return true
             case #selector(NSResponder.insertBacktab(_:)):
                 return true

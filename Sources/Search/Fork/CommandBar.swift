@@ -222,9 +222,8 @@ enum CommandBar {
         // Search is deliberately last. A Google answer should not displace a
         // page Copper already knows, but it is always available as the exit.
         // Worded as ⌘T words it, so the two cards say "search" one way.
-        if let asked = Google.url(for: typed) {
-            let words = typed.trimmingCharacters(in: .whitespaces)
-            list.append(Suggestion(key: "Search \(Google.name) for “\(words)”", title: Google.name, url: asked, kind: .search))
+        if let asked = SearchEngines.search(typed) { // Fork (omnibox): the picked engine, or a !bang's site
+            list.append(Suggestion(key: asked.label, title: asked.name, url: asked.url, kind: .search))
         }
         return sectioned(dressed(Array(list.prefix(limit))))
     }
@@ -376,6 +375,7 @@ enum CommandBar {
             CanvasHost.show(id, in: browser)
             return true
         }
+        if SearchEngines.run(url, in: browser) { return true } // Fork (omnibox): a sum's row copies it
         guard url.scheme == "copper", url.host() == "command" else { return false }
         let id = url.lastPathComponent
         commands(browser).first { $0.id == id }?.run(browser)

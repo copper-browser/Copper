@@ -315,6 +315,10 @@ struct SettingsPanel: View {
                 DailyPageLine() // Fork (daily-page)
                     .settingsAnchor("general.daily")
             }
+            SettingsSection("Search") { // Fork (omnibox): Fork/SearchEngines.swift
+                SearchEngineLine()
+                    .settingsAnchor("general.search")
+            }
             downloads // Fork (settings-merge): was its own page
             SettingsSection("Moving in") {
                 FlowSettingsLine(browser: browser)

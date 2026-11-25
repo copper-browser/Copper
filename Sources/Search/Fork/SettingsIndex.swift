@@ -143,6 +143,8 @@ enum SettingsIndex {
           toggle: pref(\.autocorrect)),
         e(.general, "Copper on this Mac", "Morning page", "Opens once a day, in the first window after 3 AM",
           ["daily page", "newspaper", "morning", "start page", "home page", "homepage", "startup page", "first window"], "general.daily"),
+        e(.general, "Search", "Search engine", "Where words go when they aren't an address — Google, DuckDuckGo, Bing, Kagi, Perplexity, Ecosia, Brave or your own",
+          ["search engine", "default search", "google", "duckduckgo", "ddg", "bing", "kagi", "perplexity", "ecosia", "brave", "custom search", "bangs", "calculator"], "general.search"),
         e(.general, "Moving in", "Move in from another browser", "Tabs, spaces, bookmarks, history and passwords from the other browsers on this Mac",
           ["import", "flow", "chrome", "arc", "safari", "export", "reading list", "migrate", "switch browsers", "bookmarks import", "transfer"], "general.flow"),
         e(.general, "Moving in", "Browsing history", "Typed addresses complete from Arc or Chrome history",
