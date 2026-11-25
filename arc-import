@@ -15,7 +15,7 @@ Saved section; whatever was left open is Today, newest first, each row
 carrying when Arc last had it in front so the archive sweep knows its age.
 Folders keep Arc's order (a folder's tabs either side of the folders inside
 it), come in open or shut as Arc's window has them, and empty ones come too.
-A split view's first two panes come back as a kept split. Arc documents and
+A split view's first three panes come back as a kept split. Arc documents and
 easels are skipped. Quit Copper first: it writes the
 session on quit and would overwrite this.
 """
@@ -114,7 +114,7 @@ def main(argv):
         """Every tab under a container: (title, url, group id, last active,
         split token). Folders become groups, nested names joined, in Arc's
         order — Copper draws a folder's tabs either side of the ones inside
-        it under one header. A split view's first two panes share a token."""
+        it under one header. A split view's first three panes share a token."""
         children = [items[c] for c in items.get(parent_id, {}).get("childrenIds", []) if c in items]
         panes = 0
         down = 0  # tabs yielded so far under this container: an empty folder's slot
@@ -127,7 +127,7 @@ def main(argv):
                     # Arc counts from 2001; everyone else counts from 1970.
                     when = data["tab"].get("timeLastActiveAt")
                     when = when + 978307200 if when else None
-                    token = split if split and panes < 2 else None
+                    token = split if split and panes < 3 else None
                     panes += 1
                     down += 1
                     yield node.get("title") or data["tab"].get("savedTitle") or "", url, folder, when, token

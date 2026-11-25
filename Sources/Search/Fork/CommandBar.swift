@@ -93,6 +93,7 @@ enum CommandBar {
             list.insert(.init(id: "update", name: "Update Copper to \(Updates.shared.latest?.version ?? "")", glyph: "arrow.down.circle") { _ in Updates.shared.upgrade() }, at: 0)
         }
         AddonCommands.add(to: &list) // Fork (addons): Install <addon>, the check, Settings › Extensions › Addons
+        if Split.shared.on(in: browser) { list += Split.commands } // Fork (ardia split): flip, stack, even, separate
         PageTools.add(to: &list, in: browser) // Fork (page-tools): Copy Link (as Markdown, to Highlight), Share…, Translate Page (Fork/PageShare.swift)
         list += Cleaned.commands(browser) // Fork (ardia-tabs): Clean Up Tabs, Recently Cleaned (Fork/Cleaned.swift)
         if Spaces.shared.all.count > 1 {

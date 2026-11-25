@@ -288,7 +288,7 @@ enum FlowArc {
                         value == 0 ? nil : value + arcEpoch
                     }
                     result.append(RawTab(url: url, title: title, group: folder, seen: seen,
-                                         split: panes < 2 ? split : nil))
+                                         split: panes < 3 ? split : nil)) // Fork (ardia split): up to three panes (Split.most)
                     panes += 1
                 } else if data["list"] != nil {
                     var name = nonEmpty(node["title"] as? String) ?? "Folder"
