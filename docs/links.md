@@ -41,7 +41,12 @@ as it comes (the space in front, a tab) it is what Copper always did.
 **Try a link** says where a link from an app would go. Rules run in
 `LinkRelay.land` and for the links that launched the app (`Links.hand`),
 never for a click inside Copper. `AirTraffic.shared.adopt(_:)` adds rules
-from elsewhere (Arc's, on a move in) without doubling ones already kept.
+from elsewhere without doubling ones already kept: a move in from Arc
+brings Arc's (`StorableLinkRouting.json`, `Fork/Flow/FlowArcExtras.swift`).
+Arc's "contains" text becomes `*text*`, "matches" the plain address; a rule
+for a space that didn't come over is left out, Little Arc is Little Copper,
+and Arc's Everything else is taken only when it names a space and Copper's
+is untouched.
 Code: `Fork/AirTraffic.swift`, `Fork/AirTrafficSettings.swift`.
 
 ## Bench

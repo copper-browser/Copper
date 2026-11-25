@@ -126,6 +126,7 @@ enum SettingsBrowseBench {
             case "intelligence": png = picture(IntelligencePage(browser: browser), width: column, dark: dark)
             case "agents": png = picture(AgentsPage(browser: browser), width: column, dark: dark)
             case "addons": png = picture(AddonsPage(browser: browser), width: column, dark: dark) // Fork (addons)
+            case "search": png = picture(SettingsSection("Search") { SearchEngineLine() }, width: column, dark: dark) // Fork (omnibox): General › Search
             default: return ["error": "picture spaces|extensions|voice|cloud|updates|intelligence|agents|addons"]
             }
             guard let data = png?.representation(using: .png, properties: [:]) else { return ["error": "no picture"] }
@@ -208,6 +209,7 @@ enum SettingsBrowseBench {
         let prefs = browser.prefs
         return [
             "look": prefs.look.rawValue,
+            "searchEngine": SearchEngines.current.id, // Fork (omnibox)
             "autocorrect": prefs.autocorrect,
             "sheer": prefs.sheer,
             "webkitAutocorrect": UserDefaults.standard.bool(forKey: "WebAutomaticSpellingCorrectionEnabled"),

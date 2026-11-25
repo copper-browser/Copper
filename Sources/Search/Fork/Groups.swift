@@ -422,7 +422,7 @@ final class Groups: ObservableObject {
                 }
             }
             return ["plan": lines, "split": Split.shared.side.map { String($0.uuidString.prefix(8)).lowercased() } ?? "",
-                    "pairs": Split.shared.pairs.count / 2]
+                    "pairs": Split.shared.kept.count] // Fork (ardia split): kept splits, of two or three
         case "list": break
         default: return ["error": "unknown groups operation \(request["op"] as? String ?? "")"]
         }
