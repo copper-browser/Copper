@@ -83,8 +83,8 @@ launch() {
   for _ in {1..60}; do bench tabs >/dev/null 2>&1 && return 0; sleep 0.5; done
   fail "headless bench did not start (log: $(tail -1 "$tmp/copper.log"))"
 }
-# A tab's short id by its title.
-id() { bench tabs | python3 -c "import json,sys; t=[x for x in json.load(sys.stdin)['tabs'] if x.get('title')==sys.argv[1]]; print(t[0]['id'][:8].lower() if t else '')" "$1"; }
+# A tab's short id by its title (`bench tabs` prints "● ID  TITLE  URL").
+id() { bench tabs | python3 -c "import re,sys; m=[re.match(r'^\S?\s*([0-9a-f]{8})\s+(\S+)', l) for l in sys.stdin]; t=[x.group(1) for x in m if x and x.group(2)==sys.argv[1]]; print(t[0] if t else '')" "$1"; }
 state() { bench split state; }
 field() { python3 -c "import json,sys; d=json.load(sys.stdin); print(json.dumps(d$1))"; }
 shot() { [ -n "$shots" ] && bench canvas picture "$shots/$1.png" >/dev/null 2>&1 || true; }
