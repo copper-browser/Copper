@@ -41,6 +41,30 @@ is what Tab did here before. `./bench newtab TEXT --keys "⇥⇧⇥↓"` and
 `./bench summon TEXT --keys …` press these keys in a probe world's card
 (`Fork/CardSections.swift`).
 
+### Words the field works out itself
+
+Words go to the engine picked in Settings › General › Search (Google until you
+pick DuckDuckGo, Bing, Kagi, Perplexity, Ecosia, Brave Search, or any address
+with `%s`), and ⌘T's completions come from that engine. A few things never
+reach one (`Fork/SearchEngines.swift`):
+
+- **Sums.** `2*21`, `1920x1080`, `50 * 20%`, `(1+2)^3` lead the card as
+  `2*21 = 42`; Return copies the value. A date, a phone number, a version or an
+  IP address is not a sum.
+- **`.new`.** `doc.new` or `new doc` opens a blank Google Doc; so do `sheet`,
+  `slides`, `form`, `cal`, `meet`, `notion`, `linear`, `jira`, `confluence`,
+  `gist`, `repo`, `figma`, `figjam`, `word`, `excel` and `powerpoint`.
+- **!bangs.** `!w paris` or `paris !w` goes straight to Wikipedia's search,
+  from DuckDuckGo's 200 most used bangs (`Fork/BangList.swift`, rebuilt by
+  `python3 tools/bangs/refresh.py`); any other bang goes to DuckDuckGo, which
+  knows all of them. A bare `!yt` opens the site.
+- **Site search.** Tab after a site's bang or address (`yt`, `github.com`,
+  `youtube`) puts `!yt ` in the field, so what you type next searches it. With
+  anything else Tab jumps sections (⌘T, ⌘K) or takes the ending (⌘L) as before.
+
+None of these asks anyone for completions. `docs/fixtures/omnibox-e2e.sh`
+checks all of it headless.
+
 ## Links from other apps
 
 A link clicked in Slack, Mail, Forca or a terminal's `open https://…` opens in a new tab

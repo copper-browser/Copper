@@ -2247,13 +2247,15 @@ final class Browser: NSObject {
         // Last in the list, and only when what was typed cannot be a place.
         if !typed.isEmpty,
            Address.url(from: typed) == nil,
-           let asked = Google.url(for: typed) {
+           let asked = SearchEngines.search(typed) { // Fork (omnibox): the picked engine, or a !bang's site
             list.append(
-                OmniboxSuggestion(key: typed, title: Google.name, url: asked, kind: .search)
+                OmniboxSuggestion(key: typed, title: asked.name, url: asked.url, kind: .search)
             )
         }
-        offers = list
-        ending = history.completion(for: typed, among: offers.filter { $0.kind != .open })
+        // Fork (omnibox): a sum or a .new shortcut leads, and Return takes it rather than an ending.
+        let answer = SearchEngines.answer(for: typed)
+        offers = (answer.map { [$0] } ?? []) + list
+        ending = answer == nil ? history.completion(for: typed, among: offers.filter { $0.kind != .open }) : nil
         // A row that was picked stops being the right row the moment the
         // question changes.
         picked = nil
@@ -2309,7 +2311,7 @@ final class Browser: NSObject {
         summoning = false
         if let id = offer.tab, let tab = tabs.first(where: { $0.id == id }) {
             select(tab)
-        } else {
+        } else if !SearchEngines.run(offer.url, in: self) { // Fork (omnibox): a sum's row copies, not opens
             (active ?? tabs.first)?.go(to: offer.url)
         }
         editing = false
@@ -2327,6 +2329,16 @@ final class Browser: NSObject {
         // A blank tab behind the card keeps its own field; anything else goes
         // back to being a page.
         if active?.isBlank == false { editing = false }
+    }
+
+    /// Fork (omnibox): Tab after a site — "yt", "github.com" — puts its
+    /// !bang in the field, so the words typed next search that site
+    /// (Fork/SearchEngines). False for anything else, and in the address
+    /// field while it has an ending on offer, which Tab still takes.
+    func searchSite() -> Bool {
+        guard summoning || ending == nil, let trigger = Bangs.keyword(typed) else { return false }
+        typed = "!\(trigger) "
+        return true
     }
 
     /// A backspace means the ending was not wanted. Recomputing it on the very
@@ -2460,13 +2472,14 @@ final class Browser: NSObject {
         } else if ending != nil {
             target = Address.url(from: completed)
         } else {
-            target = Google.destination(for: typed)
+            target = SearchEngines.answer(for: typed)?.url ?? Google.destination(for: typed) // Fork (omnibox): a sum, a .new
         }
 
         guard let url = target else {
             refusals += 1
             return
         }
+        if SearchEngines.run(url, in: self) { editing = false; typed = ""; return } // Fork (omnibox): a sum is copied, not opened
         if CanvasJoinFlow.handle(url, in: self) { editing = false; typed = ""; return }
         (active ?? tabs.first)?.go(to: url)
         editing = false
