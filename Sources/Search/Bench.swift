@@ -258,7 +258,7 @@ final class Bench {
         case "mouse" where (request["arg"] as? String)?.hasPrefix("double") == true:
             BenchHooks.handle(verb, request, in: browser, answer: answer) // Fork (bench-hooks)
 
-        case "spaces", "bar", "split", "summon", "window", "groups", "sections", "passkeys", "passwords", "privacy", "about", "agent", "ai", "swipe", "mouse", "heat", "downloads", "updates", "bw", "op", "flow", "history", "drive", "render", "ext-manager", "storage", "windows", "flight", "trails", "pace", "stage", "calendar", "pins", "covers":
+        case "spaces", "bar", "split", "summon", "window", "groups", "sections", "passkeys", "passwords", "privacy", "about", "agent", "ai", "swipe", "mouse", "heat", "downloads", "updates", "bw", "op", "flow", "history", "drive", "render", "ext-manager", "storage", "windows", "flight", "trails", "pace", "stage", "calendar", "pins", "covers", "shield":
             answer(Fork.bench(verb, request, in: browser))
 
         case "little", "peek", "atc": // Fork (ardia: windows): Fork/Little.swift, Fork/Peek.swift, Fork/AirTraffic.swift

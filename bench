@@ -404,6 +404,10 @@
     ./bench about status|feedback|default|copy pairing|clipboard
                                        Send Feedback's prefilled page, Make default (refused in a test run),
                                        and where Settings' Copy and Open went in a test world
+    ./bench shield [stats|set ads|trackers|cookies|regional|custom on|off|recompile|custom rules TEXT|url URL|clear]
+                                       the block lists: each list's rules, cached or compiled and in how many ms
+    ./bench shield blocked|pause HOST on|off
+                                       loads blocked on each open page since it started; off (on) for one site
     ./bench page clean URL             the address without its trackers, and as a Markdown link
     ./bench page copy [address|markdown|highlight]
                                        ⇧⌘C, ⌥⇧⌘C or Copy Link to Highlight on the tab in front → what was copied
@@ -655,7 +659,7 @@ def main(argv):
             request["arg"] = args[1]
         elif len(args) > 1:
             sys.exit("usage: bench passkeys list|count|forget --id ID|answer yes|no|ask")
-    elif verb in ("privacy", "about"):
+    elif verb in ("privacy", "about", "shield"):
         request["op"] = args[0] if args else "status"
         request["arg"] = " ".join(args[1:])
     elif verb == "passwords":
