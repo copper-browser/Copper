@@ -11,8 +11,9 @@ import SwiftUI
 // !bang names, from DuckDuckGo's 200 most used (Fork/BangList.swift), and any
 // other !bang goes to DuckDuckGo, which knows the rest; and Tab after a site
 // (`yt`, `github.com`) puts its !bang in the field, so what you type next
-// searches that site. All of it is worked out here, on this Mac: nothing is
-// asked of anyone before Return.
+// searches that site. All of it is worked out here, on this Mac: none of it
+// is asked of anyone before Return. Other words typed in ⌘T go to the
+// engine for completions as you type, unless Search suggestions is off.
 
 /// One search engine: where the words go, and where its completions for ⌘T's
 /// card come from (OpenSearch's `["words", ["completion", …]]`).
@@ -44,9 +45,24 @@ enum SearchEngines {
                      suggest: "https://search.brave.com/api/suggest?q=%s"),
     ]
 
-    /// Settings keys: the engine's id, and the custom engine's address.
+    /// Settings keys: the engine's id, the custom engine's address, and
+    /// Search suggestions.
     static let key = "search.engine"
     static let customKey = "search.custom"
+    static let suggestKey = "search.suggest"
+
+    /// Search suggestions (Settings › General › Search): on unless turned
+    /// off, as in Safari and Chrome. Off, ⌘T asks no engine while you type.
+    static var suggests: Bool { Store.settings.object(forKey: suggestKey) as? Bool ?? true }
+
+    /// Where ⌘T asks for completions of `needle` while you type; nil asks no
+    /// one: suggestions off, an engine without them, a command (`/`), an
+    /// address with its scheme, or words worked out here (a sum, a `.new`, a !bang).
+    static func suggestURL(for needle: String) -> URL? {
+        guard suggests, !needle.hasPrefix("/"), !needle.contains("://"), !local(needle),
+              let template = current.suggest else { return nil }
+        return fill(template, with: needle)
+    }
 
     /// The engine words go to now. A custom address that isn't a usable one
     /// falls back to Google rather than to nowhere.
@@ -410,6 +426,7 @@ enum Calculator {
 struct SearchEngineLine: View {
     @AppStorage(SearchEngines.key, store: Store.settings) private var engine = "google"
     @AppStorage(SearchEngines.customKey, store: Store.settings) private var custom = ""
+    @AppStorage(SearchEngines.suggestKey, store: Store.settings) private var suggest = true
 
     var body: some View {
         Line("Search engine", "Where words go when they aren't an address. Sums, !bangs and .new shortcuts are worked out on this Mac and send nothing before Return.") {
@@ -455,5 +472,14 @@ struct SearchEngineLine: View {
                     .accessibilityLabel("Custom search engine address")
             }
         }
+        // Fork (suggest): what ⌘T sends while you type, said plainly, and the way to stop it.
+        Rule()
+        let picked = SearchEngines.current
+        Line("Search suggestions", picked.suggest == nil
+             ? "\(picked.name) gives none, so nothing you type in ⌘T leaves before Return"
+             : "As you type in ⌘T, what you've typed goes to \(picked.name) for suggestions. Off, nothing leaves before Return. The address field (⌘L) never sends any") {
+            Switch(on: $suggest)
+        }
+        .settingsAnchor("general.suggest")
     }
 }
