@@ -140,8 +140,11 @@ the list (`Fork/CleanedUI.swift`): a row comes back with a click, asleep at
 the top of Today and in front; *Restore All* brings the space's lot back
 the same way, asleep. ⌘K finds them too (*Recently Cleaned · title*,
 *Restore All Recently Cleaned*). Tidy never closes a tab, so its leftovers
-stay loose in Today until the sweep takes them. `Cleaned.add(_:)` is the
-door for the Arc import's archived tabs.
+stay loose in Today until the sweep takes them. A move in from Arc puts
+Arc's archived tabs (`StorableArchiveItems.json`) here through
+`Cleaned.add(_:)`: each in the space it became (Little Arc's in the move's
+first space), newest first, only into the room under 100 a space and never
+a page already listed, kept a week from the move.
 
 ## The bench
 

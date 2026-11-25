@@ -222,10 +222,10 @@ final class Launcher: ObservableObject {
         // everything else; at the foot of the card its rows land without
         // pushing anything you were reading.
         var searches: [Suggestion] = []
-        if address, !needle.contains("://"), let url = Google.url(for: query) {
+        if address, !needle.contains("://"), let found = SearchEngines.search(query) {
             // An address can still be words you meant to look up: "node.js".
             // One pasted with its scheme is not.
-            var row = Suggestion(key: "Search \(Google.name) for “\(query)”", title: Google.name, url: url, kind: .search)
+            var row = Suggestion(key: found.label, title: found.name, url: found.url, kind: .search)
             row.hint = pageHint(browser)
             if keep(row) { searches.append(row) }
         }
@@ -260,14 +260,26 @@ final class Launcher: ObservableObject {
 
     /// The first row: what Return does with the words as they stand.
     static func top(_ query: String, in browser: Browser) -> Suggestion {
+        // Fork (omnibox): a sum (Return copies it) or a `.new` shortcut leads (Fork/SearchEngines).
+        if var row = SearchEngines.answer(for: query) {
+            if row.hint.isEmpty { row.hint = pageHint(browser) }
+            return row
+        }
         if let url = Address.url(from: query) {
             // Fork (canvas): a canvas address reads as its name.
             var row = Suggestion(key: "Open \(CanvasLinks.label(url) ?? Launcher.spoken(url))", title: "", url: url, kind: .known)
             row.hint = pageHint(browser)
             return row
         }
-        var row = Suggestion(key: "Search \(Google.name) for “\(query)”", title: Google.name,
-                             url: Google.url(for: query) ?? URL(string: "https://www.google.com")!, kind: .search)
+        // Fork (omnibox): a !bang asked for a site by name, so it leads as an address does.
+        if let bang = Bangs.resolve(query) {
+            var row = Suggestion(key: bang.label, title: bang.name, url: bang.url, kind: .known)
+            row.hint = pageHint(browser)
+            return row
+        }
+        let asked = SearchEngines.search(query) // Fork (omnibox): the engine picked
+        var row = Suggestion(key: asked?.label ?? "Search \(Google.name) for “\(query)”", title: asked?.name ?? Google.name,
+                             url: asked?.url ?? URL(string: "https://www.google.com")!, kind: .search)
         row.hint = pageHint(browser)
         return row
     }
@@ -600,8 +612,11 @@ final class Launcher: ObservableObject {
         waiting?.cancel()
         if fetch != nil { fetch?.cancel(); fetch = nil; dropped += 1 }
         // A command is not a search, and a pasted address with its scheme is
-        // not a query anyone completes.
-        guard completions[needle] == nil, !needle.hasPrefix("/"), !needle.contains("://") else { return }
+        // not a query anyone completes. Fork (omnibox): nor is a sum, a .new
+        // or a !bang, worked out here; and an engine with no completions is
+        // asked nothing.
+        guard completions[needle] == nil, !needle.hasPrefix("/"), !needle.contains("://"),
+              !SearchEngines.local(needle), SearchEngines.current.suggest != nil else { return }
         let work = DispatchWorkItem { [weak self] in self?.ask(needle) }
         waiting = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
@@ -609,14 +624,8 @@ final class Launcher: ObservableObject {
 
     private func ask(_ needle: String) {
         guard asked.lowercased() == needle else { return }
-        var parts = URLComponents(string: "https://suggestqueries.google.com/complete/search")!
-        parts.queryItems = [
-            URLQueryItem(name: "client", value: "firefox"),
-            URLQueryItem(name: "ie", value: "utf-8"),
-            URLQueryItem(name: "oe", value: "utf-8"),
-            URLQueryItem(name: "q", value: needle),
-        ]
-        guard let url = parts.url else { return }
+        // Fork (omnibox): the picked engine's own completions (Fork/SearchEngines).
+        guard let template = SearchEngines.current.suggest, let url = SearchEngines.fill(template, with: needle) else { return }
         sent += 1
         // Offline, refused or slow: the group simply never appears. There is
         // nothing to tell anyone — the search row above it still works.
@@ -628,7 +637,8 @@ final class Launcher: ObservableObject {
         task.resume()
     }
 
-    /// `["query", ["completion", …], …]`, as Firefox's search box is sent.
+    /// `["query", ["completion", …], …]`, as Firefox's search box is sent
+    /// (OpenSearch: every engine with completions answers in this shape).
     nonisolated static func parse(_ data: Data) -> [String]? {
         let body = (try? JSONSerialization.jsonObject(with: data))
             ?? String(data: data, encoding: .isoLatin1).flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) }

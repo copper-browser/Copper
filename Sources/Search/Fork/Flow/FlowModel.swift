@@ -59,6 +59,8 @@ enum FlowModel {
         /// The Chromium profile folder (e.g. "Default", "Profile 1") whose
         /// cookies and logins belong to these tabs. nil = the source's first.
         var profile: String? = nil
+        /// Arc's id for the space, which its link rules and archive name.
+        var source: String? = nil
     }
 
     /// A cookie from the other jar, already decrypted. Built into an
@@ -125,6 +127,8 @@ enum FlowModel {
         /// What stays in the other browser, a sentence each, for the summary
         /// (Firefox: its add-ons).
         var stays: [String] = []
+        /// Arc's Air Traffic Control rules and archived tabs; nil otherwise.
+        var arc: FlowArcExtras.Read? = nil
 
         var tabCount: Int { spaces.reduce(0) { $0 + $1.tabs.count } }
         var groupCount: Int { spaces.reduce(0) { $0 + $1.groups.count } }

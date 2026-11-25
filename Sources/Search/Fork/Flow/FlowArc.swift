@@ -288,7 +288,7 @@ enum FlowArc {
                         value == 0 ? nil : value + arcEpoch
                     }
                     result.append(RawTab(url: url, title: title, group: folder, seen: seen,
-                                         split: panes < 2 ? split : nil))
+                                         split: panes < 3 ? split : nil)) // Fork (ardia split): up to three panes (Split.most)
                     panes += 1
                 } else if data["list"] != nil {
                     var name = nonEmpty(node["title"] as? String) ?? "Folder"
@@ -426,6 +426,7 @@ enum FlowArc {
             var incoming = FlowModel.Space(name: title)
             incoming.hue = orderedTheme.flatMap(hue)
             incoming.profile = profileName(space["profile"])
+            incoming.source = space["id"] as? String
             let custom = space["customInfo"] as? [String: Any]
             incoming.theme = SpaceTheme.arc(custom?["windowTheme"] as? [String: Any])
             incoming.icon = SpaceTheme.arcIcon(custom?["iconType"] as? [String: Any])
