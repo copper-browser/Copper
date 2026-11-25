@@ -16,15 +16,19 @@
 #   - (generated fixture) a third move with one more tab in Chrome fills the
 #     space, and Undo takes back only that tab.
 # Arc — twice, from a copy (`--arc DIR`, the folder holding
-#   StorableSidebar.json and User Data; skipped without it):
+#   StorableSidebar.json and User Data; default: a generated two-space one):
 #   - the copy's sidebar is read, not the live one;
 #   - the second move makes no space and adds no tab; no "(Arc)" names;
-#   - every imported space survives the Today sweep when it is shown.
+#   - every imported space survives the Today sweep when it is shown;
+#   - its Air Traffic Control rules land in Arc's order, sent to the spaces
+#     the move made (a rule for a space that didn't come is left out), and
+#     its archived tabs land in those spaces' Recently Cleaned; the second
+#     move adds neither again.
 #
 #   docs/fixtures/flow-move-e2e.sh [--chrome DIR] [--arc DIR] [--shots DIR] [build/Copper.app]
 #     --chrome DIR  a read-only copy of a Chrome user-data folder (default: a
 #                   generated one-window fixture with bookmarks and history)
-#     --arc DIR     a read-only copy of Arc's folder
+#     --arc DIR     a read-only copy of Arc's folder (default: generated)
 #     --shots DIR   keep light and dark pictures of every sheet state there
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -312,6 +316,40 @@ fi
 quit
 
 # ---------------------------------------------------------------- Arc
+ARC_GENERATED=0
+if [ -z "$ARC" ]; then
+  ARC_GENERATED=1
+  ARC="$TEMP/Arc"
+  mkdir -p "$ARC/User Data/Default"
+  printf '{}\n' > "$ARC/User Data/Default/Preferences"
+  python3 - "$ARC" <<'PY'
+import json, sys, time
+arc = sys.argv[1]
+def save(name, doc): json.dump(doc, open(f"{arc}/{name}", "w"))
+def tab(i, url): return [i, {"id": i, "title": None, "data": {"tab": {"savedURL": url, "savedTitle": url}}}]
+items, spaces = [], []
+for sid, name, url in (("S-WORK", "Work", "https://work.invalid/"), ("S-HOME", "Home", "https://home.invalid/")):
+    spaces += [sid, {"id": sid, "title": name, "containerIDs": ["pinned", "P" + sid, "unpinned", "U" + sid]}]
+    items += ["P" + sid, {"id": "P" + sid, "childrenIds": []}, "U" + sid, {"id": "U" + sid, "childrenIds": ["T" + sid]}] + tab("T" + sid, url)
+save("StorableSidebar.json", {"sidebar": {"containers": [{"spaces": spaces, "items": items}]}})
+def to(outer, space=None): return {outer: {"_0": {"space": {"_0": space}} if space else {"mostRecent": {}}}}
+def rule(dest, style, text): return {"id": "R-" + text, "destination": dest, "sourceComponents": [
+    {"id": "C", "componentType": {"urlMatch": {"_0": {style: {}}, "_1": text}}}]}
+save("StorableLinkRouting.json", {"version": 1, "defaultDestination": to("littleArc"), "rules": [
+    rule(to("space"), "contains", "meet.google.com"),
+    rule(to("space", "S-WORK"), "contains", "jira.invalid/browse"),
+    rule(to("littleArc", "S-HOME"), "matches", "calendar.invalid"),
+    rule(to("space", "S-DELETED"), "contains", "gone.invalid"),
+    rule(to("space"), "startsWith", "x.invalid")]})
+now = time.time() - 978307200
+def archived(at, url, source, title): return ["A" + url, {"archivedAt": now - at, "reason": "manual", "source": source,
+    "sidebarItem": {"id": "A" + url, "title": None, "data": {"tab": {"savedURL": url, "savedTitle": title}}}}]
+save("StorableArchiveItems.json", {"version": 1, "items":
+    archived(86400 * 30, "https://report.invalid/q3", {"space": {"_0": "S-WORK"}}, "Q3 report")
+    + archived(60, "https://old.invalid/", {"space": {"_0": "S-HOME"}}, "Old news")
+    + archived(30, "https://little.invalid/", {"littleArc": {}}, "From Little Arc")})
+PY
+fi
 if [ -n "$ARC" ]; then
   [ -f "$ARC/StorableSidebar.json" ] || fail "--arc needs a folder with StorableSidebar.json"
   launch arc
@@ -345,9 +383,40 @@ if [ -n "$ARC" ]; then
   AFTER=$(B flow spaces | jq '[.spaces[].tabs] | add')
   [ "$AFTER" = "$BEFORE" ] || fail "tabs went missing after showing every space ($BEFORE → $AFTER)"
   ok "Arc copy: $MADE spaces, $TABS tabs; every space shown and swept, $AFTER tabs still there"
+  # Air Traffic Control and the archive. A fresh world has no rules, so what
+  # it has now is what came.
+  RULES=$(printf '%s\n' "$FIRST" | jq '.rulesAdded')
+  ARCHIVED=$(printf '%s\n' "$FIRST" | jq '.archivedAdded')
+  ATC=$(B atc)
+  [ "$(printf '%s\n' "$ATC" | jq '.rules | length')" = "$RULES" ] || fail "rulesAdded $RULES but Air Traffic Control has: $ATC"
+  # Recently Cleaned, every space's (the bench lists the space on screen).
+  CLEANED=0
+  for i in $(seq 0 $((SPACES1 - 1))); do
+    B windows space 0 "$i" >/dev/null
+    N=$(B sections | sed -n 's/^recently cleaned (\([0-9]*\)).*/\1/p')
+    CLEANED=$((CLEANED + ${N:-0}))
+  done
+  [ "$CLEANED" = "$ARCHIVED" ] || fail "archivedAdded $ARCHIVED but Recently Cleaned holds $CLEANED"
+  if [ "$ARC_GENERATED" = 1 ]; then
+    WORK=$(B flow registry --source Arc | jq -r '.registry.work')
+    HOME_SPACE=$(B flow registry --source Arc | jq -r '.registry.home')
+    check "Arc's rules, in order, to the spaces made" \
+      "[.rules[] | [.site, .space, .open]] == [[\"*meet.google.com*\", \"\", \"tab\"], [\"*jira.invalid/browse*\", \"$WORK\", \"tab\"], [\"calendar.invalid\", \"$HOME_SPACE\", \"little\"]] and .else.space == \"\"" "$ATC"
+    check "a link to Jira goes to Work" ".rule == 1 and .space == \"$WORK\"" "$(B atc try https://jira.invalid/browse/X-1)"
+    [ "$ARCHIVED" = 3 ] || fail "3 archived tabs expected, $ARCHIVED came"
+    # Work: its own (a month old in Arc, kept a week from now) and Little Arc's.
+    WORK_INDEX=$(B flow spaces | jq --arg id "$WORK" '[.spaces[].id] | index($id)')
+    B windows space 0 "$WORK_INDEX" >/dev/null
+    WORK_CLEANED=$(B sections | sed -n '/^recently cleaned/,$p')
+    printf '%s\n' "$WORK_CLEANED" | sed 's/^/     /'
+    printf '%s\n' "$WORK_CLEANED" | grep -q 'https://report.invalid/q3' || fail "Work's archived tab is not in its Recently Cleaned"
+    printf '%s\n' "$WORK_CLEANED" | grep -q 'https://little.invalid/' || fail "Little Arc's archived tab is not in the landing space"
+    printf '%s\n' "$WORK_CLEANED" | sed -n 2p | grep -q 'little.invalid' || fail "Recently Cleaned is not newest first"
+  fi
+  ok "Arc's Air Traffic Control: $RULES rules; archive: $ARCHIVED tabs in Recently Cleaned"
   SECOND=$(B flow move --source Arc --only tabs 2>/dev/null)
   printf '%s\n' "$SECOND" | jq -r '.summary[]' | sed 's/^/     /'
-  check "second Arc move adds nothing" '.tabs == 0 and .spacesMade == 0' "$SECOND"
+  check "second Arc move adds nothing" '.tabs == 0 and .spacesMade == 0 and .rulesAdded == 0 and .archivedAdded == 0' "$SECOND"
   [ "$(B flow spaces | jq '.spaces | length')" = "$SPACES1" ] || fail "second Arc move changed the spaces"
   B flow spaces | jq -e '[.spaces[] | select(.name | test("\\(Arc\\)"))] | length == 0' >/dev/null || fail "a duplicate (Arc) space exists"
   ok "second Arc move: no space made, no tab added, no (Arc) names"
