@@ -233,11 +233,11 @@ def method_section(bench, names):
     load = f" Median load average as the measurements started: {cond['load1Median']}." if cond.get("load1Median") is not None else ""
     quiet, total = cond.get("quiet"), cond.get("samples")
     if quiet is not None and total and quiet < total:
-        wait = (f"Other jobs share it. {quiet} of the {total} runs began with the Mac quiet (no other job holding its lock, "
-                f"load average under 2) and held the lock while they ran; the other {total - quiet} ran while it was busy.")
+        wait = (f"Other jobs share it. {quiet} of the {total} runs ran in rounds that held the Mac’s lock (no other job "
+                f"running) and began with the load average under 2; the other {total - quiet} ran while it was busy.")
     else:
-        wait = ("Other jobs share it, so each set of launches and each session waited until no other job held the Mac’s "
-                "lock and the load average was under 2, then held the lock while it ran.")
+        wait = ("Other jobs share it, so each round took the Mac’s lock (no other job running) for its whole length "
+                "and began once the load average was under 2.")
     seen = visible_words(rows)
     return f"""
   <section class="wrap section" id="method" aria-labelledby="method-title">
