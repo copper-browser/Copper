@@ -54,17 +54,14 @@ final class Preferences: ObservableObject {
     /// Fork (ardia layout): how big the chrome is drawn — the column's rows,
     /// titles and marks, the tab strip's (`Metrics.ui`). Pages keep their zoom.
     @Published var interfaceSize: InterfaceSize {
-        didSet {
-            store.set(interfaceSize.rawValue, forKey: "interface.size")
-            Metrics.ui = interfaceSize.scale
-        }
+        // Before anything hears of the change: a view drawn in between would take the old scale.
+        willSet { Metrics.ui = newValue.scale }
+        didSet { store.set(interfaceSize.rawValue, forKey: "interface.size") }
     }
     /// Fork (ardia layout): the page card's frame — the margin round it.
     @Published var pageFrame: PageFrameSize {
-        didSet {
-            store.set(pageFrame.rawValue, forKey: "page.frame")
-            SplitMetrics.frame = pageFrame
-        }
+        willSet { SplitMetrics.frame = newValue }
+        didSet { store.set(pageFrame.rawValue, forKey: "page.frame") }
     }
     /// Fork (sheer): the desktop shows through the column and round the
     /// page (Fork/Sheer.swift). On unless turned off.
