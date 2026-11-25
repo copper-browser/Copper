@@ -138,9 +138,9 @@ final class Shield: ObservableObject {
                             return self.failed(piece, piece.kind == .custom ? "None of these are in a form Copper reads" : "Couldn't read \(piece.title)")
                         }
                         self.stats[piece.id]?.rules = made.rules
-                        // WebKit parses the JSON on the main thread (selectors need it), ~150 ms
-                        // for the ads list: after the launch's first page, never during it.
-                        Launch.shared.whenSettled {
+                        // WebKit parses the JSON on the main thread (selectors need it), ~110 ms
+                        // for the ads list: after the launch's first page, one list per pass.
+                        self.handOff {
                             guard self.stats[piece.id] != nil else { return }
                             let handing = CFAbsoluteTimeGetCurrent()
                             defer { self.stats[piece.id]?.main += (CFAbsoluteTimeGetCurrent() - handing) * 1000 }
@@ -167,6 +167,16 @@ final class Shield: ObservableObject {
             MainActor.assumeIsolated {
                 if let found { self?.ready(piece, found, "cached", since: started) } else { build() }
             }
+        }
+    }
+
+    /// The next free slot for a hand-off, 0.1 s after the last one.
+    private var nextHandOff = DispatchTime.now()
+
+    private func handOff(_ work: @escaping () -> Void) {
+        Launch.shared.whenSettled { [self] in
+            nextHandOff = max(nextHandOff, .now()) + .milliseconds(100)
+            DispatchQueue.main.asyncAfter(deadline: nextHandOff, execute: work)
         }
     }
 
