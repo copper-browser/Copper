@@ -160,6 +160,18 @@ sleep 0.3
 [ "$(bench little | json 'len(d["littles"])')" = 0 ] || fail "a Slack-only rule opened a Little Copper for Terminal"
 echo "ok a rule for Slack leaves a link from Terminal alone"
 
+# 5b. A rule's new window: ⌘N, and the link in front there.
+away="http://127.0.0.1:$web_port/two.html"
+bench atc clear >/dev/null
+bench atc add site=127.0.0.1 open=window >/dev/null
+bench atc route "$away" >/dev/null
+for _ in {1..40}; do [ "$(bench windows | json 'len(d["windows"]) > 1 and d["windows"][1]["tabs"][d["windows"][1]["active"]]')" = "$away" ] && break; sleep 0.25; done
+win="$(bench windows)"
+[ "$(echo "$win" | json 'len(d["windows"])')" = 2 ] || fail "no new window: $win"
+[ "$(echo "$win" | json 'd["windows"][1]["tabs"][d["windows"][1]["active"]]')" = "$away" ] || fail "the new window is not on the link: $win"
+bench windows close 1 >/dev/null
+echo "ok a rule's new window → ⌘N with the link in front"
+
 # 6. Who sent it: an app is itself; a shell (this script) walks up to no app over ssh.
 if finder="$(pgrep -x Finder | head -1)" && [ -n "$finder" ]; then
   [ "$(bench atc from "$finder" | json 'd["app"]')" = com.apple.finder ] || fail "Finder's pid is not Finder: $(bench atc from "$finder")"
@@ -175,6 +187,7 @@ if [ -n "${SHOTS:-}" ]; then
   # The real thing, for the pictures: a GitHub link from outside, to Little Copper.
   bench atc add site=github.com open=little >/dev/null
   bench atc else open=tab >/dev/null
+  bench atc add app=com.tinyspeck.slackmacgap space=0 open=tab >/dev/null
   send "https://github.com/copper-browser/Copper"
   for _ in {1..60}; do [ "$(bench little | json 'len(d["littles"]) > 0 and d["littles"][-1]["title"] != ""')" = True ] && break; sleep 0.5; done
   sleep 2
