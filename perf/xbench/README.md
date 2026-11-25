@@ -39,7 +39,7 @@ restores the same one tab.
 
 - **Copper**: the test world `Copper (xbench)` (`SEARCH_PROBE=xbench`; `COPPER_MAIN_WORLD=xbench` so a link isn't
   relayed to the Mac's own Copper; `SEARCH_MEASURE=1`, without which a test world keeps hidden pages at full pace
-  and App Nap off: measured without it, 20 hidden tabs idled at 5.3% CPU instead of 0.16%), its normal window at
+  and App Nap off: in a dry run 20 hidden tabs idled at 5.3% CPU without it, 0.16% with it), its normal window at
   1280×800, for launches, memory and idle alike. Speedometer
   and the one-tab "drawing" check run headless (`SEARCH_HEADLESS=1`, 1280×800): see *The screen* below.
 - **Safari**: the system's (it can't run from a copy or a profile of its own, and this Mac's Safari profile belongs
