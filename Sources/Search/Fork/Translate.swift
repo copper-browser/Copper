@@ -227,19 +227,7 @@ final class PageTranslate {
         // Punctuation and numbers ride with their sentence; on their own they stay as they are.
         passages.removeAll { passage in !passage.contains { texts[$0].contains(where: \.isLetter) } }
         passages.sort { rank[$0[0]] < rank[$1[0]] }
-        var ids = 0, copies: [Int: [[Int]]] = [:], pieces: [Int: [String]] = [:], seen: [String: Int] = [:], lines: [TranslationSession.Request] = []
-        func request(_ id: Int, _ words: [String]) -> TranslationSession.Request {
-            if #available(macOS 26.4, *), words.count > 1 {
-                var source = AttributedString()
-                for (k, word) in words.enumerated() {
-                    var piece = AttributedString(word)
-                    piece.link = URL(string: "copper-node:\(k)")
-                    source += piece
-                }
-                return .init(sourceText: source, clientIdentifier: String(id))
-            }
-            return .init(sourceText: words.joined(), clientIdentifier: String(id))
-        }
+        var copies: [[[Int]]] = [], pieces: [[String]] = [], seen: [String: Int] = [:]
         for passage in passages {
             // HTML's own spacing: runs of white space are one space, none at the passage's ends.
             var words = passage.map { texts[$0].split(whereSeparator: \.isWhitespace).joined(separator: " ") }
@@ -248,14 +236,12 @@ final class PageTranslate {
                 if k < passage.count - 1, texts[index].last?.isWhitespace == true { words[k] += " " }
             }
             let key = words.joined(separator: "\u{1F}")
-            if let id = seen[key] { copies[id]?.append(passage); continue }
-            seen[key] = ids
-            copies[ids] = [passage]
-            pieces[ids] = words
-            lines.append(request(ids, words))
-            ids += 1
+            if let id = seen[key] { copies[id].append(passage); continue }
+            seen[key] = pieces.count
+            copies.append([passage])
+            pieces.append(words)
         }
-        update(tab, run) { $0.lines = lines.count }
+        update(tab, run) { $0.lines = pieces.count }
         var pending: [[Any]] = [], trouble: Error?
         func flush() async -> Bool {
             let pairs = pending
@@ -270,46 +256,56 @@ final class PageTranslate {
             }
             return true
         }
-        // Twenty a call: a Show Original or a new page stops it within one.
-        var next = 0
-        while next < lines.count {
+        // One passage a call: only a single answer carries the tagged runs
+        // (the batch calls drop them), and the model works one at a time anyway.
+        var queue = Array(pieces.indices), next = 0
+        while next < queue.count {
             guard alive(tab, run) else { return }
-            let chunk = Array(lines[next..<min(next + 20, lines.count)])
-            next += chunk.count
-            var again: [TranslationSession.Request] = []
+            let id = queue[next], words = pieces[id]
+            next += 1
+            let answered: [String]?
             do {
-                for try await answer in session.translate(batch: chunk) {
-                    guard alive(tab, run) else { return }
-                    guard let id = answer.clientIdentifier.flatMap(Int.init), let group = copies[id], let words = pieces[id] else { continue }
-                    guard let parts = Self.parts(of: answer, count: words.count) else {
-                        // The answer lost most of its nodes' tags: the passage again, node by node, next.
-                        for (k, word) in words.enumerated() where word.contains(where: \.isLetter) {
-                            copies[ids] = group.map { [$0[k]] }
-                            pieces[ids] = [word.trimmingCharacters(in: .whitespaces)]
-                            again.append(request(ids, pieces[ids] ?? []))
-                            ids += 1
-                        }
-                        continue
+                if #available(macOS 26.4, *), words.count > 1 {
+                    var source = AttributedString()
+                    for (k, word) in words.enumerated() {
+                        var piece = AttributedString(word)
+                        piece.link = URL(string: "copper-node:\(k)")
+                        source += piece
                     }
-                    for passage in group {
-                        for (index, text) in zip(passage, parts) { pending.append([index, text]) }
-                    }
-                    update(tab, run) { $0.done += 1 }
-                    if pending.count >= 6 || jobs[tab.id]?.firstMs == nil {
-                        guard await flush() else { return endChanged(tab, run, browser) }
-                    }
+                    let answer = try await session.translate(source)
+                    answered = Self.parts(of: answer, count: words.count)
+                } else {
+                    let answer = try await session.translate(words.joined())
+                    answered = [answer.targetText]
                 }
             } catch {
                 trouble = error
                 update(tab, run) { $0.note = "\(error)" }
+                continue
             }
-            if !again.isEmpty {
-                lines.insert(contentsOf: again, at: next)
-                update(tab, run) { $0.lines = lines.count; $0.retried += again.count }
+            guard alive(tab, run) else { return }
+            guard let parts = answered else {
+                // The answer lost most of its nodes' tags: the passage again, node by node, next.
+                var again: [Int] = []
+                for (k, word) in words.enumerated() where word.contains(where: \.isLetter) {
+                    again.append(pieces.count)
+                    copies.append(copies[id].map { [$0[k]] })
+                    pieces.append([word.trimmingCharacters(in: .whitespaces)])
+                }
+                queue.insert(contentsOf: again, at: next)
+                update(tab, run) { $0.lines += again.count; $0.retried += 1 }
+                continue
             }
-            if !pending.isEmpty {
+            for passage in copies[id] {
+                for (index, text) in zip(passage, parts) { pending.append([index, text]) }
+            }
+            update(tab, run) { $0.done += 1 }
+            if pending.count >= 6 || jobs[tab.id]?.firstMs == nil {
                 guard await flush() else { return endChanged(tab, run, browser) }
             }
+        }
+        if !pending.isEmpty {
+            guard await flush() else { return endChanged(tab, run, browser) }
         }
         if jobs[tab.id]?.done ?? 0 == 0, let trouble {
             return end(tab, run, "failed", note: "\(trouble)", in: browser, say: "Couldn't translate this page")
