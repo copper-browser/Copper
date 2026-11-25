@@ -1878,14 +1878,15 @@ final class Browser: NSObject {
             if let id = floating, id == activeID { land() }
             return
         }
-        let check = { [weak self] in
-            guard let self, !self.floater.showing, let window = Windows.window(of: self), window.isVisible || now else { return }
-            guard now || !NSApp.isActive || !window.occlusionState.contains(.visible) else { return }
-            guard now || !Browser.screenAway else { return }
-            self.awayFloated = true
-            self.lift(self.active, quietly: true)
-        }
-        if now { check() } else { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: check) }
+        if now { liftAway(now: true) } else { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.liftAway(now: false) } }
+    }
+
+    private func liftAway(now: Bool) {
+        guard !floater.showing, let window = Windows.window(of: self), window.isVisible || now else { return }
+        guard now || !NSApp.isActive || !window.occlusionState.contains(.visible) else { return }
+        guard now || !Browser.screenAway else { return }
+        awayFloated = true
+        lift(active, quietly: true)
     }
 
     /// The screen locked or the display asleep: nobody to float a video for.

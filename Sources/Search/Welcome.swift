@@ -8,6 +8,7 @@ import AppKit
 struct WelcomePanel: View {
     let browser: Browser
     @ObservedObject var prefs: Preferences
+    @ObservedObject private var spaces = Spaces.shared // Fork (ardia polish): the look page's colour ring follows a pick
 
     @State private var page = Headless.benchWelcomePage // Fork (ardia polish): 0 but for `bench ui welcomepage N`
     @State private var forward = true
