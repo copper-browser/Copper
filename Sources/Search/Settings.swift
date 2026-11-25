@@ -228,7 +228,9 @@ struct SettingsPanel: View {
                             IntelligencePage(browser: browser) // Fork
                             VoicePage(browser: browser) // Fork (settings-merge): Fork/Voice/VoiceSettings.swift
                         case .agents: AgentsPage(browser: browser) // Fork
-                        case .cloud: CloudPage(browser: browser) // Fork
+                        case .cloud:
+                            ICloudSyncPage(browser: browser) // Fork (icloud): Fork/FolderSync/FolderSyncSettings.swift
+                            CloudPage(browser: browser) // Fork
                         case .extensions:
                             ExtensionsPage(browser: browser)
                             AddonsPage(browser: browser) // Fork (settings-merge): Fork/Addons/AddonUI.swift
@@ -315,6 +317,11 @@ struct SettingsPanel: View {
                 DailyPageLine() // Fork (daily-page)
                     .settingsAnchor("general.daily")
             }
+            SettingsSection("Search") { // Fork (omnibox): Fork/SearchEngines.swift
+                SearchEngineLine()
+                    .settingsAnchor("general.search")
+            }
+            AirTrafficSection() // Fork (ardia: windows): Air Traffic Control + Peek for pins (Fork/AirTrafficSettings.swift)
             downloads // Fork (settings-merge): was its own page
             SettingsSection("Moving in") {
                 FlowSettingsLine(browser: browser)
@@ -498,6 +505,7 @@ struct SettingsPanel: View {
                     }
                     .settingsAnchor("privacy.site")
                 }
+                if prefs.shielded { ShieldListLines() } // Fork (ardia-shield): the lists, and your own — Fork/PrivacySettings.swift
             }
             SettingsSection("Permissions") {
                 Line("Camera and microphone", "What each site was allowed") { // Fork (page-capture): a refusal is never kept (docs/capture.md)

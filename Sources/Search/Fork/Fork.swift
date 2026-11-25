@@ -69,6 +69,7 @@ enum Fork {
         case "passkeys": return PasskeysBench.handle(request)
         case "passwords": return PasswordsBench.handle(request, in: browser) // Fork/Credentials/PasswordsBench.swift
         case "privacy": return PrivacyBench.handle(request, in: browser) // Fork/PrivacySettings.swift
+        case "shield": return ShieldBench.handle(request) // Fork/ShieldLists.swift (ardia-shield)
         case "about": return AboutBench.handle(request, in: browser) // Fork/AboutBench.swift
         case "agent":
             // `agent ask TEXT` / `agent chat|open|close|clear` are the pane's; the rest is the server's.
@@ -77,6 +78,9 @@ enum Fork {
             if request["op"] as? String == "servers" { Task { await Servers.shared.reload() }; return ["reloading": true] }
             return MCP.shared.bench(request)
         case "windows": return Windows.bench(request)
+        case "little": return Little.bench(request) // Fork (ardia: windows)
+        case "peek": return Peek.bench(request, in: Windows.current) // Fork (ardia: windows)
+        case "atc": return AirTraffic.bench(request) // Fork (ardia: windows)
         case "ai":
             // `ai` reports; `ai lane key|claude`; `ai tier haiku|sonnet|opus`;
             // `ai router URL KEY MODEL` configures a probe-world router.

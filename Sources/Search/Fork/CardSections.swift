@@ -128,7 +128,8 @@ extension CardSections {
     /// same key bindings and `AddressField` commands a real press does,
     /// without the window having to be key (a headless probe's never is).
     /// ⇥ is Tab, ⇧⇥ Shift-Tab, ↑ ↓ → the arrows, ↩ Return; ⎋ goes in at
-    /// NSApp.sendEvent, where the app's Escape ladder hears it. What the highlight did
+    /// NSApp.sendEvent, where the app's Escape ladder hears it; any other
+    /// character is typed (Fork (omnibox): "⇥cats"). What the highlight did
     /// after each, and whether the editor had them (`via: field`) or the
     /// field was not first responder and the browser was told directly
     /// (`via: model`).
@@ -150,7 +151,12 @@ extension CardSections {
             default: key = nil
             }
             defer { shift = false }
-            guard let key else { continue }
+            guard let key else {
+                // Fork (omnibox): any other character is typed, as its key would type it ("yt⇥cats").
+                if let editor { editor.insertText(String(character), replacementRange: editor.selectedRange()) } else { browser.typed += String(character) }
+                steps.append(["key": String(character), "picked": browser.picked ?? -1, "typed": browser.typed, "fieldText": editor?.string ?? "", "summoning": browser.summoning])
+                continue
+            }
             if key.code == 53, let event = NSEvent.keyEvent(
                 with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
                 windowNumber: window?.windowNumber ?? 0, context: nil, characters: key.chars,
@@ -167,7 +173,7 @@ extension CardSections {
                 editor.keyDown(with: event)
             } else {
                 switch key.code {
-                case 48: browser.jumpSection(shift ? -1 : 1)
+                case 48: if shift || !browser.searchSite() { browser.jumpSection(shift ? -1 : 1) } // Fork (omnibox)
                 case 125: browser.walk(1)
                 case 126: browser.walk(-1)
                 case 36: browser.submit()

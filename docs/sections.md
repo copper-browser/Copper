@@ -43,6 +43,13 @@ From then on (`Fork/SavedDrop.swift`):
   folder, the room stepped in like the folder's rows; onto a folder's own
   line, the room opens as the folder's first row and the folder is ringed
   in the space's colour (a shut one opens when the row lands in it);
+- onto the middle of a Saved row that is in no folder (its middle 40 %),
+  that row is ringed the same way and no room opens: let go, the two
+  become a new folder, the dropped row second. The folder is named by
+  their site (`mail.google.com` and `calendar.google.com` make *Google*),
+  or both sites' (*Github & Linear*) until the configured model, if any,
+  names it as Tidy names folders (titles and hosts only, never the page);
+  a name you give first wins (`Groups.fold`, Ardia's drop-to-group);
 - the row rides above the column on a card, stepped in as far as the room,
   and its own place in Today is left empty;
 - let go, it is saved at the room, in that folder. Below Saved's last row —
@@ -112,12 +119,32 @@ The session file writes a put-down row like any asleep one — `saved: true`.
 Each tab remembers when it was last in front (`Session.Entry.seen`, Unix
 seconds). At launch, every half hour, and whenever you switch to a space,
 Today rows nobody has looked at inside the window are closed — through
-`Browser.close`, the same path the cross on the row takes, so every one of
-them waits in **Reopen Closed Tab**. Saved rows and favourites are never
-touched, and neither is the row you are looking at.
+`Browser.close`, the same path the cross on the row takes, so the last few
+wait in **Reopen Closed Tab** — and every one of them waits a week in
+**Recently Cleaned**. Saved rows and favourites are never touched, and
+neither is the row you are looking at.
 
 The window is **Settings › Tabs › Archive Today after**: 12h, 24h (the
-default), 48h, or Never.
+default), 48h, or Never. **⌥⌘K** (Tabs › Clean Up Tabs, ⌘K › Clean Up
+Tabs; Ardia's key) runs the sweep now, against that window, or 12 hours
+while it is Never. ⇧⌘K is still Clear.
+
+## Recently Cleaned
+
+What the sweep, ⌥⌘K and Clear take out of a space (`Fork/Cleaned.swift`,
+`cleaned.json`): address, title, space and when, the mark from the icon
+cache. Kept a week, at most 100 a space (the newest), one entry a page; a
+private tab never goes in, and Clear's Undo takes its entries back out. A
+quiet row at the foot of Today, *Recently Cleaned* with the count, opens
+the list (`Fork/CleanedUI.swift`): a row comes back with a click, asleep at
+the top of Today and in front; *Restore All* brings the space's lot back
+the same way, asleep. ⌘K finds them too (*Recently Cleaned · title*,
+*Restore All Recently Cleaned*). Tidy never closes a tab, so its leftovers
+stay loose in Today until the sweep takes them. A move in from Arc puts
+Arc's archived tabs (`StorableArchiveItems.json`) here through
+`Cleaned.add(_:)`: each in the space it became (Little Arc's in the move's
+first space), newest first, only into the room under 100 a space and never
+a page already listed, kept a week from the move.
 
 ## The bench
 
@@ -138,6 +165,9 @@ default), 48h, or Never.
     ./bench sections archive             the sweep the clock would have run
     ./bench sections archive 2           …against a two-hour age instead, for tests
     ./bench sections window 12h|24h|48h|never
+    ./bench sections cleanup             ⌥⌘K: the sweep now, into Recently Cleaned
+    ./bench sections restore ID|all      a Recently Cleaned entry (or the space's lot) back into Today
+    ./bench sections cleaned PATH [dark] the Recently Cleaned list, drawn off screen to a PNG
 
 The drag, click and hover verbs hand their events straight to the view
 under the row (`Fork/SideHand.swift`): a probe never has the key window,

@@ -34,6 +34,8 @@ enum CommandBar {
         var list: [Command] = [
             .init(id: "new-tab", name: "New Tab", glyph: "plus") { $0.newTab() },
             .init(id: "new-private", name: "New Private Tab", glyph: "eyeglasses") { $0.newShyTab() },
+            .init(id: "little", name: "New Little Copper Window", glyph: "macwindow") { _ in Little.open(nil) }, // Fork (ardia: windows)
+            .init(id: "air-traffic", name: "Air Traffic Control: where links open", glyph: "arrow.triangle.branch") { $0.openSettings(.general, at: "general.atc") }, // Fork (ardia: windows)
             .init(id: "new-canvas", name: "New Canvas", glyph: "scribble.variable") { CanvasTabs.newCanvas(in: $0) }, // Fork (canvas): a local one, in front
             .init(id: "share-canvas", name: "Share Canvas", glyph: "square.and.arrow.up") { browser in
                 if let id = CanvasHost.active(in: browser) { CanvasUI.shared.openShare(id, in: browser) }
@@ -91,6 +93,8 @@ enum CommandBar {
             list.insert(.init(id: "update", name: "Update Copper to \(Updates.shared.latest?.version ?? "")", glyph: "arrow.down.circle") { _ in Updates.shared.upgrade() }, at: 0)
         }
         AddonCommands.add(to: &list) // Fork (addons): Install <addon>, the check, Settings › Extensions › Addons
+        PageTools.add(to: &list, in: browser) // Fork (page-tools): Copy Link (as Markdown, to Highlight), Share…, Translate Page (Fork/PageShare.swift)
+        list += Cleaned.commands(browser) // Fork (ardia-tabs): Clean Up Tabs, Recently Cleaned (Fork/Cleaned.swift)
         if Spaces.shared.all.count > 1 {
             list.append(.init(id: "delete-space", name: "Delete Space…", glyph: "trash") { b in SpaceDelete.ask(Spaces.shared.current(in: b), in: b) })
         }
@@ -222,9 +226,8 @@ enum CommandBar {
         // Search is deliberately last. A Google answer should not displace a
         // page Copper already knows, but it is always available as the exit.
         // Worded as ⌘T words it, so the two cards say "search" one way.
-        if let asked = Google.url(for: typed) {
-            let words = typed.trimmingCharacters(in: .whitespaces)
-            list.append(Suggestion(key: "Search \(Google.name) for “\(words)”", title: Google.name, url: asked, kind: .search))
+        if let asked = SearchEngines.search(typed) { // Fork (omnibox): the picked engine, or a !bang's site
+            list.append(Suggestion(key: asked.label, title: asked.name, url: asked.url, kind: .search))
         }
         return sectioned(dressed(Array(list.prefix(limit))))
     }
@@ -376,6 +379,7 @@ enum CommandBar {
             CanvasHost.show(id, in: browser)
             return true
         }
+        if SearchEngines.run(url, in: browser) { return true } // Fork (omnibox): a sum's row copies it
         guard url.scheme == "copper", url.host() == "command" else { return false }
         let id = url.lastPathComponent
         commands(browser).first { $0.id == id }?.run(browser)

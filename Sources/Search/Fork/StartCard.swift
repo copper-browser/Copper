@@ -117,7 +117,9 @@ enum MoveFrom {
     /// A test run answers from `flow.installed` (as FlowAccess does).
     static let known: [(name: String, bundle: String)] = [
         ("Arc", "company.thebrowser.Browser"), ("Chrome", "com.google.Chrome"), ("Dia", "company.thebrowser.dia"),
-        ("Brave", "com.brave.Browser"), ("Edge", "com.microsoft.edgemac"), ("Vivaldi", "com.vivaldi.Vivaldi"),
+        ("Firefox", "org.mozilla.firefox"), ("Brave", "com.brave.Browser"), ("Edge", "com.microsoft.edgemac"),
+        ("Opera", "com.operasoftware.Opera"), ("Zen", "app.zen-browser.zen"), ("Vivaldi", "com.vivaldi.Vivaldi"),
+        ("Comet", "ai.perplexity.comet"), ("Helium", "net.imput.helium"),
         ("Chromium", "org.chromium.Chromium"), ("Safari", "com.apple.Safari"),
     ]
 

@@ -63,6 +63,8 @@ struct AppCommands: Commands {
                 .keyboardShortcut("t")
             Button("New Window") { Windows.newWindow() }
                 .keyboardShortcut("n")
+            Button("New Little Copper Window") { Little.open(nil) } // Fork (ardia: windows): Fork/Little.swift
+                .keyboardShortcut("n", modifiers: [.command, .option])
             Button("New Private Tab") { browser.newShyTab() }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
             Button("New Canvas") { CanvasTabs.newCanvas(in: browser) } // Fork (canvas): ⌃⇧E is Arc's, and free here
@@ -78,6 +80,7 @@ struct AppCommands: Commands {
                 .keyboardShortcut("w")
         }
         CommandGroup(replacing: .printItem) {
+            ShareItem(browser: browser) // Fork (page-tools): File › Share… (Fork/PageShare.swift)
             Button("Print…") { browser.printPage() }
                 .keyboardShortcut("p")
                 .disabled(browser.active?.isBlank ?? true)
@@ -111,6 +114,7 @@ struct AppCommands: Commands {
                 .keyboardShortcut("r", modifiers: [.command, .shift])
             Button("Reading Mode") { browser.toggleReader() }
                 .keyboardShortcut("r", modifiers: [.command, .option])
+            TranslateItems(browser: browser) // Fork (page-tools): Translate Page / Show Original, Never Translate This Site (Fork/Translate.swift)
             Button("Inspect Element") { browser.inspectElement() }
                 .keyboardShortcut("i", modifiers: [.command, .shift])
             Button("Float Video") { browser.toggleFloat() }
@@ -158,6 +162,7 @@ struct AppCommands: Commands {
             Button("Copy Address") { browser.copyAddress() }
                 .keyboardShortcut("c", modifiers: [.command, .shift])
                 .disabled(browser.active?.isBlank ?? true)
+            CopyLinkItems(browser: browser) // Fork (page-tools): Copy as Markdown ⌥⇧⌘C, Copy Link to Highlight (Fork/CleanLinks.swift)
             Button("Paste and Go") { browser.pasteAndGo() }
                 .keyboardShortcut("v", modifiers: [.command, .shift])
             Divider()
@@ -166,6 +171,7 @@ struct AppCommands: Commands {
             Button("Clear Tabs") { ClearTabs.shared.clear(in: browser) }
                 .keyboardShortcut("k", modifiers: [.command, .shift])
                 .disabled(ClearTabs.shared.clearable(in: browser).isEmpty)
+            Button("Clean Up Tabs") { Cleaned.shared.cleanUp(in: browser) }.keyboardShortcut("k", modifiers: [.command, .option]) // Fork (ardia-tabs): Ardia's ⌥⌘K, into Recently Cleaned
             Button("Stop Sound in Tab") { browser.pauseMedia() }
                 .keyboardShortcut("m", modifiers: [.command, .shift])
         }
@@ -776,6 +782,7 @@ struct ContentView: View {
             // didn't use goes no further — not to the window in front, not to
             // the menus (Fork/MCP/Input.swift `returned`).
             if Input.returned(event) { return nil }
+            if let mine = Little.key(event) { return mine ? nil : event } // Fork (ardia: windows): a Little Copper's or Peek's keys are their own
             // Every window watches the keys; a keystroke is the window's it
             // was typed in, and a panel or popup of no browser's goes to the
             // one in front. (Fork: windows)

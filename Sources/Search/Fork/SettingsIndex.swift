@@ -64,7 +64,7 @@ extension SettingsPanel.Page {
         case .spaces: return "Each space's name, look, icon and profile. Drag the chips to reorder."
         case .intelligence: return "The model the agent thinks with, Jev's quick clicks, and voice."
         case .agents: return "Let agents in your terminal, editor or other apps use this browser."
-        case .cloud: return "Connect, sign in, then choose what follows you between Macs."
+        case .cloud: return "iCloud sync with a recovery phrase, or a Copper Cloud you run: choose what follows you between Macs."
         case .extensions: return "Chrome extensions, and the addons your Copper Cloud assigns."
         case .passwords: return "Saved sign-ins, password managers, passkeys and what agents may use."
         case .privacy: return "Blocking ads and trackers, site permissions, and clearing what sites keep."
@@ -82,7 +82,7 @@ extension SettingsPanel.Page {
                                     "voice", "dictation", "dictate", "speech", "transcription", "push to talk", "hold to talk",
                                     "microphone", "mic", "talk", "conversational", "speech model"]
         case .agents: return ["mcp", "proxy", "bot", "bots", "automation", "agent"]
-        case .cloud: return ["sync", "account", "canvas", "devices", "backup"]
+        case .cloud: return ["sync", "account", "canvas", "devices", "backup", "icloud", "icloud drive", "recovery phrase"]
         case .extensions: return ["add-ons", "addons", "addon", "plugins", "chrome web store", "agent sidebar", "web app"]
         case .passwords: return ["pw", "pwd", "logins", "keychain", "autofill", "credentials", "password manager"]
         case .privacy: return ["security", "tracking", "data", "clear"]
@@ -125,6 +125,7 @@ enum SettingsIndex {
     static let rows: [SettingsEntry] = [
         general, downloads, tabs, spaces, intelligence, voice, agents, cloud,
         extensions, passwords, privacy, updates, about,
+        AirTrafficSettingsIndex.entries, // Fork (ardia: windows): Fork/AirTrafficSettings.swift
         AddonSettingsIndex.entries, // Fork (addons): Fork/Addons/AddonUI.swift — last, so Copper's own update rows win a tie
     ].flatMap { $0 }
 
@@ -143,6 +144,8 @@ enum SettingsIndex {
           toggle: pref(\.autocorrect)),
         e(.general, "Copper on this Mac", "Morning page", "Opens once a day, in the first window after 3 AM",
           ["daily page", "newspaper", "morning", "start page", "home page", "homepage", "startup page", "first window"], "general.daily"),
+        e(.general, "Search", "Search engine", "Where words go when they aren't an address — Google, DuckDuckGo, Bing, Kagi, Perplexity, Ecosia, Brave or your own",
+          ["search engine", "default search", "google", "duckduckgo", "ddg", "bing", "kagi", "perplexity", "ecosia", "brave", "custom search", "bangs", "calculator"], "general.search"),
         e(.general, "Moving in", "Move in from another browser", "Tabs, spaces, bookmarks, history and passwords from the other browsers on this Mac",
           ["import", "flow", "chrome", "arc", "safari", "export", "reading list", "migrate", "switch browsers", "bookmarks import", "transfer"], "general.flow"),
         e(.general, "Moving in", "Browsing history", "Typed addresses complete from Arc or Chrome history",
@@ -169,7 +172,7 @@ enum SettingsIndex {
           ["pins", "pinned", "favourites", "memory", "sleep pins", "keep pins loaded"], "tabs.pins",
           toggle: { _ in Binding(get: { PinsAwake.bigPinsSleep }, set: { Store.settings.set($0, forKey: "pins.sleep") }) }),
         e(.tabs, "Tabs you leave", "Archive Today after", "Untouched rows below the New Tab line close themselves",
-          ["auto archive", "archive", "close old tabs", "today", "clean up", "12 hours", "24 hours", "cleanup"], "tabs.archive"),
+          ["auto archive", "archive", "close old tabs", "today", "clean up", "12 hours", "24 hours", "cleanup", "recently cleaned"], "tabs.archive"),
     ]
 
     // MARK: spaces
@@ -318,6 +321,9 @@ enum SettingsIndex {
     // MARK: cloud
 
     private static let cloud: [SettingsEntry] = [
+        e(.cloud, "iCloud sync", "iCloud sync", "End-to-end encrypted through your iCloud Drive, keyed by a 24-word recovery phrase",
+          ["icloud", "icloud drive", "recovery phrase", "recovery kit", "end-to-end", "e2e", "encrypted sync", "sync folder",
+           "dropbox", "turn on sync", "enter recovery phrase", "stop syncing"], "icloud.sync"),
         e(.cloud, "Copper Cloud", "Where you are", "Connect, sign in, then choose what syncs",
           ["steps", "setup", "progress"], "cloud.steps"),
         e(.cloud, "Connect", "Connect to an instance", "Paste a link code, a join link or a pairing code from another Mac",
@@ -450,6 +456,13 @@ enum SettingsIndex {
           toggle: pref(\.shielded)),
         e(.privacy, "Blocking", "Block on this site", "Turn off on a site that breaks — the page reloads",
           ["pause blocking", "allow site", "allowlist", "whitelist", "broken site", "exception"], "privacy.site", fallback: "privacy.shield"),
+        // Fork (ardia-shield): the lists under the main switch (Fork/PrivacySettings.swift ShieldListLines).
+        e(.privacy, "Blocking", "Cookie banners", "Hides consent pop-ups",
+          ["cookie banner", "cookie consent", "cookie popup", "gdpr", "consent", "i don't care about cookies", "annoyances"], "privacy.shield.cookies", fallback: "privacy.shield"),
+        e(.privacy, "Blocking", "Regional lists", "Block lists for the languages your Mac reads",
+          ["regional", "language", "easylist germany", "country", "local ads"], "privacy.shield.regional", fallback: "privacy.shield"),
+        e(.privacy, "Blocking", "Your own filters", "Rules, or a filter list's address",
+          ["custom filters", "filter list", "my filters", "easylist", "ublock filters", "block rules", "subscribe"], "privacy.shield.custom", fallback: "privacy.shield"),
         e(.privacy, "Permissions", "Camera and microphone", "What each site was allowed",
           ["permissions", "webcam", "mic", "site permissions", "forget choices"], "privacy.capture"),
         e(.privacy, "Clear browsing data", "History", "Every address you have been to",
@@ -495,6 +508,7 @@ enum SettingsShortcuts {
         .init(keys: "⌘K", does: "Switch tab", words: ["command bar", "tab search", "palette"]),
         .init(keys: "⌘T  ⌘W  ⇧⌘T", does: "New, close, reopen tab", words: ["new tab", "close tab", "reopen closed tab"]),
         .init(keys: "⌘N  ⇧⌘N", does: "New window, new private tab", words: ["new window", "private tab", "private browsing"]),
+        .init(keys: "⌥⌘N  ⇧-click", does: "Little Copper, peek at a link", words: ["little copper", "little arc", "small window", "peek", "preview link"]), // Fork (ardia: windows)
         .init(keys: "⌃⇧E", does: "New canvas", words: ["whiteboard", "new board"]),
         .init(keys: "⌘D", does: "Duplicate tab", words: ["duplicate", "copy tab"]),
         .init(keys: "⇧⌘C", does: "Copy the address", words: ["copy url", "copy link"]),
