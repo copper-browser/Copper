@@ -430,18 +430,20 @@ class Chromium(Browser):
         go to Little Ardia/Little Arc), every other page closed, 60 s to settle, a clean quit."""
         shutil.rmtree(self.template, ignore_errors=True)
         self.fresh()
-        t0 = self.launch()
-        self.wait_pid()
-        self.ready()
-        time.sleep(3)
-        self.new_tab(RESTORE_URL + "?id=template")
-        got = BEACONS.wait(lambda b: b.get("id") == "template" and b.get("kind") == "load" and b["rx"] >= t0, 60)
-        for t in self.pages():
-            if "id=template" not in t.get("url", ""):
-                self.close_tab(t["id"])
-        log(f"{self.key}: template page {'loaded' if got else 'NOT loaded'}; pages {[t.get('url') for t in self.pages()]}; settling 60 s")
-        time.sleep(60)
-        self.quit()
+        try:
+            t0 = self.launch()
+            self.wait_pid()
+            self.ready()
+            time.sleep(3)
+            self.new_tab(RESTORE_URL + "?id=template")
+            got = BEACONS.wait(lambda b: b.get("id") == "template" and b.get("kind") == "load" and b["rx"] >= t0, 60)
+            for t in self.pages():
+                if "id=template" not in t.get("url", ""):
+                    self.close_tab(t["id"])
+            log(f"{self.key}: template page {'loaded' if got else 'NOT loaded'}; pages {[t.get('url') for t in self.pages()]}; settling 60 s")
+            time.sleep(60)
+        finally:
+            self.quit()
         self.shape_template()
         os.makedirs(os.path.dirname(self.template), exist_ok=True)
         shutil.copytree(self.profile, self.template, symlinks=True)
@@ -549,7 +551,9 @@ class Copper(Browser):
 
     def env(self):
         # COPPER_MAIN_WORLD names this world as main, so a link to it is never relayed to the Mac's own Copper.
-        e = {"SEARCH_PROBE": WORLD, "COPPER_MAIN_WORLD": WORLD}
+        # SEARCH_MEASURE: a test world "weighed and timed rather than driven" keeps what the shipped browser does
+        # where test runs otherwise differ (hidden pages slowed as WebKit slows them, App Nap left to macOS).
+        e = {"SEARCH_PROBE": WORLD, "COPPER_MAIN_WORLD": WORLD, "SEARCH_MEASURE": "1"}
         if self.headless:
             # The Mac's screen is locked, so macOS calls every window occluded and WebKit hides its pages (no
             # painting, no requestAnimationFrame) while Chrome and Ardia keep drawing theirs. Headless Copper's

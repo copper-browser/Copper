@@ -200,7 +200,7 @@ def method_section(bench, names):
       <h3>The browsers</h3>
       <p>{ver}. Each as shipped, with default settings, in a profile of its own that starts from the same template (one launch, our test page opened, a minute to settle, quit), so every launch restores the same one tab.</p>
       <ul>
-        <li><strong>Copper</strong> runs in a test world of its own: the same app, with its own data folder.</li>
+        <li><strong>Copper</strong> runs in a test world of its own: the same app, with its own data folder, told to behave exactly as shipped (hidden pages slowed down, App Nap left to macOS).</li>
         <li><strong>Safari</strong> can’t run from a copy or in a profile of its own, and this Mac’s Safari profile belongs to its owner. So it only gets the launch to a window (its Start Page, no address), and its memory and idle runs happen in a WebDriver session, Safari’s own private window set.</li>
         <li><strong>Chrome</strong> runs from Google’s download with its own profile folder and its DevTools port open (that’s how tabs are opened and closed), restoring its last session like the others.</li>
         <li><strong>Ardia</strong> runs from its release download with its own data folder, onboarding marked done and its DevTools port open, not in the background test mode Ardia’s own benchmark gives it.</li>

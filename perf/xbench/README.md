@@ -38,8 +38,10 @@ as a copy of a template made once: one launch, the test page opened, 60 s to set
 restores the same one tab.
 
 - **Copper**: the test world `Copper (xbench)` (`SEARCH_PROBE=xbench`; `COPPER_MAIN_WORLD=xbench` so a link isn't
-  relayed to the Mac's own Copper), window 1280×800. Launch rows run the normal window. Memory, idle and Speedometer
-  run headless (`SEARCH_HEADLESS=1`, 1280×800): see *The screen* below.
+  relayed to the Mac's own Copper; `SEARCH_MEASURE=1`, without which a test world keeps hidden pages at full pace
+  and App Nap off: measured without it, 20 hidden tabs idled at 5.3% CPU instead of 0.16%), its normal window at
+  1280×800, for launches, memory and idle alike. Speedometer
+  and the one-tab "drawing" check run headless (`SEARCH_HEADLESS=1`, 1280×800): see *The screen* below.
 - **Safari**: the system's (it can't run from a copy or a profile of its own, and this Mac's Safari profile belongs
   to its owner and syncs with iCloud). Only the launch to a window is timed with `open`
   (`-ApplePersistenceIgnoreStateQuietly YES`, so it opens its Start Page and restores nothing). Memory and idle run
@@ -55,11 +57,13 @@ restores the same one tab.
 
 The Mac mini's screen is locked: nobody sits at it. macOS then calls every window occluded. WebKit treats an occluded
 page as hidden (no painting after the first, no `requestAnimationFrame`), while Chrome and Ardia keep drawing their
-front tab (the test pages report `visible` and ~60 frames a second there). Copper's headless mode tells its web
-views to ignore occlusion (`docs/headless.md`), so for memory, idle and Speedometer Copper runs headless and draws
-like Chrome and Ardia. That is the conservative choice for Copper: a drawing page costs more than a hidden one.
-Safari has no such switch, so its pages stay hidden, it has no Speedometer score, and its idle rows are what a
-hidden Safari costs. Every sample records the visibility its pages reported.
+front tab (the test pages report `visible` and ~60 frames a second there). So Copper's and Safari's idle rows are
+what a hidden page costs, and Chrome's and Ardia's include drawing the tab in front: a tilt toward WebKit of one
+page's drawing. To size it, each round also runs Copper with one tab *drawing*: headless, whose web views ignore
+occlusion (`docs/headless.md`), 30 s after launch, a 60 s idle window (rows `*-1-visible`). Headless isn't used for
+the 20-tab rows because it makes every tab's page count as visible, which no windowed browser does. Speedometer needs
+a page that draws, so Copper runs it headless and Safari, with no such switch, has no score. Every sample records
+the visibility its pages reported.
 
 ## The runs
 
