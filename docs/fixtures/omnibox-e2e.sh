@@ -169,6 +169,12 @@ for text in "c" "ca" "cats" "copper browser" "what is my ip"; do card "$text" --
 [ "$(asks)" = 0 ] || fail "with suggestions off, $(asks) completions were asked for"
 [ "$(picked url)" = "https://duckduckgo.com/?q=what%20is%20my%20ip" ] || fail "with suggestions off, the search row → '$(picked url)'"
 bench settings search "search suggestions" --table | head -1 | grep -q "general" || fail "Settings search: $(bench settings search "search suggestions" --table | head -2)"
+bench settings index check >"$tmp/index.json"
+python3 - "$tmp/index.json" <<'EOF2' || fail "Settings index check: $(grep -o '"[^"]*suggest[^"]*"' "$tmp/index.json" | head -3)"
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert not [f for f in d["failures"] if "suggest" in f], d["failures"]
+EOF2
 echo "ok 9 suggestions off: ⌘L, ⌘K and ⌘T typing asked $(asks) times; the search row still searches DuckDuckGo"
 
 if [ -n "${SHOTS:-}" ]; then
