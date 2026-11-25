@@ -359,14 +359,12 @@ struct ContentView: View {
                 // rather than over the page.
                 if sidebar, launch.dressed {
                     SideBar(browser: browser, prefs: browser.prefs, grounded: false) // Fork (page-frame): the window draws its ground
-                        .id(browser.prefs.interfaceSize) // Fork (ardia layout): every row drawn again at the new size
                         .transition(.move(edge: right ? .trailing : .leading))
                 }
             }
 
             if !browser.prefs.sidebar, browser.active?.immersed != true {
                 TabBar(browser: browser)
-                    .id(browser.prefs.interfaceSize) // Fork (ardia layout)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }

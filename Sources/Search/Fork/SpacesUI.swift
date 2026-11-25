@@ -127,6 +127,7 @@ final class SpaceEditing: ObservableObject {
 /// favourites — the one label the column was missing.
 struct SpaceHeader: View {
     let browser: Browser
+    var scale = Metrics.ui // Fork (ardia layout): a new interface size draws it again
     @ObservedObject private var spaces = Spaces.shared
     @Environment(\.colorScheme) private var scheme
     @State private var over = false
@@ -203,6 +204,7 @@ struct SpaceHeader: View {
 
 struct SpaceStrip<Tools: View>: View {
     let browser: Browser
+    var scale = Metrics.ui // Fork (ardia layout): a new interface size draws it again
     /// The column's ink as the slide mixes it (SlideInk), or nil for the
     /// current space's own.
     var tint: SpaceTint? = nil
@@ -419,6 +421,7 @@ struct SpaceChip: View {
     let current: Bool
     let dark: Bool
     let over: Bool
+    var scale = Metrics.ui // Fork (ardia layout): a new interface size draws it again
     /// The symbol's colour: the space's own mark, made for the column it
     /// sits on (`SpaceTint.mark(on:)`).
     var ink: Color? = nil

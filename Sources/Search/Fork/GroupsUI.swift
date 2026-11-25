@@ -232,6 +232,7 @@ struct GroupedRows: View {
 /// where Arc keeps its own, and rotates as the folder opens.
 struct GroupHead: View {
     let browser: Browser
+    var scale = Metrics.ui // Fork (ardia layout): a new interface size draws it again
     @ObservedObject var groups = Groups.shared
     let group: TabGroup
     let count: Int

@@ -325,12 +325,7 @@ struct SettingsPanel: View {
                 .settingsAnchor("general.side")
                 Rule()
                 Line("Interface size", "The sidebar's rows, titles and icons, and the tab strip. Pages keep their own zoom (⌘+).") {
-                    // The column is drawn again at the new size (`.id`, App.swift): at once, not slid out and in.
-                    Segmented(options: InterfaceSize.allCases.map { ($0, $0.title) }, selection: Binding(get: { prefs.interfaceSize }, set: { size in
-                        var now = Transaction(animation: nil)
-                        now.disablesAnimations = true
-                        withTransaction(now) { prefs.interfaceSize = size }
-                    }))
+                    Segmented(options: InterfaceSize.allCases.map { ($0, $0.title) }, selection: $prefs.interfaceSize)
                 }
                 .settingsAnchor("general.size")
                 Rule()

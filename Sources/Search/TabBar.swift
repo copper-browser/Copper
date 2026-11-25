@@ -6,6 +6,7 @@ import SwiftUI
 /// of one and into the other.
 struct TabBar: View {
     @Bindable var browser: Browser
+    var scale = Metrics.ui // Fork (ardia layout): a new interface size draws it again
     @ObservedObject private var downloads = Downloads.shared
 
     @Namespace private var pill
@@ -359,6 +360,7 @@ private struct TabPill: View {
     @ObservedObject var tab: Tab
     let live: Bool
     let width: CGFloat
+    var scale = Metrics.ui // Fork (ardia layout): a new interface size draws it again
     /// How much of the strip there is, for the field that grows over it.
     let room: CGFloat
     let pill: Namespace.ID

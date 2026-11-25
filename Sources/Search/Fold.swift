@@ -63,7 +63,6 @@ struct Fold: View {
             }
             if folding, browser.peeking {
                 SideBar(browser: browser, prefs: prefs)
-                    .id(prefs.interfaceSize) // Fork (ardia layout)
                     .shadow(color: .black.opacity(0.14), radius: 20, x: right ? -4 : 4)
                     .onHover { over in peek(over) }
                     .transition(.move(edge: right ? .trailing : .leading))

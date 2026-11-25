@@ -576,6 +576,7 @@ private struct PinSquare: View {
     let pill: Namespace.ID
     var width: CGFloat = 34
     var height: CGFloat = 34
+    var scale = Metrics.ui // Fork (ardia layout): a new interface size draws it again
 
     @State private var pointing = false
     @ObservedObject private var benchHover = SideRowHover.shared // Fork (calendar-peek): `bench sections hover ID` peeks too
@@ -657,6 +658,7 @@ private struct SidePairHalf: View {
     @ObservedObject var tab: Tab
     let live: Bool
     let tint: SpaceTint
+    var scale = Metrics.ui // Fork (ardia layout): a new interface size draws it again
 
     var body: some View {
         HStack(spacing: 8) {
@@ -701,11 +703,13 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
     /// pill, as Arc's split items. `pairLive`: the one of them that is live.
     var pair: [Tab] = []
     var pairLive: Tab.ID? = nil
+    var scale = Metrics.ui // Fork (ardia layout): a new interface size draws it again
 
     static func == (a: SideRow, b: SideRow) -> Bool {
         a.tab === b.tab && a.live == b.live && a.editing == b.editing && a.hot == b.hot && a.refusals == b.refusals
             && a.pair.elementsEqual(b.pair, by: ===) && a.pairLive == b.pairLive
             && a.pill == b.pill && a.tint.theme == b.tint.theme && a.tint.dark == b.tint.dark && a.tint.night == b.tint.night
+            && a.scale == b.scale // Fork (ardia layout)
     }
 
     @State private var pointing = false
@@ -999,6 +1003,7 @@ struct Door: View {
 struct SideAddress: View {
     @Bindable var browser: Browser
     let tint: SpaceTint
+    var scale = Metrics.ui // Fork (ardia layout): a new interface size draws it again
     @ObservedObject private var downloads = Downloads.shared
     @ObservedObject private var bench = SideAddressHover.shared
     @State private var hovering = false
@@ -1082,6 +1087,7 @@ struct SideAddress: View {
 
     private struct Placeholder: View {
         let tint: SpaceTint
+        var scale = Metrics.ui // Fork (ardia layout)
         var body: some View {
             Text("Search or enter address") // Fork (first-run): one wording, readable
                 .font(.system(size: 14.5.ui))
