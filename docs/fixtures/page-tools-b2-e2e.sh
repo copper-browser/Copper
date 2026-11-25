@@ -113,8 +113,8 @@ if [ "${TRANSLATE:-1}" = 1 ]; then
     sleep 0.3
     [ "$(bench eval "$id" "document.getElementById('quote').textContent")" = "$before" ] || fail "Show Original did not put the French back"
     echo "ok Translate Page, then Show Original restores the page exactly"
-  elif [ "$state" = waiting ]; then
-    echo "skip Translate Page: French → this Mac's language isn't installed, the run waits on the download prompt"
+  elif [ "$state" = waiting ] || [ "$state" = preparing ]; then
+    echo "skip Translate Page ($state, $(echo "$out" | field languages)): the languages aren't on this Mac for Copper, and the system's download prompt needs a person"
     bench page original >/dev/null
   else
     fail "translate ended '$state': $(echo "$out" | field note)"

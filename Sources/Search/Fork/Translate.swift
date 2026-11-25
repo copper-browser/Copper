@@ -18,7 +18,11 @@ import WebKit
 //
 // The model: on macOS 26 a session made straight from installed languages;
 // otherwise SwiftUI's `.translationTask` on a hidden view in the window, the
-// route that can also ask to download the languages the first time.
+// route that can also ask to download the languages the first time. Which
+// languages count as installed depends on the SDK the app was linked with:
+// on a Mac whose languages came with a newer system, an app linked with the
+// 15.5 SDK (Copper's release) still gets the download prompt once (measured
+// on macOS 26.6: "installed" from 27.2-SDK binaries, "supported" from 26.0).
 // Bench: `./bench page translate|original|never|state` (Fork/PageShare.swift).
 
 @MainActor
@@ -39,7 +43,8 @@ final class PageTranslate {
         /// A page the tab went on to: it says nothing unless it fails, and
         /// keeps the tab translating when there is nothing to do.
         var following = false
-        /// reading, waiting (for languages), translating, done, same (already in the target language), failed
+        /// reading, waiting (for the view's session), preparing (asking to download the languages),
+        /// translating, done, same (already in the target language), failed
         var state = "reading"
         var source = ""
         /// installed, supported (needs a download) or unsupported; and which
@@ -156,13 +161,19 @@ final class PageTranslate {
             return end(tab, run, "failed", note: "unsupported", in: browser, say: "\(from) to \(into) isn't available on this Mac")
         }
         if !quietly { browser.announce("Translating from \(from)…") }
-        let work: (TranslationSession) async -> Void = { session in
-            await self.pour(session, run, tab, web, browser, texts: texts, order: order, gen: gen, download: status == .supported, quietly: quietly)
+        // A test run can take SwiftUI's route even when the languages are in (SEARCH_TRANSLATE_ROUTE=view).
+        let viewOnly = Store.testing && ProcessInfo.processInfo.environment["SEARCH_TRANSLATE_ROUTE"] == "view"
+        if #available(macOS 26, *), !viewOnly {
+            // Straight from the installed languages: no view, no prompt.
+            let session = TranslationSession(installedSource: source, target: target)
+            if await session.isReady {
+                update(tab, run) { $0.route = "session" }
+                await pour(session, run, tab, web, browser, texts: texts, order: order, gen: gen, download: false, quietly: quietly)
+                return
+            }
         }
-        if #available(macOS 26, *), status == .installed {
-            update(tab, run) { $0.route = "session" }
-            await work(TranslationSession(installedSource: source, target: target))
-            return
+        let work: (TranslationSession) async -> Void = { session in
+            await self.pour(session, run, tab, web, browser, texts: texts, order: order, gen: gen, download: status != .installed, quietly: quietly)
         }
         // SwiftUI's route: a view in the window hands over the session, and
         // asks to download the languages first when they aren't on the Mac.
@@ -180,6 +191,7 @@ final class PageTranslate {
     private func pour(_ session: TranslationSession, _ run: Int, _ tab: Tab, _ web: WKWebView, _ browser: Browser,
                       texts: [String], order: [Int], gen: Int, download: Bool, quietly: Bool) async {
         if download {
+            update(tab, run) { $0.state = "preparing" } // the system asks to download the languages
             do { try await session.prepareTranslation() } catch {
                 return end(tab, run, "failed", note: "\(error)", in: browser, say: "The languages to translate this page aren't on this Mac")
             }
