@@ -14,7 +14,8 @@ import SwiftUI
 //
 // Today is swept: a row nobody has looked at for the archive window (a day,
 // by default) is closed through `Browser.close`, the same path the cross on
-// the row takes, so it lands in Reopen Closed Tab rather than disappearing.
+// the row takes, so it lands in Reopen Closed Tab rather than disappearing,
+// and waits a week in Recently Cleaned (Fork/Cleaned.swift).
 
 @MainActor
 final class Sections: ObservableObject {
@@ -136,7 +137,9 @@ final class Sections: ObservableObject {
         seen[tab.id] = seen[tab.id] ?? Date()
         let groups = Groups.shared
         // The folder first, so the session written by the move has it.
-        if let folder = spot.group, groups.group(folder) != nil {
+        if case .onto(let id) = spot.anchor, let other = browser.tabs.first(where: { $0.id == id && $0.id != tab.id }) {
+            groups.fold(tab, onto: other) // Fork (ardia-tabs): a tab onto a tab makes a folder of both
+        } else if let folder = spot.group, groups.group(folder) != nil {
             groups.restore(tab, group: folder)
             if case .into = spot.anchor, groups.group(folder)?.collapsed == true { groups.toggleCollapsed(folder) }
         } else if groups.membership[tab.id] != nil {
@@ -270,6 +273,7 @@ final class Sections: ObservableObject {
                 && CanvasTabs.showing($0) == nil
                 && !Spaces.shared.shown($0, outside: browser)
         }
+        Cleaned.shared.add(stale, space: Spaces.shared.current(in: browser)) // Fork (ardia-tabs)
         for tab in stale { browser.close(tab) }
         lastSwept = stale.count
         return stale.count
@@ -407,6 +411,19 @@ final class Sections: ObservableObject {
             // age in hours runs it against that instead, for a test that
             // doesn't want to wait a day for something to go stale.
             note["archived"] = sweep(in: browser, olderThan: Double(arg))
+        case "cleanup":
+            // ⌥⌘K, Clean Up: the sweep against the window (12 h while it is Never).
+            note["archived"] = Cleaned.shared.cleanUp(in: browser)
+        case "cleaned":
+            // cleaned PATH [dark]: the Recently Cleaned list, as a PNG.
+            let words = arg.split(separator: " ").map(String.init)
+            guard let path = words.first else { return ["error": "sections cleaned PATH [dark]"] }
+            return Cleaned.shared.bench(picture: path, dark: words.contains("dark"), in: browser)
+        case "restore":
+            // restore ID|all: a Recently Cleaned entry (or all of this space's) back into Today.
+            let answer = Cleaned.shared.bench(restore: arg, in: browser)
+            if answer["error"] != nil { return answer }
+            note.merge(answer) { $1 }
         case "age":
             // age TAB HOURS: the row was last looked at that long ago, so a
             // bare `archive` afterwards proves the window itself (test runs only).
@@ -436,6 +453,7 @@ final class Sections: ObservableObject {
         }
         let spaces = Spaces.shared
         note["window"] = archive.rawValue
+        note["cleaned"] = Cleaned.shared.describe(in: browser) // Fork (ardia-tabs): Recently Cleaned, this space
         note["oldest"] = oldestToday(in: browser)
         note["favourites"] = spaces.pins.count
         note["spaces"] = spaces.all.map { space -> [String: Any] in
@@ -529,7 +547,7 @@ struct ArchiveLine: View {
     @ObservedObject var sections = Sections.shared
 
     var body: some View {
-        Line("Archive Today after", "Untouched rows below the New Tab line close themselves, and wait in Reopen Closed Tab.") {
+        Line("Archive Today after", "Untouched rows below the New Tab line close themselves, and wait a week in Recently Cleaned. ⌥⌘K cleans up now.") {
             Segmented(options: Sections.Archive.allCases.map { ($0, $0.title) }, selection: $sections.archive)
         }
     }
