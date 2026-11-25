@@ -468,6 +468,10 @@ enum SettingsIndex {
           ["custom filters", "filter list", "my filters", "easylist", "ublock filters", "block rules", "subscribe"], "privacy.shield.custom", fallback: "privacy.shield"),
         e(.privacy, "Permissions", "Camera and microphone", "What each site was allowed",
           ["permissions", "webcam", "mic", "site permissions", "forget choices"], "privacy.capture"),
+        // Fork (telemetry): Fork/Ping.swift
+        e(.privacy, "Usage", "Send an anonymous daily ping", "Once a day: Copper version, macOS version, chip. No ID, no addresses",
+          ["telemetry", "analytics", "usage", "ping", "statistics", "stats", "phone home", "active users"], "privacy.ping",
+          toggle: pref(\.pings)),
         e(.privacy, "Clear browsing data", "History", "Every address you have been to",
           ["clear history", "delete history", "browsing data", "erase"], "privacy.history"),
         e(.privacy, "Clear browsing data", "Cookies and sign-ins", "Signs you out of every site, in every space",

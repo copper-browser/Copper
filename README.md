@@ -41,7 +41,7 @@ On purpose:
 
 - No extension you have to install to feel at home. Blocking ads, hiding clutter, reading mode, picture-in-picture and passwords are built in; extensions are there for everything else.
 - No sync, no account, no cloud — unless you link it to a Copper Cloud instance you run yourself, which is off until you turn it on and never carries passwords. Otherwise your tabs, history and passwords are on your Mac and nowhere else.
-- No telemetry, no analytics, no crash reports sent anywhere. The only things that leave your Mac are the pages you ask for, their icons, and one small request a day to see whether there is a newer version.
+- No analytics, no tracking, no crash reports sent anywhere. The only things that leave your Mac are the pages you ask for, their icons, the update check, and one anonymous ping a day so we can count active users: Copper's version, the macOS version and the chip, with no ID, no IP kept and no addresses ([docs/telemetry.md](docs/telemetry.md)). Turn it off in Settings › Privacy › Usage.
 - One window. Tabs are the only kind of "new" there is.
 
 ## Privacy, concretely
@@ -53,6 +53,7 @@ On purpose:
 | Cookies and site data | WebKit's own store for the app | The sites that set them, as in any browser. |
 | Extensions | Unpacked in `~/Library/Application Support/Copper/Extensions/`, their data in WebKit's extension store | Each extension, within the permissions you accepted when adding it. |
 | Copper Cloud (only if you link it) | The domains you switched on, on the instance you linked — encrypted at rest with your account's key; the link and session token in `cloud.json` (0600) | You, and that instance's operator. |
+| The daily ping (on unless you turn it off) | One counter per day at `copper.exowatt.com/ping`: how many Copper first pinged that day, week or month, by version, macOS and chip. On your Mac, only the day of the last ping. | Copper's maintainers, as totals. No ID or IP is kept. |
 | Anything else | Nowhere. There is no server. | — |
 
 A **private tab** (`⇧⌘N`) has its own cookie jar and leaves nothing behind when it closes.
