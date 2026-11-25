@@ -90,7 +90,8 @@ def metric(row, names):
         bars.append(
             f'<li class="{" ".join(cls)}"><span class="who">{esc(names[n])}</span>'
             f'<span class="track"><i style="--v:{c["median"] / top:.4f}"></i></span>'
-            f'<b>{nbsp(num(c["median"], row["unit"]))}</b><small>{rng}, n={c["n"]}</small></li>')
+            f'<b>{nbsp(num(c["median"], row["unit"]))}{"<span class=sr> (best median)</span>" if n == row["best"] else ""}</b>'
+            f'<small>{rng}, n={c["n"]}</small></li>')
     missing = [n for n in names if n not in cells]
     note = ""
     if missing:
@@ -265,7 +266,7 @@ def main_html(bench, agents):
     <span class="kicker">Benchmarks</span>
     <h1>Copper, timed against the browsers you’d use instead.</h1>
     <p class="lead">Copper, Safari, Chrome and Ardia on the same Mac mini, launched and loaded by one harness that reads every browser from the outside. Every figure is a median with its range and run count, and the rows Copper loses stay on the page.</p>
-    <p class="facts small muted">{esc(m["model"])} · {esc(m["chip"])} · {esc(m["ram"])} · macOS {esc(m["macOS"])}<br>{versions}<br>{esc(span_words(bench)[0].upper() + span_words(bench)[1:])}</p>
+    <p class="facts small muted">{esc(m["model"])} · {esc(m["chip"])} · {esc(m["ram"])} · macOS {esc(m["macOS"])}<br>{versions}<br>{esc(span_words(bench)[0].upper() + span_words(bench)[1:])}. <span aria-hidden="true">★</span> marks each row’s best median; overlapping ranges mean it’s close.</p>
   </div>{"".join(groups)}{lost_html}{agents_section(agents)}{polar_section()}{method_section(bench, names)}
 </main>"""
 
@@ -286,7 +287,7 @@ STYLE = """<style>
   .bar small { grid-area: range; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
   .bar.us { color: var(--ink); font-weight: 600; }
   .bar.us i { background: var(--accent); }
-  .bar.best b::after { content: " ★"; color: var(--patina); font-size: .85em; }
+  .bar.best b::after { content: " ★" / ""; color: var(--patina); font-size: .85em; }
   .gap { margin-top: 10px; font-size: 13px; color: var(--ink-2); }
   .gap a, .section small a { color: var(--ink); text-underline-offset: 3px; }
   #agents h3 { margin-top: 28px; font: 600 1.1rem/1.3 var(--display); }

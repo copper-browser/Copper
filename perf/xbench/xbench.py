@@ -796,6 +796,11 @@ def loaded(id_, since, timeout=30):
     return BEACONS.wait(lambda x: x.get("id") == id_ and x.get("kind") == "load" and x["rx"] >= since, timeout)
 
 
+def restored(since, timeout=30):
+    """The template's one tab (/p/restore?id=template) loading again after a launch."""
+    return BEACONS.wait(lambda x: x.get("kind") == "load" and x["rx"] >= since and x.get("id") in ("template", "restore"), timeout)
+
+
 def page_facts(id_, since=0):
     """What the page saw: visibility, frames in its first 2 s, first paint (if WebKit/Chromium painted it)."""
     got = BEACONS.all(lambda x: x.get("id") == id_ and x["rx"] >= since)
@@ -883,7 +888,7 @@ def session_item(b, tag, idle_s, settle):
             t0 = b.launch()
             b.wait_pid()
             b.ready()
-            first = loaded("restore", t0, 30) or loaded("template", t0, 1)
+            first = restored(t0)
             if not first:  # nothing restored: open the first tab ourselves
                 since = now_ms()
                 b.new_tab(tab_url(0, tag))
@@ -935,7 +940,7 @@ def visible_item(b, tag, idle_s):
         t0 = b.launch()
         b.wait_pid()
         b.ready()
-        first = loaded("restore", t0, 30) or loaded("template", t0, 1)
+        first = restored(t0)
         if not first:
             raise RuntimeError("the restored page never loaded")
         time.sleep(max(0, 30 - (now_ms() - t0) / 1000))
@@ -961,7 +966,7 @@ def speedometer_item(b, tag, timeout=900):
             t0 = b.launch()
             b.wait_pid()
             b.ready()
-            loaded("restore", t0, 30)
+            restored(t0)
         since = now_ms()
         b.new_tab(url)
         start = BEACONS.wait(lambda x: x.get("id") == tag and x.get("kind") == "sp3-start" and x["rx"] >= since, 60)
