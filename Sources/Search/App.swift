@@ -405,7 +405,7 @@ struct ContentView: View {
                     .padding(.top, band + 8)
                     .padding(sidebar ? .leading : .trailing, sidebar ? browser.prefs.sideWidth + 8 : 14)
                     .transition(.move(edge: .top).combined(with: .opacity))
-            } else if let ask = PageTranslate.shared.offer(in: browser) { // Fork (ardia polish): Fork/Translate.swift
+            } else if let ask = PageTranslate.shared.offerShown(in: browser) { // Fork (ardia polish): Fork/Translate.swift
                 TranslateOfferCard(browser: browser, offer: ask)
                     .padding(.top, band + 8)
                     .padding(sidebar ? .leading : .trailing, sidebar ? browser.prefs.sideWidth + 8 : 14)

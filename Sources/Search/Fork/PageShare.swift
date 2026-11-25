@@ -138,7 +138,7 @@ enum PageTools {
             case "reset": translate.forgetOffers()
             default: break
             }
-            let shown = translate.offer(in: browser)
+            let shown = translate.offerShown(in: browser)
             answer(["offer": shown.map { ["host": $0.host, "from": $0.from] } ?? [:], "showing": shown != nil,
                     "offered": translate.offered.sorted(), "never": translate.never.sorted(), "translated": translate.translated(tab)])
         case "never":

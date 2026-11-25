@@ -226,7 +226,7 @@ final class Updates: ObservableObject {
     func start(for browser: Browser) {
         self.browser = browser
         settleAtLaunch()
-        WhatsNew.shared.launched(as: current) // Fork (ardia polish): the card, once, on a new version's first launch
+        UpdateNews.shared.launched(as: current) // Fork (ardia polish): the card, once, on a new version's first launch
         guard timer == nil else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
             self?.check(force: false)

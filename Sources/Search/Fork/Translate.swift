@@ -393,7 +393,7 @@ final class PageTranslate {
     }
 
     /// The offer for the page in front of this window, if it is still on that site.
-    func offer(in browser: Browser) -> Offer? {
+    func offerShown(in browser: Browser) -> Offer? {
         guard let offer, offer.tab == browser.activeID, browser.active?.address?.host?.lowercased() == offer.host else { return nil }
         return offer
     }

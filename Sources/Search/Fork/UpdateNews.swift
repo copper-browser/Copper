@@ -9,8 +9,8 @@ import SwiftUI
 // install, a downgrade or a relaunch of the same version shows nothing.
 
 @MainActor
-final class WhatsNew: ObservableObject {
-    static let shared = WhatsNew()
+final class UpdateNews: ObservableObject {
+    static let shared = UpdateNews()
 
     /// The version the card is up for; nil is no card.
     @Published private(set) var version: String?
@@ -72,9 +72,9 @@ final class WhatsNew: ObservableObject {
 }
 
 /// Above the column's foot (Side.swift).
-struct WhatsNewSlot: View {
+struct UpdateNewsSlot: View {
     let browser: Browser
-    @ObservedObject private var news = WhatsNew.shared
+    @ObservedObject private var news = UpdateNews.shared
     @ObservedObject private var updates = Updates.shared
     @Environment(\.accessibilityReduceMotion) private var still
 
@@ -82,7 +82,7 @@ struct WhatsNewSlot: View {
         VStack(spacing: 0) {
             if let version = news.version {
                 SlideInk(browser: browser) { tint in
-                    WhatsNewCard(browser: browser, version: version, notes: news.notes(updates), tint: tint)
+                    UpdateNewsCard(browser: browser, version: version, notes: news.notes(updates), tint: tint)
                 }
                 .padding(.horizontal, SideBar.inset)
                 .padding(.top, 6)
@@ -93,7 +93,7 @@ struct WhatsNewSlot: View {
     }
 }
 
-private struct WhatsNewCard: View {
+private struct UpdateNewsCard: View {
     let browser: Browser
     let version: String
     let notes: String?
@@ -108,7 +108,7 @@ private struct WhatsNewCard: View {
                 Text("What’s new in Copper")
                     .font(.system(size: 12, weight: .semibold))
                 Spacer(minLength: 0)
-                Button { WhatsNew.shared.close() } label: {
+                Button { UpdateNews.shared.close() } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .bold))
                         .frame(width: 18, height: 18)
@@ -131,7 +131,7 @@ private struct WhatsNewCard: View {
                 if let url = UpdatePill.changelog(for: Updates.shared.latest?.version == version ? Updates.shared.latest : nil) {
                     browser.open(url, foreground: true)
                 }
-                WhatsNew.shared.close()
+                UpdateNews.shared.close()
             } label: {
                 Text("Everything that changed")
                     .font(.system(size: 11.5, weight: .medium))
