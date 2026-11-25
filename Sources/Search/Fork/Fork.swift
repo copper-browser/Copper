@@ -69,6 +69,7 @@ enum Fork {
         case "passkeys": return PasskeysBench.handle(request)
         case "passwords": return PasswordsBench.handle(request, in: browser) // Fork/Credentials/PasswordsBench.swift
         case "privacy": return PrivacyBench.handle(request, in: browser) // Fork/PrivacySettings.swift
+        case "shield": return ShieldBench.handle(request) // Fork/ShieldLists.swift (ardia-shield)
         case "about": return AboutBench.handle(request, in: browser) // Fork/AboutBench.swift
         case "agent":
             // `agent ask TEXT` / `agent chat|open|close|clear` are the pane's; the rest is the server's.

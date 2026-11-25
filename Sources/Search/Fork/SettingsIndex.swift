@@ -454,6 +454,13 @@ enum SettingsIndex {
           toggle: pref(\.shielded)),
         e(.privacy, "Blocking", "Block on this site", "Turn off on a site that breaks — the page reloads",
           ["pause blocking", "allow site", "allowlist", "whitelist", "broken site", "exception"], "privacy.site", fallback: "privacy.shield"),
+        // Fork (ardia-shield): the lists under the main switch (Fork/PrivacySettings.swift ShieldListLines).
+        e(.privacy, "Blocking", "Cookie banners", "Hides consent pop-ups",
+          ["cookie banner", "cookie consent", "cookie popup", "gdpr", "consent", "i don't care about cookies", "annoyances"], "privacy.shield.cookies", fallback: "privacy.shield"),
+        e(.privacy, "Blocking", "Regional lists", "Block lists for the languages your Mac reads",
+          ["regional", "language", "easylist germany", "country", "local ads"], "privacy.shield.regional", fallback: "privacy.shield"),
+        e(.privacy, "Blocking", "Your own filters", "Rules, or a filter list's address",
+          ["custom filters", "filter list", "my filters", "easylist", "ublock filters", "block rules", "subscribe"], "privacy.shield.custom", fallback: "privacy.shield"),
         e(.privacy, "Permissions", "Camera and microphone", "What each site was allowed",
           ["permissions", "webcam", "mic", "site permissions", "forget choices"], "privacy.capture"),
         e(.privacy, "Clear browsing data", "History", "Every address you have been to",
