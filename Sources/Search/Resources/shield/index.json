@@ -1,0 +1,866 @@
+{
+ "converter": "4.3.2",
+ "safari": 17,
+ "lists": [
+  {
+   "id": "ads",
+   "group": "ads",
+   "title": "EasyList + uBlock filters",
+   "lang": [],
+   "files": [
+    {
+     "file": "ads.json.xz",
+     "rules": 84134,
+     "sha": "747150406785ec1f",
+     "bytes": 16021139,
+     "packed": 1160332
+    }
+   ],
+   "source": 107112,
+   "errors": 2359,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "trackers",
+   "group": "trackers",
+   "title": "EasyPrivacy + uBlock privacy",
+   "lang": [],
+   "files": [
+    {
+     "file": "trackers.json.xz",
+     "rules": 68695,
+     "sha": "234dd161fd80f656",
+     "bytes": 8598692,
+     "packed": 605688
+    }
+   ],
+   "source": 58594,
+   "errors": 1021,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "cookies",
+   "group": "cookies",
+   "title": "EasyList Cookie + uBlock and AdGuard cookie notices",
+   "lang": [],
+   "files": [
+    {
+     "file": "cookies.json.xz",
+     "rules": 30848,
+     "sha": "31b13888fd225944",
+     "bytes": 6360664,
+     "packed": 755796
+    }
+   ],
+   "source": 51477,
+   "errors": 485,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "alb-0",
+   "group": "regional",
+   "title": "Adblock List for Albania",
+   "lang": [
+    "sq"
+   ],
+   "files": [
+    {
+     "file": "alb-0.json.xz",
+     "rules": 163,
+     "sha": "beac1a92cc76b909",
+     "bytes": 61616,
+     "packed": 4784
+    }
+   ],
+   "source": 305,
+   "errors": 0,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "ara-0",
+   "group": "regional",
+   "title": "Liste AR",
+   "lang": [
+    "ar",
+    "kab"
+   ],
+   "files": [
+    {
+     "file": "ara-0.json.xz",
+     "rules": 1250,
+     "sha": "8c8a80ea6e06101e",
+     "bytes": 169499,
+     "packed": 21164
+    }
+   ],
+   "source": 1602,
+   "errors": 1,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "bgr-0",
+   "group": "regional",
+   "title": "Bulgarian Adblock list",
+   "lang": [
+    "bg",
+    "mk"
+   ],
+   "files": [
+    {
+     "file": "bgr-0.json.xz",
+     "rules": 893,
+     "sha": "930397d1e2e7716b",
+     "bytes": 126570,
+     "packed": 15772
+    }
+   ],
+   "source": 1150,
+   "errors": 0,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "chn-0",
+   "group": "regional",
+   "title": "AdGuard Chinese (中文)",
+   "lang": [
+    "ug",
+    "zh"
+   ],
+   "files": [
+    {
+     "file": "chn-0.json.xz",
+     "rules": 15507,
+     "sha": "850a12418d4c0959",
+     "bytes": 2036429,
+     "packed": 199748
+    }
+   ],
+   "source": 20747,
+   "errors": 111,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "cze-0",
+   "group": "regional",
+   "title": "EasyList Czech and Slovak",
+   "lang": [
+    "cs",
+    "sk"
+   ],
+   "files": [
+    {
+     "file": "cze-0.json.xz",
+     "rules": 434,
+     "sha": "2de66fe8cd819792",
+     "bytes": 58952,
+     "packed": 7772
+    }
+   ],
+   "source": 731,
+   "errors": 9,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "deu-0",
+   "group": "regional",
+   "title": "EasyList Germany",
+   "lang": [
+    "de",
+    "dsb",
+    "hsb",
+    "lb",
+    "rm"
+   ],
+   "files": [
+    {
+     "file": "deu-0.json.xz",
+     "rules": 4064,
+     "sha": "0cca9074dd38ec25",
+     "bytes": 707179,
+     "packed": 77180
+    }
+   ],
+   "source": 6047,
+   "errors": 10,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "est-0",
+   "group": "regional",
+   "title": "Eesti saitidele kohandatud filter",
+   "lang": [
+    "et"
+   ],
+   "files": [
+    {
+     "file": "est-0.json.xz",
+     "rules": 333,
+     "sha": "d0f78abfe6eebe63",
+     "bytes": 43963,
+     "packed": 4976
+    }
+   ],
+   "source": 459,
+   "errors": 2,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "fin-0",
+   "group": "regional",
+   "title": "Adblock List for Finland",
+   "lang": [
+    "fi"
+   ],
+   "files": [
+    {
+     "file": "fin-0.json.xz",
+     "rules": 657,
+     "sha": "9ba37b636094aa94",
+     "bytes": 128747,
+     "packed": 19016
+    }
+   ],
+   "source": 1209,
+   "errors": 14,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "fra-0",
+   "group": "regional",
+   "title": "AdGuard Français",
+   "lang": [
+    "ar",
+    "br",
+    "ff",
+    "fr",
+    "kab",
+    "lb",
+    "oc",
+    "son"
+   ],
+   "files": [
+    {
+     "file": "fra-0.json.xz",
+     "rules": 12759,
+     "sha": "6ec727d3d5bc4c40",
+     "bytes": 2036080,
+     "packed": 157948
+    }
+   ],
+   "source": 16203,
+   "errors": 75,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "grc-0",
+   "group": "regional",
+   "title": "Greek AdBlock Filter",
+   "lang": [
+    "el"
+   ],
+   "files": [
+    {
+     "file": "grc-0.json.xz",
+     "rules": 696,
+     "sha": "e43eafa4efe95da7",
+     "bytes": 110555,
+     "packed": 15356
+    }
+   ],
+   "source": 1267,
+   "errors": 2,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "hrv-0",
+   "group": "regional",
+   "title": "Dandelion Sprout's Serbo-Croatian filters",
+   "lang": [
+    "bs",
+    "hr",
+    "sr"
+   ],
+   "files": [
+    {
+     "file": "hrv-0.json.xz",
+     "rules": 315,
+     "sha": "505a08281b7c972e",
+     "bytes": 55481,
+     "packed": 7704
+    }
+   ],
+   "source": 507,
+   "errors": 2,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "hun-0",
+   "group": "regional",
+   "title": "hufilter",
+   "lang": [
+    "hu"
+   ],
+   "files": [
+    {
+     "file": "hun-0.json.xz",
+     "rules": 897,
+     "sha": "08d788d63c1bf516",
+     "bytes": 148230,
+     "packed": 19956
+    }
+   ],
+   "source": 2016,
+   "errors": 3,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "idn-0",
+   "group": "regional",
+   "title": "ABPindo",
+   "lang": [
+    "id",
+    "ms"
+   ],
+   "files": [
+    {
+     "file": "idn-0.json.xz",
+     "rules": 5185,
+     "sha": "9e6fb08e0a7678ee",
+     "bytes": 1321402,
+     "packed": 87220
+    }
+   ],
+   "source": 10373,
+   "errors": 19,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "ind-0",
+   "group": "regional",
+   "title": "IndianList",
+   "lang": [
+    "as",
+    "bn",
+    "gu",
+    "hi",
+    "kn",
+    "ml",
+    "mr",
+    "ne",
+    "pa",
+    "sat",
+    "si",
+    "ta",
+    "te"
+   ],
+   "files": [
+    {
+     "file": "ind-0.json.xz",
+     "rules": 9226,
+     "sha": "91c16e6b639eae4a",
+     "bytes": 1497404,
+     "packed": 169468
+    }
+   ],
+   "source": 10741,
+   "errors": 0,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "irn-0",
+   "group": "regional",
+   "title": "فارسی (Persian)",
+   "lang": [
+    "fa",
+    "ps",
+    "tg"
+   ],
+   "files": [
+    {
+     "file": "irn-0.json.xz",
+     "rules": 1782,
+     "sha": "8022d904604a7381",
+     "bytes": 259866,
+     "packed": 23964
+    }
+   ],
+   "source": 2692,
+   "errors": 98,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "isl-0",
+   "group": "regional",
+   "title": "Icelandic ABP List",
+   "lang": [
+    "is"
+   ],
+   "files": [
+    {
+     "file": "isl-0.json.xz",
+     "rules": 43,
+     "sha": "810afcc29dece023",
+     "bytes": 6100,
+     "packed": 1380
+    }
+   ],
+   "source": 83,
+   "errors": 0,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "isr-0",
+   "group": "regional",
+   "title": "EasyList Hebrew",
+   "lang": [
+    "he"
+   ],
+   "files": [
+    {
+     "file": "isr-0.json.xz",
+     "rules": 808,
+     "sha": "068e5681d5816857",
+     "bytes": 159899,
+     "packed": 19068
+    }
+   ],
+   "source": 1573,
+   "errors": 45,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "ita-0",
+   "group": "regional",
+   "title": "EasyList Italy",
+   "lang": [
+    "fur",
+    "it",
+    "lij",
+    "sc"
+   ],
+   "files": [
+    {
+     "file": "ita-0.json.xz",
+     "rules": 2890,
+     "sha": "a8df9a044862aa9f",
+     "bytes": 450378,
+     "packed": 57592
+    }
+   ],
+   "source": 4212,
+   "errors": 3,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "jpn-1",
+   "group": "regional",
+   "title": "AdGuard Japanese",
+   "lang": [
+    "ja"
+   ],
+   "files": [
+    {
+     "file": "jpn-1.json.xz",
+     "rules": 6472,
+     "sha": "2eef62d9f1c5100b",
+     "bytes": 1214139,
+     "packed": 159452
+    }
+   ],
+   "source": 12331,
+   "errors": 117,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "kor-1",
+   "group": "regional",
+   "title": "한국어 (Korean)",
+   "lang": [
+    "ko"
+   ],
+   "files": [
+    {
+     "file": "kor-1.json.xz",
+     "rules": 1,
+     "sha": "0756819b7a6ec22f",
+     "bytes": 154,
+     "packed": 204
+    }
+   ],
+   "source": 228,
+   "errors": 1,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "ltu-0",
+   "group": "regional",
+   "title": "EasyList Lithuania",
+   "lang": [
+    "lt"
+   ],
+   "files": [
+    {
+     "file": "ltu-0.json.xz",
+     "rules": 920,
+     "sha": "28859efa4e3bc7c3",
+     "bytes": 133694,
+     "packed": 18988
+    }
+   ],
+   "source": 1197,
+   "errors": 4,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "lva-0",
+   "group": "regional",
+   "title": "Latvian List",
+   "lang": [
+    "lv"
+   ],
+   "files": [
+    {
+     "file": "lva-0.json.xz",
+     "rules": 271,
+     "sha": "cfc6f49df5c3a2fd",
+     "bytes": 37921,
+     "packed": 5556
+    }
+   ],
+   "source": 430,
+   "errors": 3,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "mkd-0",
+   "group": "regional",
+   "title": "Macedonian adBlock Filters",
+   "lang": [
+    "mk"
+   ],
+   "files": [
+    {
+     "file": "mkd-0.json.xz",
+     "rules": 458,
+     "sha": "785eca2384cf0c4d",
+     "bytes": 100794,
+     "packed": 24812
+    }
+   ],
+   "source": 816,
+   "errors": 0,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "nld-0",
+   "group": "regional",
+   "title": "AdGuard Dutch",
+   "lang": [
+    "af",
+    "fy",
+    "nl"
+   ],
+   "files": [
+    {
+     "file": "nld-0.json.xz",
+     "rules": 1299,
+     "sha": "d9b4915223ccea6b",
+     "bytes": 202248,
+     "packed": 25756
+    }
+   ],
+   "source": 1971,
+   "errors": 8,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "nor-0",
+   "group": "regional",
+   "title": "Dandelion Sprouts nordiske filtre",
+   "lang": [
+    "nb",
+    "nn",
+    "no",
+    "da",
+    "is"
+   ],
+   "files": [
+    {
+     "file": "nor-0.json.xz",
+     "rules": 2127,
+     "sha": "4f77dacb81551ad0",
+     "bytes": 1219774,
+     "packed": 54896
+    }
+   ],
+   "source": 2872,
+   "errors": 33,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "pol-0",
+   "group": "regional",
+   "title": "Oficjalne Polskie Filtry do uBlocka Origin",
+   "lang": [
+    "szl",
+    "pl"
+   ],
+   "files": [
+    {
+     "file": "pol-0.json.xz",
+     "rules": 3965,
+     "sha": "5fef4f156abcb029",
+     "bytes": 685081,
+     "packed": 95388
+    }
+   ],
+   "source": 5989,
+   "errors": 77,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "pol-3",
+   "group": "regional",
+   "title": "CERT.PL's Warning List",
+   "lang": [
+    "szl",
+    "pl"
+   ],
+   "files": [
+    {
+     "file": "pol-3.json.xz",
+     "rules": 23176,
+     "sha": "e7521fbc7eb77743",
+     "bytes": 1864756,
+     "packed": 165052
+    }
+   ],
+   "source": 23176,
+   "errors": 0,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "rou-1",
+   "group": "regional",
+   "title": "Romanian Ad (ROad) Block List Light",
+   "lang": [
+    "ro"
+   ],
+   "files": [
+    {
+     "file": "rou-1.json.xz",
+     "rules": 1147,
+     "sha": "8d6280823793bcea",
+     "bytes": 187547,
+     "packed": 22652
+    }
+   ],
+   "source": 1992,
+   "errors": 10,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "rus-0",
+   "group": "regional",
+   "title": "RU AdList",
+   "lang": [
+    "be",
+    "kk",
+    "tt",
+    "ru",
+    "uz"
+   ],
+   "files": [
+    {
+     "file": "rus-0.json.xz",
+     "rules": 24607,
+     "sha": "f0c8cb49bf990d26",
+     "bytes": 3629339,
+     "packed": 317812
+    }
+   ],
+   "source": 32370,
+   "errors": 263,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "spa-0",
+   "group": "regional",
+   "title": "EasyList Spanish",
+   "lang": [
+    "an",
+    "ast",
+    "ca",
+    "cak",
+    "es",
+    "eu",
+    "gl",
+    "gn",
+    "trs",
+    "quz"
+   ],
+   "files": [
+    {
+     "file": "spa-0.json.xz",
+     "rules": 1783,
+     "sha": "dd0406cbc6088986",
+     "bytes": 299617,
+     "packed": 38860
+    }
+   ],
+   "source": 2657,
+   "errors": 8,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "spa-1",
+   "group": "regional",
+   "title": "AdGuard Spanish/Portuguese",
+   "lang": [
+    "an",
+    "ast",
+    "ca",
+    "cak",
+    "es",
+    "eu",
+    "gl",
+    "gn",
+    "trs",
+    "pt",
+    "quz"
+   ],
+   "files": [
+    {
+     "file": "spa-1.json.xz",
+     "rules": 3003,
+     "sha": "3edc863a67edd8aa",
+     "bytes": 616581,
+     "packed": 74188
+    }
+   ],
+   "source": 5739,
+   "errors": 85,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "svn-0",
+   "group": "regional",
+   "title": "Slovenian List",
+   "lang": [
+    "sl"
+   ],
+   "files": [
+    {
+     "file": "svn-0.json.xz",
+     "rules": 280,
+     "sha": "ceb2e40f7882e265",
+     "bytes": 41876,
+     "packed": 6656
+    }
+   ],
+   "source": 506,
+   "errors": 1,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "swe-1",
+   "group": "regional",
+   "title": "Frellwit's Swedish Filter",
+   "lang": [
+    "sv"
+   ],
+   "files": [
+    {
+     "file": "swe-1.json.xz",
+     "rules": 2732,
+     "sha": "4c61635e4838a63b",
+     "bytes": 432730,
+     "packed": 57488
+    }
+   ],
+   "source": 3792,
+   "errors": 33,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "tha-0",
+   "group": "regional",
+   "title": "EasyList Thailand",
+   "lang": [
+    "th"
+   ],
+   "files": [
+    {
+     "file": "tha-0.json.xz",
+     "rules": 997,
+     "sha": "e23967f99e566b42",
+     "bytes": 121479,
+     "packed": 13876
+    }
+   ],
+   "source": 1389,
+   "errors": 2,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "tur-0",
+   "group": "regional",
+   "title": "AdGuard Turkish",
+   "lang": [
+    "tr"
+   ],
+   "files": [
+    {
+     "file": "tur-0.json.xz",
+     "rules": 3727,
+     "sha": "6941c6603ce50cb2",
+     "bytes": 1179718,
+     "packed": 95556
+    }
+   ],
+   "source": 6849,
+   "errors": 504,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "ukr-0",
+   "group": "regional",
+   "title": "AdGuard Ukrainian",
+   "lang": [
+    "uk"
+   ],
+   "files": [
+    {
+     "file": "ukr-0.json.xz",
+     "rules": 4289,
+     "sha": "f7157d77b0d9f29a",
+     "bytes": 1123198,
+     "packed": 58560
+    }
+   ],
+   "source": 5542,
+   "errors": 46,
+   "fetched": "2026-11-25"
+  },
+  {
+   "id": "vie-1",
+   "group": "regional",
+   "title": "ABPVN List",
+   "lang": [
+    "vi"
+   ],
+   "files": [
+    {
+     "file": "vie-1.json.xz",
+     "rules": 734,
+     "sha": "87cb0fdb0c2448a0",
+     "bytes": 110953,
+     "packed": 15328
+    }
+   ],
+   "source": 1190,
+   "errors": 14,
+   "fetched": "2026-11-25"
+  }
+ ]
+}
