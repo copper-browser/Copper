@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Copper, an open source Mac browser with an MCP server built in</title>
+<title>Copper: a free, open source Mac browser with an MCP server built in, and an Arc alternative</title>
+<link rel="canonical" href="https://copper.exowatt.com/">
 <meta name="description" content="Copper is an open source Mac browser on WebKit with an MCP server built in. Claude Code, Codex, phi or any MCP client can drive it on the subscription you already pay for. It has Arc-style spaces, Bitwarden sign-in for agents, a multiplayer canvas and Copper Cloud, a sync server you host yourself. MIT licensed.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#F8F2EA" media="(prefers-color-scheme: light)">
@@ -12,18 +13,66 @@
 <meta property="og:site_name" content="Copper">
 <meta property="og:title" content="Copper. Open source. Bring your own agent.">
 <meta property="og:description" content="A fast Mac browser with an MCP server built in. It works with the agent and subscription you already pay for. Full Arc parity. MIT licensed.">
-<meta property="og:image" content="https://copper-browser.github.io/Copper/assets/og.jpg">
-<meta property="og:url" content="https://copper-browser.github.io/Copper/">
+<meta property="og:image" content="https://copper.exowatt.com/assets/og.jpg">
+<meta property="og:url" content="https://copper.exowatt.com/">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="The headline, Open source. Bring your own agent., next to a Copper window on Wikipedia with tabs in a copper-coloured sidebar on the left.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Copper. Open source. Bring your own agent.">
 <meta name="twitter:description" content="A fast Mac browser with an MCP server built in. It works with the agent and subscription you already pay for. Full Arc parity. MIT licensed.">
-<meta name="twitter:image" content="https://copper-browser.github.io/Copper/assets/og.jpg">
+<meta name="twitter:image" content="https://copper.exowatt.com/assets/og.jpg">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
 <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<!-- site_build.py rewrites "softwareVersion" to the latest release; the FAQ answers repeat #faq word for word. -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": "https://copper.exowatt.com/#website",
+      "name": "Copper",
+      "url": "https://copper.exowatt.com/"
+    },
+    {
+      "@type": "SoftwareApplication",
+      "name": "Copper",
+      "description": "An open source Mac browser on WebKit with an MCP server built in, so Claude Code, Codex, phi or any MCP client can drive it. Spaces, split view and a command bar like Arc's.",
+      "applicationCategory": "BrowserApplication",
+      "operatingSystem": "macOS 14 or later, Windows 10 or 11, Linux",
+      "softwareVersion": "1.0.20261124.117",
+      "url": "https://copper.exowatt.com/",
+      "downloadUrl": "https://github.com/copper-browser/Copper/releases/latest",
+      "releaseNotes": "https://copper.exowatt.com/release-notes/",
+      "license": "https://opensource.org/licenses/MIT",
+      "image": "https://copper.exowatt.com/assets/og.jpg",
+      "isAccessibleForFree": true,
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "author": [
+        { "@type": "Person", "name": "Collin Rijock", "url": "https://collinrijock.com" },
+        { "@type": "Person", "name": "Felipe Arce", "url": "https://felipearce.dev" }
+      ],
+      "isPartOf": { "@id": "https://copper.exowatt.com/#website" }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        { "@type": "Question", "name": "What does it cost?", "acceptedAnswer": { "@type": "Answer", "text": "Nothing. Copper is free and open source under the MIT license." } },
+        { "@type": "Question", "name": "Do I need an AI subscription?", "acceptedAnswer": { "@type": "Answer", "text": "No. Copper is a whole browser without one. Agents are optional: Claude Code, Codex, phi or any MCP client drives it on the plan you already pay for, once you turn on Settings › Agents › Let agents drive this window." } },
+        { "@type": "Question", "name": "Is it safe to open?", "acceptedAnswer": { "@type": "Answer", "text": "Copper is ad-hoc signed and not yet notarized by Apple, so macOS asks before the first launch. Homebrew and the one-line installer clear that for you. After a manual download, run xattr -cr /Applications/Copper.app once, or right-click Copper and choose Open. The source is on GitHub if you'd rather build it yourself." } },
+        { "@type": "Question", "name": "What does it send?", "acceptedAnswer": { "@type": "Answer", "text": "The pages you ask for, their icons, and an update check at launch and every six hours. Copper has no analytics, no crash reports and no account. Jev and Copper Cloud send only while you use them." } },
+        { "@type": "Question", "name": "And this website?", "acceptedAnswer": { "@type": "Answer", "text": "It has no analytics, trackers or cookies, and loads nothing from other sites." } },
+        { "@type": "Question", "name": "Is it Safari?", "acceptedAnswer": { "@type": "Answer", "text": "No. Copper uses the WebKit that ships with macOS, the engine Safari uses, with its own window, sidebar and features. It doesn't bundle a copy of Chromium." } },
+        { "@type": "Question", "name": "Do Chrome extensions work?", "acceptedAnswer": { "@type": "Answer", "text": "Yes, on macOS 15.4 or later. Paste a Chrome Web Store link, or press Add on the extension's page. It runs on WebKit's own extension engine." } },
+        { "@type": "Question", "name": "Coming from Arc?", "acceptedAnswer": { "@type": "Answer", "text": "Flow brings over your Arc spaces, pinned tabs, tab groups, open tabs, bookmarks, history, passwords and extensions with one button." } },
+        { "@type": "Question", "name": "Windows or Linux?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Copper runs on Windows 10 and 11 (x64 and ARM64) and on Linux (x86_64 and aarch64)." } }
+      ]
+    }
+  ]
+}
+</script>
 <link rel="preload" as="image" href="assets/art-liquid.webp" type="image/webp">
 <script>
   document.documentElement.classList.add('js');
@@ -65,13 +114,6 @@
   --glow1: rgba(240, 130, 70, .22);
   --glow2: rgba(40, 190, 165, .16);
   --shadow: 0 1px 2px rgba(60, 30, 10, .08), 0 10px 24px -10px rgba(80, 40, 10, .22), 0 34px 64px -28px rgba(80, 40, 10, .34);
-  /* the little Copper window */
-  --w-side: #F7F4EF;
-  --w-page: #FFFFFF;
-  --w-sel: #FFFFFF;
-  --w-ink: #22201D;
-  --w-ink-2: #77706A;
-  --w-line: rgba(0, 0, 0, .08);
   --term-bg: #16110E;
   --term-ink: #EFE6DA;
   --term-dim: #9C9286;
@@ -91,7 +133,6 @@
   --patina: #3DD6BE; --grad: linear-gradient(100deg, #FF7A3D 0%, #FFB36B 55%, #FFD9A0 100%);
   --glow1: rgba(232, 104, 46, .30); --glow2: rgba(38, 190, 168, .20);
   --shadow: 0 2px 4px rgba(0, 0, 0, .4), 0 28px 70px -18px rgba(0, 0, 0, .8);
-  --w-side: #26231F; --w-page: #1E1C19; --w-sel: #34302B; --w-ink: #ECE6DE; --w-ink-2: #A0978D; --w-line: rgba(255, 255, 255, .08);
   --term-bg: #070605;
   color-scheme: dark;
 }
@@ -103,7 +144,6 @@
     --patina: #3DD6BE; --grad: linear-gradient(100deg, #FF7A3D 0%, #FFB36B 55%, #FFD9A0 100%);
     --glow1: rgba(232, 104, 46, .30); --glow2: rgba(38, 190, 168, .20);
     --shadow: 0 2px 4px rgba(0, 0, 0, .4), 0 28px 70px -18px rgba(0, 0, 0, .8);
-    --w-side: #26231F; --w-page: #1E1C19; --w-sel: #34302B; --w-ink: #ECE6DE; --w-ink-2: #A0978D; --w-line: rgba(255, 255, 255, .08);
     --term-bg: #070605;
     color-scheme: dark;
   }
@@ -169,163 +209,6 @@ kbd {
   font-size: .8em; line-height: 1.5; color: var(--ink); background: var(--surface);
   border: 1px solid var(--line-2); box-shadow: 0 1px 0 var(--line-2); white-space: nowrap;
 }
-
-/* ---------- try it ---------- */
-.try { display: grid; grid-template-columns: minmax(0, 20rem) minmax(0, 1fr); gap: clamp(32px, 5vw, 64px); align-items: start; }
-.try .sec-head { position: sticky; top: 96px; }
-.try .sec-head p { text-wrap: balance; }
-.hints { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-.hint {
-  display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px 0 6px; border-radius: 999px;
-  border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font: 500 14px/1 var(--font); cursor: pointer;
-  transition: border-color .15s ease, background-color .15s ease;
-}
-.hint:hover { border-color: var(--accent); }
-.hint kbd { font-size: 12px; background: var(--sunk); box-shadow: none; border-color: transparent; }
-.hint[aria-pressed="true"] { border-color: var(--accent); background: var(--mark); }
-
-/* the little Copper window */
-.cw {
-  --space: #B87333;
-  position: relative; display: grid; grid-template-columns: 200px minmax(0, 1fr); height: 460px;
-  border-radius: 12px; overflow: hidden; background: var(--w-page); color: var(--w-ink);
-  box-shadow: 0 0 0 1px var(--line-2), var(--shadow);
-  font-size: 13px; line-height: 1.4; letter-spacing: 0;
-}
-.cw[data-space="work"] { --space: #3F8A7C; }
-.cw-side {
-  display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 12px 10px 10px;
-  background: color-mix(in srgb, var(--space) 7%, var(--w-side)); border-right: 1px solid var(--w-line);
-  transition: background-color .25s ease;
-}
-.cw-lights { display: flex; gap: 7px; padding: 2px 4px 10px; }
-.cw-lights i { width: 11px; height: 11px; border-radius: 50%; background: #EC6A5E; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.12); }
-.cw-lights i:nth-child(2) { background: #F4BF4F; }
-.cw-lights i:nth-child(3) { background: #61C554; }
-.cw-pins { display: flex; gap: 6px; padding: 0 2px 8px; }
-.cw button { font: inherit; color: inherit; }
-.cw-pin {
-  width: 30px; height: 30px; border-radius: 8px; border: 0; cursor: pointer; display: grid; place-items: center;
-  background: color-mix(in srgb, var(--w-ink) 6%, transparent); color: var(--w-ink-2); font-weight: 600; font-size: 12px;
-}
-.cw-pin[aria-selected="true"] { background: var(--w-sel); color: var(--w-ink); box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 0 0 1px var(--w-line); }
-.cw-label { display: flex; align-items: center; gap: 6px; padding: 6px 8px 4px; font-size: 11.5px; font-weight: 600; color: var(--w-ink-2); }
-.cw-label::before { content: ""; width: 7px; height: 7px; border-radius: 2px; background: var(--space); }
-.cw-tabs { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.cw-tab, .cw-new {
-  position: relative; display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; height: 30px; padding: 0 8px;
-  border: 0; border-radius: 7px; background: transparent; cursor: pointer; text-align: left; color: var(--w-ink-2);
-}
-.cw-tab:hover { background: color-mix(in srgb, var(--w-ink) 5%, transparent); }
-.cw-tab[aria-selected="true"] { background: var(--w-sel); color: var(--w-ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 0 0 1px var(--w-line); }
-.cw-tab[aria-selected="true"]::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2.5px; border-radius: 2px; background: var(--space); }
-.cw-fav {
-  flex: none; width: 16px; height: 16px; border-radius: 4px; display: grid; place-items: center;
-  font-size: 9px; font-weight: 700; color: var(--w-ink-2); background: color-mix(in srgb, var(--w-ink) 8%, transparent);
-}
-.cw-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cw-new { color: color-mix(in srgb, var(--w-ink-2) 80%, transparent); }
-.cw-new:hover { color: var(--w-ink); }
-.cw-new .plus { width: 16px; text-align: center; font-size: 15px; line-height: 1; }
-.cw-spaces { margin-top: auto; display: flex; gap: 6px; padding: 8px 2px 0; }
-.cw-sp {
-  display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px 0 7px; border-radius: 7px;
-  border: 0; cursor: pointer; background: transparent; color: var(--w-ink-2); font-size: 12px;
-}
-.cw-sp i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
-.cw-sp[aria-pressed="true"] { background: color-mix(in srgb, var(--w-ink) 7%, transparent); color: var(--w-ink); font-weight: 600; }
-.cw-sp:hover { color: var(--w-ink); }
-
-.cw-page { position: relative; min-width: 0; overflow: hidden; }
-#cw-view { position: absolute; inset: 0; }
-.scroll { position: absolute; inset: 0; overflow-y: auto; outline-offset: -3px; }
-.scroll:focus-visible { border-radius: 0; }
-.pg { padding: 30px clamp(18px, 5%, 44px) 90px; max-width: 34rem; margin-inline: auto; }
-.pg h3 { font-size: 21px; line-height: 1.2; letter-spacing: -.015em; margin: 6px 0 10px; font-weight: 650; }
-.pg p { color: var(--w-ink-2); font-size: 13.5px; line-height: 1.6; margin-top: 8px; }
-.pg .site { font-size: 11.5px; font-weight: 600; color: var(--w-ink-2); display: flex; justify-content: space-between; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--w-line); margin-bottom: 18px; }
-.pg ul { margin: 10px 0 0; padding-left: 18px; color: var(--w-ink-2); }
-.pg .big { font: 600 54px/1 var(--display); letter-spacing: -.03em; color: var(--w-ink); margin-top: 6px; }
-.pg .rows { list-style: none; padding: 0; margin: 12px 0 0; }
-.pg .rows li { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--w-line); color: var(--w-ink); }
-.pg .rows li span:last-child { color: var(--w-ink-2); white-space: nowrap; }
-.promo { margin: 16px 0; padding: 12px 14px; border-radius: 8px; background: color-mix(in srgb, #3F8A7C 12%, transparent); color: var(--w-ink); font-size: 12.5px; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; }
-.fakebtn { display: inline-block; padding: 5px 11px; border-radius: 6px; background: var(--w-ink); color: var(--w-page); font-size: 12px; font-weight: 600; }
-.fakebtn.ghost { background: transparent; color: var(--w-ink); box-shadow: inset 0 0 0 1px var(--w-line); }
-.cookie {
-  position: absolute; left: 14px; right: 14px; bottom: 14px; z-index: 2;
-  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; justify-content: space-between;
-  padding: 12px 14px; border-radius: 10px; background: var(--w-sel); color: var(--w-ink);
-  box-shadow: 0 0 0 1px var(--w-line), 0 10px 30px -8px rgba(0,0,0,.28); font-size: 12.5px;
-}
-.cookie p { margin: 0; color: inherit; font-size: inherit; max-width: 28em; }
-.cookie .acts { display: flex; gap: 6px; }
-
-/* hide mode */
-.cw.hiding .cw-page { cursor: crosshair; }
-.cw.hiding [data-hide] { outline: 1.5px dashed color-mix(in srgb, var(--ring) 60%, transparent); outline-offset: 2px; cursor: crosshair; }
-.cw.hiding [data-hide]:hover, .cw.hiding [data-hide]:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; background-image: linear-gradient(var(--mark), var(--mark)); }
-[data-hide].gone { display: none; }
-.cw-bar {
-  position: absolute; top: 10px; left: 50%; translate: -50% 0; z-index: 5; width: max-content; max-width: calc(100% - 24px);
-  padding: 7px 12px; border-radius: 999px; background: var(--w-ink); color: var(--w-page); font-size: 12px; font-weight: 500;
-  box-shadow: 0 6px 20px -6px rgba(0,0,0,.35); text-align: center;
-}
-.cw-toast {
-  position: absolute; bottom: 14px; left: 50%; translate: -50% 0; z-index: 6; width: max-content; max-width: calc(100% - 24px);
-  display: flex; align-items: center; gap: 12px; padding: 9px 10px 9px 14px; border-radius: 10px;
-  background: var(--w-ink); color: var(--w-page); font-size: 12.5px; box-shadow: 0 10px 30px -8px rgba(0,0,0,.4);
-}
-.cw-toast button { flex: none; border: 0; background: color-mix(in srgb, var(--w-page) 18%, transparent); color: var(--w-page) !important; border-radius: 6px; padding: 4px 9px; font-size: 12px !important; font-weight: 600 !important; cursor: pointer; }
-.cw [hidden] { display: none !important; }
-
-/* palette */
-.cw-scrim { position: absolute; inset: 0; z-index: 8; background: rgba(20, 16, 12, .18); display: grid; justify-items: center; align-items: start; padding: 56px 16px 16px; }
-.cw-pal {
-  width: min(420px, 100%); border-radius: 12px; overflow: hidden; background: var(--w-page);
-  box-shadow: 0 0 0 1px var(--w-line), 0 24px 60px -12px rgba(0,0,0,.45);
-}
-.cw-pal input {
-  width: 100%; border: 0; border-bottom: 1px solid var(--w-line); padding: 14px 16px; background: transparent; color: var(--w-ink);
-  font: 15px/1.2 var(--font); outline: none;
-}
-.cw-pal input::placeholder { color: var(--w-ink-2); }
-.cw-pal ul { list-style: none; margin: 0; padding: 6px; max-height: 236px; overflow-y: auto; }
-.cw-pal li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 7px; cursor: pointer; color: var(--w-ink); min-width: 0; }
-.cw-pal li[aria-selected="true"] { background: color-mix(in srgb, var(--space) 16%, transparent); }
-.cw-pal li .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cw-pal li .s { flex: none; font-size: 11.5px; color: var(--w-ink-2); }
-.cw-pal mark { background: none; color: inherit; font-weight: 700; text-decoration: underline; text-decoration-color: var(--space); text-underline-offset: 2px; }
-.cw-pal .empty { padding: 12px 10px; color: var(--w-ink-2); }
-
-/* tabs across the top */
-.cw[data-layout="top"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-.cw[data-layout="top"] .cw-side { flex-direction: row; align-items: center; gap: 6px; padding: 8px 10px; border-right: 0; border-bottom: 1px solid var(--w-line); }
-.cw[data-layout="top"] .cw-lights { padding: 0 6px 0 2px; }
-.cw[data-layout="top"] .cw-pins { padding: 0; }
-.cw[data-layout="top"] .cw-pin { width: 28px; height: 28px; }
-.cw[data-layout="top"] .cw-label { display: none; }
-.cw[data-layout="top"] .cw-tabs { flex-direction: row; flex: 1 1 0; min-width: 0; gap: 3px; overflow: hidden; padding: 2px; margin: -2px; }
-.cw[data-layout="top"] .cw-tab { flex: 1 1 0; min-width: 0; max-width: 170px; height: 28px; }
-.cw[data-layout="top"] .cw-tab[aria-selected="true"] { flex-grow: 2.4; max-width: 240px; }
-.cw[data-layout="top"] .cw-spaces, .cw[data-layout="top"] .cw-pins, .cw[data-layout="top"] .cw-lights { flex: none; }
-.cw[data-layout="top"] .cw-tab[aria-selected="true"]::before { left: 8px; right: 8px; top: auto; bottom: 0; width: auto; height: 2px; }
-.cw[data-layout="top"] .cw-new { width: 28px; flex: none; padding: 0; justify-content: center; }
-.cw[data-layout="top"] .cw-new .lbl { display: none; }
-.cw[data-layout="top"] .cw-spaces { margin: 0; padding: 0; }
-.cw[data-layout="top"] .cw-sp { padding: 0 7px; }
-.cw[data-layout="top"] .cw-sp .lbl { display: none; }
-.cw-box { container-type: inline-size; }
-@container (max-width: 560px) {
-  .cw[data-layout="top"] .cw-side { flex-wrap: wrap; row-gap: 8px; }
-  .cw[data-layout="top"] .cw-spaces { margin-left: auto; }
-  .cw[data-layout="top"] .cw-tabs { order: 5; flex: 1 1 calc(100% - 40px); }
-  .cw[data-layout="top"] .cw-new { order: 6; }
-  .cw[data-layout="top"] .cw-tab { padding: 0 6px; gap: 6px; }
-}
-.demo-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; margin-top: 14px; font-size: 14px; color: var(--ink-2); }
-.linkish { border: 0; background: none; padding: 0; color: var(--ink-2); font: inherit; text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 3px; cursor: pointer; }
-.linkish:hover { color: var(--ink); }
 
 /* ---------- quiet by default: ledger ---------- */
 .quiet { display: grid; grid-template-columns: minmax(0, 1fr); gap: 48px; }
@@ -657,8 +540,6 @@ h2, .sec-head h2, .sec-head .h2 { font-size: clamp(2.1rem, 1.3rem + 2.6vw, 3.3re
 
 /* existing blocks, re-tuned */
 .feature-copy code, .note-row code { font-size: .88em; padding: 1px 5px; border-radius: 4px; background: var(--sunk); color: var(--ink); overflow-wrap: anywhere; }
-.try .sec-head { top: 96px; }
-.cw { border-radius: 14px; }
 .ledger, .jev-facts, .steps, .install, .never { border-color: var(--line); }
 .manifest { border-radius: var(--r-xl); }
 .split { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: clamp(36px, 6vw, 80px); align-items: center; margin-top: clamp(48px, 6vw, 72px); }
@@ -685,6 +566,69 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
 .foot-id a { color: var(--ink); text-decoration-color: var(--line-2); text-underline-offset: 3px; }
 .foot-id a:hover { text-decoration-color: var(--accent); }
 
+/* ---------- send to my Mac (phones only; the script unhides it) ---------- */
+.send { margin-top: 28px; display: grid; gap: 6px; }
+.send[hidden] { display: none; }
+.send .btn { justify-content: center; }
+.send-more { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 22px; font-size: 15px; }
+.send-more a, .linkish { display: inline-flex; align-items: center; min-height: 40px; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 3px; }
+.send-more a:hover, .linkish:hover { text-decoration-color: var(--accent); }
+.hero-copy:has(.send:not([hidden])) .hero-actions { display: none; }
+
+/* ---------- the live demo: WP-3's try/?embed, a fixed 16:10 window ---------- */
+.demo-sec { margin-top: clamp(56px, 7vw, 96px); }
+.demo { position: relative; padding-top: 52px; max-width: max(720px, calc((100svh - 200px) * 1.6)); margin-inline: auto; }
+.demo-stage { position: relative; aspect-ratio: 16 / 10; border-radius: 14px; overflow: hidden; background: var(--surface); box-shadow: 0 0 0 1px var(--line), var(--shadow); }
+.demo-frame { display: block; width: 100%; height: 100%; border: 0; background: transparent; color-scheme: normal; }
+.cue {
+  position: absolute; top: 0; left: 0; display: flex; gap: .6em; margin: 0; padding: 9px 14px 8px; border-radius: 8px;
+  background: var(--ink); color: var(--bg); font: 600 14px/1.2 var(--font); white-space: nowrap;
+}
+.cue::after { content: ""; position: absolute; top: 100%; left: 22px; border: 6px solid transparent; border-top-color: var(--ink); border-bottom: 0; }
+.cue-swap { display: grid; color: var(--accent); }
+.cue-nudge, .cue-told { grid-area: 1 / 1; transition: opacity .2s ease; }
+.cue-told, .demo[data-engaged] .cue-nudge { opacity: 0; }
+.demo[data-engaged] .cue-told { opacity: 1; transition-delay: .1s; }
+.by-touch { display: none; }
+@media (hover: none) { .by-touch { display: inline; } .by-pointer { display: none; } }
+/* phones and no-script get a link to try/ instead */
+.demo-phone {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 16px; padding: 20px 22px;
+  border-radius: var(--r-l); background: var(--tile); border: 1px solid var(--line-2); color: var(--ink); text-decoration: none;
+}
+.demo-phone strong { font: 650 19px/1.25 var(--display); }
+.demo-phone span { grid-column: 1; color: var(--ink-2); font-size: 15px; }
+.demo-phone svg { grid-column: 2; grid-row: 1 / 3; width: 22px; height: 22px; color: var(--accent); }
+html.js .demo-phone { display: none; }
+html:not(.js) .demo { display: none; }
+
+/* ---------- benchmark cards (from the Polar run; benchmarks/ has the rest) ---------- */
+.cards { list-style: none; margin: 44px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.card { display: grid; gap: 10px; align-content: start; padding: 24px 24px 22px; border-radius: var(--r-l); background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
+.card h3 { font: 600 17px/1.3 var(--display); letter-spacing: -.01em; }
+.verdict { margin-bottom: 6px; color: var(--ink-2); font-size: 15px; }
+.verdict b { font: 700 44px/1 var(--display); letter-spacing: -.035em; color: var(--accent); margin-right: 4px; }
+.bench-row { display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 15px; }
+.bench-row span { flex: none; width: 4em; }
+.bench-row i { flex: none; height: 12px; border-radius: 999px; width: calc(var(--v) / var(--max) * (100% - 10.5em)); min-width: 12px; background: var(--accent); }
+.bench-row b { font: 650 17px/1 var(--display); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bench-row.them { color: var(--ink-2); font-weight: 500; }
+.bench-row.them i { background: var(--line-2); }
+.bench-row.them b { font-weight: 500; }
+.card-note { margin-top: 6px; font-size: 13.5px; color: var(--ink-2); }
+.card-note code { font-size: 12px; padding: 1px 5px; border-radius: 4px; background: var(--sunk); color: var(--ink); }
+.cards-foot { margin-top: 18px; font-size: 14px; color: var(--ink-2); }
+.cards-foot a, .faq a, .version a { color: var(--ink); text-decoration-color: var(--line-2); text-underline-offset: 3px; }
+.cards-foot a:hover, .faq a:hover, .version a:hover { text-decoration-color: var(--accent); }
+
+/* ---------- FAQ ---------- */
+.faq { margin-top: 36px; max-width: 46rem; border-top: 1px solid var(--line); }
+.faq .fold { margin: 0; }
+.faq .fold summary { min-height: 56px; font-size: 17px; }
+.faq .fold p { padding: 0 0 20px; color: var(--ink-2); font-size: 15.5px; max-width: 40em; }
+.faq code { font-size: .88em; padding: 1px 5px; border-radius: 4px; background: var(--sunk); color: var(--ink); overflow-wrap: anywhere; }
+.version { color: var(--ink-2); font-size: 15px; }
+
 /* ---------- responsive ---------- */
 @media (max-width: 1100px) {
   .hero { display: block; }
@@ -702,13 +646,15 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
   .t-canvas, .t-mit { height: 320px; }
 }
 @media (max-width: 960px) {
-  .try, .flow, .agents, .jev-head, .scenario-body, .feature, .feature.flip, .split { grid-template-columns: minmax(0, 1fr); }
+  .flow, .agents, .jev-head, .scenario-body, .feature, .feature.flip, .split { grid-template-columns: minmax(0, 1fr); }
   .feature.flip .feature-copy { order: 0; }
-  .try .sec-head { position: static; max-width: 40rem; }
   .note-row { grid-template-columns: minmax(0, 1fr); }
 }
-@media (max-width: 860px) {
+@media (max-width: 1020px) {
   .nav-links { display: none; }
+}
+@media (max-width: 960px) {
+  .cards { grid-template-columns: minmax(0, 1fr); max-width: 34rem; }
 }
 @media (max-width: 760px) {
   .ledger, .jev-facts { grid-template-columns: minmax(0, 1fr); }
@@ -733,12 +679,11 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
   .t-agents { grid-template-columns: minmax(0, 1fr); height: 420px; gap: 18px; }
   .t-agents .t-shot { width: 440px; }
   .t-canvas, .t-mit { height: 300px; }
-  .cw { height: 440px; }
   /* thumbs: every control at least 40 px tall */
-  .brand, .linkish { min-height: 40px; }
-  .linkish { display: inline-flex; align-items: center; }
+  .brand { min-height: 40px; }
+  footer .links a, .faq a, .cards-foot a { display: inline-flex; align-items: center; min-height: 40px; }
   .theme { width: 40px; height: 40px; }
-  .btn-sm, .hint, .dl-tabs [role="tab"] { min-height: 40px; }
+  .btn-sm, .dl-tabs [role="tab"] { min-height: 40px; }
   .copy, .hero .copy { width: 40px; height: 40px; padding: 0; justify-content: center; }
   .copy span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   /* phone: the window comes right after the button; the brew line waits in Install */
@@ -754,6 +699,9 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
   .manifest li { grid-template-columns: 15px minmax(0, 1fr); }
   .manifest li small { grid-column: 2; text-align: left; }
   .hero-actions .btn { flex: 1 1 100%; justify-content: center; }
+  /* the demo needs a real window: phones get a link to try/ */
+  .demo { display: none; }
+  html.js .demo-phone { display: grid; }
   .hero-actions .cmd { flex: 1 1 100%; }
   .frame, .reel { border-radius: 12px; }
   .steps li { grid-template-columns: 24px minmax(0, 1fr); }
@@ -773,10 +721,6 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
 }
 @media (prefers-reduced-motion: no-preference) {
   html { scroll-behavior: smooth; }
-  .cw-pal { animation: pal-in .16s ease-out; }
-  @keyframes pal-in { from { opacity: 0; transform: translateY(-6px) scale(.985); } }
-  .cw-toast { animation: toast-in .2s ease-out; }
-  @keyframes toast-in { from { opacity: 0; transform: translateY(6px); } }
 }
 </style>
 </head>
@@ -784,6 +728,7 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5L19.5 7"/></symbol>
+  <symbol id="i-mac" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M1.5 19.5h21"/></symbol>
   <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M6.5 10.5L12 16l5.5-5.5M5 20h14"/></symbol>
   <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M13 6l6 6-6 6"/></symbol>
   <symbol id="i-gh" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1.5a10.5 10.5 0 0 0-3.32 20.46c.53.1.72-.23.72-.5v-1.8c-2.92.63-3.54-1.4-3.54-1.4-.48-1.22-1.17-1.54-1.17-1.54-.95-.65.08-.64.08-.64 1.05.08 1.6 1.08 1.6 1.08.94 1.6 2.46 1.14 3.06.87.1-.68.37-1.14.66-1.4-2.33-.27-4.78-1.17-4.78-5.18 0-1.15.41-2.08 1.08-2.82-.1-.27-.47-1.34.1-2.79 0 0 .88-.28 2.89 1.08a10 10 0 0 1 5.26 0c2-1.36 2.88-1.08 2.88-1.08.58 1.45.21 2.52.1 2.79.68.74 1.08 1.67 1.08 2.82 0 4.02-2.45 4.9-4.79 5.16.38.33.71.97.71 1.96v2.9c0 .28.19.61.73.5A10.5 10.5 0 0 0 12 1.5z"/></symbol>
@@ -797,11 +742,11 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
     <a class="brand" href="#top" aria-label="Copper, back to top"><img src="assets/icon-96.webp" alt="" width="30" height="30">Copper</a>
     <nav aria-label="Sections">
       <ul class="nav-links">
+        <li><a href="#try">Try it</a></li>
         <li><a href="#agents">Agents</a></li>
-        <li><a href="#spaces">Browser</a></li>
-        <li><a href="#canvas">Canvas</a></li>
-        <li><a href="#cloud">Cloud</a></li>
-        <li><a href="#install">Install</a></li>
+        <li><a href="benchmarks/">Benchmarks</a></li>
+        <li><a href="arc/">Moving from Arc</a></li>
+        <li><a href="release-notes/">Changelog</a></li>
         <li><a href="https://github.com/copper-browser/Copper">GitHub</a></li>
       </ul>
     </nav>
@@ -830,12 +775,27 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
           <button class="copy" type="button" data-copy="brew install --cask copper-browser/copper/copper" aria-label="Copy the Homebrew command"><svg class="i-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="i-check" aria-hidden="true"><use href="#i-check"/></svg><span>Copy</span></button>
         </div>
       </div>
+      <div class="send" id="send" hidden>
+        <a class="btn" href="mailto:?subject=Copper%20for%20Mac&amp;body=Download%20Copper%20on%20your%20Mac%3A%20https%3A%2F%2Fcopper.exowatt.com%2F%23install" data-send="main"><svg aria-hidden="true"><use href="#i-mac"/></svg><span>Send to my Mac</span></a>
+        <p class="send-more"><button class="linkish" type="button" data-send="copy">Copy link</button><a href="mailto:?subject=Copper%20for%20Mac&amp;body=Download%20Copper%20on%20your%20Mac%3A%20https%3A%2F%2Fcopper.exowatt.com%2F%23install">Email it to me</a><a href="#install">All downloads</a></p>
+      </div>
       </div>
       <picture class="hero-shot">
         <source media="(max-width: 640px)" srcset="assets/copper-hero-sm-720.webp 720w, assets/copper-hero-sm.webp 1280w" sizes="92vw" width="1280" height="1120">
         <img src="assets/copper-hero-1920.webp" srcset="assets/copper-hero-1280.webp 1280w, assets/copper-hero-1920.webp 1920w" sizes="(max-width: 1100px) 92vw, 56vw" width="1920" height="1200" fetchpriority="high" alt="The Copper window on Wikipedia's article about copper. The sidebar, in the Copper space's animated theme, holds the address and four tabs: Google, Copper on Wikipedia, Mac on apple.com and Hacker News. The three spaces are along the bottom. The page fills the rest of the window and there is no toolbar.">
       </picture>
       <p class="meta"><span>macOS 14 or later</span><span>Apple Silicon &amp; Intel</span><span>Windows &amp; Linux too</span><span>No account</span></p>
+    </section>
+
+    <section class="wrap demo-sec" id="try" aria-labelledby="try-title">
+      <h2 class="sr" id="try-title">Try Copper's window</h2>
+      <div class="demo" id="demo">
+        <p class="cue" aria-hidden="true"><span>Not a screenshot.</span><span class="cue-swap"><span class="cue-nudge">Go on, <span class="by-pointer">click</span><span class="by-touch">tap</span> a tab</span><span class="cue-told">Told you.</span></span></p>
+        <div class="demo-stage">
+          <iframe class="demo-frame" data-src="try/?embed" title="Copper's window, working: switch tabs and spaces, split the view, find a tab with ⌘K and hide part of a page" loading="lazy"></iframe>
+        </div>
+      </div>
+      <a class="demo-phone" href="try/"><strong>Try Copper's window</strong><span>A working copy runs in your browser. Not a screenshot.</span><svg aria-hidden="true"><use href="#i-arrow"/></svg></a>
     </section>
 
     <section class="wrap" aria-labelledby="glance-title">
@@ -902,11 +862,6 @@ footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-cont
       </div>
       <figcaption class="reel-cap" id="agents-cap"><span>Three agents working in three tabs at once.</span></figcaption>
     </figure>
-    <figure class="bench">
-      <div class="bench-row"><span>Copper</span><i style="--v: 2"></i><b>2.0 s</b></div>
-      <div class="bench-row them"><span>Polar</span><i style="--v: 11.6"></i><b>11.6 s</b></div>
-      <figcaption>Median time per completed task. Each goal was handed to the browser over MCP and run by its own driver (in Copper, <code>jev_run</code>). 28 web tasks, two rounds, on one Mac mini, 18&nbsp;November 2026: Copper&nbsp;1.0.20261117.114 and Polar&nbsp;0.2.12.</figcaption>
-    </figure>
     <div class="split">
       <div class="agents-copy">
         <ul class="facts">
@@ -932,6 +887,38 @@ Jev mode: <span class="ok">on</span>
 <span class="p">$</span> <span class="cursor" aria-hidden="true"></span></code></pre>
       </figure>
     </div>
+  </section>
+
+  <section class="sec wrap" id="speed" aria-labelledby="speed-title">
+    <div class="sec-head">
+      <span class="kicker">Benchmarks</span>
+      <h2 id="speed-title">Quick to start, <em>light to run.</em></h2>
+      <p>Copper and Polar, another Mac browser that agents can drive, on the same Mac mini on the same day. Lower is better.</p>
+    </div>
+    <ul class="cards">
+      <li class="card" style="--max: 11.6">
+        <h3>Agent task</h3>
+        <p class="verdict"><b>5.8&times;</b> faster</p>
+        <div class="bench-row"><span>Copper</span><i style="--v: 2"></i><b>2.0 s</b></div>
+        <div class="bench-row them"><span>Polar</span><i style="--v: 11.6"></i><b>11.6 s</b></div>
+        <p class="card-note">Median time per completed task. 28 web tasks, two rounds, each goal handed to the browser over MCP and run by its own driver (in Copper, <code>jev_run</code>).</p>
+      </li>
+      <li class="card" style="--max: 3.96">
+        <h3>Cold launch to first window</h3>
+        <p class="verdict"><b>7&times;</b> faster</p>
+        <div class="bench-row"><span>Copper</span><i style="--v: .56"></i><b>0.56 s</b></div>
+        <div class="bench-row them"><span>Polar</span><i style="--v: 3.96"></i><b>3.96 s</b></div>
+        <p class="card-note">Median of 5 cold launches each, from a fresh copy of the app. Range 0.51&ndash;0.61&nbsp;s and 3.3&ndash;6.7&nbsp;s.</p>
+      </li>
+      <li class="card" style="--max: 390">
+        <h3>Memory with one page open</h3>
+        <p class="verdict"><b>3.5&times;</b> less</p>
+        <div class="bench-row"><span>Copper</span><i style="--v: 111"></i><b>111 MB</b></div>
+        <div class="bench-row them"><span>Polar</span><i style="--v: 390"></i><b>390 MB</b></div>
+        <p class="card-note">Every process of the app, idle for 45&nbsp;s with example.com open. Median of 2 runs each.</p>
+      </li>
+    </ul>
+    <p class="cards-foot">One Mac mini, 18&nbsp;November 2026: Copper&nbsp;1.0.20261117.114 and Polar&nbsp;0.2.12. <a href="benchmarks/">How we measure, and every benchmark</a></p>
   </section>
 
   <section class="sec wrap" id="jev" aria-labelledby="jev-title">
@@ -1055,50 +1042,6 @@ Jev said <span class="ok">DONE</span>, 96% sure
     </div>
   </section>
 
-  <section class="sec wrap" id="try" aria-labelledby="try-title">
-    <div class="try">
-      <div class="sec-head">
-        <h2 id="try-title">Try it here.</h2>
-        <p>A small working copy of Copper's window.</p>
-        <div class="hints" role="group" aria-label="Things to try">
-          <button class="hint" type="button" data-act="find"><kbd data-k="⌘K">⌘K</kbd>Find a tab</button>
-          <button class="hint" type="button" data-act="hide" aria-pressed="false"><kbd data-k="⇧⌘H">⇧⌘H</kbd>Hide something</button>
-          <button class="hint" type="button" data-act="layout"><kbd data-k="⇧⌘S">⇧⌘S</kbd>Tabs on top</button>
-        </div>
-      </div>
-      <div class="cw-box">
-        <div class="cw" id="cw" data-space="personal" data-layout="side" role="group" aria-label="Interactive demo of the Copper window" aria-roledescription="demo">
-          <div class="cw-side">
-            <div class="cw-lights" aria-hidden="true"><i></i><i></i><i></i></div>
-            <div class="cw-pins" role="tablist" aria-label="Pinned tabs" id="cw-pins"></div>
-            <div class="cw-label" id="cw-label">Personal</div>
-            <div class="cw-tabs" role="tablist" aria-orientation="vertical" aria-labelledby="cw-label" id="cw-tabs"></div>
-            <button class="cw-new" type="button" id="cw-new"><span class="plus" aria-hidden="true">+</span><span class="lbl">New tab</span><span class="sr">(opens the address field)</span></button>
-            <div class="cw-spaces" role="group" aria-label="Spaces" id="cw-spaces">
-              <button class="cw-sp" type="button" data-space="personal" title="Personal" aria-pressed="true" style="--c:#B87333"><i aria-hidden="true"></i><span class="lbl">Personal</span><span class="sr">space</span></button>
-              <button class="cw-sp" type="button" data-space="work" title="Work" aria-pressed="false" style="--c:#3F8A7C"><i aria-hidden="true"></i><span class="lbl">Work</span><span class="sr">space</span></button>
-            </div>
-          </div>
-          <div class="cw-page" id="cw-page" role="tabpanel">
-            <div id="cw-view"></div>
-            <div class="cw-bar" id="cw-bar" hidden>Click something to hide it · esc to stop</div>
-            <div class="cw-toast" id="cw-toast" hidden><span></span><button type="button">Undo</button></div>
-          </div>
-          <div class="cw-scrim" id="cw-scrim" hidden>
-            <div class="cw-pal" role="dialog" aria-modal="true" aria-label="Find a tab, or type an address">
-              <input id="cw-q" type="text" role="combobox" aria-expanded="true" aria-controls="cw-list" aria-autocomplete="list" autocomplete="off" spellcheck="false" placeholder="Find a tab, or type an address" aria-label="Find a tab, or type an address">
-              <ul id="cw-list" role="listbox" aria-label="Results"></ul>
-            </div>
-          </div>
-        </div>
-        <div class="demo-foot">
-          <button class="linkish" type="button" id="cw-reset">Reset the demo</button>
-        </div>
-        <p class="sr" aria-live="polite" id="cw-live"></p>
-      </div>
-    </div>
-  </section>
-
   <section class="sec wrap" id="features" aria-labelledby="quiet-title">
     <div class="quiet">
       <div class="sec-head">
@@ -1219,7 +1162,7 @@ Jev said <span class="ok">DONE</span>, 96% sure
     <div class="sec-head">
       <span class="kicker">Privacy</span>
       <h2 id="privacy-title">What leaves <em>your Mac.</em></h2>
-      <p>Copper requests the pages you ask for, their icons, and one update check a day. When you run Jev, the page's controls and your goal go to TypeSafe on your own key, and the model provider you chose writes the text it types. Copper Cloud is off until you link a server you run.</p>
+      <p>Copper requests the pages you ask for, their icons, and an update check at launch and every six hours. When you run Jev, the page's controls and your goal go to TypeSafe on your own key, and the model provider you chose writes the text it types. Copper Cloud is off until you link a server you run.</p>
     </div>
     <div class="never">
       <div><strong>Accounts</strong><span>Copper has none. Copper Cloud accounts live on your own server.</span></div>
@@ -1426,6 +1369,23 @@ Jev said <span class="ok">DONE</span>, 96% sure
     </div>
   </section>
 
+  <section class="sec wrap" id="faq" aria-labelledby="faq-title">
+    <div class="sec-head">
+      <h2 id="faq-title">Questions.</h2>
+    </div>
+    <div class="faq">
+      <details class="fold"><summary>What does it cost?</summary><p>Nothing. Copper is free and open source under the MIT license.</p></details>
+      <details class="fold"><summary>Do I need an AI subscription?</summary><p>No. Copper is a whole browser without one. Agents are optional: Claude Code, Codex, phi or any MCP client drives it on the plan you already pay for, once you turn on Settings › Agents › Let agents drive this window.</p></details>
+      <details class="fold"><summary>Is it safe to open?</summary><p>Copper is ad-hoc signed and not yet notarized by Apple, so macOS asks before the first launch. Homebrew and the one-line installer clear that for you. After a manual download, run <code>xattr -cr /Applications/Copper.app</code> once, or right-click Copper and choose Open. The source is on GitHub if you'd rather <a href="https://github.com/copper-browser/Copper#building-it">build it yourself</a>.</p></details>
+      <details class="fold"><summary>What does it send?</summary><p>The pages you ask for, their icons, and an update check at launch and every six hours. Copper has no analytics, no crash reports and no account. Jev and Copper Cloud send only while you use them. <a href="#privacy">What leaves your Mac</a></p></details>
+      <details class="fold"><summary>And this website?</summary><p>It has no analytics, trackers or cookies, and loads nothing from other sites. <a href="privacy/">Privacy</a></p></details>
+      <details class="fold"><summary>Is it Safari?</summary><p>No. Copper uses the WebKit that ships with macOS, the engine Safari uses, with its own window, sidebar and features. It doesn't bundle a copy of Chromium.</p></details>
+      <details class="fold"><summary>Do Chrome extensions work?</summary><p>Yes, on macOS 15.4 or later. Paste a Chrome Web Store link, or press Add on the extension's page. It runs on WebKit's own extension engine.</p></details>
+      <details class="fold"><summary>Coming from Arc?</summary><p>Flow brings over your Arc spaces, pinned tabs, tab groups, open tabs, bookmarks, history, passwords and extensions with one button. <a href="arc/">Moving from Arc</a></p></details>
+      <details class="fold"><summary>Windows or Linux?</summary><p>Yes. Copper runs on Windows 10 and 11 (x64 and ARM64) and on Linux (x86_64 and aarch64). <a href="#install">Install</a></p></details>
+    </div>
+  </section>
+
 </main>
 
 <div class="stage outro" id="source">
@@ -1444,6 +1404,7 @@ Jev said <span class="ok">DONE</span>, 96% sure
           <a class="btn" href="#install"><svg aria-hidden="true"><use href="#i-down"/></svg>Download for macOS</a>
           <a class="btn btn-ghost" href="https://github.com/copper-browser/Copper"><svg aria-hidden="true"><use href="#i-gh"/></svg>Star on GitHub</a>
         </div>
+        <p class="version">Version <span data-version>1.0.20261124.117</span>. <a data-version-href href="release-notes/#1.0.20261124.117">What's new</a></p>
         <p class="credit">Built by <a href="https://collinrijock.com">Collin Rijock</a> and <a href="https://felipearce.dev">Felipe Arce</a> at ShellHacks at FIU.</p>
       </div>
       <figure class="media">
@@ -1455,10 +1416,17 @@ Jev said <span class="ok">DONE</span>, 96% sure
 
 <footer>
   <div class="wrap">
-    <div class="foot-id"><img src="assets/icon-96.webp" alt="" width="28" height="28"><span>Copper, made by <a href="https://collinrijock.com">Collin</a> and <a href="https://felipearce.dev">Felipe</a>.</span></div>
-    <ul class="links">
-      <li><a href="https://github.com/copper-browser/Copper">GitHub</a></li>
-      <li><a href="https://github.com/copper-browser/Copper/blob/HEAD/LICENSE">MIT License</a></li>
+    <div class="foot-id"><img src="assets/icon-96.webp" alt="" width="28" height="28"><span>Copper, made by <a href="https://collinrijock.com">Collin</a> and <a href="https://felipearce.dev">Felipe</a>. MIT licensed.</span></div>
+    <ul class="links" aria-label="Project">
+      <li><a href="https://github.com/copper-browser/Copper">Source code</a></li>
+      <li><a href="#install">Download</a></li>
+      <li><a href="try/">Try the demo</a></li>
+      <li><a href="benchmarks/">Benchmarks</a></li>
+      <li><a href="arc/">Moving from Arc</a></li>
+      <li><a href="release-notes/">Changelog</a></li>
+      <li><a href="press/">Press kit</a></li>
+      <li><a href="privacy/">Privacy</a></li>
+      <li><a href="https://github.com/copper-browser/Copper/issues/new">Report a bug</a></li>
     </ul>
   </div>
 </footer>
@@ -1662,6 +1630,41 @@ Jev said <span class="ok">DONE</span>, 96% sure
     });
   })();
 
+  /* ---------- phones and tablets: send the link to a Mac (share sheet, copy, or mail to self) ---------- */
+  (function () {
+    var send = $('#send');
+    var ua = navigator.userAgent || '', platform = navigator.platform || '';
+    if (!send || !(/iPhone|iPad|iPod|Android/.test(ua) || (/Mac/.test(platform) && navigator.maxTouchPoints > 1))) return;
+    var url = 'https://copper.exowatt.com/#install';
+    send.hidden = false;
+    if (navigator.share) $('[data-send="main"]', send).addEventListener('click', function (e) {
+      e.preventDefault();
+      navigator.share({ title: 'Copper for Mac', text: 'Download Copper on your Mac', url: url }).catch(function () {});
+    });
+    var copy = $('[data-send="copy"]', send), t;
+    copy.addEventListener('click', function () {
+      copyText(url).then(function () { copy.textContent = 'Copied'; say(live, 'Link copied'); }, function () { copy.textContent = url; });
+      clearTimeout(t); t = setTimeout(function () { copy.textContent = 'Copy link'; }, 1800);
+    });
+  })();
+
+  /* ---------- the live demo (try/?embed): loads when near, on screens wide enough for it.
+     The demo posts {type: 'copper-demo-click'} on its first click; the cue then says "Told you." ---------- */
+  (function () {
+    var demo = $('#demo'), frame = demo && $('iframe', demo);
+    if (!frame) return;
+    var wide = window.matchMedia('(min-width: 641px)'), near = !('IntersectionObserver' in window);
+    function load() { if (near && wide.matches && !frame.getAttribute('src')) frame.src = frame.dataset.src; }
+    if (!near) new IntersectionObserver(function (es, io) {
+      if (es.some(function (e) { return e.isIntersecting; })) { io.disconnect(); near = true; load(); }
+    }, { rootMargin: '600px 0px' }).observe(demo);
+    if (wide.addEventListener) wide.addEventListener('change', load);
+    load();
+    window.addEventListener('message', function (e) {
+      if (e.source === frame.contentWindow && e.data && e.data.type === 'copper-demo-click') demo.dataset.engaged = '';
+    });
+  })();
+
   /* ---------- recordings: fetched when near, play in view, a still under reduced motion.
      Each is a button with no chrome: a click, Space or Enter pauses or plays it, and its name says which.
      The bento's three sidebars are one control with one intent. ---------- */
@@ -1701,392 +1704,6 @@ Jev said <span class="ok">DONE</span>, 96% sure
     settle();
   });
 
-  /* ---------- the little Copper window ---------- */
-  var cw = $('#cw');
-  if (!cw) return;
-  var isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-  if (!isMac) $$('kbd[data-k]').forEach(function (k) { k.textContent = k.dataset.k.replace('⇧', 'Shift+').replace('⌘', 'Ctrl+'); });
-
-  function site(name, right) { return '<div class="site"><span>' + name + '</span><span>' + right + '</span></div>'; }
-  function pinned(name, host) {
-    return function () { return '<div class="scroll" tabindex="-1"><div class="pg">' + site(name, host) + '<h3>' + name + '</h3><p>A pinned tab. Pinned tabs shrink to a letter or an icon at the top of the sidebar, in the spaces you choose.</p></div></div>'; };
-  }
-  var PAGES = {
-    ledger: function () {
-      return '<div class="scroll" tabindex="-1"><div class="pg">' + site('Morning Ledger', 'Tuesday') +
-        '<h3>The harbour clock has been four minutes fast for sixty years</h3>' +
-        '<p>Nobody on the quay remembers who set it. The ferries leave by it anyway, and so, it turns out, does most of the town.</p>' +
-        '<aside class="promo" data-hide="promo" data-label="newsletter box"><span>Get the Ledger in your inbox, every morning.</span><span class="fakebtn">Subscribe</span></aside>' +
-        '<p>The last keeper retired in 1998 and left a note in the case: <em>do not correct</em>. The council has voted twice to fix it, and twice to leave it as it is.</p>' +
-        '<p>“If it were right,” says the harbourmaster, “we would all be late.”</p></div></div>' +
-        '<div class="cookie" data-hide="cookie" data-label="cookie banner"><p>We use cookies to make this site work and to understand how it is used.</p><div class="acts"><span class="fakebtn ghost">Manage</span><span class="fakebtn">Accept all</span></div></div>';
-    },
-    readme: function () {
-      return '<div class="scroll" tabindex="-1"><div class="pg">' + site('copper-browser / Copper', 'README') +
-        '<h3>Copper</h3><p>An open source Mac browser on WebKit, made by Collin and Felipe.</p>' +
-        '<p>Tabs go across the top or down the left. An MCP server is built in so your agent can drive it.</p>' +
-        '<ul class="rows"><li><span>Language</span><span>Swift</span></li><li><span>Dependencies</span><span>None beyond macOS</span></li><li><span>License</span><span>MIT</span></li></ul></div></div>';
-    },
-    bread: function () {
-      return '<div class="scroll" tabindex="-1"><div class="pg">' + site('Recipes', 'Bread') +
-        '<h3>Sunday bread</h3><p>Ten minutes of work, then it rests overnight.</p>' +
-        '<ul><li>500 g bread flour</li><li>360 g water</li><li>10 g salt</li><li>2 g dried yeast</li></ul>' +
-        '<aside class="promo" data-hide="related" data-label="related recipes"><span>You might also like: 14 breads for a lazy weekend</span><span class="fakebtn ghost">See all</span></aside>' +
-        '<p>Mix, cover, and leave it on the counter until morning. Shape it, give it an hour, and bake in a hot pot with the lid on.</p></div></div>';
-    },
-    weather: function () {
-      return '<div class="scroll" tabindex="-1"><div class="pg">' + site('Weather', 'Lisbon') +
-        '<div class="big">21°</div><p>Clear, with a light wind from the north-west.</p>' +
-        '<ul class="rows"><li><span>Wednesday</span><span>22° · 15°</span></li><li><span>Thursday</span><span>20° · 14°</span></li><li><span>Friday</span><span>19° · 14°</span></li></ul></div></div>';
-    },
-    inbox: function () {
-      return '<div class="scroll" tabindex="-1"><div class="pg">' + site('Mail', 'Inbox') +
-        '<h3>Inbox</h3><ul class="rows"><li><span>Studio: the new type specimens</span><span>9:41</span></li><li><span>Invoice for September</span><span>Mon</span></li><li><span>Lunch on Thursday?</span><span>Sun</span></li></ul></div></div>';
-    },
-    plan: function () {
-      return '<div class="scroll" tabindex="-1"><div class="pg">' + site('Docs', 'Edited 2 hours ago') +
-        '<h3>Plan for the quarter</h3><p>Three projects this quarter. Each one gets a week of work before review.</p>' +
-        '<ul><li>Ship the archive</li><li>Rewrite the onboarding</li><li>Close the old tracker</li></ul></div></div>';
-    },
-    notes: function () {
-      return '<div class="scroll" tabindex="-1"><div class="pg">' + site('Notes', 'Design review') +
-        '<h3>Design review</h3><p>The current tab gets a paper background, a bar in the space’s colour and a heavier title.</p><p>The other tabs stay plain.</p></div></div>';
-    }
-  };
-
-  function fresh() {
-    return {
-      personal: {
-        name: 'Personal',
-        pins: [
-          { id: 'cal', letter: 'C', title: 'Calendar', host: 'calendar.example.com', page: pinned('Calendar', 'calendar.example.com') },
-          { id: 'pho', letter: 'P', title: 'Photos', host: 'photos.example.com', page: pinned('Photos', 'photos.example.com') },
-          { id: 'mus', letter: 'M', title: 'Music', host: 'music.example.com', page: pinned('Music', 'music.example.com') }
-        ],
-        tabs: [
-          { id: 'ledger', letter: 'L', title: 'The harbour clock is four minutes fast', host: 'morningledger.example', page: PAGES.ledger },
-          { id: 'readme', letter: 'G', title: 'copper-browser/Copper', host: 'github.com', page: PAGES.readme },
-          { id: 'bread', letter: 'R', title: 'Sunday bread', host: 'recipes.example.com', page: PAGES.bread },
-          { id: 'weather', letter: 'W', title: 'Lisbon Weather', host: 'weather.example.com', page: PAGES.weather }
-        ],
-        active: 'ledger'
-      },
-      work: {
-        name: 'Work',
-        pins: [
-          { id: 'chat', letter: 'T', title: 'Team chat', host: 'chat.example.com', page: pinned('Team chat', 'chat.example.com') },
-          { id: 'docs', letter: 'D', title: 'Docs', host: 'docs.example.com', page: pinned('Docs', 'docs.example.com') }
-        ],
-        tabs: [
-          { id: 'inbox', letter: 'M', title: 'Inbox (3)', host: 'mail.example.com', page: PAGES.inbox },
-          { id: 'plan', letter: 'D', title: 'Plan for the quarter', host: 'docs.example.com', page: PAGES.plan },
-          { id: 'notes', letter: 'N', title: 'Design review notes', host: 'notes.example.com', page: PAGES.notes }
-        ],
-        active: 'inbox'
-      }
-    };
-  }
-
-  var S, space, hidden, hiding, userLayout = null, seq = 0;
-  var pinsEl = $('#cw-pins'), tabsEl = $('#cw-tabs'), labelEl = $('#cw-label'), view = $('#cw-view');
-  var bar = $('#cw-bar'), toast = $('#cw-toast'), scrim = $('#cw-scrim'), q = $('#cw-q'), list = $('#cw-list');
-  var cwLive = $('#cw-live'), hideHint = $('.hint[data-act="hide"]'), layoutHint = $('.hint[data-act="layout"]');
-  var narrow = window.matchMedia('(max-width: 640px)');
-
-  function all(sp) { return sp.pins.concat(sp.tabs); }
-  function find(id) {
-    for (var k in S) { var t = all(S[k]).filter(function (x) { return x.id === id; })[0]; if (t) return { tab: t, space: k }; }
-    return null;
-  }
-  function current() { return find(S[space].active).tab; }
-
-  function tabButton(t, isPin) {
-    var b = document.createElement('button');
-    b.type = 'button'; b.className = isPin ? 'cw-pin' : 'cw-tab';
-    b.id = 'cwt-' + t.id; b.dataset.id = t.id;
-    b.setAttribute('role', 'tab'); b.setAttribute('aria-controls', 'cw-page');
-    if (isPin) { b.textContent = t.letter; b.setAttribute('aria-label', t.title + ' (pinned)'); b.title = t.title; }
-    else {
-      var f = document.createElement('span'); f.className = 'cw-fav'; f.setAttribute('aria-hidden', 'true'); f.textContent = t.letter;
-      var n = document.createElement('span'); n.className = 'cw-title'; n.textContent = t.title;
-      b.appendChild(f); b.appendChild(n);
-    }
-    return b;
-  }
-  function renderSide() {
-    var sp = S[space];
-    cw.dataset.space = space;
-    labelEl.textContent = sp.name;
-    pinsEl.replaceChildren.apply(pinsEl, sp.pins.map(function (t) { return tabButton(t, true); }));
-    tabsEl.replaceChildren.apply(tabsEl, sp.tabs.map(function (t) { return tabButton(t, false); }));
-    $$('.cw-sp', cw).forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.space === space)); });
-    markSelected();
-  }
-  function markSelected() {
-    var a = S[space].active;
-    $$('[role="tab"]', cw).forEach(function (b) {
-      var on = b.dataset.id === a;
-      b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1;
-    });
-    // keep one tab stop in the pin row too
-    if (!$('[aria-selected="true"]', pinsEl) && pinsEl.firstChild) pinsEl.firstChild.tabIndex = 0;
-    $('#cw-page').setAttribute('aria-labelledby', 'cwt-' + a);
-  }
-  function renderPage() {
-    var t = current();
-    if (t.query != null) {
-      view.replaceChildren(newTabPage(t));
-    } else {
-      view.innerHTML = t.page();
-    }
-    var set = hidden[t.host] || {};
-    $$('[data-hide]', view).forEach(function (el) { if (set[el.dataset.hide]) el.classList.add('gone'); });
-    armHideables();
-  }
-  function newTabPage(t) {
-    var sc = document.createElement('div'); sc.className = 'scroll'; sc.tabIndex = -1;
-    var pg = document.createElement('div'); pg.className = 'pg';
-    var s = document.createElement('div'); s.className = 'site';
-    var a = document.createElement('span'); a.textContent = t.host; var b = document.createElement('span'); b.textContent = t.search ? 'Search' : 'New tab';
-    s.appendChild(a); s.appendChild(b);
-    var h = document.createElement('h3'); h.textContent = t.search ? 'Results for “' + t.query + '”' : t.query;
-    var p = document.createElement('p');
-    p.textContent = t.search
-      ? 'In Copper this is your search engine’s page. Your words are sent to it when you press Return.'
-      : 'In Copper this is the page itself. The field finishes addresses from your own history and sends nothing until you press Return.';
-    pg.appendChild(s); pg.appendChild(h); pg.appendChild(p); sc.appendChild(pg);
-    return sc;
-  }
-  function select(id, focus) {
-    var hit = find(id); if (!hit) return;
-    var changedSpace = hit.space !== space;
-    space = hit.space; S[space].active = id;
-    if (changedSpace) renderSide(); else markSelected();
-    renderPage();
-    if (focus) { var b = document.getElementById('cwt-' + id); if (b) b.focus(); }
-  }
-  function switchSpace(k) {
-    if (k === space) return;
-    space = k; renderSide(); renderPage();
-    say(cwLive, S[k].name + ' space');
-  }
-
-  // tab clicks + keyboard (roving focus)
-  cw.querySelector('.cw-side').addEventListener('click', function (e) {
-    var b = e.target.closest('[role="tab"]'); if (b) { select(b.dataset.id); return; }
-    var sp = e.target.closest('.cw-sp'); if (sp) switchSpace(sp.dataset.space);
-  });
-  cw.querySelector('.cw-side').addEventListener('keydown', function (e) {
-    var b = e.target.closest('[role="tab"]'); if (!b) return;
-    var group = $$('[role="tab"]', b.parentNode), i = group.indexOf(b), n = group.length, j = null;
-    var vertical = cw.dataset.layout === 'side' && b.parentNode === tabsEl;
-    var next = vertical ? 'ArrowDown' : 'ArrowRight', prev = vertical ? 'ArrowUp' : 'ArrowLeft';
-    if (e.key === next) j = (i + 1) % n; else if (e.key === prev) j = (i - 1 + n) % n;
-    else if (e.key === 'Home') j = 0; else if (e.key === 'End') j = n - 1;
-    if (j === null) return;
-    e.preventDefault(); select(group[j].dataset.id, true);
-  });
-
-  /* tab finder / address field */
-  var results = [], cursor = 0, lastFocus = null;
-  function score(query, text) {
-    var t = text.toLowerCase(), qq = query.toLowerCase();
-    var at = t.indexOf(qq);
-    if (at >= 0) { var idx = []; for (var i = 0; i < qq.length; i++) idx.push(at + i); return { s: 100 - at + (at === 0 || /\W/.test(t[at - 1]) ? 20 : 0), idx: idx }; }
-    var ix = [], from = 0, s = 0;
-    for (var c = 0; c < qq.length; c++) {
-      if (qq[c] === ' ') continue;
-      var k = t.indexOf(qq[c], from); if (k < 0) return null;
-      if (ix.length && k === ix[ix.length - 1] + 1) s += 3;
-      if (k === 0 || /\W/.test(t[k - 1])) s += 4;
-      ix.push(k); from = k + 1;
-    }
-    return { s: s - (ix[ix.length - 1] - ix[0]) * .1, idx: ix };
-  }
-  function looksLikeAddress(v) { return /^(https?:\/\/)?[\w-]+(\.[\w-]+)+(\/\S*)?$/i.test(v); }
-  function renderList() {
-    var v = q.value.trim();
-    var order = [space].concat(Object.keys(S).filter(function (k) { return k !== space; }));
-    results = [];
-    order.forEach(function (k) {
-      all(S[k]).forEach(function (t) {
-        if (!v) { results.push({ tab: t, space: k, idx: [], s: 0 }); return; }
-        var m = score(v, t.title), h = score(v, t.host);
-        var best = m && (!h || m.s >= h.s - 5) ? m : null;
-        if (best) results.push({ tab: t, space: k, idx: best.idx, s: best.s });
-        else if (h) results.push({ tab: t, space: k, idx: [], s: h.s - 10 });
-      });
-    });
-    if (v) results.sort(function (a, b) { return b.s - a.s; });
-    results = results.slice(0, 7);
-    if (v) results.push({ go: v, address: looksLikeAddress(v) });
-    cursor = Math.min(cursor, results.length - 1); if (cursor < 0) cursor = 0;
-    list.replaceChildren();
-    results.forEach(function (r, i) {
-      var li = document.createElement('li');
-      li.id = 'cwr-' + i; li.setAttribute('role', 'option'); li.setAttribute('aria-selected', String(i === cursor));
-      var t = document.createElement('span'); t.className = 't';
-      var s = document.createElement('span'); s.className = 's';
-      if (r.go) {
-        t.textContent = r.address ? 'Go to ' + r.go : 'Search for “' + r.go + '”';
-        s.textContent = 'Return';
-      } else {
-        var title = r.tab.title, set = {}; r.idx.forEach(function (k) { set[k] = 1; });
-        var run = '', inMark = false;
-        var flush = function () { if (!run) return; if (inMark) { var m = document.createElement('mark'); m.textContent = run; t.appendChild(m); } else t.appendChild(document.createTextNode(run)); run = ''; };
-        for (var c = 0; c < title.length; c++) { var on = !!set[c]; if (on !== inMark) { flush(); inMark = on; } run += title[c]; }
-        flush();
-        s.textContent = r.tab.id === S[space].active && r.space === space ? 'Current' : S[r.space].name;
-      }
-      li.appendChild(t); li.appendChild(s);
-      li.addEventListener('mousedown', function (e) { e.preventDefault(); });
-      li.addEventListener('click', function () { cursor = i; choose(); });
-      list.appendChild(li);
-    });
-    if (!results.length) { var e = document.createElement('li'); e.className = 'empty'; e.textContent = 'Type to find a tab'; list.appendChild(e); }
-    q.setAttribute('aria-activedescendant', results.length ? 'cwr-' + cursor : '');
-    var sel = $('#cwr-' + cursor); if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: 'nearest' });
-  }
-  function openPalette(seed) {
-    if (hiding) stopHide();
-    if (!scrim.hidden) { q.select(); return; }
-    lastFocus = document.activeElement;
-    scrim.hidden = false; q.value = seed || ''; cursor = 0; renderList(); q.focus();
-    $('.hint[data-act="find"]').setAttribute('aria-expanded', 'true');
-  }
-  function closePalette(restore) {
-    if (scrim.hidden) return;
-    scrim.hidden = true;
-    $('.hint[data-act="find"]').setAttribute('aria-expanded', 'false');
-    if (restore !== false && lastFocus && document.contains(lastFocus)) lastFocus.focus();
-  }
-  function choose() {
-    var r = results[cursor]; if (!r) return;
-    closePalette(false);
-    if (r.go) {
-      var v = r.go, id = 'new' + (++seq);
-      var host = r.address ? v.replace(/^https?:\/\//, '').split('/')[0] : 'search';
-      var t = { id: id, letter: (r.address ? host : v).charAt(0).toUpperCase(), title: r.address ? host : v, host: host, query: v, search: !r.address };
-      var row = S[space].tabs; row.push(t); if (row.length > 7) row.splice(0, 1);
-      S[space].active = id; renderSide(); renderPage();
-      say(cwLive, 'Opened ' + t.title + ' in a new tab');
-    } else {
-      select(r.tab.id);
-      say(cwLive, 'Switched to ' + r.tab.title);
-    }
-    var b = document.getElementById('cwt-' + S[space].active); if (b) b.focus();
-  }
-  q.addEventListener('input', function () { cursor = 0; renderList(); });
-  q.addEventListener('keydown', function (e) {
-    if (e.key === 'ArrowDown') { e.preventDefault(); cursor = (cursor + 1) % results.length; renderList(); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); cursor = (cursor - 1 + results.length) % results.length; renderList(); }
-    else if (e.key === 'Enter') { e.preventDefault(); choose(); }
-    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closePalette(); }
-    else if (e.key === 'Tab') { e.preventDefault(); }
-  });
-  scrim.addEventListener('mousedown', function (e) { if (e.target === scrim) { e.preventDefault(); closePalette(); } });
-  $('#cw-new').addEventListener('click', function () { openPalette(''); });
-
-  /* hide anything */
-  var toastTimer, lastHidden = null;
-  function armHideables() {
-    $$('[data-hide]', view).forEach(function (el) {
-      if (hiding) { el.tabIndex = 0; el.setAttribute('role', 'button'); el.setAttribute('aria-label', 'Hide the ' + el.dataset.label); }
-      else { el.removeAttribute('tabindex'); el.removeAttribute('role'); el.removeAttribute('aria-label'); }
-    });
-  }
-  function startHide() {
-    closePalette(false);
-    if (!$('[data-hide]:not(.gone)', view)) {
-      var lh = hidden['morningledger.example'] || {};
-      if (!(lh.cookie && lh.promo) && find('ledger')) select('ledger');
-    }
-    hiding = true; cw.classList.add('hiding'); bar.hidden = false; toast.hidden = true;
-    hideHint.setAttribute('aria-pressed', 'true'); armHideables();
-    var first = $('[data-hide]:not(.gone)', view);
-    say(cwLive, first ? 'Hide mode. Choose something on the page to hide, or press Escape.' : 'Hide mode. Nothing left to hide on this page. Press Escape.');
-    if (first && cw.contains(document.activeElement)) first.focus();
-  }
-  function stopHide() {
-    hiding = false; cw.classList.remove('hiding'); bar.hidden = true;
-    hideHint.setAttribute('aria-pressed', 'false'); armHideables();
-  }
-  function hideEl(el) {
-    var t = current(), key = el.dataset.hide;
-    (hidden[t.host] = hidden[t.host] || {})[key] = true;
-    el.classList.add('gone'); stopHide();
-    lastHidden = { host: t.host, key: key };
-    $('span', toast).textContent = 'Hidden on ' + t.host + '. Still gone next time.';
-    toast.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(function () { toast.hidden = true; }, 6000);
-    say(cwLive, 'Hid the ' + el.dataset.label + ' on ' + t.host + '. It stays hidden next time.');
-    var sc = $('.scroll', view); if (sc) sc.focus();
-  }
-  view.addEventListener('click', function (e) {
-    if (!hiding) return;
-    var el = e.target.closest('[data-hide]'); e.preventDefault();
-    if (el) hideEl(el);
-  });
-  view.addEventListener('keydown', function (e) {
-    if (!hiding) return;
-    var el = e.target.closest('[data-hide]');
-    if (el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); hideEl(el); }
-  });
-  $('button', toast).addEventListener('click', function () {
-    if (!lastHidden) return;
-    delete (hidden[lastHidden.host] || {})[lastHidden.key];
-    toast.hidden = true; renderPage(); say(cwLive, 'Shown again');
-  });
-
-  /* layout */
-  function setLayout(l) {
-    cw.dataset.layout = l;
-    tabsEl.setAttribute('aria-orientation', l === 'side' ? 'vertical' : 'horizontal');
-    layoutHint.lastChild.textContent = l === 'side' ? 'Tabs on top' : 'Tabs on the left';
-  }
-  narrow.addEventListener && narrow.addEventListener('change', function () { if (!userLayout) setLayout(narrow.matches ? 'top' : 'side'); });
-
-  /* hints */
-  $$('.hint').forEach(function (h) {
-    h.addEventListener('click', function () {
-      var a = h.dataset.act;
-      if (a === 'find') openPalette('');
-      else if (a === 'hide') { hiding ? stopHide() : startHide(); }
-      else if (a === 'layout') { userLayout = cw.dataset.layout === 'side' ? 'top' : 'side'; setLayout(userLayout); say(cwLive, userLayout === 'top' ? 'Tabs across the top' : 'Tabs down the left'); }
-    });
-  });
-  $('.hint[data-act="find"]').setAttribute('aria-haspopup', 'dialog');
-  $('.hint[data-act="find"]').setAttribute('aria-expanded', 'false');
-
-  /* shortcuts */
-  var over = false;
-  cw.addEventListener('pointerenter', function () { over = true; });
-  cw.addEventListener('pointerleave', function () { over = false; });
-  document.addEventListener('keydown', function (e) {
-    var mod = isMac ? e.metaKey : e.ctrlKey;
-    var key = (e.key || '').toLowerCase();
-    var inDemo = over || cw.contains(document.activeElement) || (document.activeElement && document.activeElement.closest && document.activeElement.closest('.try'));
-    if (mod && !e.shiftKey && !e.altKey && key === 'k') {
-      e.preventDefault();
-      var r = cw.getBoundingClientRect();
-      if (r.bottom < 0 || r.top > window.innerHeight) cw.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-      openPalette('');
-      return;
-    }
-    if (!inDemo) return;
-    if (mod && !e.shiftKey && key === 'l') { e.preventDefault(); openPalette(''); }
-    else if (mod && e.shiftKey && key === 'h') { e.preventDefault(); hiding ? stopHide() : startHide(); }
-    else if (mod && e.shiftKey && key === 's') { e.preventDefault(); $('.hint[data-act="layout"]').click(); }
-    else if (e.key === 'Escape' && hiding) { e.preventDefault(); stopHide(); say(cwLive, 'Stopped hiding'); }
-  });
-
-  function reset() {
-    S = fresh(); space = 'personal'; hidden = {}; userLayout = null;
-    if (hiding) stopHide(); hiding = false; toast.hidden = true; closePalette(false);
-    setLayout(narrow.matches ? 'top' : 'side');
-    renderSide(); renderPage();
-  }
-  $('#cw-reset').addEventListener('click', function () { reset(); say(cwLive, 'Demo reset'); });
-  reset();
 })();
 </script>
 
