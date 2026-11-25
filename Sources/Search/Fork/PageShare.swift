@@ -115,9 +115,12 @@ enum PageTools {
         case "share":
             if arg == "close" { PageShare.shared.picker?.close(); return answer(["closed": true]) }
             PageShare.shared.offered = []
+            let before = Set(NSApp.windows.map(ObjectIdentifier.init))
             browser.sharePage()
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                answer(["shown": PageShare.shared.picker != nil, "offered": PageShare.shared.offered])
+                // The picker's own window, by class, as evidence it opened.
+                let opened = NSApp.windows.filter { !before.contains(ObjectIdentifier($0)) }.map { "\(type(of: $0))" + ($0.isVisible ? "" : " (hidden)") }
+                answer(["shown": PageShare.shared.picker != nil, "windows": opened, "offered": PageShare.shared.offered])
             }
         case "translate":
             guard PageTranslate.available else { return answer(["error": "Translate needs macOS 15"]) }

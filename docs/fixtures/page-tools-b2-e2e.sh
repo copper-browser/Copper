@@ -81,7 +81,7 @@ echo "Copy Link (WebKit's, swapped): $(echo "$out" | field copied)"
 
 # File › Share…: the picker opens on the clean address (what it offers depends on the Mac).
 out="$(bench page share)"
-echo "share: shown $(echo "$out" | field shown), offered $(echo "$out" | field offered)"
+echo "share: shown $(echo "$out" | field shown), new windows $(echo "$out" | field windows), offered $(echo "$out" | field offered)"
 [ "$(echo "$out" | field shown)" = true ] || fail "Share… showed no picker"
 bench page share close >/dev/null
 

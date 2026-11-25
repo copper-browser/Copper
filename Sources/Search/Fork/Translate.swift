@@ -144,7 +144,8 @@ final class PageTranslate {
     private func read(_ run: Int, _ tab: Tab, _ web: WKWebView, _ browser: Browser, quietly: Bool) async {
         let page = try? await web.callAsyncJavaScript(Self.script + "return T.collect();", arguments: [:], in: nil, contentWorld: .copper) as? [String: Any]
         guard alive(tab, run) else { return }
-        guard let page, let texts = page["texts"] as? [String], let order = page["order"] as? [Int], let gen = page["gen"] as? Int else {
+        guard let page, let texts = page["texts"] as? [String], let order = page["order"] as? [Int], let blocks = page["blocks"] as? [Int],
+              let gen = page["gen"] as? Int else {
             return end(tab, run, "failed", note: "couldn't read the page", in: browser, say: quietly ? nil : "Couldn't read this page to translate it")
         }
         guard let target = jobs[tab.id]?.target else { return }
@@ -170,12 +171,12 @@ final class PageTranslate {
             let session = TranslationSession(installedSource: source, target: target)
             if await session.isReady {
                 update(tab, run) { $0.route = "session" }
-                await pour(session, run, tab, web, browser, texts: texts, order: order, gen: gen, download: false, quietly: quietly)
+                await pour(session, run, tab, web, browser, texts: texts, order: order, blocks: blocks, gen: gen, download: false, quietly: quietly)
                 return
             }
         }
         let work: (TranslationSession) async -> Void = { session in
-            await self.pour(session, run, tab, web, browser, texts: texts, order: order, gen: gen, download: status != .installed, quietly: quietly)
+            await self.pour(session, run, tab, web, browser, texts: texts, order: order, blocks: blocks, gen: gen, download: status != .installed, quietly: quietly)
         }
         // SwiftUI's route: a view in the window hands over the session, and
         // asks to download the languages first when they aren't on the Mac.
@@ -191,7 +192,7 @@ final class PageTranslate {
 
     @available(macOS 15, *)
     private func pour(_ session: TranslationSession, _ run: Int, _ tab: Tab, _ web: WKWebView, _ browser: Browser,
-                      texts: [String], order: [Int], gen: Int, download: Bool, quietly: Bool) async {
+                      texts: [String], order: [Int], blocks: [Int], gen: Int, download: Bool, quietly: Bool) async {
         if download {
             update(tab, run) { $0.state = "preparing" } // the system asks to download the languages
             do { try await session.prepareTranslation() } catch {
@@ -199,18 +200,53 @@ final class PageTranslate {
             }
         }
         update(tab, run) { $0.state = "translating" }
-        // Each line once (a page repeats "modifier" and its menus), in the
-        // page's order: on screen first. The model answers about four short
-        // lines a second, whatever the batching, so each answer goes onto the
-        // page as it comes, a few at a time, and the first in about a second.
-        var copies: [Int: [Int]] = [:], first: [String: Int] = [:], lines: [TranslationSession.Request] = []
-        for index in order {
-            let text = texts[index].trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty else { continue }
-            if let seen = first[text] { copies[seen, default: []].append(index); continue }
-            first[text] = index
-            copies[index] = [index]
-            lines.append(.init(sourceText: text, clientIdentifier: String(index)))
+        // What goes to the model: on macOS 26.4 a passage, a paragraph's text
+        // nodes as one text, each node a run tagged with its place, so the
+        // sentence is translated whole and every node gets back the words the
+        // model marks as its own (links and styles stay where they were).
+        // Before 26.4 each node on its own. Each passage once (a page repeats
+        // "modifier" and its menus), on-screen ones first. The model answers
+        // a few short lines a second however they are batched, so answers go
+        // onto the page as they come, the first in about a second.
+        var rich = false
+        if #available(macOS 26.4, *) { rich = true }
+        var rank = [Int](repeating: 0, count: texts.count)
+        for (place, index) in order.enumerated() { rank[index] = place }
+        var passages: [[Int]] = [], size = 0
+        for index in texts.indices where !texts[index].allSatisfy(\.isWhitespace) {
+            if rich, let last = passages.last?.last, blocks.indices.contains(index), blocks[last] == blocks[index], passages[passages.count - 1].count < 60, size < 1200 {
+                passages[passages.count - 1].append(index)
+            } else {
+                passages.append([index])
+                size = 0
+            }
+            size += texts[index].count
+        }
+        passages.sort { rank[$0[0]] < rank[$1[0]] }
+        var copies: [Int: [[Int]]] = [:], seen: [String: Int] = [:], lines: [TranslationSession.Request] = []
+        for passage in passages {
+            // HTML's own spacing: runs of white space are one space, none at the passage's ends.
+            var words = passage.map { texts[$0].split(whereSeparator: \.isWhitespace).joined(separator: " ") }
+            for (k, index) in passage.enumerated() {
+                if k > 0, texts[index].first?.isWhitespace == true { words[k] = " " + words[k] }
+                if k < passage.count - 1, texts[index].last?.isWhitespace == true { words[k] += " " }
+            }
+            let key = words.joined(separator: "\u{1F}")
+            if let id = seen[key] { copies[id]?.append(passage); continue }
+            let id = lines.count
+            seen[key] = id
+            copies[id] = [passage]
+            if #available(macOS 26.4, *), passage.count > 1 {
+                var source = AttributedString()
+                for (k, word) in words.enumerated() {
+                    var piece = AttributedString(word)
+                    piece.link = URL(string: "copper-node:\(k)")
+                    source += piece
+                }
+                lines.append(.init(sourceText: source, clientIdentifier: String(id)))
+            } else {
+                lines.append(.init(sourceText: words.joined(), clientIdentifier: String(id)))
+            }
         }
         update(tab, run) { $0.lines = lines.count }
         var pending: [[Any]] = [], trouble: Error?
@@ -233,7 +269,9 @@ final class PageTranslate {
             do {
                 for try await answer in session.translate(batch: Array(lines[start..<min(start + 20, lines.count)])) {
                     guard alive(tab, run) else { return }
-                    for index in answer.clientIdentifier.flatMap(Int.init).flatMap({ copies[$0] }) ?? [] { pending.append([index, answer.targetText]) }
+                    for passage in answer.clientIdentifier.flatMap(Int.init).flatMap({ copies[$0] }) ?? [] {
+                        for (index, text) in zip(passage, Self.parts(of: answer, count: passage.count)) { pending.append([index, text]) }
+                    }
                     update(tab, run) { $0.done += 1 }
                     if pending.count >= 6 || jobs[tab.id]?.firstMs == nil {
                         guard await flush() else { return endChanged(tab, run, browser) }
@@ -251,6 +289,23 @@ final class PageTranslate {
             return end(tab, run, "failed", note: "\(trouble)", in: browser, say: "Couldn't translate this page")
         }
         end(tab, run, "done", in: browser, say: quietly ? nil : "Translated from \(jobs[tab.id]?.source ?? "")")
+    }
+
+    /// A passage's answer, node by node: each run goes to the node its tag
+    /// names, untagged words to the node before them; one node gets it all.
+    @available(macOS 15, *)
+    nonisolated static func parts(of answer: TranslationSession.Response, count: Int) -> [String] {
+        var out = [String](repeating: "", count: count)
+        guard count > 1 else { return [answer.targetText] }
+        if #available(macOS 26.4, *), let text = answer.attributedTargetText {
+            var at = 0
+            for run in text.runs {
+                if let k = run.link?.absoluteString.split(separator: ":").last.flatMap({ Int($0) }), k < count { at = k }
+                out[at] += String(text[run.range].characters)
+            }
+        }
+        if out.allSatisfy(\.isEmpty) { out[0] = answer.targetText }
+        return out
     }
 
     private func endChanged(_ tab: Tab, _ run: Int, _ browser: Browser) {
@@ -303,6 +358,7 @@ final class PageTranslate {
     var T = window.__copperTranslate;
     if (!T) T = window.__copperTranslate = (function () {
       var skip = { SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, TEMPLATE: 1, TEXTAREA: 1, SELECT: 1, CODE: 1, PRE: 1, KBD: 1, SAMP: 1, VAR: 1, SVG: 1, MATH: 1, IFRAME: 1, CANVAS: 1 };
+      var inline = { A: 1, ABBR: 1, B: 1, BDI: 1, BDO: 1, CITE: 1, DFN: 1, EM: 1, FONT: 1, I: 1, LABEL: 1, MARK: 1, Q: 1, S: 1, SMALL: 1, SPAN: 1, STRONG: 1, SUB: 1, SUP: 1, TIME: 1, U: 1 };
       var nodes = [], was = [], now = [], gen = 0;
       function restore() {
         for (var i = 0; i < nodes.length; i++) if (now[i] !== undefined && nodes[i].nodeValue === now[i]) nodes[i].nodeValue = was[i];
@@ -316,6 +372,14 @@ final class PageTranslate {
           return /\p{L}/u.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
         } });
         for (var n = walker.nextNode(); n; n = walker.nextNode()) { nodes.push(n); was.push(n.nodeValue); }
+        // Each node's block: the nearest ancestor that isn't inline text styling or a link.
+        var ids = new Map(), blocks = [];
+        for (var i = 0; i < nodes.length; i++) {
+          var el = nodes[i].parentElement;
+          while (el && inline[el.nodeName] && el.parentElement) el = el.parentElement;
+          if (!ids.has(el)) ids.set(el, ids.size);
+          blocks.push(ids.get(el));
+        }
         // On screen or about to be first, then the rest in reading order, then what is hidden (closed menus).
         var near = [], far = [], hidden = [], h = innerHeight;
         for (var i = 0; i < nodes.length; i++) {
@@ -323,7 +387,7 @@ final class PageTranslate {
           if (!r || (!r.width && !r.height)) hidden.push(i);
           else (r.bottom > -h && r.top < 2 * h ? near : far).push(i);
         }
-        return { gen: gen, lang: document.documentElement.lang || '', texts: was, order: near.concat(far, hidden) };
+        return { gen: gen, lang: document.documentElement.lang || '', texts: was, order: near.concat(far, hidden), blocks: blocks };
       }
       function put(g, pairs) {
         if (g !== gen) return -1;
@@ -331,8 +395,9 @@ final class PageTranslate {
         for (var k = 0; k < pairs.length; k++) {
           var i = pairs[k][0], node = nodes[i];
           if (!node || node.nodeValue !== was[i]) continue;
-          var edge = /^(\s*)[\s\S]*?(\s*)$/.exec(was[i]);
-          now[i] = node.nodeValue = edge[1] + pairs[k][1] + edge[2];
+          // The node's own spacing at its ends, if the answer lost it.
+          var text = pairs[k][1], lead = /^\s/.test(was[i]) && !/^\s/.test(text) ? ' ' : '', trail = /\s$/.test(was[i]) && !/\s$/.test(text) ? ' ' : '';
+          now[i] = node.nodeValue = text ? lead + text + trail : '';
           count++;
         }
         return count;
