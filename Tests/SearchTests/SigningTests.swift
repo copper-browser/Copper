@@ -18,8 +18,27 @@ private let repo = URL(fileURLWithPath: #filePath)
         let sha1 = Insecure.SHA1.hash(data: cer).map { String(format: "%02x", $0) }.joined()
         #expect(sha1 == Signing.releaseCertificate)
         let text = try String(contentsOf: repo.appendingPathComponent("release/designated-requirement.txt"), encoding: .utf8)
-        #expect(text.trimmingCharacters(in: .whitespacesAndNewlines) == Signing.releaseRequirement)
-        #expect(Signing.releaseRequirement == "identifier \"com.collinrijock.copper\" and certificate leaf = H\"\(sha1)\"")
+        // The bridge: releases are still signed with this certificate, and the
+        // updater also takes the team's Developer ID (docs/releasing.md).
+        #expect(text.trimmingCharacters(in: .whitespacesAndNewlines) == "identifier \"com.collinrijock.copper\" and certificate leaf = H\"\(sha1)\"")
+        #expect(Signing.releaseRequirement == "identifier \"com.collinrijock.copper\" and (certificate leaf = H\"\(sha1)\" or (\(Signing.developerIDRequirement)))")
+        #expect(Signing.developerIDRequirement.hasSuffix("certificate leaf[subject.OU] = \"95X7XYUVNX\""))
+    }
+
+    @Test func theRequirementCompiles() throws {
+        // codesign -R refuses a requirement it can't parse the same way it
+        // refuses a bundle that fails it; csreq tells the two apart.
+        let csreq = Process()
+        csreq.executableURL = URL(fileURLWithPath: "/usr/bin/csreq")
+        csreq.arguments = ["-r=" + Signing.releaseRequirement, "-t"]
+        let pipe = Pipe()
+        csreq.standardOutput = pipe
+        csreq.standardError = FileHandle.nullDevice
+        try csreq.run()
+        let out = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        csreq.waitUntilExit()
+        #expect(csreq.terminationStatus == 0)
+        #expect(out.contains("95X7XYUVNX") && out.contains(Signing.releaseCertificate))
     }
 
     @Test func eachIdentityIsHeldToItsOwnRequirement() {
