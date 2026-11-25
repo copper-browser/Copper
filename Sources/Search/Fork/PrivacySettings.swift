@@ -148,3 +148,95 @@ enum PrivacyBench {
         }
     }
 }
+
+/// Fork (ardia-shield): Settings › Privacy › Blocking, under the main switch —
+/// which lists block (Fork/ShieldLists.swift) and a list of your own.
+struct ShieldListLines: View {
+    @ObservedObject private var shield = Shield.shared
+    @State private var address = Store.settings.string(forKey: ShieldLists.urlKey) ?? ""
+    @State private var rules = Store.settings.string(forKey: ShieldLists.rulesKey) ?? ""
+    @State private var note: String?
+
+    var body: some View {
+        Group {
+            ForEach([ShieldLists.Kind.ads, .trackers, .cookies, .regional], id: \.self) { kind in
+                Rule()
+                Line(kind.title, Self.detail(kind)) {
+                    Switch(on: Binding(get: { ShieldLists.isOn(kind) }, set: { ShieldLists.set(kind, $0) }))
+                }
+                .settingsAnchor("privacy.shield.\(kind.rawValue)")
+            }
+            Rule()
+            Line(ShieldLists.Kind.custom.title, note ?? customDetail) {
+                Pill("Save") { save() }
+            }
+            .settingsAnchor("privacy.shield.custom")
+            VStack(alignment: .leading, spacing: 8) {
+                TextField("", text: $address)
+                    .fieldExample("A filter list's address (https://…)", when: address.isEmpty)
+                    .houseField()
+                    .onSubmit { save() }
+                    .accessibilityLabel("Filter list address")
+                TextEditor(text: $rules)
+                    .font(.system(size: 11, design: .monospaced))
+                    .scrollContentBackground(.hidden)
+                    .frame(height: 64)
+                    .padding(4)
+                    .settingsField()
+                    .overlay(alignment: .topLeading) {
+                        if rules.isEmpty {
+                            Text("||ads.example.com^   ##.banner   example.com##.popup")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(Palette.placeholder)
+                                .padding(.horizontal, 9).padding(.vertical, 4)
+                                .allowsHitTesting(false)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .accessibilityLabel("Your own filter rules")
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
+        }
+    }
+
+    /// What a kind blocks with, from the bundled index.
+    static func detail(_ kind: ShieldLists.Kind) -> String {
+        let lists = kind == .regional
+            ? ShieldLists.regional(for: ShieldLists.languages())
+            : ShieldLists.bundled.filter { $0.group == kind.rawValue }
+        let rules = lists.flatMap(\.files).reduce(0) { $0 + $1.rules }.formatted()
+        switch kind {
+        case .ads: return "EasyList and uBlock filters · \(rules) rules"
+        case .trackers: return "EasyPrivacy and uBlock privacy · \(rules) rules"
+        case .cookies: return "Hides consent pop-ups: EasyList Cookie, uBlock and AdGuard · \(rules) rules"
+        case .regional:
+            guard !lists.isEmpty else {
+                let names = ShieldLists.languages().compactMap { Locale.current.localizedString(forLanguageCode: $0) }
+                return "None needed for \(names.first ?? "your language") — EasyList covers it"
+            }
+            return "\(lists.map(\.title).joined(separator: ", ")), from your languages · \(rules) rules"
+        case .custom: return ""
+        }
+    }
+
+    private var customDetail: String {
+        guard let stat = shield.custom else { return "Rules, or a list's address — fetched again once a day" }
+        if let error = stat.error { return error }
+        return stat.state == "loading" ? "Loading…" : "\(stat.rules.formatted()) rules on every page"
+    }
+
+    private func save() {
+        let url = address.trimmingCharacters(in: .whitespaces)
+        Store.settings.set(rules, forKey: ShieldLists.rulesKey)
+        Store.settings.set(url, forKey: ShieldLists.urlKey)
+        let skipped = ShieldLists.convert(rules).skipped
+        note = skipped > 0 ? "\(skipped) line\(skipped == 1 ? "" : "s") skipped: Copper reads ||host^, hosts and ##selector" : nil
+        if url.isEmpty { try? FileManager.default.removeItem(at: ShieldLists.fetchedFile) }
+        shield.load()
+        guard !url.isEmpty else { return }
+        ShieldLists.fetch(force: true) { trouble in
+            if let trouble { note = trouble }
+        }
+    }
+}
