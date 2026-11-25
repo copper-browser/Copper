@@ -59,31 +59,26 @@ struct GroupedRows: View {
         return FolderTree.plan(loose).count - loose.count
     }
 
-    /// Fork (polish r5): a kept split whose halves sit next to each other is
-    /// one row — the upper half's — and the lower half's row is not drawn.
+    /// Fork (polish r5): a kept split whose panes sit next to each other is
+    /// one row — the top one's — and the others' rows are not drawn.
     @ObservedObject private var paired = SplitPairs.shared
 
-    /// The upper half of each adjacent pair, by id, with its partner.
-    private static func merged(_ rows: [FolderRow], pairs: [Tab.ID: Tab.ID]) -> [Tab.ID: Tab] {
-        guard !pairs.isEmpty else { return [:] }
-        var found: [Tab.ID: Tab] = [:]
-        var above: Tab?
+    /// The top row of each run of a kept split's panes, by id, with the
+    /// rest of the run (Fork: ardia split — two or three).
+    static func merged(_ rows: [FolderRow], split: (Tab.ID) -> UUID?) -> [Tab.ID: [Tab]] {
+        var found: [Tab.ID: [Tab]] = [:]
+        var top: (tab: Tab, split: UUID)?
         for row in rows {
-            guard case .tab(let tab, _, _, _) = row else { above = nil; continue }
-            if let up = above, pairs[up.id] == tab.id, found[up.id] == nil {
-                found[up.id] = tab
-                above = nil
-            } else {
-                above = tab
-            }
+            guard case .tab(let tab, _, _, _) = row, let key = split(tab.id) else { top = nil; continue }
+            if let top, top.split == key { found[top.tab.id, default: []].append(tab) } else { top = (tab, key) }
         }
         return found
     }
 
     var body: some View {
         let rows = self.rows
-        let merged = paired.ids.isEmpty ? [:] : GroupedRows.merged(rows, pairs: Split.shared.pairs)
-        let hidden = Set(merged.values.map(\.id))
+        let merged = paired.ids.isEmpty ? [:] : GroupedRows.merged(rows) { Split.shared.index[$0] }
+        let hidden = Set(merged.values.flatMap { $0.map(\.id) })
         VStack(spacing: GroupedRows.gap) {
             ForEach(rows) { row in
                 switch row {
@@ -102,7 +97,7 @@ struct GroupedRows: View {
                     EmptyView()
                 case .tab(let tab, let index, let group, let depth):
                     let step = GroupedRows.row + GroupedRows.gap
-                    let pair = merged[tab.id]
+                    let pair = merged[tab.id] ?? []
                     let held = dragging == tab.id
                     if block == .saved { SavedDropGap(drag: drag, anchor: .before(tab.id), tint: tint) }
                     VStack(spacing: GroupedRows.gap) {
@@ -110,7 +105,7 @@ struct GroupedRows: View {
                         SideRow(
                             browser: browser,
                             tab: tab,
-                            live: tab.id == browser.activeID || (pair != nil && pair?.id == browser.activeID),
+                            live: tab.id == browser.activeID || pair.contains { $0.id == browser.activeID },
                             editing: editing,
                             hot: heat.isHot(tab),
                             refusals: editing ? browser.refusals : 0,
@@ -121,7 +116,7 @@ struct GroupedRows: View {
                             // out of Saved; ⌘W only puts it down.
                             close: { Sections.shared.remove(tab, in: browser) },
                             pair: pair,
-                            pairLive: pair != nil && pair?.id == browser.activeID
+                            pairLive: pair.first { $0.id == browser.activeID }?.id
                         )
                         .equatable() // Fork (space-perf): only the rows whose values changed draw again
                         .padding(.leading, CGFloat(depth) * Folders.step)
@@ -192,6 +187,8 @@ struct GroupedRows: View {
                     holding?(true)
                     if let block { drag.carry(tab.id, from: block, at: value.startLocation.y, in: browser) }
                 }
+                // Fork (ardia split): over the page, the row is the split's (SplitDrop) and the column lets it be.
+                if SplitDrop.shared.hover(tab, at: CGPoint(x: value.location.x + drag.contentLeft, y: value.location.y + drag.contentTop), in: browser) { return drag.move(to: value.startLocation.y, in: browser) }
                 travel = value.translation.height
                 drag.move(to: value.location.y, in: browser)
                 // Saved places a row by the gap it opens (SavedDrop.target),
@@ -213,6 +210,7 @@ struct GroupedRows: View {
                     travel = 0
                 }
                 holding?(false)
+                if SplitDrop.shared.drop(tab, in: browser) { return } // Fork (ardia split): let go over the page
                 if let target {
                     withAnimation(Motion.pickup) { drag.drop(tab, at: target, in: browser) }
                 } else {

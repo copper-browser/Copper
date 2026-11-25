@@ -693,15 +693,15 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
     let tint: SpaceTint
     let pill: Namespace.ID
     let close: () -> Void
-    /// Fork (polish r5): the other half of a kept split, drawn in this row
-    /// (GroupedRows hides its own) — one row, both marks, a hairline, one
-    /// pill, as Arc's split items. `pairLive`: that half is the live tab.
-    var pair: Tab? = nil
-    var pairLive = false
+    /// Fork (polish r5): the other panes of a kept split, drawn in this row
+    /// (GroupedRows hides their own) — one row, every mark, hairlines, one
+    /// pill, as Arc's split items. `pairLive`: the one of them that is live.
+    var pair: [Tab] = []
+    var pairLive: Tab.ID? = nil
 
     static func == (a: SideRow, b: SideRow) -> Bool {
         a.tab === b.tab && a.live == b.live && a.editing == b.editing && a.hot == b.hot && a.refusals == b.refusals
-            && a.pair === b.pair && a.pairLive == b.pairLive
+            && a.pair.elementsEqual(b.pair, by: ===) && a.pairLive == b.pairLive
             && a.pill == b.pill && a.tint.theme == b.tint.theme && a.tint.dark == b.tint.dark && a.tint.night == b.tint.night
     }
 
@@ -737,9 +737,9 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
                 FadingTitle(text: Text(tab.label) // Fork (motion): a long title fades out, no "…"
                     .font(.system(size: SideBar.title, weight: own ? .semibold : .regular))
                     .foregroundStyle(colour))
-                if let pair {
+                ForEach(pair) { half in
                     Rectangle().fill(tint.hairline).frame(width: 1, height: 16)
-                    SidePairHalf(browser: browser, tab: pair, live: pairLive, tint: tint)
+                    SidePairHalf(browser: browser, tab: half, live: half.id == pairLive, tint: tint)
                 }
             }
 
@@ -759,7 +759,7 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
         .frame(height: SideBar.row)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background { ground }
-        .overlay(alignment: .leading) { if inPair, pair == nil { SplitBracket(tint: tint) } } // Fork (motion): the two halves of a split, when apart
+        .overlay(alignment: .leading) { if inPair, pair.isEmpty { SplitBracket(tint: tint) } } // Fork (motion): the two halves of a split, when apart
         .modifier(Shake(travel: shake))
         .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .modifier(OneClick(double: false) {
@@ -789,7 +789,7 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
     }
 
     /// This row's own tab is the live one (not its split's other half).
-    private var own: Bool { live && !pairLive }
+    private var own: Bool { live && pairLive == nil }
 
     /// Whether anything is in the slot at the row's end right now.
     private var slotShown: Bool {
@@ -860,7 +860,7 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
         } else if hovering {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(tint.hover)
-        } else if inPair, pair == nil {
+        } else if inPair, pair.isEmpty {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(tint.ink.opacity(0.05)) // Fork (motion): a split's other half, tinted like its partner's pill
         }

@@ -400,7 +400,17 @@
     ./bench about status|feedback|default|copy pairing|clipboard
                                        Send Feedback's prefilled page, Make default (refused in a test run),
                                        and where Settings' Copy and Open went in a test world
-    ./bench split [ID|off]           split the stage with tab ID (toggle with none)
+    ./bench split [ID [left|right|top|bottom]|off]
+                                       split the stage with tab ID at that edge, or add it as one more pane
+                                       (up to three; toggle with none) → panes, stacked, shares, frames
+    ./bench split flip|rotate|even|separate [ID]|shares A,B[,C]|link URL|state
+                                       flip the panes, row ↔ stack, even them, take one (or all) out, set
+                                       their shares, ⌥-click URL in the page in front, or only report
+    ./bench split hover ID X Y | drop ID | drag ID X Y [hold]
+                                       carry sidebar row ID over the page at X,Y (fractions of the page
+                                       area) as a drag would → the edge it would land at; then let go;
+                                       drag does it with real mouse events from the row (test worlds;
+                                       `sections release` lets go of a held one)
     ./bench mouse back|forward|middle [X Y] [--shift] [--window N]
                                        a click of that mouse button at window point X Y (top-left
                                        origin; the page's middle by default), through the app's routing;
@@ -566,7 +576,7 @@ def main(argv):
             args = args[:1] + [os.path.abspath(args[1])] + args[2:]
         request["arg"] = " ".join(args[1:]) if len(args) > 1 else ""
     elif verb == "split":
-        request["arg"] = args[0] if args else ""
+        request["arg"] = " ".join(args)
     elif verb == "swipe":
         request["arg"] = " ".join(args) if args else "left"
     elif verb == "mouse":
