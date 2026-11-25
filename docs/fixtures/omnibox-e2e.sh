@@ -55,13 +55,14 @@ rows = {r["index"]: r for g in d["groups"] for r in g["rows"]}
 print(rows.get(d["picked"], {}).get(sys.argv[2], ""))
 EOF
 }
+# What Copper copied: the probe world's own pasteboard, never the Mac's.
+clip() { "$root/bench" --world "$world" ai clipboard | python3 -c 'import json,sys; print(json.load(sys.stdin)["text"])'; }
 asks() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["suggestAsks"])' "$tmp/card.json"; }
 
 # 1. ⌘L, the address field over a page (first: a fresh window, as key-beep-e2e.sh has it).
 id="$(bench open "file://$root/docs/fixtures/keys.html")"
 bench wait "$id" 10 >/dev/null
 bench select "$id" >/dev/null
-printf 'not yet' | pbcopy
 # ⌘L, then typing once the field is up (as key-beep-e2e.sh waits).
 field() {
   bench key "$id" "⌘l" --app >/dev/null
@@ -72,7 +73,7 @@ field
 bench key "$id" "2*21" --app >/dev/null
 bench probe | grep -q '"typed": "2\*21"' || fail "⌘L: typing did not reach the field ($(bench probe | grep '"typed"'); first responder $(bench key "$id" "" --app | grep -m1 firstResponder))"
 bench key "$id" "↩" --app >/dev/null
-[ "$(pbpaste)" = 42 ] || fail "⌘L 2*21 Return left '$(pbpaste)' on the clipboard"
+[ "$(clip)" = 42 ] || fail "⌘L 2*21 Return left '$(clip)' on the clipboard"
 field
 bench key "$id" "!w paris" --app >/dev/null
 bench probe | grep -q '"typed": "!w paris"' || fail "⌘L: '!w paris' did not reach the field ($(bench probe | grep '"typed"'))"
@@ -87,10 +88,11 @@ card "2*21"
 [ "$(picked key)" = "2*21 = 42" ] || fail "2*21: the row Return takes is '$(picked key)'"
 [ "$(picked hint)" = "Copy" ] || fail "2*21: its hint is '$(picked hint)'"
 start="$(asks)"
-printf 'not yet' | pbcopy
+bench page copy address >/dev/null # the tab's address over step 1's 42, so the 42 below is ⌘T's
+[ "$(clip)" != 42 ] || fail "bench page copy did not replace the clipboard"
 card "2*21" --go
-[ "$(pbpaste)" = 42 ] || fail "Return on 2*21 left '$(pbpaste)' on the clipboard"
-echo "ok 2 ⌘T 2*21 → $(picked key), Return copied $(pbpaste)"
+[ "$(clip)" = 42 ] || fail "Return on 2*21 left '$(clip)' on the clipboard"
+echo "ok 2 ⌘T 2*21 → $(picked key), Return copied $(clip)"
 
 # 3. !bangs, first word or last.
 card "!w paris"

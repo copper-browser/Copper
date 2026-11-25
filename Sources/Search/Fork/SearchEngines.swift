@@ -118,8 +118,7 @@ enum SearchEngines {
     @MainActor static func run(_ url: URL, in browser: Browser) -> Bool {
         guard url.scheme == "copper", url.host() == "copy" else { return false }
         let value = url.lastPathComponent
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(value, forType: .string)
+        SettingsActions.copy(value) // a probe world's own pasteboard in a test run (`bench ai clipboard`)
         browser.announce("Copied \(value)")
         return true
     }
