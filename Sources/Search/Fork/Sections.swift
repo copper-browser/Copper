@@ -414,6 +414,11 @@ final class Sections: ObservableObject {
         case "cleanup":
             // ⌥⌘K, Clean Up: the sweep against the window (12 h while it is Never).
             note["archived"] = Cleaned.shared.cleanUp(in: browser)
+        case "cleaned":
+            // cleaned PATH [dark]: the Recently Cleaned list, as a PNG.
+            let words = arg.split(separator: " ").map(String.init)
+            guard let path = words.first else { return ["error": "sections cleaned PATH [dark]"] }
+            return Cleaned.shared.bench(picture: path, dark: words.contains("dark"), in: browser)
         case "restore":
             // restore ID|all: a Recently Cleaned entry (or all of this space's) back into Today.
             let answer = Cleaned.shared.bench(restore: arg, in: browser)

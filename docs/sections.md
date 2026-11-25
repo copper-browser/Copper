@@ -164,6 +164,7 @@ door for the Arc import's archived tabs.
     ./bench sections window 12h|24h|48h|never
     ./bench sections cleanup             ⌥⌘K: the sweep now, into Recently Cleaned
     ./bench sections restore ID|all      a Recently Cleaned entry (or the space's lot) back into Today
+    ./bench sections cleaned PATH [dark] the Recently Cleaned list, drawn off screen to a PNG
 
 The drag, click and hover verbs hand their events straight to the view
 under the row (`Fork/SideHand.swift`): a probe never has the key window,

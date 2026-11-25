@@ -250,9 +250,9 @@
     ./bench sections drop ID Y [hold]|drop end
                                        a Today row let go over the column at Y (its own space); over the
                                        middle of a top-level Saved row it makes a folder of the two (onto)
-    ./bench sections cleanup|restore ID|all
+    ./bench sections cleanup|restore ID|all|cleaned PATH [dark]
                                        ⌥⌘K's Clean Up now (into Recently Cleaned); a Recently Cleaned entry,
-                                       or all of this space's, back into Today
+                                       or all of this space's, back into Today; the list as a PNG
     ./bench flow sources               browsers Flow can see
     ./bench flow scan --source Chrome  cheap site counts (no keychain prompt)
     ./bench flow bookmarks              actual imported tree, order and site count (test world)
@@ -976,6 +976,8 @@ def main(argv):
             print("sections check: " + ("ok" if not fails else f"{len(fails)} failure(s)"))
             for f in fails: print("  ✗ " + f)
             return 1 if fails else 0
+        if answer.get("path") and request.get("op") == "cleaned":
+            print(answer["path"]); return 0
         for k in ("drop", "seeded", "released", "held"):
             if k in answer: print(f"{k}: {answer[k]}")
         if "archived" in answer:

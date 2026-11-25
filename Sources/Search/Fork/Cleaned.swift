@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import SwiftUI
 
 // Recently Cleaned (Ardia's, and Arc's archive): what the Today sweep, Clean
@@ -170,6 +170,24 @@ final class Cleaned: ObservableObject {
             ["id": String(entry.id.uuidString.prefix(8)).lowercased(), "title": entry.title,
              "url": entry.url.absoluteString, "minutes": Int(Date().timeIntervalSince(entry.when) / 60)]
         }
+    }
+
+    /// `sections cleaned PATH [dark]`: the list as its popover draws it, off
+    /// screen, to a PNG (the popover itself is a window a probe can't picture).
+    func bench(picture path: String, dark: Bool, in browser: Browser) -> [String: Any] {
+        let host = NSHostingView(rootView: CleanedList(browser: browser) {}
+            .background(Palette.ground)
+            .environment(\.colorScheme, dark ? .dark : .light))
+        host.frame = NSRect(origin: .zero, size: host.fittingSize)
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        guard let picture = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return ["error": "no picture"] }
+        host.cacheDisplay(in: host.bounds, to: picture)
+        guard let png = picture.representation(using: .png, properties: [:]) else { return ["error": "no png"] }
+        do { try png.write(to: URL(fileURLWithPath: path)) } catch { return ["error": "\(error)"] }
+        return ["path": path]
     }
 
     /// `sections restore ID|all`.

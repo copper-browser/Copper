@@ -455,7 +455,8 @@ struct SavedDropMark: View {
         guard case .saved(let spot)? = drag.target else { return nil }
         switch spot.anchor {
         case .into(let id): return drag.heads[id]
-        case .onto(let id): return drag.rows[id]
+        // A little outside the row, so the ring shows round the card riding on it.
+        case .onto(let id): return drag.rows[id]?.insetBy(dx: -3, dy: -3)
         default: return nil
         }
     }

@@ -89,6 +89,8 @@ yi=$(awk -v k="$inbox" '$2 == k { print $5 }' "$tmp/t.txt")
 yc=$(awk -v k="$cal" '$2 == k { print $5 }' "$tmp/t.txt")
 [ -n "$yi" ] && [ -n "$yc" ] || fail "no row frames: $(cat "$tmp/t.txt")"
 dy=$(python3 -c "print(round($yi - $yc, 1))")
+# Six points under the middle: still onto it, and the ring shows past the card.
+dy=$(python3 -c "print(round($dy + 6, 1))")
 bench sections drag "$cal" "$dy" 16 hold >/dev/null
 sleep 1.2
 bench sections target | tee "$tmp/held.txt" | grep -m1 '^drop' || true
@@ -111,7 +113,11 @@ bench sections cleanup >"$tmp/c.txt"; cat "$tmp/c.txt"
 grep -q "archived 1 tab" "$tmp/c.txt" || fail "cleanup did not take the stale row"
 grep -q "recently cleaned (3)" "$tmp/c.txt" && grep -q "Fresh" "$tmp/c.txt" || fail "Recently Cleaned does not list it"
 ok "Clean Up closed the stale Today row into Recently Cleaned (3 now)"
-shot ardia-tabs-recently-cleaned
+sleep 1; shot ardia-tabs-recently-cleaned
+if [ -n "${SHOTS:-}" ]; then
+  bench sections cleaned "$SHOTS/ardia-tabs-cleaned-list.png" >/dev/null && echo "     picture $SHOTS/ardia-tabs-cleaned-list.png"
+  bench sections cleaned "$SHOTS/ardia-tabs-cleaned-list-dark.png" dark >/dev/null || true
+fi
 hn=$(awk '/Hacker News/ { print $1; exit }' "$tmp/c.txt")
 bench sections restore "$hn" >"$tmp/r.txt"; cat "$tmp/r.txt"
 grep -q "Hacker News" <(bench tabs) || fail "Hacker News did not come back"
