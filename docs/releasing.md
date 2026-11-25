@@ -23,6 +23,11 @@ for its version, and then publishes the zip, its `.sha256`, `copper-version.json
 `copper-install.sh` and the dSYM as a `v<version>` release. The updater, the curl installer and
 the Homebrew tap all read that release.
 
+**Block lists first** (once a release, on a Mac): `tools/shield/refresh.py`, then commit what
+changed in `Sources/Search/Resources/shield`. It fetches EasyList, EasyPrivacy, uBlock's
+filters, the cookie-notice lists and the regional lists and converts them for WebKit
+(tools/shield/README.md); the app compiles each new version once, on first launch.
+
 **Two CPUs.** Every release is built twice on the same Apple Silicon runner: natively for
 `arm64`, and cross-built for Intel with `COPPER_ARCH=x86_64 ./build.sh release app`
 (`swift build --triple x86_64-apple-macosx14.0`, into `build/x86_64/Copper.app`). Both are
