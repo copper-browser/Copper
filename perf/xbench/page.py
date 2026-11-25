@@ -10,6 +10,7 @@ byte-for-byte the template's. Python stdlib only.
 
     python3 perf/xbench/page.py            write the page
     python3 perf/xbench/page.py --check    selftest of the formatting helpers
+    python3 perf/xbench/page.py --bench B.json --agents A.json --out X.html     a draft from other data
 """
 import html
 import json
@@ -24,15 +25,16 @@ import polar  # noqa: E402
 
 REPO = "https://github.com/copper-browser/Copper"
 ORDER = ["copper", "safari", "chrome", "ardia", "arc"]
+SHORT = {"copper": "Copper", "safari": "Safari", "chrome": "Chrome", "ardia": "Ardia", "arc": "Arc"}
 GROUPS = [
     ("launch", "Launch", "From <code>open</code> with the browser closed, as a click on its Dock icon or on a link in another app would start it.",
      ["launch-window", "launch-restore", "launch-link"]),
     ("memory", "Memory", "Everything the browser runs, added up: the app, its helpers, the GPU and network processes and one web process per tab.",
      ["memory-1", "memory-10", "memory-20", "memory-closed"]),
-    ("idle", "Idle", "A minute of doing nothing, 30 seconds after the last page loaded. Every page runs a one-second timer, as a real page would.",
+    ("idle", "Idle", "A minute of doing nothing, 30 seconds after the last page loaded; every page runs a one-second timer. With the Mac’s screen locked, Copper and Safari draw nothing here while Chrome and Ardia draw their front tab: read these with <a href=\"#method\">the locked screen</a> in mind.",
      ["idle-cpu-1", "idle-cpu-20", "idle-wakeups-1", "idle-wakeups-20", "idle-power-1", "idle-power-20",
       "idle-cpu-1-steady", "idle-cpu-20-steady", "idle-wakeups-1-steady", "idle-wakeups-20-steady"]),
-    ("speed", "Speed", "Speedometer 3.1, Apple, Google and Mozilla's benchmark of web app responsiveness, served from the same Mac.",
+    ("speed", "Speed", "Speedometer 3.1, Apple, Google and Mozilla’s benchmark of web app responsiveness, served from the same Mac.",
      ["speedometer"]),
 ]
 BETTER = {True: "less is better", False: "more is better"}
@@ -69,9 +71,11 @@ def ratio_words(row, copper, best_name, best):
         return ""
     r = (a / b) if row["lowerIsBetter"] else (b / a)
     unit = row["unit"]
+    if r >= 10:
+        return f"{best_name} {num(b, unit)} against Copper’s {num(a, unit)} ({r:.0f}×)"
     if r >= 1.5:
-        return f"{best_name} {num(b, unit)} against Copper's {num(a, unit)} ({r:.1f}×)"
-    return f"{best_name} {num(b, unit)} against Copper's {num(a, unit)} ({abs(a - b) / b * 100:.0f}%)"
+        return f"{best_name} {num(b, unit)} against Copper’s {num(a, unit)} ({r:.1f}×)"
+    return f"{best_name} {num(b, unit)} against Copper’s {num(a, unit)} ({abs(a - b) / b * 100:.0f}%)"
 
 
 def metric(row, names):
@@ -150,7 +154,7 @@ def agents_section(data):
   <section class="wrap section" id="agents" aria-labelledby="agents-title">
     <div class="section-head">
       <h2 id="agents-title">Agents: tokens to get the same job done</h2>
-      <p>Claude Code and Codex, each driving a browser through its own tools, on the eight local web apps of Ardia's public agent bench (Apache-2.0). A checker on each app's server says whether the job got done. Fewer tokens is cheaper and faster for the same agent. Each cell is {esc(stat)} for that task, with how many runs passed; {runs} of {planned} planned runs finished, {esc(day(data["to"]) if data.get("to") else "")}.</p>
+      <p>Claude Code and Codex, each driving a browser through its own tools, on the eight local web apps of Ardia’s public agent bench (Apache-2.0). A checker on each app’s server says whether the job got done. Fewer tokens is cheaper and faster for the same agent. Each cell is {esc(stat)} for that task, with how many runs passed; {runs} of {planned} planned runs finished, {esc(day(data["to"]) if data.get("to") else "")}.</p>
     </div>
     {"".join(blocks)}
     <p class="small muted">How each browser was reached: Copper through its built-in MCP server (plain browser tools only; nothing in Copper calls a model), Ardia through its <code>ardia browse</code> CLI and skill, Chrome through Playwright MCP. Raw runs and the adapter: <a href="{REPO}/tree/fork/perf/agentbench">perf/agentbench</a>.</p>
@@ -175,7 +179,7 @@ def polar_section():
         <tr><th scope="row">Memory, idle with example.com open</th><td class="num"><b>{statistics.median(memory["copper"]):.0f} MB</b><small>n={len(memory["copper"])}</small></td><td class="num">{statistics.median(memory["polar"]):.0f} MB<small>n={len(memory["polar"])}</small></td></tr>
       </tbody>
     </table></div>
-    <p class="small muted">Polar plans with a frontier model; Copper's agent is a small, fast one, so this is a speed comparison, not a like-for-like of the models. Rows and the script that recomputes them: <a href="{REPO}/tree/fork/perf/xbench/polar-2026-11-18">perf/xbench/polar-2026-11-18</a>.</p>
+    <p class="small muted">Polar plans with a frontier model; Copper’s agent is a small, fast one, so this is a speed comparison, not a like-for-like of the models. Rows and the script that recomputes them: <a href="{REPO}/tree/fork/perf/xbench/polar-2026-11-18">perf/xbench/polar-2026-11-18</a>.</p>
   </section>"""
 
 
@@ -183,31 +187,46 @@ def method_section(bench, names):
     m = bench["machine"]
     b = bench["browsers"]
     ver = ", ".join(f"{esc(b[n]['name'])} {esc(b[n]['version'])}" for n in ORDER if n in b and n in names)
-    samples = bench.get("conditions", {}).get("samples")
-    load = bench.get("conditions", {}).get("load1Median")
-    rounds = bench.get("conditions", {}).get("rounds")
+    rows = {r["id"]: r for r in bench["rows"]}
+    cond = bench.get("conditions", {})
+    load = f" Median load average as the measurements started: {cond['load1Median']}." if cond.get("load1Median") is not None else ""
+    seen = visible_words(rows)
     return f"""
   <section class="wrap section" id="method" aria-labelledby="method-title">
     <div class="prose">
       <h2 id="method-title">How we measure</h2>
       <h3>The Mac</h3>
-      <p>{esc(m["model"])}, {esc(m["chip"])}, {esc(m["ram"])}, macOS {esc(m["macOS"])}, {esc(span_words(bench))}. Nobody sits at it, so its screen is locked. It's shared with other jobs, so every phase of a round waited until the Mac was quiet (no other job holding its lock, load average under 2) and kept it for itself while it ran.{f" Median load average across the {samples} measurements: {load}." if samples else ""}</p>
+      <p>{esc(m["model"])}, {esc(m["chip"])}, {esc(m["ram"])}, macOS {esc(m["macOS"])}, {esc(span_words(bench))}. Nobody sits at it, so its screen is locked. Other jobs share it, so each set of launches and each session waited until no other job held the Mac’s lock and the load average was under 2, then held the lock while it ran.{esc(load)}</p>
       <h3>The browsers</h3>
-      <p>{ver}. Each as shipped, default settings, each in a profile of its own made once (one launch, our test page opened, a minute to settle, quit) and copied fresh for every run.</p>
+      <p>{ver}. Each as shipped, with default settings, in a profile of its own that starts from the same template (one launch, our test page opened, a minute to settle, quit), so every launch restores the same one tab.</p>
       <ul>
-        <li><strong>Copper</strong> runs in a test world of its own (the same app, its own data folder). Launches are of the normal window. With the screen locked macOS calls every window hidden, and WebKit stops drawing hidden pages while Chrome and Ardia keep drawing theirs; so for memory, idle and Speedometer Copper runs headless, which keeps its pages visible and drawing like theirs.</li>
-        <li><strong>Safari</strong> can't run from a copy or in a profile of its own, and this Mac's Safari profile is somebody's. So it only gets the launch to a window (its Start Page, no address), and its memory and idle runs happen in a WebDriver session, Safari's own private window set. Its pages stay hidden on a locked screen, so it has no Speedometer score here.</li>
-        <li><strong>Chrome</strong> runs from Google's download with its own profile folder, its DevTools port open to open and close tabs, and <code>--restore-last-session</code> so it restores its tab like the others.</li>
-        <li><strong>Ardia</strong> runs from its release download with its own data folder, onboarding marked done and its DevTools port open, outside its own background test mode.</li>
-        <li><strong>Arc</strong> isn't here: it wants an Arc account at first launch, and nobody can sign in on a Mac nobody sits at.</li>
+        <li><strong>Copper</strong> runs in a test world of its own: the same app, with its own data folder.</li>
+        <li><strong>Safari</strong> can’t run from a copy or in a profile of its own, and this Mac’s Safari profile belongs to its owner. So it only gets the launch to a window (its Start Page, no address), and its memory and idle runs happen in a WebDriver session, Safari’s own private window set.</li>
+        <li><strong>Chrome</strong> runs from Google’s download with its own profile folder and its DevTools port open (that’s how tabs are opened and closed), restoring its last session like the others.</li>
+        <li><strong>Ardia</strong> runs from its release download with its own data folder, onboarding marked done and its DevTools port open, not in the background test mode Ardia’s own benchmark gives it.</li>
+        <li><strong>Arc</strong> isn’t here: it wants an Arc account at first launch, and nobody can sign in on a Mac nobody sits at.</li>
       </ul>
+      <h3>The locked screen</h3>
+      <p>With the screen locked, macOS calls every window hidden. WebKit then stops drawing pages, so Copper’s and Safari’s pages draw nothing during the idle minutes, while Chrome and Ardia keep drawing the tab in front. That tilts the idle rows toward Copper and Safari by one page's drawing.{seen} Speedometer needs a page that draws, so Copper runs it headless (its pages ignore the lock there) and Safari has no score.</p>
       <h3>The runs</h3>
-      <p>One harness drives every browser from outside the app, on the same local test page (60 boxes, 120 paragraphs, a one-second timer). Browsers take turns item by item and the order rotates each round, so nobody always goes first. A window counts once one at least 300×200 is on screen; a page counts at its first contentful paint, which it reports itself. Memory is phys_footprint summed over every process of the browser; CPU, wakeups and energy are the kernel's own per-process counters over the same processes. Each figure is the median of the runs, with the range and the count.{f" {rounds} rounds." if rounds else ""}</p>
+      <p>One harness drives every browser from outside the app, on the same local test page (60 boxes, 120 paragraphs, a one-second timer). Browsers take turns item by item, in an order that rotates each round, so nobody always goes first. A window counts once one at least 300×200 is on screen; a page counts at its first contentful paint, which the page reports itself. Memory is phys_footprint summed over every process the browser runs or macOS holds it responsible for; CPU, wakeups and energy are the kernel's own per-process counters over the same processes. Each figure is the median of the runs, with the range and the count.</p>
       <h3>Not measured here</h3>
-      <p>New tab, tab switch and new window need a driver inside each browser, and every browser has a different one; the clicks a person would make need an unlocked screen. They'll come when this Mac has one.</p>
+      <p>New tab, tab switch and new window need a driver inside each browser, and every browser has a different one; the clicks a person would make need an unlocked screen, and so does power while scrolling or playing video.</p>
       <p>The data: <a href="../assets/bench.json">bench.json</a>, every run in <a href="{REPO}/tree/fork/perf/xbench/results">perf/xbench/results</a>, the harness and its method in <a href="{REPO}/tree/fork/perf/xbench">perf/xbench</a>.</p>
     </div>
   </section>"""
+
+
+def visible_words(rows):
+    """Copper’s 1-tab idle with its page drawing (headless), next to the hidden one: the size of the tilt."""
+    hid, vis = rows.get("idle-cpu-1", {}).get("browsers", {}).get("copper"), rows.get("idle-cpu-1-visible", {}).get("browsers", {}).get("copper")
+    if not hid or not vis:
+        return ""
+    wv = rows.get("idle-wakeups-1-visible", {}).get("browsers", {}).get("copper")
+    wh = rows.get("idle-wakeups-1", {}).get("browsers", {}).get("copper")
+    wake = f", {num(wv['median'], '/s')} wakeups against {num(wh['median'], '/s')}" if wv and wh else ""
+    return (f" Kept drawing (headless, which ignores the lock), Copper idles at {num(vis['median'], '%')} CPU with one tab "
+            f"against {num(hid['median'], '%')} with it hidden{wake} (n={vis['n']}).")
 
 
 def span_words(bench):
@@ -216,7 +235,7 @@ def span_words(bench):
 
 
 def main_html(bench, agents):
-    names = {n: bench["browsers"][n]["name"] for n in ORDER if n in bench["browsers"]}
+    names = {n: SHORT[n] for n in ORDER if n in bench["browsers"]}
     rows = {r["id"]: r for r in bench["rows"]}
     groups = []
     for gid, title, sub, ids in GROUPS:
@@ -234,7 +253,7 @@ def main_html(bench, agents):
   <section class="wrap section" id="losses" aria-labelledby="losses-title">
     <div class="prose">
       <h2 id="losses-title">Where Copper loses</h2>
-      <p>The rows where another browser's median beats Copper's. They stay on the page.</p>
+      <p>The rows where another browser’s median beats Copper’s. They stay on the page.</p>
       <ul>{"".join(lost)}</ul>
     </div>
   </section>"""
@@ -244,7 +263,7 @@ def main_html(bench, agents):
     return f"""<main id="main">
   <div class="wrap page-head">
     <span class="kicker">Benchmarks</span>
-    <h1>Copper, timed against the browsers you'd use instead.</h1>
+    <h1>Copper, timed against the browsers you’d use instead.</h1>
     <p class="lead">Copper, Safari, Chrome and Ardia on the same Mac mini, launched and loaded by one harness that reads every browser from the outside. Every figure is a median with its range and run count, and the rows Copper loses stay on the page.</p>
     <p class="facts small muted">{esc(m["model"])} · {esc(m["chip"])} · {esc(m["ram"])} · macOS {esc(m["macOS"])}<br>{versions}<br>{esc(span_words(bench)[0].upper() + span_words(bench)[1:])}</p>
   </div>{"".join(groups)}{lost_html}{agents_section(agents)}{polar_section()}{method_section(bench, names)}
@@ -315,22 +334,26 @@ def selftest():
     assert num(734.4, "MB") == "734 MB" and num(0.254, "%") == "0.25%" and num(12.34, "/s") == "12.3 /s"
     assert num(2.5, "ms") == "2.50 ms" and num(None) == "–"
     row = {"lowerIsBetter": True, "unit": "MB"}
-    assert ratio_words(row, {"median": 300}, "Chrome", {"median": 100}) == "Chrome 100 MB against Copper's 300 MB (3.0×)"
-    assert ratio_words(row, {"median": 110}, "Chrome", {"median": 100}) == "Chrome 100 MB against Copper's 110 MB (10%)"
+    assert ratio_words(row, {"median": 300}, "Chrome", {"median": 100}) == "Chrome 100 MB against Copper’s 300 MB (3.0×)"
+    assert ratio_words(row, {"median": 110}, "Chrome", {"median": 100}) == "Chrome 100 MB against Copper’s 110 MB (10%)"
     print("page selftest ok")
+
+
+def arg(name, default):
+    return sys.argv[sys.argv.index(name) + 1] if name in sys.argv else default
 
 
 def main():
     if "--check" in sys.argv:
         return selftest()
-    bench = json.load(open(os.path.join(SITE, "assets/bench.json")))
-    agents_file = os.path.join(SITE, "assets/agentbench.json")
+    bench = json.load(open(arg("--bench", os.path.join(SITE, "assets/bench.json"))))
+    agents_file = arg("--agents", os.path.join(SITE, "assets/agentbench.json"))
     agents = json.load(open(agents_file)) if os.path.exists(agents_file) else None
     template = open(os.path.join(SITE, "_page-template.html")).read()
-    out = os.path.join(SITE, "benchmarks/index.html")
+    out = arg("--out", os.path.join(SITE, "benchmarks/index.html"))
     os.makedirs(os.path.dirname(out), exist_ok=True)
     open(out, "w").write(render(bench, agents, template))
-    print(f"wrote {os.path.relpath(out, ROOT)}")
+    print(f"wrote {out}")
 
 
 if __name__ == "__main__":

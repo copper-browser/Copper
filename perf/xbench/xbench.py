@@ -20,10 +20,11 @@ WebDriver (Safari, which can't run from a copy or a separate profile) and the be
   xbench.py run     --out DIR [--browsers a,b] [--rounds N] [--launches N] [--phases launch,session,speedometer]
                     [--quiet] [--settle] [--deadline MINS] resumable: finished items in DIR/samples.jsonl are skipped
   xbench.py report  --out DIR [--json FILE] [--md FILE]   medians (min–max, n) per row and browser
+  xbench.py stop                                           end a running harness cleanly (browsers quit, lock released)
 
-  --quiet   take each phase of a round (every launch, every session, every Speedometer run, browsers interleaved and
-            rotated) only while ~/hc/mini.lock is free and the 1-minute load average is under 2, holding the lock for
-            the phase; ~/hc/ardia-site-bench/PAUSE asks the token bench to hold its next run meanwhile.
+  --quiet   take a round's launches (browsers interleaved and rotated), and then each session and Speedometer run,
+            only while ~/hc/mini.lock is free and the 1-minute load average is under 2, holding the lock meanwhile;
+            ~/hc/ardia-site-bench/PAUSE asks the token bench to hold its next run while the Mac may be about to go quiet.
 
 Runs on the Mac (python3, stdlib only). Copies of the browsers live in $XBENCH_APPS (default
 ~/hc/ardia-site-bench/apps-xb): copper/Copper.app, chrome/Google Chrome.app, arc/Arc.app, ardia/Ardia.app, used by
@@ -120,7 +121,7 @@ p{{max-width:62em;margin:.6em 0}}</style></head>
 SP3_HOOK = """<script>
 (function () {
   function send(o) { try { navigator.sendBeacon('/beacon', JSON.stringify(o)); } catch (e) {} }
-  var id = new URLSearchParams(location.search).get('xbid') || 'sp3';
+  var id = location.pathname.split('/')[2] || 'sp3';  // /sp3/<run id>/index.html
   addEventListener('load', function () {
     var c = window.benchmarkClient;
     if (!c) { send({id: id, kind: 'sp3', error: 'no benchmarkClient'}); return; }
@@ -188,7 +189,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/blank":
             return self.send_body(200, b"<!doctype html><title>blank</title>", "text/html")
         if path.startswith("/sp3/"):
-            rel = os.path.normpath(path[5:] or "index.html").lstrip("/")
+            # /sp3/<run id>/<file>: the run id rides in the path, where no driver can lose it (DevTools' /json/new
+            # cuts a URL at its first &).
+            rel = os.path.normpath(path[5:].partition("/")[2] or "index.html").lstrip("/")
             if rel.startswith(".."):
                 return self.send_body(403, b"no", "text/plain")
             file = os.path.join(SP3, rel)
@@ -201,7 +204,7 @@ class Handler(BaseHTTPRequestHandler):
                      ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png",
                      ".jpg": "image/jpeg", ".woff2": "font/woff2", ".wasm": "application/wasm"}.get(
                 os.path.splitext(file)[1], "application/octet-stream")
-            if rel == "index.html":
+            if rel in ("index.html", "."):
                 body = body.replace(b"</head>", SP3_HOOK.encode() + b"</head>", 1)
             return self.send_body(200, body, ctype)
         self.send_body(404, b"not found", "text/plain")
@@ -248,6 +251,11 @@ def probe(*args, timeout=60):
     return [json.loads(line) for line in r.stdout.splitlines() if line.strip()]
 
 
+def windows_of(app):
+    got = probe("windows", app)
+    return got[0] if got else []
+
+
 def real(path):
     return os.path.realpath(path)
 
@@ -266,6 +274,7 @@ class Browser:
     key = name = engine = ""
     restores = True        # a plain launch restores the template's one tab
     links = True           # the link launch is measured
+    speedometer = True     # its pages can draw on this Mac (Speedometer needs requestAnimationFrame)
     flags: list = []
 
     def __init__(self):
@@ -353,16 +362,23 @@ class Browser:
     def running(self):
         return any(p["path"] == self.exe() for p in probe("find", self.app))
 
-    def quit(self, timeout=20):
+    def ask_quit(self, pid):
+        # SIGTERM is a normal quit for Copper, Chrome and Ardia (each saves its session; the restore rows rely on it).
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+
+    def quit(self, timeout=10):
         pid = self.pid or self.find()
         if pid:
-            subprocess.run([probe_bin(), "quit", str(pid)], capture_output=True, timeout=30)
-        end = time.time() + min(timeout, 10)
+            self.ask_quit(pid)
+        end = time.time() + timeout
         while time.time() < end and self.find():
             time.sleep(0.25)
         left = self.find()
         if left:
-            log(f"{self.key}: still running 10 s after a quit, SIGTERM {left}")
+            log(f"{self.key}: still running {timeout} s after a quit, SIGTERM {left}")
             try:
                 os.kill(left, signal.SIGTERM)
             except ProcessLookupError:
@@ -566,15 +582,6 @@ class Copper(Browser):
         shutil.copytree(self.world, self.template, symlinks=True,
                         ignore=shutil.ignore_patterns("bench.sock", "instance.lock", "crashes"))
 
-    def quit(self, timeout=20):
-        pid = self.pid or self.find()
-        if pid:
-            try:
-                os.kill(pid, signal.SIGTERM)  # a normal quit in Copper (session flushed)
-            except ProcessLookupError:
-                pass
-        super().quit(timeout)
-
     def bench(self, request, timeout=60):
         path = os.path.join(self.world, "bench.sock")
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
@@ -619,6 +626,7 @@ class Safari(Browser):
     key, name, engine = "safari", "Safari", "WebKit"
     restores = False
     links = False
+    speedometer = False  # its pages are hidden on a locked screen, and a hidden page never gets a frame
 
     @property
     def app(self):
@@ -681,7 +689,10 @@ class Safari(Browser):
         if self.handles:
             self.wd("POST", f"/session/{s}/window", {"handle": self.handles[0]})
 
-    def quit(self, timeout=20):
+    def ask_quit(self, pid):
+        subprocess.run([probe_bin(), "quit", str(pid)], capture_output=True, timeout=30)
+
+    def quit(self, timeout=10):
         if self.session:
             try:
                 self.wd("DELETE", f"/session/{self.session}", timeout=30)
@@ -817,7 +828,7 @@ def launch_item(b, kind, tag):
         win = json.loads(out.strip().splitlines()[-1]) if out.strip() else {}
         r = {"window": round(win["at"] - t0, 1) if win.get("at") else None, "windowInfo": win.get("window")}
         if r["window"] is None:
-            r["windowsSeen"] = probe("windows", b.app)
+            r["windowsSeen"] = windows_of(b.app)
         if kind == "link" or (kind == "restore" and b.restores):
             want = tag if kind == "link" else "restore"
             got = BEACONS.wait(lambda x: x.get("kind") == "load" and x["rx"] >= t0 and
@@ -856,8 +867,6 @@ def session_item(b, tag, idle_s, settle):
     """One launch, then: 1 tab (30 s) → idle window → 10 tabs (+10 s) → 20 tabs (+15 s) → idle window
     [→ settled idle window 120 s after the last load] → back to 1 tab (+30 s). Memory at each step."""
     clean_slate(b)
-    if isinstance(b, Copper):
-        b.headless = True
     b.fresh()
     r = {"memory": {}, "idle": {}, "misses": 0}
     try:
@@ -880,7 +889,7 @@ def session_item(b, tag, idle_s, settle):
         r["firstVis"] = first.get("vis")
         time.sleep(max(0, 30 - (now_ms() - t0) / 1000))
         r["memory"]["1"] = footprint(b)
-        r["windows"] = [w for w in probe("windows", b.app) if w.get("onscreen") and w.get("w", 0) >= 300]
+        r["windows"] = [w for w in windows_of(b.app) if w.get("onscreen") and w.get("w", 0) >= 300]
         r["vis1"] = latest_vis(first["id"], t0)
         r["idle"]["1"] = idle_window(b, idle_s)
         if settle:
@@ -893,7 +902,8 @@ def session_item(b, tag, idle_s, settle):
         last = now_ms()
         time.sleep(15)
         r["memory"]["20"] = footprint(b)
-        r["vis20"] = {"first": latest_vis(first["id"], t0), "last": latest_vis(f"{tag}-t19", t0)}
+        r["vis20"] = {"first": latest_vis(first["id"], t0), "last": latest_vis(f"{tag}-t19", t0),
+                      "visible": sum(latest_vis(i, t0) == "visible" for i in [first["id"]] + [f"{tag}-t{k}" for k in range(1, 20)])}
         r["idle"]["20"] = idle_window(b, idle_s)
         if settle:
             time.sleep(max(0, 120 - (now_ms() - last) / 1000))
@@ -910,13 +920,36 @@ def session_item(b, tag, idle_s, settle):
         b.quit()
 
 
+def visible_item(b, tag, idle_s):
+    """Copper only: one tab, its page kept drawing (headless: web views ignore the locked screen's occlusion), so the
+    1-tab memory and idle rows can be read against a page that draws, as Chrome's and Ardia's front tabs do."""
+    clean_slate(b)
+    b.headless = True
+    b.fresh()
+    r = {"memory": {}, "idle": {}}
+    try:
+        t0 = b.launch()
+        b.wait_pid()
+        b.ready()
+        first = loaded("restore", t0, 30) or loaded("template", t0, 1)
+        if not first:
+            raise RuntimeError("the restored page never loaded")
+        time.sleep(max(0, 30 - (now_ms() - t0) / 1000))
+        r["memory"]["1"] = footprint(b)
+        r["vis1"] = latest_vis(first["id"], t0)
+        r["idle"]["1"] = idle_window(b, idle_s)
+        return r
+    finally:
+        b.quit()
+
+
 def speedometer_item(b, tag, timeout=900):
     """Speedometer 3.1 from this Mac's server, in a tab of a freshly launched browser; the score its page reports."""
     clean_slate(b)
     if isinstance(b, Copper):
         b.headless = True
     b.fresh()
-    url = f"{ORIGIN}/sp3/index.html?startAutomatically=true&xbid={tag}"
+    url = f"{ORIGIN}/sp3/{tag}/index.html?startAutomatically=true"
     try:
         if isinstance(b, Safari):
             b.start_session()
@@ -1010,6 +1043,12 @@ def machine():
     def sysctl(k):
         return subprocess.run(["sysctl", "-n", k], capture_output=True, text=True).stdout.strip()
     model = sysctl("hw.model")
+    try:
+        hw = json.loads(subprocess.run(["system_profiler", "SPHardwareDataType", "-json"], capture_output=True,
+                                       text=True, timeout=60).stdout)["SPHardwareDataType"][0]
+        model = f"{hw.get('machine_name', 'Mac')} ({model})"
+    except (ValueError, KeyError, IndexError, subprocess.TimeoutExpired):
+        pass
     chip = sysctl("machdep.cpu.brand_string")
     mac = subprocess.run(["sw_vers", "-productVersion"], capture_output=True, text=True).stdout.strip()
     build = subprocess.run(["sw_vers", "-buildVersion"], capture_output=True, text=True).stdout.strip()
@@ -1041,8 +1080,12 @@ def plan(names, rounds, launches, phases):
         if "session" in phases:
             for n in order:
                 items.append({"key": f"r{r}/session/{n}", "round": r, "phase": "session", "kind": "session", "browser": n})
+                if n == "copper":
+                    items.append({"key": f"r{r}/visible/{n}", "round": r, "phase": "session", "kind": "visible", "browser": n})
         if "speedometer" in phases:
             for n in order:
+                if not BROWSERS[n].speedometer:
+                    continue
                 items.append({"key": f"r{r}/speedometer/{n}", "round": r, "phase": "speedometer", "kind": "speedometer", "browser": n})
     return items
 
@@ -1077,7 +1120,9 @@ def run(args):
             if time.time() > deadline:
                 log("deadline: stopping; run again to resume")
                 break
-            g = (item["round"], item["phase"])
+            # The launch phase of a round (a few minutes) holds the lock as one; a session or a Speedometer run
+            # (several minutes each) holds it on its own, so the Mac's other jobs get turns in between.
+            g = (item["round"], item["phase"]) if item["phase"] == "launch" else (item["round"], item["kind"], item["browser"])
             if g != group:
                 quiet.release()
                 if not quiet.take(deadline):
@@ -1092,6 +1137,8 @@ def run(args):
             try:
                 if item["phase"] == "launch":
                     sample.update(launch_item(b, item["kind"], tag))
+                elif item["kind"] == "visible":
+                    sample.update(visible_item(b, tag, args.idle))
                 elif item["phase"] == "session":
                     sample.update(session_item(b, tag, args.idle, args.settle))
                 else:
@@ -1160,7 +1207,7 @@ def check(args):
             log(f"{n}: memory {json.dumps(footprint(b))}")
             log(f"{n}: idle 10 s {json.dumps(idle_window(b, 10)['total'])}")
             log(f"{n}: page facts {json.dumps(page_facts(f'{tag}-t3'))}")
-            log(f"{n}: windows {json.dumps(probe('windows', b.app))}")
+            log(f"{n}: windows {json.dumps(windows_of(b.app))}")
             for h in list(b.handles):
                 if isinstance(b, Safari) and h == b.handles[0]:
                     continue
@@ -1195,6 +1242,10 @@ ROWS = [
     ("idle-wakeups-1-steady", "Idle wakeups, 1 tab, settled", "/s", True, "session", lambda s: s["idle"].get("1settled", {}).get("total", {}).get("wakeups")),
     ("idle-wakeups-20-steady", "Idle wakeups, 20 tabs, settled", "/s", True, "session", lambda s: s["idle"].get("20settled", {}).get("total", {}).get("wakeups")),
     ("speedometer", "Speedometer 3.1", "points", False, "speedometer", lambda s: s.get("score")),
+    ("memory-1-visible", "Memory, 1 tab, its page drawing", "MB", True, "visible", lambda s: s["memory"].get("1", {}).get("mb")),
+    ("idle-cpu-1-visible", "Idle CPU, 1 tab, its page drawing", "%", True, "visible", lambda s: s["idle"].get("1", {}).get("total", {}).get("cpu")),
+    ("idle-wakeups-1-visible", "Idle wakeups, 1 tab, its page drawing", "/s", True, "visible", lambda s: s["idle"].get("1", {}).get("total", {}).get("wakeups")),
+    ("idle-power-1-visible", "Idle power, 1 tab, its page drawing", "mW", True, "visible", lambda s: s["idle"].get("1", {}).get("total", {}).get("mw")),
 ]
 
 
@@ -1219,7 +1270,8 @@ def report(args):
         for n in names:
             vals = []
             for s in samples:
-                if s["browser"] != n or s["phase"] != phase:
+                kind = "visible" if s.get("kind") == "visible" else s["phase"]
+                if s["browser"] != n or kind != phase:
                     continue
                 try:
                     v = get(s)
@@ -1269,12 +1321,14 @@ def selftest():
     p = plan(["copper", "safari", "chrome"], 2, 1, ["launch", "session"])
     assert [i["browser"] for i in p if i["kind"] == "session"] == ["copper", "safari", "chrome", "safari", "chrome", "copper"]
     assert not any(i["browser"] == "safari" and i["kind"] == "link" for i in p)
+    assert [i["key"] for i in p if i["kind"] == "visible"] == ["r0/visible/copper", "r1/visible/copper"]
+    assert not any(i["browser"] == "safari" for i in plan(["copper", "safari"], 1, 1, ["speedometer"]))
     print("selftest ok")
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["check", "template", "speedometer", "run", "report", "selftest"])
+    ap.add_argument("command", choices=["check", "template", "speedometer", "run", "report", "stop", "selftest"])
     ap.add_argument("--browsers", default="copper,safari,chrome,arc,ardia")
     ap.add_argument("--out", action="append", default=[])
     ap.add_argument("--rounds", type=int, default=3)
@@ -1291,6 +1345,13 @@ def main():
         return selftest()
     if args.command == "report":
         return report(args)
+    if args.command == "stop":
+        # The harness that holds the page port: SIGTERM, which it turns into a clean exit (browsers quit, lock let go).
+        pids = subprocess.run(["lsof", "-t", f"-iTCP:{PAGE_PORT}", "-sTCP:LISTEN"], capture_output=True, text=True).stdout.split()
+        for p in pids:
+            os.kill(int(p), signal.SIGTERM)
+        return log(f"stopped {pids or 'nothing'}")
+    signal.signal(signal.SIGTERM, lambda *a: sys.exit(143))  # so every finally runs: browsers quit, lock released
     serve()
     if args.command == "check":
         return check(args)

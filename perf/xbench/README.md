@@ -63,9 +63,10 @@ hidden Safari costs. Every sample records the visibility its pages reported.
 
 ## The runs
 
-`xbench.py run --quiet` interleaves the browsers item by item and rotates their order each round. Each phase of a
-round (every launch, every session, every Speedometer run) starts only when nobody holds `~/hc/mini.lock` and the
-1-minute load average is under 2, and holds the lock until it ends, so the Mac's other jobs (builds, tests) wait.
+`xbench.py run --quiet` interleaves the browsers item by item and rotates their order each round. A round's launches
+(a few minutes) start only when nobody holds `~/hc/mini.lock` and the 1-minute load average is under 2, and hold the
+lock until they end, so the Mac's other jobs (builds, tests) wait; each session and each Speedometer run (several
+minutes each) waits for the same and holds the lock on its own, so those jobs get turns in between.
 While it waits with the lock free and the load low it asks the token bench (`../agentbench`) to hold its next run
 (`~/hc/ardia-site-bench/PAUSE`). Every item records the load average at its start and end. A row's figure is the
 median of its runs, with min–max and n; `best` is the best median, not a win (compare the ranges).
