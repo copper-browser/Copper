@@ -403,6 +403,9 @@ enum FlowSummary {
         /// The browser groups tabs in spaces (Arc), not windows.
         var windowsAreSpaces = false
         var tabsWhy: String?
+        /// Arc's Air Traffic Control rules and archived tabs that came along.
+        var rulesAdded = 0
+        var archivedAdded = 0
         // Bookmarks
         var bookmarksChosen = false
         var bookmarksRead = 0
@@ -479,6 +482,14 @@ enum FlowSummary {
                 out.append(Line(category: .tabs, ok: false, text: "Tabs: \(which) had only new-tab pages"))
             } else {
                 out.append(Line(category: .tabs, ok: false, text: "Tabs: \(s) had no open windows"))
+            }
+            // One row a category: Arc's rules and archive ride on the tabs line.
+            var extras: [String] = []
+            if f.rulesAdded > 0 { extras.append(plural(f.rulesAdded, "Air Traffic Control rule")) }
+            if f.archivedAdded > 0 { extras.append(plural(f.archivedAdded, "archived tab") + " in Recently Cleaned") }
+            if !extras.isEmpty, let i = out.indices.last {
+                out[i].text += "; " + extras.joined(separator: ", ")
+                out[i].ok = true
             }
         }
         if f.bookmarksChosen {
