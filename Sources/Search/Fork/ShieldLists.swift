@@ -249,12 +249,13 @@ enum ShieldBench {
         case "blocked": // each open page's blocked loads since it started
             let tabs = Windows.all.flatMap(\.tabs).compactMap { tab -> [String: Any]? in
                 guard let web = tab.built else { return nil }
-                return ["id": tab.id.uuidString, "url": web.url?.absoluteString ?? "", "blocked": Shield.shared.blocked(on: web)]
+                return ["id": Bench.short(tab), "url": web.url?.absoluteString ?? "", "blocked": Shield.shared.blocked(on: web)]
             }
             return ["tabs": tabs]
         case "pause": // off (on) for one site, as Settings' Block on HOST switch
             guard words.count == 2, ["on", "off"].contains(words[1]) else { return ["error": "shield pause HOST on|off"] }
-            Shield.shared.pause(words[0], words[1] == "on")
+            let host = words[0].lowercased()
+            Shield.shared.pause(host.hasPrefix("www.") ? String(host.dropFirst(4)) : host, words[1] == "on") // as Curtain.host names it
         case "custom":
             switch words.first {
             case "rules": Store.settings.set(words.count > 1 ? words[1].replacingOccurrences(of: "\\n", with: "\n") : "", forKey: ShieldLists.rulesKey)

@@ -82,6 +82,7 @@ final class Shield: ObservableObject {
         var state: String // loading, cached, compiled, failed
         var rules: Int
         var ms: Double = 0
+        var main: Double = 0 // of that, on the main thread: the hand-off to WebKit and adding it to pages
         var error: String?
     }
     private(set) var stats: [String: Stat] = [:]
@@ -137,12 +138,19 @@ final class Shield: ObservableObject {
                             return self.failed(piece, piece.kind == .custom ? "None of these are in a form Copper reads" : "Couldn't read \(piece.title)")
                         }
                         self.stats[piece.id]?.rules = made.rules
-                        store.compileContentRuleList(forIdentifier: piece.id, encodedContentRuleList: made.json) { compiled, error in
-                            MainActor.assumeIsolated {
-                                guard let compiled else {
-                                    return self.failed(piece, error?.localizedDescription ?? "Compiling \(piece.title) failed")
+                        // WebKit parses the JSON on the main thread (selectors need it), ~150 ms
+                        // for the ads list: after the launch's first page, never during it.
+                        Launch.shared.whenSettled {
+                            guard self.stats[piece.id] != nil else { return }
+                            let handing = CFAbsoluteTimeGetCurrent()
+                            defer { self.stats[piece.id]?.main += (CFAbsoluteTimeGetCurrent() - handing) * 1000 }
+                            store.compileContentRuleList(forIdentifier: piece.id, encodedContentRuleList: made.json) { compiled, error in
+                                MainActor.assumeIsolated {
+                                    guard let compiled else {
+                                        return self.failed(piece, error?.localizedDescription ?? "Compiling \(piece.title) failed")
+                                    }
+                                    self.ready(piece, compiled, "compiled", since: started)
                                 }
-                                self.ready(piece, compiled, "compiled", since: started)
                             }
                         }
                     }
@@ -168,7 +176,9 @@ final class Shield: ObservableObject {
         stats[piece.id]?.ms = (CFAbsoluteTimeGetCurrent() - started) * 1000
         lists[piece.id] = list
         // Tabs that opened while this was loading get it now.
+        let adding = CFAbsoluteTimeGetCurrent()
         for controller in wearing { controller.add(list) }
+        stats[piece.id]?.main += (CFAbsoluteTimeGetCurrent() - adding) * 1000
         objectWillChange.send()
     }
 
@@ -236,7 +246,7 @@ final class Shield: ObservableObject {
     func report() -> [String: Any] {
         let rows = stats.values.sorted { $0.piece.id < $1.piece.id }.map { stat -> [String: Any] in
             ["id": stat.piece.id, "list": stat.piece.title, "kind": stat.piece.kind.rawValue, "rules": stat.rules,
-             "state": stat.state, "ms": (stat.ms * 10).rounded() / 10, "error": stat.error ?? NSNull()]
+             "state": stat.state, "ms": (stat.ms * 10).rounded() / 10, "mainMs": (stat.main * 10).rounded() / 10, "error": stat.error ?? NSNull()]
         }
         return ["enabled": enabled, "languages": ShieldLists.languages(),
                 "kinds": Dictionary(uniqueKeysWithValues: ShieldLists.Kind.allCases.map { ($0.rawValue, ShieldLists.isOn($0)) }),
