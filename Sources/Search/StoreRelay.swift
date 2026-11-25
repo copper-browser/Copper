@@ -168,7 +168,7 @@ extension Browser {
     /// The page's "Add to Copper" was pressed: the extension this tab is showing.
     func addFromStore(_ tab: Tab) {
         guard #available(macOS 15.4, *), let url = tab.address, StoreOffer.isStorePage(url) else { return }
-        Extensions.shared.install(from: url.absoluteString, in: Profiles.of(tab)) // Fork (ardia profiles): into the store tab's profile
+        Extensions.shared.install(from: url.absoluteString, confirm: true, in: Profiles.of(tab)) // Fork (ardia profiles): into the store tab's profile
     }
 
     /// Tells a store page what is installed and what is on its way, so its

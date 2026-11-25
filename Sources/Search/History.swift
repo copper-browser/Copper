@@ -95,8 +95,10 @@ final class History: ObservableObject {
 
     // MARK: - writing
 
+    func record(_ url: URL, title: String) { record(url, title: title, profile: Profiles.current) }
+
     /// Fork (ardia profiles): `profile` is the tab's; its places stay its own.
-    func record(_ url: URL, title: String, profile: String? = Profiles.current) {
+    func record(_ url: URL, title: String, profile: String?) {
         guard url.scheme == "http" || url.scheme == "https" else { return }
         let key = Address.pretty(url).lowercased()
         guard !key.isEmpty else { return }

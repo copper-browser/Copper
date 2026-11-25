@@ -431,7 +431,9 @@ final class Extensions: NSObject, ObservableObject {
     /// Fork (ardia profiles): `profile` is where it was asked for (the store
     /// page's tab, else the page in front): it runs there, or everywhere from
     /// Shared. One installed in another profile already is added to this one.
-    func install(from text: String, confirm: Bool = true, in profile: String? = Profiles.front) {
+    func install(from text: String, confirm: Bool = true) { install(from: text, confirm: confirm, in: Profiles.front) }
+
+    func install(from text: String, confirm: Bool, in profile: String?) {
         guard let id = Crx.id(in: text) else {
             browser?.announce(Crx.Refused.notAnID.localizedDescription)
             return
@@ -504,7 +506,9 @@ final class Extensions: NSObject, ObservableObject {
         }
     }
 
-    func installFolder(at source: URL, confirm: Bool = true, in profile: String? = Profiles.front) {
+    func installFolder(at source: URL, confirm: Bool = true) { installFolder(at: source, confirm: confirm, in: Profiles.front) }
+
+    func installFolder(at source: URL, confirm: Bool, in profile: String?) {
         guard FileManager.default.fileExists(atPath: source.appendingPathComponent("manifest.json").path) else {
             browser?.announce("That folder has no manifest.json")
             return
