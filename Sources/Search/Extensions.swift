@@ -35,17 +35,71 @@ struct Installed: Codable, Identifiable, Equatable {
     /// For one loaded from a folder: where that folder is, so Reload can
     /// bring the author's latest edits in.
     var source: String? = nil
+    /// Fork (ardia profiles): the profiles it runs in ("" is Shared), or nil
+    /// for every profile — what everything installed before profiles had
+    /// their own extensions is, and what an install from Shared is.
+    var profiles: [String]? = nil
+
+    /// Whether it runs in that profile's tabs (nil: Shared).
+    func reaches(_ profile: String?) -> Bool { profiles.map { $0.contains(Profiles.key(profile)) } ?? true }
+
+    /// Its profiles with one more, from an install there: from Shared, every
+    /// profile; already everywhere, as it was.
+    static func adding(_ profile: String?, to profiles: [String]?) -> [String]? {
+        guard let profile, let profiles else { return nil }
+        return profiles.contains(profile) ? profiles : profiles + [profile]
+    }
 }
 
 @available(macOS 15.4, *)
 @MainActor
 final class Extensions: NSObject, ObservableObject {
-    static let shared = Extensions()
+    /// Shared's: the list, the installs, the buttons in the window. Fork
+    /// (ardia profiles): each other profile has an instance of its own — a
+    /// controller with its own storage, told only its own tabs, running only
+    /// what reaches that profile (`Installed.profiles`) — made the first time
+    /// one of its pages is built. The list lives here; theirs is a copy.
+    static let shared = Extensions(profile: nil)
+    private(set) static var others: [String: Extensions] = [:]
+    /// Nil for Shared.
+    let profile: String?
+
+    static var every: [Extensions] { [shared] + others.values }
+
+    /// A profile's instance, made (and started) the first time it is asked for.
+    static func of(profile: String?) -> Extensions {
+        guard let profile else { return shared }
+        if let known = others[profile] { return known }
+        let made = Extensions(profile: profile)
+        others[profile] = made
+        made.installed = shared.installed
+        if let browser = shared.browser { made.start(for: browser) }
+        DispatchQueue.main.async { shared.follow() } // its tabs are the new one's now, told after this page is built
+        return made
+    }
+
+    /// The instance whose extensions the page in front sees. Made here if
+    /// need be: making one publishes nothing at once, so a view's body may ask.
+    static var front: Extensions { of(profile: Profiles.front) }
+
+    /// The instance a context was loaded into.
+    static func owner(of context: WKWebExtensionContext) -> Extensions {
+        every.first { $0.controller === context.webExtensionController } ?? shared
+    }
+
+    /// One extension's contexts, one per profile it is running in.
+    static func contexts(of id: String) -> [WKWebExtensionContext] { every.compactMap { $0.contexts[id] } }
+
+    /// The extension, as the page in front runs it — else as any profile does.
+    func context(_ id: String) -> WKWebExtensionContext? {
+        Extensions.front.contexts[id] ?? contexts[id] ?? Extensions.contexts(of: id).first
+    }
 
     /// Every page view built for a tab is handed the controller at birth —
-    /// it can't be given one later.
+    /// it can't be given one later. Its profile's (Fork: ardia profiles), by
+    /// the store it was given.
     static func attach(_ configuration: WKWebViewConfiguration) {
-        configuration.webExtensionController = shared.controller
+        configuration.webExtensionController = of(profile: Profiles.of(store: configuration.websiteDataStore)).controller
     }
 
     let controller: WKWebExtensionController
@@ -60,6 +114,8 @@ final class Extensions: NSObject, ObservableObject {
     @Published private(set) var errors: [String: [String]] = [:]
 
     func noteError(_ text: String, for id: String) {
+        // Fork (ardia profiles): said on Shared's, which Settings reads.
+        guard profile == nil else { return Extensions.shared.noteError(text, for: id) }
         var list = errors[id] ?? []
         list.append(text)
         errors[id] = Array(list.suffix(40))
@@ -72,7 +128,12 @@ final class Extensions: NSObject, ObservableObject {
     private var bag = Set<AnyCancellable>()
     private(set) lazy var window = ExtensionWindow(owner: self)
     /// Where each extension's button is on screen, for its popup to hang from.
-    var anchors: [String: WeakView] = [:]
+    /// Fork (ardia profiles): one set, Shared's, the buttons' own.
+    var anchors: [String: WeakView] {
+        get { profile == nil ? ownAnchors : Extensions.shared.anchors }
+        set { if profile == nil { ownAnchors = newValue } else { Extensions.shared.anchors = newValue } }
+    }
+    private var ownAnchors: [String: WeakView] = [:]
 
     static var folder: URL { Store.folder.appendingPathComponent("Extensions", isDirectory: true) }
 
@@ -93,19 +154,25 @@ final class Extensions: NSObject, ObservableObject {
     private static var list: URL { folder.appendingPathComponent("installed.json") }
     static func folder(for id: String) -> URL { folder.appendingPathComponent(id, isDirectory: true) }
 
-    private override init() {
-        WKWebExtension.MatchPattern.registerCustomURLScheme(Extensions.scheme)
+    private init(profile: String?) {
+        self.profile = profile
+        if profile == nil { WKWebExtension.MatchPattern.registerCustomURLScheme(Extensions.scheme) }
         // A test run keeps its extensions' storage apart, as it does its
-        // cookies and passwords.
-        let configuration: WKWebExtensionController.Configuration = Store.testing && !Store.ownContainer
-            ? .init(identifier: Store.probeStore(2))
-            : .default()
-        configuration.defaultWebsiteDataStore = Store.websites
+        // cookies and passwords. A profile keeps its own, salted like its jar.
+        let configuration: WKWebExtensionController.Configuration = if let profile {
+            .init(identifier: Spaces.storeID(forProfile: profile, kind: 0xC0FF_EE01))
+        } else if Store.testing && !Store.ownContainer {
+            .init(identifier: Store.probeStore(2))
+        } else {
+            .default()
+        }
+        let jar = profile.map(Spaces.store(forProfile:)) ?? Store.sharedWebsites
+        configuration.defaultWebsiteDataStore = jar
         let views = configuration.webViewConfiguration ?? WKWebViewConfiguration()
         // Its own configuration starts with WebKit's default store; an
         // extension's pages keep what they store where the browser does —
         // and a test run's apart from the real one's.
-        views.websiteDataStore = Store.websites
+        views.websiteDataStore = jar
         // The same user agent as the web tabs, to the letter. WebKit gives
         // workers the user agent of the last page that loaded and, when it
         // differs, stops the running workers to apply it — and extension
@@ -121,13 +188,18 @@ final class Extensions: NSObject, ObservableObject {
         controller = WKWebExtensionController(configuration: configuration)
         super.init()
         controller.delegate = self
+        guard profile == nil else { return } // its list is Shared's (`of(profile:)`)
         installed = (try? JSONDecoder().decode([Installed].self, from: Data(contentsOf: Extensions.list))) ?? []
     }
 
     // MARK: - starting
 
     func start(for browser: Browser) {
+        guard self.browser == nil else { return }
         self.browser = browser
+        // Fork (ardia profiles): a profile whose pages were built before the
+        // first window was, now that there is one.
+        if profile == nil { for other in Extensions.others.values { other.start(for: browser) } }
         controller.didOpenWindow(window)
         browser.feed(\.tabs)
             .receive(on: DispatchQueue.main)
@@ -148,13 +220,13 @@ final class Extensions: NSObject, ObservableObject {
         Task {
             // One after another, a moment apart: started all at once, WebKit
             // fails some of their workers and never tries them again.
-            for item in installed where item.enabled {
+            for item in installed where item.enabled && item.reaches(profile) {
                 await load(item)
                 if contexts[item.id]?.webExtension.hasBackgroundContent == true {
                     try? await Task.sleep(for: .milliseconds(400))
                 }
             }
-            checkForUpdates()
+            if profile == nil { checkForUpdates() }
         }
     }
 
@@ -169,13 +241,21 @@ final class Extensions: NSObject, ObservableObject {
 
     /// Private tabs keep nothing and see no extensions. Every space's tabs,
     /// not only the one on screen (Fork: ExtensionPages.every).
-    var visibleTabs: [Tab] { ExtensionPages.every(in: browser) }
+    /// Fork (ardia profiles): this profile's tabs only — its pages are the
+    /// ones built with its controller.
+    var visibleTabs: [Tab] {
+        let all = ExtensionPages.every(in: browser)
+        return Profiles.any ? all.filter(mine) : all
+    }
 
     var activeAdapter: ExtensionTab? {
         // The window in front's page, not always the first window's. (Fork: windows)
-        guard let tab = Windows.current.active ?? browser?.active, !tab.shy else { return nil }
+        guard let tab = Windows.current.active ?? browser?.active, !tab.shy, mine(tab) else { return nil }
         return adapter(for: tab)
     }
+
+    /// A tab of this profile's (Fork: ardia profiles).
+    func mine(_ tab: Tab) -> Bool { Profiles.of(tab) == profile }
 
     private func follow() {
         // Fork (perf): nothing to tell until an extension is loading. With
@@ -235,16 +315,25 @@ final class Extensions: NSObject, ObservableObject {
 
     private func activated(from old: Tab.ID?, to new: Tab.ID?) {
         guard tracking else { return } // Fork (perf): see `track()`
-        guard let new, let tab = browser?.tabs.first(where: { $0.id == new }), !tab.shy else { return }
-        let previous = old.flatMap { id in browser?.tabs.first(where: { $0.id == id }) }.map(adapter(for:))
+        guard let new, let tab = browser?.tabs.first(where: { $0.id == new }), !tab.shy, mine(tab) else { return }
+        let previous = old.flatMap { id in browser?.tabs.first(where: { $0.id == id }) }.flatMap { mine($0) ? adapter(for: $0) : nil }
         controller.didActivateTab(adapter(for: tab), previousActiveTab: previous)
-        actionsChanged += 1
+        bump()
     }
+
+    /// The buttons drawn again: they watch Shared's instance, whichever
+    /// profile's extension changed (Fork: ardia profiles).
+    private func bump() { Extensions.shared.actionsChanged += 1 }
 
     // MARK: - loading
 
     @discardableResult
     private func load(_ item: Installed) async -> Bool {
+        // Fork (ardia profiles): only where it runs, once at a time.
+        guard item.reaches(profile) else { return false }
+        if contexts[item.id] != nil { return true }
+        guard loading.insert(item.id).inserted else { return false }
+        defer { loading.remove(item.id) }
         // The shim this build of Copper carries, in place of whatever the
         // build that installed it carried.
         try? ExtensionShims.prepare(Extensions.folder(for: item.id))
@@ -274,7 +363,7 @@ final class Extensions: NSObject, ObservableObject {
             if contexts[item.id] == nil, loadsThisRun.contains(item.id) { loadedBefore.insert(item.id) }
             loadsThisRun.insert(item.id)
             contexts[item.id] = context
-            actionsChanged += 1
+            bump()
             return true
         } catch {
             NSLog("Extensions: couldn't load %@: %@", item.id, error.localizedDescription)
@@ -286,12 +375,51 @@ final class Extensions: NSObject, ObservableObject {
         guard let context = contexts[id] else { return }
         try? controller.unload(context)
         contexts[id] = nil
-        actionsChanged += 1
+        bump()
     }
+
+    /// Ids being loaded now (Fork: ardia profiles — `settle` and a switch
+    /// can ask for the same one at once).
+    private var loading: Set<String> = []
 
     private func save() {
         try? FileManager.default.createDirectory(at: Extensions.folder, withIntermediateDirectories: true)
         try? JSONEncoder().encode(installed).write(to: Extensions.list, options: .atomic)
+        // Fork (ardia profiles): every profile's copy of the list, and what
+        // each runs, follow it.
+        for other in Extensions.others.values {
+            other.installed = installed
+            Task { await other.settle() }
+        }
+    }
+
+    /// Fork (ardia profiles): running exactly what is on and reaches this
+    /// profile — loaded what isn't yet, unloaded what no longer should be.
+    func settle() async {
+        for id in contexts.keys where !installed.contains(where: { $0.id == id && $0.enabled && $0.reaches(profile) }) { unload(id) }
+        for item in installed where item.enabled && item.reaches(profile) && contexts[item.id] == nil { await load(item) }
+    }
+
+    /// Fork (ardia profiles): an extension's files taken up afresh in every
+    /// profile it runs in (Reload, an update). True unless every start failed.
+    private func restart(_ id: String) async -> Bool {
+        var tried = false, started = false
+        for owner in Extensions.every {
+            owner.unload(id)
+            guard let item = owner.installed.first(where: { $0.id == id }), item.enabled, item.reaches(owner.profile) else { continue }
+            tried = true
+            if await owner.load(item) { started = true }
+        }
+        return started || !tried
+    }
+
+    /// Fork (ardia profiles): the profiles an extension runs in, from its
+    /// Settings page. Nil: every profile.
+    func setProfiles(_ id: String, _ profiles: [String]?) {
+        guard let index = installed.firstIndex(where: { $0.id == id }) else { return }
+        installed[index].profiles = profiles
+        save()
+        Task { await settle() }
     }
 
     // MARK: - installing
@@ -300,13 +428,23 @@ final class Extensions: NSObject, ObservableObject {
     /// shows on a store page.
     /// `confirm: false` is for the bench in a test run only — there is no
     /// way to reach it from the real browser.
-    func install(from text: String, confirm: Bool = true) {
+    /// Fork (ardia profiles): `profile` is where it was asked for (the store
+    /// page's tab, else the page in front): it runs there, or everywhere from
+    /// Shared. One installed in another profile already is added to this one.
+    func install(from text: String, confirm: Bool = true) { install(from: text, confirm: confirm, in: Profiles.front) }
+
+    func install(from text: String, confirm: Bool, in profile: String?) {
         guard let id = Crx.id(in: text) else {
             browser?.announce(Crx.Refused.notAnID.localizedDescription)
             return
         }
-        if installed.contains(where: { $0.id == id }) {
-            browser?.announce("Already installed")
+        if let item = installed.first(where: { $0.id == id }) {
+            guard !item.reaches(profile) else {
+                browser?.announce("Already installed")
+                return
+            }
+            setProfiles(id, Installed.adding(profile, to: item.profiles))
+            browser?.announce("\(item.name) is added to \(profile ?? "every profile")")
             return
         }
         busy = id
@@ -319,7 +457,7 @@ final class Extensions: NSObject, ObservableObject {
                 let staged = Extensions.folder.appendingPathComponent(".staging-\(id)", isDirectory: true)
                 try Crx.unpack(zip, into: staged)
                 try ExtensionShims.prepare(staged)
-                try await admit(staged, as: id, fromStore: true, finalFolder: target, confirm: confirm || !Store.testing)
+                try await admit(staged, as: id, fromStore: true, finalFolder: target, confirm: confirm || !Store.testing, in: profile)
             } catch {
                 browser?.announce(error.localizedDescription)
             }
@@ -330,7 +468,9 @@ final class Extensions: NSObject, ObservableObject {
     /// "Extensions" switch is the consent, so no second dialog per item. Runs
     /// to completion so a caller can install a list one after another instead
     /// of racing twenty downloads and twenty prompts. True when it landed.
-    func installAgreed(id text: String, enabled: Bool = true) async -> Bool {
+    /// Fork (ardia profiles): `profiles` as another Mac had them (iCloud
+    /// sync); a list from Move in runs everywhere, as it did in that browser.
+    func installAgreed(id text: String, enabled: Bool = true, profiles: [String]? = nil) async -> Bool {
         guard let id = Crx.id(in: text) else { return false }
         if installed.contains(where: { $0.id == id }) { return true }
         busy = id
@@ -342,7 +482,7 @@ final class Extensions: NSObject, ObservableObject {
             let staged = Extensions.folder.appendingPathComponent(".staging-\(id)", isDirectory: true)
             try Crx.unpack(zip, into: staged)
             try ExtensionShims.prepare(staged)
-            try await admit(staged, as: id, fromStore: true, finalFolder: target, confirm: false, enabled: enabled)
+            try await admit(staged, as: id, fromStore: true, finalFolder: target, confirm: false, enabled: enabled, profiles: profiles)
             return installed.contains(where: { $0.id == id })
         } catch {
             NSLog("Copper: Flow could not install extension %@: %@", id, error.localizedDescription)
@@ -366,7 +506,9 @@ final class Extensions: NSObject, ObservableObject {
         }
     }
 
-    func installFolder(at source: URL, confirm: Bool = true) {
+    func installFolder(at source: URL, confirm: Bool = true) { installFolder(at: source, confirm: confirm, in: Profiles.front) }
+
+    func installFolder(at source: URL, confirm: Bool, in profile: String?) {
         guard FileManager.default.fileExists(atPath: source.appendingPathComponent("manifest.json").path) else {
             browser?.announce("That folder has no manifest.json")
             return
@@ -382,7 +524,7 @@ final class Extensions: NSObject, ObservableObject {
             browser?.announce("Couldn't copy the extension")
             return
         }
-        Task { try? await admit(staged, as: id, fromStore: false, finalFolder: Extensions.folder(for: id), confirm: confirm || !Store.testing, source: source) }
+        Task { try? await admit(staged, as: id, fromStore: false, finalFolder: Extensions.folder(for: id), confirm: confirm || !Store.testing, source: source, in: profile) }
     }
 
     /// Takes the extension up again — the way Chrome's reload button does
@@ -411,7 +553,7 @@ final class Extensions: NSObject, ObservableObject {
                 return
             }
         }
-        unload(id)
+        for owner in Extensions.every { owner.unload(id) } // Fork (ardia profiles): in every profile it runs in
         errors[id] = nil
         Task {
             if let found = try? await WKWebExtension(resourceBaseURL: target),
@@ -422,7 +564,7 @@ final class Extensions: NSObject, ObservableObject {
                 save()
             }
             guard let item = installed.first(where: { $0.id == id }), item.enabled else { return }
-            browser?.announce(await load(item) ? "\(item.name) reloaded" : "\(item.name) couldn't start — see Settings › Extensions")
+            browser?.announce(await restart(id) ? "\(item.name) reloaded" : "\(item.name) couldn't start — see Settings › Extensions")
         }
     }
 
@@ -484,7 +626,10 @@ final class Extensions: NSObject, ObservableObject {
 
     /// Reads what was unpacked, asks, and — on yes — moves it into place and
     /// loads it. On no, nothing is left behind.
-    private func admit(_ staged: URL, as id: String, fromStore: Bool, finalFolder: URL, confirm: Bool = true, source: URL? = nil, enabled: Bool = true) async throws {
+    /// Fork (ardia profiles): asked for in `profile` (it runs there, or
+    /// everywhere from Shared), unless `profiles` says where.
+    private func admit(_ staged: URL, as id: String, fromStore: Bool, finalFolder: URL, confirm: Bool = true, source: URL? = nil, enabled: Bool = true,
+                       in profile: String? = nil, profiles: [String]? = nil) async throws {
         let files = FileManager.default
         let found: WKWebExtension
         do {
@@ -505,13 +650,16 @@ final class Extensions: NSObject, ObservableObject {
         let item = Installed(
             id: id, name: name, version: found.version ?? "?", enabled: enabled, fromStore: fromStore,
             permissions: found.requestedPermissions.map(\.rawValue).sorted(),
-            source: source?.path
+            source: source?.path,
+            profiles: profiles ?? profile.map { [$0] }
         )
         installed.removeAll { $0.id == id }
         installed.append(item)
         save()
         let started: Bool
-        if enabled { started = await load(item) }
+        // Where it was asked for; the other profiles' settle as `save` told them.
+        let owner: Extensions? = item.reaches(profile) ? Extensions.of(profile: profile) : Extensions.every.first(where: { item.reaches($0.profile) })
+        if enabled, let owner { started = await owner.load(item) }
         else { started = true }
         if started {
             browser?.announce("\(name) is installed")
@@ -521,7 +669,7 @@ final class Extensions: NSObject, ObservableObject {
     }
 
     func remove(_ id: String) {
-        unload(id)
+        for owner in Extensions.every { owner.unload(id) } // Fork (ardia profiles)
         errors[id] = nil
         Extensions.setSettings([:], for: id)
         Store.settings.removeObject(forKey: "extensions.granted.\(id)")
@@ -578,13 +726,13 @@ final class Extensions: NSObject, ObservableObject {
     /// The extension, on and running, that asked the browser not to offer to
     /// save passwords — a password manager doing the saving itself.
     var passwordSavingTakenBy: String? {
-        installed.first { $0.enabled && Extensions.settings(for: $0.id)["privacy.services.passwordSavingEnabled"] as? Bool == false }?.name
+        installed.first { $0.enabled && $0.reaches(Profiles.current) && Extensions.settings(for: $0.id)["privacy.services.passwordSavingEnabled"] as? Bool == false }?.name
     }
 
     func setEnabled(_ id: String, _ on: Bool) {
         guard let index = installed.firstIndex(where: { $0.id == id }) else { return }
         installed[index].enabled = on
-        save()
+        save() // Fork (ardia profiles): the other profiles settle from here
         if on {
             Task { await load(installed[index]) }
         } else {
@@ -593,7 +741,7 @@ final class Extensions: NSObject, ObservableObject {
     }
 
     func openOptions(_ id: String) {
-        guard let url = contexts[id]?.optionsPageURL else { return }
+        guard let url = context(id)?.optionsPageURL else { return }
         browser?.open(url, foreground: true)
     }
 
@@ -641,7 +789,7 @@ final class Extensions: NSObject, ObservableObject {
                     return
                 }
             }
-            unload(item.id)
+            for owner in Extensions.every { owner.unload(item.id) } // Fork (ardia profiles): every profile's copy
             let target = Extensions.folder(for: item.id)
             try? FileManager.default.removeItem(at: target)
             try FileManager.default.moveItem(at: staged, to: target)
@@ -649,7 +797,7 @@ final class Extensions: NSObject, ObservableObject {
                 installed[index].version = found.version ?? version
                 installed[index].permissions = wants.sorted()
                 save()
-                if installed[index].enabled { await load(installed[index]) }
+                if installed[index].enabled { _ = await restart(item.id) }
             }
         } catch {
             NSLog("Extensions: update of %@ failed: %@", item.id, error.localizedDescription)
@@ -784,9 +932,11 @@ final class Extensions: NSObject, ObservableObject {
     /// One per loaded extension that has something to press, in install order.
     var buttons: [Button] {
         _ = actionsChanged
-        let tab = activeAdapter
+        // Fork (ardia profiles): the extensions of the page in front's profile.
+        let owner = Extensions.front
+        let tab = owner.activeAdapter
         return installed.compactMap { item in
-            guard let context = contexts[item.id], let action = context.action(for: tab) else { return nil }
+            guard let context = owner.contexts[item.id], let action = context.action(for: tab) else { return nil }
             return Button(
                 id: item.id,
                 name: item.name,
@@ -800,11 +950,13 @@ final class Extensions: NSObject, ObservableObject {
     }
 
     func press(_ id: String) {
-        guard let context = contexts[id] else { return }
+        let owner = Extensions.front // Fork (ardia profiles): the page in front's profile's
+        guard let context = owner.contexts[id] else { return }
+        let activeAdapter = owner.activeAdapter
         if let tab = activeAdapter { context.userGesturePerformed(in: tab) }
         // An extension that asked for its button to open its side panel.
         if ExtensionShims.panelOnClick.contains(id), context.action(for: activeAdapter)?.presentsPopup != true {
-            ExtensionShims.openPanel(context, owner: self)
+            ExtensionShims.openPanel(context, owner: owner)
             return
         }
         // A popup is opened here, straight away. Left to WebKit, it builds
@@ -836,7 +988,7 @@ final class Extensions: NSObject, ObservableObject {
     /// carries stays Copper's, as a browser's own shortcuts do in Chrome.
     func take(_ event: NSEvent) -> Bool {
         guard !Extensions.ownKey(event) else { return false }
-        for context in contexts.values where context.command(for: event) != nil {
+        for context in Extensions.front.contexts.values where context.command(for: event) != nil { // Fork (ardia profiles)
             return context.performCommand(for: event)
         }
         return false
@@ -864,6 +1016,9 @@ final class Extensions: NSObject, ObservableObject {
     /// Right-click items an extension added, for the page's menu.
     func menuItems(for tab: Tab) -> [NSMenuItem] {
         guard !tab.shy else { return [] }
+        // Fork (ardia profiles): the tab's own profile's extensions.
+        let owner = Extensions.of(profile: Profiles.of(tab))
+        guard owner === self else { return owner.menuItems(for: tab) }
         let adapter = adapter(for: tab)
         return contexts.values.flatMap { $0.menuItems(for: adapter) }
     }
@@ -926,7 +1081,7 @@ extension Extensions: WKWebExtensionControllerDelegate {
     }
 
     func webExtensionController(_ controller: WKWebExtensionController, didUpdate action: WKWebExtension.Action, forExtensionContext context: WKWebExtensionContext) {
-        actionsChanged += 1
+        bump()
     }
 
     /// The popup page, in a popover of the browser's own (ExtensionPopup
@@ -1013,7 +1168,7 @@ final class ExtensionTab: NSObject, WKWebExtensionTab {
         return owner.visibleTabs.firstIndex { $0.id == tab.id } ?? NSNotFound
     }
 
-    func webView(for context: WKWebExtensionContext) -> WKWebView? { ExtensionPages.view(of: tab) } // Fork (extension-pages)
+    func webView(for context: WKWebExtensionContext) -> WKWebView? { ExtensionPages.view(of: tab, in: owner.controller) } // Fork (extension-pages, ardia profiles)
     func title(for context: WKWebExtensionContext) -> String? { tab?.title }
     func url(for context: WKWebExtensionContext) -> URL? { tab?.address }
     func isLoadingComplete(for context: WKWebExtensionContext) -> Bool { !(tab?.loading ?? false) }
@@ -1280,7 +1435,7 @@ private struct ExtensionActions: View {
     var body: some View {
         let pinned = extensions.installed.first { $0.id == id }?.pinned ?? false
         SwiftUI.Button(pinned ? "Unpin" : "Pin to Toolbar") { extensions.setPinned(id, !pinned) }
-        if extensions.contexts[id]?.optionsPageURL != nil {
+        if extensions.context(id)?.optionsPageURL != nil {
             SwiftUI.Button("Options…") { extensions.openOptions(id) }
         }
         SwiftUI.Button("Reload") { extensions.reload(id) }

@@ -97,6 +97,8 @@
                                        allow or take back one site it asked for (kept across launches)
     ./bench ext-manager remove ID | answer remove|cancel
                                        the Remove sheet, and its buttons
+    ./bench ext-manager profiles ID all|NAME,…
+                                       the profiles it runs in (shared = Shared); `extensions` lists profiles + runs
     ./bench updates status|check|stub URL|stage|dry-run on|off|upgrade|requirement [TEXT|off]
     ./bench updates pill [available|downloading [F]|ready|installing|failed [swap] [WHY]|off] [v=VERSION]
                                        the sidebar's update pill forced into a state (its clicks are
@@ -126,6 +128,7 @@
                                        1Password through the op CLI (SEARCH_OP_PATH may point at
                                        docs/fixtures/op-mock/op); status never holds a secret
     ./bench spaces [new NAME|select N|next|prev|move N|remove N [--keep]|profile NAME]
+    ./bench spaces history [TEXT]      the places the page in front's profile lists (⌘Y, the field)
                                        lists global pins once and loose tabs per space
     ./bench spaces [icon N EMOJI|sf:symbol|none|colour N NAME|reorder N M]
     ./bench spaces [page [N]|page close|tap N|tap header]
@@ -1029,6 +1032,7 @@ def main(argv):
             print(f"latency: {answer['milliseconds']:.2f} ms")
     elif verb == "spaces":
         if "slide" in answer: print(json.dumps(answer["slide"], ensure_ascii=False))
+        if "places" in answer: print(json.dumps({"profile": answer["profile"], "places": answer["places"]}, ensure_ascii=False))
         if "preview" in answer: print(json.dumps(answer["preview"], ensure_ascii=False, sort_keys=True))
         if "pinCount" in answer:
             print(f"global pins: {answer['pinCount']}")
