@@ -14,7 +14,8 @@ enum Session {
         var group: UUID? = nil // Fork: tab groups
         var saved: Bool? = nil // Fork: sections — nil means saved, so upstream's files restore whole
         var seen: Double? = nil // Fork: sections — when it was last looked at, Unix seconds
-        var split: UUID? = nil // Fork: split view — both halves of a kept split carry the same token
+        var split: UUID? = nil // Fork: split view — every pane of a kept split carries the same token
+        var pane: SplitSlot? = nil // Fork (ardia split): its place in that split (order, stacked, share); older files have none
         var mb: Int? = nil // Fork (covers): a pin's page's last weight, MB — whether it may stay asleep next launch
         var dozed: Bool? = nil // Fork (covers): a pin asleep under "Let big pins sleep" when the session was written
     }
