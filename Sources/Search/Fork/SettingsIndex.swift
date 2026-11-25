@@ -169,7 +169,7 @@ enum SettingsIndex {
           ["pins", "pinned", "favourites", "memory", "sleep pins", "keep pins loaded"], "tabs.pins",
           toggle: { _ in Binding(get: { PinsAwake.bigPinsSleep }, set: { Store.settings.set($0, forKey: "pins.sleep") }) }),
         e(.tabs, "Tabs you leave", "Archive Today after", "Untouched rows below the New Tab line close themselves",
-          ["auto archive", "archive", "close old tabs", "today", "clean up", "12 hours", "24 hours", "cleanup"], "tabs.archive"),
+          ["auto archive", "archive", "close old tabs", "today", "clean up", "12 hours", "24 hours", "cleanup", "recently cleaned"], "tabs.archive"),
     ]
 
     // MARK: spaces

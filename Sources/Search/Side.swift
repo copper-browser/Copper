@@ -367,6 +367,7 @@ struct SideBar: View {
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SavedDrop.space)) } action: { SideDrag.of(browser).seam = $0 } // Fork (saved-drag)
                     TodayDropGap(drag: drag, tint: tint) // Fork (saved-drag): a Saved row on its way out lands here
                     rows(today, block: .today)
+                    CleanedRow(browser: browser, tint: tint) // Fork (ardia-tabs): Recently Cleaned, at the foot of Today
                 }
                 // Fork (saved-drag): one space for every frame a drop is
                 // worked out from, a folder lit for a drop onto it, and the

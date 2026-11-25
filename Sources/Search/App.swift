@@ -166,6 +166,7 @@ struct AppCommands: Commands {
             Button("Clear Tabs") { ClearTabs.shared.clear(in: browser) }
                 .keyboardShortcut("k", modifiers: [.command, .shift])
                 .disabled(ClearTabs.shared.clearable(in: browser).isEmpty)
+            Button("Clean Up Tabs") { Cleaned.shared.cleanUp(in: browser) }.keyboardShortcut("k", modifiers: [.command, .option]) // Fork (ardia-tabs): Ardia's ⌥⌘K, into Recently Cleaned
             Button("Stop Sound in Tab") { browser.pauseMedia() }
                 .keyboardShortcut("m", modifiers: [.command, .shift])
         }
