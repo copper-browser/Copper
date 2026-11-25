@@ -70,7 +70,11 @@
      "n": 2
     }
    },
-   "best": "copper"
+   "best": "copper",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
   },
   {
    "id": "launch-restore",
@@ -97,7 +101,11 @@
      "n": 2
     }
    },
-   "best": "copper"
+   "best": "copper",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
   },
   {
    "id": "launch-link",
@@ -124,7 +132,11 @@
      "n": 2
     }
    },
-   "best": "ardia"
+   "best": "ardia",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
   },
   {
    "id": "memory-1",
@@ -157,7 +169,11 @@
      "n": 1
     }
    },
-   "best": "copper"
+   "best": "copper",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
   },
   {
    "id": "memory-10",
@@ -190,7 +206,11 @@
      "n": 1
     }
    },
-   "best": "copper"
+   "best": "copper",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
   },
   {
    "id": "memory-20",
@@ -223,7 +243,11 @@
      "n": 1
     }
    },
-   "best": "copper"
+   "best": "copper",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
   },
   {
    "id": "memory-closed",
@@ -256,7 +280,11 @@
      "n": 1
     }
    },
-   "best": "copper"
+   "best": "copper",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
   },
   {
    "id": "idle-cpu-1",
@@ -289,7 +317,11 @@
      "n": 1
     }
    },
-   "best": "safari"
+   "best": "safari",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
   },
   {
    "id": "idle-cpu-20",
@@ -322,7 +354,11 @@
      "n": 1
     }
    },
-   "best": "safari"
+   "best": "safari",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
   },
   {
    "id": "idle-wakeups-1",
@@ -355,7 +391,11 @@
      "n": 1
     }
    },
-   "best": "safari"
+   "best": "safari",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
   },
   {
    "id": "idle-wakeups-20",
@@ -388,7 +428,11 @@
      "n": 1
     }
    },
-   "best": "safari"
+   "best": "safari",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
   },
   {
    "id": "idle-power-1",
@@ -421,7 +465,11 @@
      "n": 1
     }
    },
-   "best": "safari"
+   "best": "safari",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
   },
   {
    "id": "idle-power-20",
@@ -454,7 +502,11 @@
      "n": 1
     }
    },
-   "best": "safari"
+   "best": "safari",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
   },
   {
    "id": "speedometer",
@@ -481,7 +533,11 @@
      "n": 1
     }
    },
-   "best": "chrome"
+   "best": "chrome",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
   },
   {
    "id": "memory-1-visible",
@@ -496,7 +552,11 @@
      "n": 1
     }
    },
-   "best": "copper"
+   "best": "copper",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
   },
   {
    "id": "idle-cpu-1-visible",
@@ -511,7 +571,11 @@
      "n": 1
     }
    },
-   "best": "copper"
+   "best": "copper",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
   },
   {
    "id": "idle-wakeups-1-visible",
@@ -526,7 +590,11 @@
      "n": 1
     }
    },
-   "best": "copper"
+   "best": "copper",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
   },
   {
    "id": "idle-power-1-visible",
@@ -541,7 +609,11 @@
      "n": 1
     }
    },
-   "best": "copper"
+   "best": "copper",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
   }
  ],
  "conditions": {

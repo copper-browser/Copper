@@ -22,10 +22,9 @@ WebDriver (Safari, which can't run from a copy or a separate profile) and the be
   xbench.py report  --out DIR [--json FILE] [--md FILE]   medians (min–max, n) per row and browser
   xbench.py stop                                           end a running harness cleanly (browsers quit, lock released)
 
-  --quiet   queue for ~/hc/mini.lock like the Mac's other jobs and hold it, under 10 minutes at a time, for a round's
-            launches, each session, and a round's Speedometer runs (browsers interleaved and rotated), each hold
-            starting once the 1-minute load average is under 2; ~/hc/ardia-site-bench/PAUSE asks the token bench
-            to hold its next run while the lock is held.
+  --quiet   queue for ~/hc/mini.lock like the Mac's other jobs and hold it for each round (browsers interleaved and
+            rotated; about 18 minutes), starting once the 1-minute load average is under 2;
+            ~/hc/ardia-site-bench/PAUSE asks the token bench to hold its next run while the lock is held.
 
 Runs on the Mac (python3, stdlib only). Copies of the browsers live in $XBENCH_APPS (default
 ~/hc/ardia-site-bench/apps-xb): copper/Copper.app, chrome/Google Chrome.app, arc/Arc.app, ardia/Ardia.app, used by
@@ -1031,9 +1030,9 @@ class Quiet:
     def take(self, deadline):
         """Queues for the lock like every other job (a blocking flock: the others wait in `lockf`, which hands the lock
         to a waiter the moment it is let go, so polling for it would never win), then, holding it, asks the token
-        bench to hold its next run (PAUSE) and waits up to 4 minutes for the 1-minute load average to fall under
-        the limit, so a hold, wait included, stays under 10 minutes. If it doesn't, the lock goes back for 2 minutes
-        and the wait starts again."""
+        bench to hold its next run (PAUSE) and waits up to 90 seconds for the 1-minute load average to fall under
+        the limit, so a round's hold, wait included, stays under 20 minutes. If it doesn't, the lock goes back for
+        2 minutes and the wait starts again."""
         if not self.enabled:
             return True
         while time.time() < deadline:
@@ -1044,7 +1043,7 @@ class Quiet:
                 break
             self.fd = fd
             self.pause()
-            settle_end = min(deadline, time.time() + 240)
+            settle_end = min(deadline, time.time() + 90)
             while time.time() < settle_end and load1() >= self.limit:
                 time.sleep(10)
             if load1() < self.limit:
@@ -1187,16 +1186,15 @@ def run(args):
             if time.time() > deadline:
                 log("deadline: stopping; run again to resume")
                 break
-            # Lock holds stay under 10 minutes (the Mac is shared): a round's launches (~3 min) as one, each session
-            # (~4 min) on its own, a round's Speedometer runs (~1 min) as one. The order is still the round's.
-            g = (item["round"], item["key"]) if item["phase"] == "session" else (item["round"], item["phase"])
+            # One lock hold per interleaved round: all its launches, sessions and Speedometer runs, about 18 minutes.
+            g = item["round"]
             if g != group:
                 quiet.release()
                 if not quiet.take(deadline):
                     log("no quiet Mac before the deadline; stopping")
                     break
                 group = g
-                log(f"round {item['round']} {item['phase']}: {quiet.conditions()}")
+                log(f"round {item['round']}: {quiet.conditions()}")
             b = BROWSERS[item["browser"]]()
             tag = f"{item['key'].replace('/', '-')}-{int(time.time())}"
             sample = dict(item, at=time.strftime("%F %T"), version=b.version(), conditions=quiet.conditions())
@@ -1334,7 +1332,7 @@ def report(args):
     names = list(meta["browsers"]) if meta else sorted({s["browser"] for s in samples})
     rows = []
     for rid, label, unit, lower, phase, get in ROWS:
-        cells, raw = {}, {}
+        cells, raw, days = {}, {}, set()
         for n in names:
             vals = []
             for s in samples:
@@ -1347,6 +1345,7 @@ def report(args):
                     v = None
                 if isinstance(v, (int, float)):
                     vals.append(float(v))
+                    days.add(s["at"][:10])
             if vals:
                 cells[n] = stat(vals)
                 raw[n] = statistics.median(vals)
@@ -1355,7 +1354,7 @@ def report(args):
         top = (min if lower else max)(raw.values())
         tied = [n for n in names if raw.get(n) == top]  # picked from unrounded medians, in no browser's favour
         row = {"id": rid, "label": label, "unit": unit, "lowerIsBetter": lower, "browsers": cells,
-               "best": tied[0] if len(tied) == 1 else None}
+               "best": tied[0] if len(tied) == 1 else None, "dates": [min(days), max(days)]}
         if len(tied) > 1:
             row["tie"] = tied
         rows.append(row)

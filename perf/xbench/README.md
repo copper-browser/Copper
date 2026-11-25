@@ -67,13 +67,12 @@ the visibility its pages reported.
 
 ## The runs
 
-`xbench.py run --quiet` interleaves the browsers item by item and rotates their order each round. It queues for
-`~/hc/mini.lock` like the Mac's other jobs (builds, tests: they wait in `lockf`) and holds it, under 10 minutes at a
-time, for a round's launches (about 3 minutes), each session (about 4) and a round's Speedometer runs (about 1). Each
-hold asks the token bench (`../agentbench`) to hold its next run (`~/hc/ardia-site-bench/PAUSE`) and starts once the
-1-minute load average is under 2; if the load stays up for 4 minutes, the lock goes back and the hold queues again.
-(Round 0 of the 2026-11-25 run held the lock for its whole round, 17 minutes; the Mac is shared, so later holds are
-shorter.) Every item records the load average at its start and end.
+`xbench.py run --quiet` interleaves the browsers item by item and rotates their order each round. Each round
+(about 18 minutes: every launch, session and Speedometer run of every browser) queues for `~/hc/mini.lock` like the
+Mac's other jobs (builds, tests: they wait in `lockf`) and holds it for the whole round. Holding it, it asks the token
+bench (`../agentbench`) to hold its next run (`~/hc/ardia-site-bench/PAUSE`) and starts once the 1-minute load
+average is under 2; if the load stays up for 90 seconds, the lock goes back and the round queues again, so a hold
+stays under 20 minutes. Every item records the load average at its start and end.
 A row's figure is the median of its runs, with min–max and n; `best` is the best
 median, picked from the unrounded medians (an exact tie names no single best), not a win (compare the ranges).
 

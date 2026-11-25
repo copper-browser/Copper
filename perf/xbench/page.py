@@ -94,9 +94,13 @@ def metric(row, names):
             f'<b>{nbsp(num(c["median"], row["unit"]))}{"<span class=sr> (best median)</span>" if top_n else ""}</b>'
             f'<small>{rng}n={c["n"]}</small></li>')
     missing = [n for n in names if n not in cells]
-    note = ""
+    parts = []
+    if row.get("dates"):
+        a, b = row["dates"]
+        parts.append(f"Measured {day(a)}." if a == b else f"Measured {day(a)} to {day(b)}.")
     if missing:
-        note = f'<p class="gap">Not measured: {", ".join(esc(names[n]) for n in missing)} (see <a href="#method">how we measure</a>).</p>'
+        parts.append(f'Not measured: {", ".join(esc(names[n]) for n in missing)} (see <a href="#method">how we measure</a>).')
+    note = f'<p class="gap">{" ".join(parts)}</p>' if parts else ""
     return (f'<figure class="metric" id="{esc(row["id"])}"><figcaption><span class="label">{esc(row["label"])}</span>'
             f'<span class="hint">{BETTER[row["lowerIsBetter"]]}</span></figcaption><ul class="bars">{"".join(bars)}</ul>{note}</figure>')
 
@@ -192,8 +196,9 @@ def agents_section(data):
                 f'<td class="num"><b>{totals[c["id"]]["tokens"] / 1e6:.2f}M{"<span class=sr> (fewest)</span>" if totals[c["id"]]["tokens"] == best else ""}</b>'
                 f'<small>{totals[c["id"]]["passes"]}/{totals[c["id"]]["runs"]}</small></td>' for c in mine)
             foot = f'<tfoot><tr><th scope="row">{label}</th>{tds}</tr></tfoot>'
+        when_t = f' <span class="when">· {esc(day(data["to"]))}</span>' if data.get("to") else ""
         blocks.append(
-            f'<h3>{esc(t["agent"])} · {esc(t["model"])}</h3><div class="table"><table><thead><tr><th scope="col">Task</th>{head}</tr></thead>'
+            f'<h3>{esc(t["agent"])} · {esc(t["model"])}{when_t}</h3><div class="table"><table><thead><tr><th scope="col">Task</th>{head}</tr></thead>'
             f'<tbody>{"".join(body)}</tbody>{foot}</table></div>')
     planned = data.get("planned")
     runs = sum(c.get("runs", 0) for c in data["cells"])
@@ -324,6 +329,11 @@ def main_html(bench, agents):
     </div>
   </section>"""
     agents_lead = ", and the tokens AI agents spend getting the same jobs done in each" if agents and agents.get("cells") else ""
+    rounds = bench.get("rounds") or {}
+    so_far = ""
+    if rounds.get("planned") and rounds.get("done", 0) < rounds["planned"]:
+        so_far = (f" <strong>Round {rounds['done']} of {rounds['planned']} so far:</strong> most figures are a single run "
+                  f"(n=1), so read them as a first look.")
     b = bench["browsers"]
     versions = " · ".join(f"{esc(b[n]['name'])} {esc(b[n]['version'])}" for n in ORDER if n in names)
     m = bench["machine"]
@@ -332,13 +342,14 @@ def main_html(bench, agents):
     <span class="kicker">Benchmarks</span>
     <h1>Copper, timed against the browsers you’d use instead.</h1>
     <p class="lead">Copper, Safari, Chrome and Ardia on the same Mac mini, launched and loaded by one harness that reads every browser from the outside{agents_lead}. Every figure is a median with its range and run count, and the rows Copper loses stay on the page.</p>
-    <p class="facts small muted">{esc(m["model"])} · {esc(m["chip"])} · {esc(m["ram"])} · macOS {esc(m["macOS"])}<br>{versions}<br>{esc(span_words(bench)[0].upper() + span_words(bench)[1:])}. <span aria-hidden="true">★</span> marks each row’s best median; overlapping ranges mean it’s close.</p>
+    <p class="facts small muted">{esc(m["model"])} · {esc(m["chip"])} · {esc(m["ram"])} · macOS {esc(m["macOS"])}<br>{versions}<br>{esc(span_words(bench)[0].upper() + span_words(bench)[1:])}.{so_far} <span class="star" aria-hidden="true">★</span> marks each row’s best median; overlapping ranges mean it’s close.</p>
   </div>{"".join(groups)}{lost_html}{agents_section(agents)}{polar_section()}{method_section(bench, names)}
 </main>"""
 
 
 STYLE = """<style>
-  .facts { margin-top: 18px; line-height: 1.7; }
+  .facts { margin-top: 18px; line-height: 1.7; max-width: 46rem; }
+  .facts .star { color: var(--patina); }
   .metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 16px; margin-top: 24px; }
   .metric { margin: 0; padding: 20px 20px 16px; border-radius: var(--r-l); background: var(--surface); border: 1px solid var(--line); }
   .metric figcaption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; margin-bottom: 12px; }
@@ -357,6 +368,7 @@ STYLE = """<style>
   .gap { margin-top: 10px; font-size: 13px; color: var(--ink-2); }
   .gap a, .section small a { color: var(--ink); text-underline-offset: 3px; }
   #agents h3 { margin-top: 28px; font: 600 1.1rem/1.3 var(--display); }
+  #agents h3 .when { font-weight: 400; color: var(--ink-2); }
   #agents .table, #polar .table { margin-top: 12px; }
   td small { display: block; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
   tfoot th, tfoot td { border-bottom: 0; }

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated_at": "2026-11-25T20:42:35+00:00",
+  "generated_at": "2026-11-25T21:07:37+00:00",
   "plan": "agentbench-2026-11-25",
   "repeats": 3,
   "tasks": [
@@ -942,18 +942,18 @@
     {
       "task": "multitab",
       "contender": "copper-claude",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 103.953,
-      "median_time_s_passing": 103.953,
-      "median_time_to_correct_s": 91.051,
-      "median_tokens": 2059077,
-      "median_uncached_input": 84,
-      "median_output_chars": 0,
-      "median_commands": 65,
-      "total_wall_s": 103.95,
-      "total_tokens": 2059077,
+      "median_time_s": 106.068,
+      "median_time_s_passing": 106.068,
+      "median_time_to_correct_s": 94.888,
+      "median_tokens": 1932241.5,
+      "median_uncached_input": 79.0,
+      "median_output_chars": 0.0,
+      "median_commands": 62.5,
+      "total_wall_s": 212.14,
+      "total_tokens": 3864483,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -964,12 +964,13 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": null,
       "run_ids": [
-        "multitab--copper-claude--r1"
+        "multitab--copper-claude--r1",
+        "multitab--copper-claude--r2"
       ],
       "serial_vs_parallel": null
     },
@@ -1116,18 +1117,18 @@
     {
       "task": "multitab",
       "contender": "playwright-codex",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 85.252,
-      "median_time_s_passing": 85.252,
-      "median_time_to_correct_s": 76.585,
-      "median_tokens": 662058,
-      "median_uncached_input": 38883,
-      "median_output_chars": 0,
-      "median_commands": 37,
-      "total_wall_s": 85.25,
-      "total_tokens": 662058,
+      "median_time_s": 92.898,
+      "median_time_s_passing": 92.898,
+      "median_time_to_correct_s": 85.79,
+      "median_tokens": 694239.5,
+      "median_uncached_input": 46031.0,
+      "median_output_chars": 0.0,
+      "median_commands": 40.0,
+      "total_wall_s": 185.8,
+      "total_tokens": 1388479,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1138,30 +1139,31 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": null,
       "run_ids": [
-        "multitab--playwright-codex--r1"
+        "multitab--playwright-codex--r1",
+        "multitab--playwright-codex--r2"
       ],
       "serial_vs_parallel": null
     },
     {
       "task": "news",
       "contender": "copper-claude",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 40.178,
-      "median_time_s_passing": 40.178,
-      "median_time_to_correct_s": 37.137,
-      "median_tokens": 583262,
-      "median_uncached_input": 38,
-      "median_output_chars": 0,
-      "median_commands": 27,
-      "total_wall_s": 40.18,
-      "total_tokens": 583262,
+      "median_time_s": 42.846,
+      "median_time_s_passing": 42.846,
+      "median_time_to_correct_s": 39.495,
+      "median_tokens": 552815.0,
+      "median_uncached_input": 37.0,
+      "median_output_chars": 0.0,
+      "median_commands": 28.5,
+      "total_wall_s": 85.69,
+      "total_tokens": 1105630,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1172,30 +1174,31 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": {},
       "run_ids": [
-        "news--copper-claude--r1"
+        "news--copper-claude--r1",
+        "news--copper-claude--r2"
       ],
       "serial_vs_parallel": null
     },
     {
       "task": "news",
       "contender": "copper-codex",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 64.16,
-      "median_time_s_passing": 64.16,
-      "median_time_to_correct_s": 60.733,
-      "median_tokens": 368456,
-      "median_uncached_input": 24878,
-      "median_output_chars": 0,
-      "median_commands": 34,
-      "total_wall_s": 64.16,
-      "total_tokens": 368456,
+      "median_time_s": 62.371,
+      "median_time_s_passing": 62.371,
+      "median_time_to_correct_s": 57.386,
+      "median_tokens": 356967.0,
+      "median_uncached_input": 25403.5,
+      "median_output_chars": 0.0,
+      "median_commands": 35.0,
+      "total_wall_s": 124.74,
+      "total_tokens": 713934,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1206,64 +1209,66 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": {},
       "run_ids": [
-        "news--copper-codex--r1"
+        "news--copper-codex--r1",
+        "news--copper-codex--r2"
       ],
       "serial_vs_parallel": null
     },
     {
       "task": "news",
       "contender": "ardia-claude",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 29.268,
-      "median_time_s_passing": 29.268,
-      "median_time_to_correct_s": 26.12,
-      "median_tokens": 350021,
-      "median_uncached_input": 24,
-      "median_output_chars": 26842,
-      "median_commands": 9,
-      "total_wall_s": 29.27,
-      "total_tokens": 350021,
+      "median_time_s": 31.96,
+      "median_time_s_passing": 31.96,
+      "median_time_to_correct_s": 25.874,
+      "median_tokens": 351531.5,
+      "median_uncached_input": 25.0,
+      "median_output_chars": 23785.5,
+      "median_commands": 9.5,
+      "total_wall_s": 63.92,
+      "total_tokens": 703063,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
-        "direct_api": 0,
-        "runs": 0
+        "direct_api": 1,
+        "runs": 1
       },
       "harness_errors": 0,
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": {},
       "run_ids": [
-        "news--ardia-claude--r1"
+        "news--ardia-claude--r1",
+        "news--ardia-claude--r2"
       ],
       "serial_vs_parallel": null
     },
     {
       "task": "news",
       "contender": "ardia-codex",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 37.99,
-      "median_time_s_passing": 37.99,
-      "median_time_to_correct_s": 31.076,
-      "median_tokens": 213093,
-      "median_uncached_input": 12744,
-      "median_output_chars": 27842,
-      "median_commands": 10,
-      "total_wall_s": 37.99,
-      "total_tokens": 213093,
+      "median_time_s": 37.889,
+      "median_time_s_passing": 37.889,
+      "median_time_to_correct_s": 31.087,
+      "median_tokens": 201552.5,
+      "median_uncached_input": 16034.0,
+      "median_output_chars": 26154.5,
+      "median_commands": 9.5,
+      "total_wall_s": 75.78,
+      "total_tokens": 403105,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1274,30 +1279,31 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": {},
       "run_ids": [
-        "news--ardia-codex--r1"
+        "news--ardia-codex--r1",
+        "news--ardia-codex--r2"
       ],
       "serial_vs_parallel": null
     },
     {
       "task": "news",
       "contender": "playwright-claude",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 57.36,
-      "median_time_s_passing": 57.36,
-      "median_time_to_correct_s": 53.082,
-      "median_tokens": 883856,
-      "median_uncached_input": 48,
-      "median_output_chars": 0,
-      "median_commands": 33,
-      "total_wall_s": 57.36,
-      "total_tokens": 883856,
+      "median_time_s": 52.546,
+      "median_time_s_passing": 52.546,
+      "median_time_to_correct_s": 47.508,
+      "median_tokens": 812232.5,
+      "median_uncached_input": 45.0,
+      "median_output_chars": 0.0,
+      "median_commands": 34.0,
+      "total_wall_s": 105.09,
+      "total_tokens": 1624465,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1308,30 +1314,31 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": {},
       "run_ids": [
-        "news--playwright-claude--r1"
+        "news--playwright-claude--r1",
+        "news--playwright-claude--r2"
       ],
       "serial_vs_parallel": null
     },
     {
       "task": "news",
       "contender": "playwright-codex",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 55.471,
-      "median_time_s_passing": 55.471,
-      "median_time_to_correct_s": 51.123,
-      "median_tokens": 357770,
-      "median_uncached_input": 37836,
-      "median_output_chars": 0,
-      "median_commands": 26,
-      "total_wall_s": 55.47,
-      "total_tokens": 357770,
+      "median_time_s": 55.688,
+      "median_time_s_passing": 55.688,
+      "median_time_to_correct_s": 50.183,
+      "median_tokens": 353775.5,
+      "median_uncached_input": 30169.0,
+      "median_output_chars": 0.0,
+      "median_commands": 25.5,
+      "total_wall_s": 111.38,
+      "total_tokens": 707551,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1342,30 +1349,31 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": {},
       "run_ids": [
-        "news--playwright-codex--r1"
+        "news--playwright-codex--r1",
+        "news--playwright-codex--r2"
       ],
       "serial_vs_parallel": null
     },
     {
       "task": "triage",
       "contender": "copper-claude",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 53.447,
-      "median_time_s_passing": 53.447,
-      "median_time_to_correct_s": 50.337,
-      "median_tokens": 885850,
-      "median_uncached_input": 52,
-      "median_output_chars": 0,
-      "median_commands": 45,
-      "total_wall_s": 53.45,
-      "total_tokens": 885850,
+      "median_time_s": 57.425,
+      "median_time_s_passing": 57.425,
+      "median_time_to_correct_s": 54.6,
+      "median_tokens": 872002.5,
+      "median_uncached_input": 51.0,
+      "median_output_chars": 0.0,
+      "median_commands": 45.0,
+      "total_wall_s": 114.85,
+      "total_tokens": 1744005,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1376,30 +1384,31 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": {},
       "run_ids": [
-        "triage--copper-claude--r1"
+        "triage--copper-claude--r1",
+        "triage--copper-claude--r2"
       ],
       "serial_vs_parallel": null
     },
     {
       "task": "triage",
       "contender": "copper-codex",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 75.095,
-      "median_time_s_passing": 75.095,
-      "median_time_to_correct_s": 71.476,
-      "median_tokens": 766017,
-      "median_uncached_input": 35387,
-      "median_output_chars": 0,
-      "median_commands": 40,
-      "total_wall_s": 75.09,
-      "total_tokens": 766017,
+      "median_time_s": 73.284,
+      "median_time_s_passing": 73.284,
+      "median_time_to_correct_s": 69.903,
+      "median_tokens": 722442.5,
+      "median_uncached_input": 32960.0,
+      "median_output_chars": 0.0,
+      "median_commands": 41.0,
+      "total_wall_s": 146.57,
+      "total_tokens": 1444885,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1410,30 +1419,31 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": {},
       "run_ids": [
-        "triage--copper-codex--r1"
+        "triage--copper-codex--r1",
+        "triage--copper-codex--r2"
       ],
       "serial_vs_parallel": null
     },
     {
       "task": "triage",
       "contender": "ardia-claude",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 55.407,
-      "median_time_s_passing": 55.407,
-      "median_time_to_correct_s": 51.391,
-      "median_tokens": 494932,
-      "median_uncached_input": 36,
-      "median_output_chars": 20594,
-      "median_commands": 15,
-      "total_wall_s": 55.41,
-      "total_tokens": 494932,
+      "median_time_s": 53.412,
+      "median_time_s_passing": 53.412,
+      "median_time_to_correct_s": 49.332,
+      "median_tokens": 590033.5,
+      "median_uncached_input": 42.0,
+      "median_output_chars": 19085.0,
+      "median_commands": 18.0,
+      "total_wall_s": 106.82,
+      "total_tokens": 1180067,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1444,31 +1454,32 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": {},
       "run_ids": [
-        "triage--ardia-claude--r1"
+        "triage--ardia-claude--r1",
+        "triage--ardia-claude--r2"
       ],
       "serial_vs_parallel": null
     },
     {
       "task": "triage",
       "contender": "ardia-codex",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 57.178,
-      "median_time_s_passing": 57.178,
-      "median_time_to_correct_s": 52.911,
-      "median_tokens": 381741,
-      "median_uncached_input": 36492,
-      "median_output_chars": 29804,
-      "median_commands": 21,
-      "total_wall_s": 57.18,
-      "total_tokens": 381741,
-      "total_cli_errors": 0,
+      "median_time_s": 54.807,
+      "median_time_s_passing": 54.807,
+      "median_time_to_correct_s": 49.294,
+      "median_tokens": 396999.5,
+      "median_uncached_input": 26950.5,
+      "median_output_chars": 31854.5,
+      "median_commands": 19.5,
+      "total_wall_s": 109.61,
+      "total_tokens": 793999,
+      "total_cli_errors": 1,
       "shortcuts": {
         "source_peeks": 0,
         "direct_api": 0,
@@ -1478,30 +1489,31 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": {},
       "run_ids": [
-        "triage--ardia-codex--r1"
+        "triage--ardia-codex--r1",
+        "triage--ardia-codex--r2"
       ],
       "serial_vs_parallel": null
     },
     {
       "task": "triage",
       "contender": "playwright-claude",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 62.954,
-      "median_time_s_passing": 62.954,
-      "median_time_to_correct_s": 55.332,
-      "median_tokens": 1188837,
-      "median_uncached_input": 66,
-      "median_output_chars": 24941,
-      "median_commands": 37,
-      "total_wall_s": 62.95,
-      "total_tokens": 1188837,
+      "median_time_s": 63.945,
+      "median_time_s_passing": 63.945,
+      "median_time_to_correct_s": 57.891,
+      "median_tokens": 1166169.5,
+      "median_uncached_input": 64.0,
+      "median_output_chars": 19599.5,
+      "median_commands": 38.5,
+      "total_wall_s": 127.89,
+      "total_tokens": 2332339,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1512,30 +1524,31 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": {},
       "run_ids": [
-        "triage--playwright-claude--r1"
+        "triage--playwright-claude--r1",
+        "triage--playwright-claude--r2"
       ],
       "serial_vs_parallel": null
     },
     {
       "task": "triage",
       "contender": "playwright-codex",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 63.767,
-      "median_time_s_passing": 63.767,
-      "median_time_to_correct_s": 58.943,
-      "median_tokens": 601199,
-      "median_uncached_input": 37192,
-      "median_output_chars": 0,
-      "median_commands": 37,
-      "total_wall_s": 63.77,
-      "total_tokens": 601199,
+      "median_time_s": 63.826,
+      "median_time_s_passing": 63.826,
+      "median_time_to_correct_s": 59.394,
+      "median_tokens": 599991.5,
+      "median_uncached_input": 39099.0,
+      "median_output_chars": 0.0,
+      "median_commands": 37.0,
+      "total_wall_s": 127.65,
+      "total_tokens": 1199983,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1546,12 +1559,13 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": {},
       "run_ids": [
-        "triage--playwright-codex--r1"
+        "triage--playwright-codex--r1",
+        "triage--playwright-codex--r2"
       ],
       "serial_vs_parallel": null
     },
@@ -1592,18 +1606,18 @@
     {
       "task": "compare",
       "contender": "copper-codex",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 80.575,
-      "median_time_s_passing": 80.575,
-      "median_time_to_correct_s": 75.027,
-      "median_tokens": 443639,
-      "median_uncached_input": 52122,
-      "median_output_chars": 0,
-      "median_commands": 45,
-      "total_wall_s": 80.58,
-      "total_tokens": 443639,
+      "median_time_s": 93.28,
+      "median_time_s_passing": 93.28,
+      "median_time_to_correct_s": 87.55,
+      "median_tokens": 453722.5,
+      "median_uncached_input": 54716.5,
+      "median_output_chars": 0.0,
+      "median_commands": 44.0,
+      "total_wall_s": 186.56,
+      "total_tokens": 907445,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1614,30 +1628,31 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": {},
       "run_ids": [
-        "compare--copper-codex--r1"
+        "compare--copper-codex--r1",
+        "compare--copper-codex--r2"
       ],
       "serial_vs_parallel": null
     },
     {
       "task": "compare",
       "contender": "ardia-claude",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 47.899,
-      "median_time_s_passing": 47.899,
-      "median_time_to_correct_s": 37.705,
-      "median_tokens": 481139,
-      "median_uncached_input": 34,
-      "median_output_chars": 19535,
-      "median_commands": 14,
-      "total_wall_s": 47.9,
-      "total_tokens": 481139,
+      "median_time_s": 48.455,
+      "median_time_s_passing": 48.455,
+      "median_time_to_correct_s": 41.777,
+      "median_tokens": 464949.0,
+      "median_uncached_input": 32.0,
+      "median_output_chars": 20796.0,
+      "median_commands": 13.5,
+      "total_wall_s": 96.91,
+      "total_tokens": 929898,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1648,12 +1663,13 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": {},
       "run_ids": [
-        "compare--ardia-claude--r1"
+        "compare--ardia-claude--r1",
+        "compare--ardia-claude--r2"
       ],
       "serial_vs_parallel": null
     },
@@ -1768,18 +1784,18 @@
       "hosts": [
         "mac-mini"
       ],
-      "runs": 11,
-      "passes": 11,
+      "runs": 14,
+      "passes": 14,
       "pass_rate": 1.0,
-      "median_time_s": 59.303,
-      "median_time_s_passing": 59.303,
-      "median_time_to_correct_s": 56.351,
-      "median_tokens": 784193,
-      "median_uncached_input": 40,
-      "median_output_chars": 0,
-      "median_commands": 31,
-      "total_wall_s": 625.51,
-      "total_tokens": 9415668,
+      "median_time_s": 59.614,
+      "median_time_s_passing": 59.614,
+      "median_time_to_correct_s": 56.46,
+      "median_tokens": 821174.0,
+      "median_uncached_input": 40.0,
+      "median_output_chars": 0.0,
+      "median_commands": 34.0,
+      "total_wall_s": 840.61,
+      "total_tokens": 12601597,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1790,7 +1806,7 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 11
+        "ui": 14
       },
       "rejected_writes": 0,
       "invariant_failures": {}
@@ -1802,18 +1818,18 @@
       "hosts": [
         "mac-mini"
       ],
-      "runs": 12,
-      "passes": 12,
+      "runs": 15,
+      "passes": 15,
       "pass_rate": 1.0,
-      "median_time_s": 75.832,
-      "median_time_s_passing": 75.832,
-      "median_time_to_correct_s": 70.703,
-      "median_tokens": 617701.5,
-      "median_uncached_input": 45209.5,
-      "median_output_chars": 0.0,
-      "median_commands": 40.5,
-      "total_wall_s": 1108.7,
-      "total_tokens": 8996957,
+      "median_time_s": 75.095,
+      "median_time_s_passing": 75.095,
+      "median_time_to_correct_s": 69.929,
+      "median_tokens": 523776,
+      "median_uncached_input": 43774,
+      "median_output_chars": 0,
+      "median_commands": 41,
+      "total_wall_s": 1346.74,
+      "total_tokens": 10485109,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1824,7 +1840,7 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 12
+        "ui": 15
       },
       "rejected_writes": 0,
       "invariant_failures": {}
@@ -1836,29 +1852,29 @@
       "hosts": [
         "mac-mini"
       ],
-      "runs": 12,
-      "passes": 12,
+      "runs": 15,
+      "passes": 15,
       "pass_rate": 1.0,
-      "median_time_s": 39.558,
-      "median_time_s_passing": 39.558,
-      "median_time_to_correct_s": 33.067,
-      "median_tokens": 385635.5,
-      "median_uncached_input": 27.0,
-      "median_output_chars": 22510.0,
-      "median_commands": 10.5,
-      "total_wall_s": 471.64,
-      "total_tokens": 4963491,
+      "median_time_s": 46.2,
+      "median_time_s_passing": 46.2,
+      "median_time_to_correct_s": 37.705,
+      "median_tokens": 410773,
+      "median_uncached_input": 28,
+      "median_output_chars": 21450,
+      "median_commands": 11,
+      "total_wall_s": 606.72,
+      "total_tokens": 6450427,
       "total_cli_errors": 1,
       "shortcuts": {
         "source_peeks": 0,
-        "direct_api": 1,
-        "runs": 1
+        "direct_api": 2,
+        "runs": 2
       },
       "harness_errors": 0,
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 12
+        "ui": 15
       },
       "rejected_writes": 0,
       "invariant_failures": {}
@@ -1870,19 +1886,19 @@
       "hosts": [
         "mac-mini"
       ],
-      "runs": 12,
-      "passes": 12,
+      "runs": 14,
+      "passes": 14,
       "pass_rate": 1.0,
-      "median_time_s": 50.777,
-      "median_time_s_passing": 50.777,
-      "median_time_to_correct_s": 46.923,
+      "median_time_s": 48.824,
+      "median_time_s_passing": 48.824,
+      "median_time_to_correct_s": 43.489,
       "median_tokens": 245038.0,
-      "median_uncached_input": 21895.0,
+      "median_uncached_input": 20917.0,
       "median_output_chars": 31814.0,
       "median_commands": 12.5,
-      "total_wall_s": 644.53,
-      "total_tokens": 3589155,
-      "total_cli_errors": 8,
+      "total_wall_s": 734.76,
+      "total_tokens": 4191425,
+      "total_cli_errors": 9,
       "shortcuts": {
         "source_peeks": 0,
         "direct_api": 0,
@@ -1892,7 +1908,7 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 12
+        "ui": 14
       },
       "rejected_writes": 0,
       "invariant_failures": {}
@@ -1904,18 +1920,18 @@
       "hosts": [
         "mac-mini"
       ],
-      "runs": 12,
-      "passes": 12,
+      "runs": 14,
+      "passes": 14,
       "pass_rate": 1.0,
       "median_time_s": 57.709,
       "median_time_s_passing": 57.709,
       "median_time_to_correct_s": 53.236,
       "median_tokens": 776243.0,
-      "median_uncached_input": 36.0,
+      "median_uncached_input": 38.0,
       "median_output_chars": 0.0,
-      "median_commands": 25.0,
-      "total_wall_s": 715.16,
-      "total_tokens": 8739349,
+      "median_commands": 26.0,
+      "total_wall_s": 827.83,
+      "total_tokens": 10623460,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1926,7 +1942,7 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 12
+        "ui": 14
       },
       "rejected_writes": 0,
       "invariant_failures": {}
@@ -1938,18 +1954,18 @@
       "hosts": [
         "mac-mini"
       ],
-      "runs": 11,
-      "passes": 11,
+      "runs": 14,
+      "passes": 14,
       "pass_rate": 1.0,
-      "median_time_s": 56.838,
-      "median_time_s_passing": 56.838,
-      "median_time_to_correct_s": 51.123,
-      "median_tokens": 458934,
-      "median_uncached_input": 38362,
-      "median_output_chars": 0,
-      "median_commands": 26,
-      "total_wall_s": 658.25,
-      "total_tokens": 4973099,
+      "median_time_s": 58.095,
+      "median_time_s_passing": 58.095,
+      "median_time_to_correct_s": 51.941,
+      "median_tokens": 459003.0,
+      "median_uncached_input": 38622.5,
+      "median_output_chars": 0.0,
+      "median_commands": 26.5,
+      "total_wall_s": 878.58,
+      "total_tokens": 6648085,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1960,7 +1976,7 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 11
+        "ui": 14
       },
       "rejected_writes": 0,
       "invariant_failures": {}
