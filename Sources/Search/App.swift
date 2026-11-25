@@ -406,9 +406,15 @@ struct ContentView: View {
                     .padding(.top, band + 8)
                     .padding(sidebar ? .leading : .trailing, sidebar ? browser.prefs.sideWidth + 8 : 14)
                     .transition(.move(edge: .top).combined(with: .opacity))
+            } else if let ask = PageTranslate.shared.offerShown(in: browser) { // Fork (ardia polish): Fork/Translate.swift
+                TranslateOfferCard(browser: browser, offer: ask)
+                    .padding(.top, band + 8)
+                    .padding(sidebar ? .leading : .trailing, sidebar ? browser.prefs.sideWidth + 8 : 14)
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
         .animation(Motion.settle, value: browser.offering)
+        .animation(Motion.settle, value: PageTranslate.shared.offer)
     }
 
     /// The address field: raised over a page by ⌘L or ⌘K, and standing on its
@@ -482,6 +488,7 @@ struct ContentView: View {
             .overlay(alignment: .leading) { Fold(browser: browser, prefs: browser.prefs) }
             // Fork (update-pill): the folded column's update badge.
             .overlay(alignment: .bottomLeading) { UpdateCorner(browser: browser, prefs: browser.prefs) }
+            .overlay(alignment: .bottomLeading) { UpdateNewsCorner(browser: browser, prefs: browser.prefs) } // Fork (ardia polish): What's New off the column (Fork/UpdateNews.swift)
             .overlay(alignment: .bottomLeading) { CloudHoldCorner(browser: browser, prefs: browser.prefs) } // Fork (cloud): the spaces brake's prompt with no column
             .overlay(alignment: .bottom) { bars }
             .overlay { offerSlot }
@@ -897,6 +904,13 @@ struct ContentView: View {
             } else {
                 browser.step(flags.contains(.shift) ? -1 : 1)
             }
+            return true
+        }
+
+        // Fork (ardia profiles): ⌥⌘← / ⌥⌘→, Ardia's (and Arc's) keys for the
+        // space — and so the profile — before or after, beside ⌃⌥←/→.
+        if flags.intersection([.command, .option, .control, .shift]) == [.command, .option], event.keyCode == 123 || event.keyCode == 124 {
+            Spaces.shared.step(event.keyCode == 123 ? -1 : 1, in: browser)
             return true
         }
 

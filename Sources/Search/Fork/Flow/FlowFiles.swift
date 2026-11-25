@@ -125,7 +125,7 @@ extension Flow {
                 let skipped = PasswordCSV.summary(text).skipped
                 guard seams else {
                     // What is already here, by site and account — no secret read.
-                    let have = Set(Vault.all().map { $0.host + "\u{1}" + $0.user })
+                    let have = Set(Vault.all(in: nil).map { $0.host + "\u{1}" + $0.user })
                     let new = Set(PasswordCSV.accounts(text)).subtracting(have).count
                     let taken = Vault.take(csv: plain)
                     return (taken.kept, skipped + taken.skipped, new)

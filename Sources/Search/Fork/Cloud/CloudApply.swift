@@ -312,6 +312,8 @@ enum CloudApply {
         var title: String
         var count: Int
         var last: Date
+        /// Fork (ardia profiles): the profiles that alone see it; nil, Shared.
+        var profiles: [String]? = nil
     }
 
     static var historyFile: URL { Store.file("history.json") }

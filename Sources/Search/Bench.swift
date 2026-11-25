@@ -261,6 +261,8 @@ final class Bench {
         case "spaces", "bar", "split", "summon", "window", "groups", "sections", "passkeys", "passwords", "privacy", "about", "agent", "ai", "swipe", "mouse", "heat", "downloads", "updates", "bw", "op", "flow", "history", "drive", "render", "ext-manager", "storage", "windows", "flight", "trails", "pace", "stage", "calendar", "pins", "covers", "shield":
             answer(Fork.bench(verb, request, in: browser))
 
+        case "player": answer(MiniPlayer.bench(request, in: browser)) // Fork (ardia polish): Fork/MiniPlayer.swift
+
         case "little", "peek", "atc": // Fork (ardia: windows): Fork/Little.swift, Fork/Peek.swift, Fork/AirTraffic.swift
             answer(Fork.bench(verb, request, in: browser))
 
@@ -701,6 +703,12 @@ final class Bench {
             if let on = request["settings"] as? Bool { browser.tuning = on }
             if let on = request["passwords"] as? Bool { browser.managing = on }
             if let on = request["welcome"] as? Bool { Headless.benchWelcome = on; browser.welcoming = on } // Fork (bench-hooks)
+            if let page = (request["welcomepage"] as? String).flatMap(Int.init) { // Fork (ardia polish): the panel on page N
+                Headless.benchWelcome = true
+                Headless.benchWelcomePage = page
+                browser.welcoming = false
+                DispatchQueue.main.async { browser.welcoming = true }
+            }
             if let on = request["history"] as? Bool { browser.recalling = on }
             // Fork (uiflows r4): as ⌘⇧J opens it — the popover from the glyph where there is one.
             if let on = request["downloads"] as? Bool {
@@ -764,11 +772,12 @@ final class Bench {
         switch verb {
         case "extensions":
             answer(["busy": extensions.busy ?? "", "extensions": extensions.installed.map { item -> [String: Any] in
-                let context = extensions.contexts[item.id]
-                let action = context?.action(for: extensions.activeAdapter)
+                let context = extensions.context(item.id) // Fork (ardia profiles): the page in front's profile's first
+                let action = context?.action(for: Extensions.front.activeAdapter)
                 return [
                     "id": item.id, "name": item.name, "version": item.version, "enabled": item.enabled,
                     "loaded": context != nil,
+                    "profiles": item.profiles ?? ["*"], "runs": Extensions.every.filter { $0.contexts[item.id] != nil }.map { Profiles.key($0.profile) }.sorted(),
                     "base": context?.baseURL.absoluteString ?? "",
                     "errors": (context?.errors ?? []).map { error in
                         let e = error as NSError
@@ -852,7 +861,7 @@ final class Bench {
         case "ext-page":
             // One of the extension's own pages in a bench tab, where `eval`
             // runs with the extension's APIs.
-            guard let id = request["id"] as? String, let context = extensions.contexts[id] else {
+            guard let id = request["id"] as? String, let context = extensions.context(id) else {
                 answer(["error": "no such extension loaded"])
                 return
             }

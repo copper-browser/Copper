@@ -26,7 +26,7 @@ enum ExtensionWorker {
     /// first when WebKit has let it go.
     static func bench(_ request: [String: Any], _ answer: @escaping ([String: Any]) -> Void) {
         guard Store.testing else { answer(["error": "only in a test world"]); return }
-        guard let id = request["id"] as? String, let context = Extensions.shared.contexts[id] else {
+        guard let id = request["id"] as? String, let context = Extensions.shared.context(id) else {
             answer(["error": "no such extension loaded"])
             return
         }

@@ -140,6 +140,8 @@ enum SyncRecords {
         var t: String
         var n: Int
         var l: Double
+        /// Fork (ardia profiles): the profiles that alone see it; absent, Shared.
+        var p: [String]? = nil
     }
 
     /// A Mac's open tabs, for the others to look at.
@@ -159,5 +161,8 @@ enum SyncRecords {
     struct Ext: Codable, Equatable {
         var n: String
         var removed: Bool? = nil
+        /// Fork (ardia profiles): the profiles it runs in ("" Shared); absent,
+        /// every profile — as a Mac from before profile extensions writes it.
+        var p: [String]? = nil
     }
 }

@@ -1109,8 +1109,11 @@ final class CloudSync: ObservableObject {
     /// asked to be forgotten.
     private var forgotten: [String: Double] = [:]
 
+    /// Fork (ardia profiles): Shared's only. A profile's own places stay on
+    /// this Mac (and iCloud sync, which says whose they are): Copper Cloud's
+    /// rows have no profile, and every Mac would list them for everyone.
     private static func localVisits() -> [CloudHistory.Visit] {
-        CloudApply.visits().map { CloudHistory.Visit(key: $0.key, url: $0.url, title: $0.title, at: $0.last.timeIntervalSince1970) }
+        CloudApply.visits().filter { $0.profiles == nil }.map { CloudHistory.Visit(key: $0.key, url: $0.url, title: $0.title, at: $0.last.timeIntervalSince1970) }
     }
 
     /// Deletes visits on the cloud — every Mac's rows, as `selector` says,
@@ -1313,7 +1316,7 @@ final class CloudSync: ObservableObject {
         case .settings: data = try? encode(CloudApply.settings(browser))
         case .bookmarks: data = try? encode(CloudApply.bookmarks(browser))
         case .tabs: data = try? encode(CloudApply.openTabs(device: cloud.deviceName))
-        case .history: data = try? JSONEncoder().encode(CloudApply.visits().suffix(20).map { ["url": $0.url, "title": $0.title] })
+        case .history: data = try? JSONEncoder().encode(CloudApply.visits().filter { $0.profiles == nil }.suffix(20).map { ["url": $0.url, "title": $0.title] })
         case .canvas: data = try? JSONSerialization.data(withJSONObject: ["personal": syncs(.canvas) ? "room" : "this Mac only"])
         }
         return data.flatMap { try? JSONSerialization.jsonObject(with: $0) }

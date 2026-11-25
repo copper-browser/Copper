@@ -58,7 +58,7 @@ final class FlowKeychainSink: FlowSecretSink {
     var name: String { "keychain" }
 
     func savePassword(host: String, user: String, password: String, used: Date?) -> (kept: Bool, new: Bool?) {
-        (Vault.save(host: host, user: user, password: password, used: used), nil)
+        (Vault.save(host: host, user: user, password: password, used: used, in: nil), nil) // Fork (ardia profiles): Shared
     }
 
     func never(_ hosts: [String]) {

@@ -82,13 +82,21 @@ if [ -f Canvas/dist/canvas.html ] && [ Canvas/dist/canvas.html -nt "$CANVAS_PAGE
   cp Canvas/dist/canvas.html "$CANVAS_PAGE"
 fi
 
+# Fork (ardia polish): the SDK the app is built with, stamped into the
+# binary's LC_BUILD_VERSION (check: vtool -show-build). SwiftPM's linker line
+# writes the oldest macOS there as the SDK too (sdk 14.0), and macOS reads
+# that stamp for "linked on or after" behaviour: Translation then calls the
+# languages a newer Mac already has "supported" (to download again) instead
+# of installed. The oldest macOS it runs on stays $MINIMUM.
+SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
+STAMP=(-Xlinker -platform_version -Xlinker macos -Xlinker "$MINIMUM" -Xlinker "$SDK_VERSION")
 if [ -n "$ARCH" ]; then
   # The oldest macOS goes into the triple too, as it is in the plist.
-  swift build -c "$CONFIG" --triple "$ARCH-apple-macosx$MINIMUM"
+  swift build -c "$CONFIG" --triple "$ARCH-apple-macosx$MINIMUM" "${STAMP[@]}"
   # Where depends on the build system SwiftPM picked for the triple, so ask.
-  PRODUCTS="$(swift build -c "$CONFIG" --triple "$ARCH-apple-macosx$MINIMUM" --show-bin-path)"
+  PRODUCTS="$(swift build -c "$CONFIG" --triple "$ARCH-apple-macosx$MINIMUM" "${STAMP[@]}" --show-bin-path)"
 else
-  swift build -c "$CONFIG"
+  swift build -c "$CONFIG" "${STAMP[@]}"
   PRODUCTS=".build/$CONFIG"
 fi
 BINARY="$PRODUCTS/Search"
