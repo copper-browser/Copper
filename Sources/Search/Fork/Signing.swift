@@ -17,17 +17,14 @@ import Foundation
 // (Store.swift). Nothing they do lands on the installed Copper's grants,
 // settings, cookies or keychain identity.
 enum Signing {
-    /// Copper's Apple Developer team. release/package-app.sh refuses to sign
-    /// an app whose binary does not carry it, so a release never pins a team
-    /// it isn't signed by.
-    nonisolated static let developerTeam = "95X7XYUVNX"
-
-    /// Any Developer ID Application certificate Apple issued to that team —
-    /// the requirement Apple's own tools give such an app, so it survives the
-    /// certificate's renewal.
-    nonisolated static var developerIDRequirement: String {
-        "anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] and certificate leaf[field.1.2.840.113635.100.6.1.13] and certificate leaf[subject.OU] = \"\(developerTeam)\""
-    }
+    /// Any Developer ID Application certificate Apple issued to Copper's
+    /// Apple Developer team, 95X7XYUVNX — the requirement Apple's own tools
+    /// give such an app, so it survives the certificate's renewal. One
+    /// literal, so the team is in the binary as text: release/package-app.sh
+    /// refuses to sign an app whose binary does not carry it (a short Swift
+    /// string is stored inline, out of grep's reach).
+    nonisolated static let developerIDRequirement =
+        "anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] and certificate leaf[field.1.2.840.113635.100.6.1.13] and certificate leaf[subject.OU] = \"95X7XYUVNX\""
 
     /// The designated requirement every Copper release is signed with; the
     /// same text is in release/designated-requirement.txt.

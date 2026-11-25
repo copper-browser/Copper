@@ -17,7 +17,7 @@ private let repo = URL(fileURLWithPath: #filePath)
         let cer = try Data(contentsOf: repo.appendingPathComponent("release/copper-developer-id.cer"))
         let certificate = try #require(SecCertificateCreateWithData(nil, cer as CFData))
         let subject = SecCertificateCopySubjectSummary(certificate) as String? ?? ""
-        #expect(subject == "Developer ID Application: Collin Rijock (\(Signing.developerTeam))")
+        #expect(subject == "Developer ID Application: Collin Rijock (95X7XYUVNX)")
         let text = try String(contentsOf: repo.appendingPathComponent("release/designated-requirement.txt"), encoding: .utf8)
         #expect(text.trimmingCharacters(in: .whitespacesAndNewlines) == Signing.releaseRequirement)
         #expect(Signing.releaseRequirement == "identifier \"com.collinrijock.copper\" and \(Signing.developerIDRequirement)")

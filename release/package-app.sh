@@ -76,7 +76,7 @@ if [ -n "$identity" ]; then
   # next update, so it is not signed at all.
   team="$(printf '%s' "$requirement" | sed -n 's/.*certificate leaf\[subject\.OU\] = "\([0-9A-Z]*\)".*/\1/p')"
   [ -n "$team" ] || { echo "no team (certificate leaf[subject.OU]) in designated-requirement.txt" >&2; exit 1; }
-  if ! LC_ALL=C grep -a -q -F "$team" "$app/Contents/MacOS/Copper"; then
+  if ! LC_ALL=C grep -a -q -F "certificate leaf[subject.OU] = \"$team\"" "$app/Contents/MacOS/Copper"; then
     echo "the app's updater does not pin team $team (Fork/Signing.swift) — refusing to sign it for that team" >&2
     exit 1
   fi

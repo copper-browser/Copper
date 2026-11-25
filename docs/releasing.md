@@ -202,7 +202,7 @@ the release here.
   the app needs no JIT entitlement. It signs inside-out (`--deep` with the identity, then the
   app itself with the entitlements and `-r`). It refuses to sign a bundle whose id is not
   `com.collinrijock.copper`, or whose binary does not pin the same team
-  (`Signing.developerTeam`), or without the notary key.
+  (`Signing.developerIDRequirement`), or without the notary key.
 - **Notarized and stapled.** Each zip goes to Apple's notary service
   (`xcrun notarytool submit --wait`, a few minutes); on *Accepted* the ticket is stapled to the
   app (`xcrun stapler staple`) and the zip made again around it, so Gatekeeper opens a download

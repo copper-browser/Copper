@@ -393,7 +393,7 @@ sign_and_zip() {
   esac
   # The updater inside checks every later release against the same team
   # (Fork/Signing.swift); a bundle that pins another isn't signed.
-  LC_ALL=C grep -a -q -F "$team" "$app/Contents/MacOS/Copper" \
+  LC_ALL=C grep -a -q -F "certificate leaf[subject.OU] = \"$team\"" "$app/Contents/MacOS/Copper" \
     || fail "the $arch app's updater does not pin team $team (Fork/Signing.swift)"
 
   # Homebrew needs a monotonic version; About and MCP serverInfo show it.
