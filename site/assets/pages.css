@@ -105,6 +105,8 @@ html:not(.js) .theme { display: none; }
 .section { padding-block: clamp(32px, 5vw, 56px); border-top: 1px solid var(--line); }
 .section > h2, .section-head h2 { font-size: clamp(1.6rem, 1.2rem + 1.4vw, 2.4rem); line-height: 1.1; letter-spacing: -.03em; font-weight: 700; }
 .section-head p { margin-top: 10px; color: var(--ink-2); max-width: 38em; }
+.section-head + * { margin-top: 24px; }
+.table + p { margin-top: 16px; }
 .prose { max-width: var(--prose); }
 .prose > * + * { margin-top: 1em; }
 .prose h2 { margin-top: 2em; font-size: clamp(1.45rem, 1.15rem + 1vw, 1.9rem); line-height: 1.15; letter-spacing: -.025em; font-weight: 700; }
@@ -118,7 +120,7 @@ html:not(.js) .theme { display: none; }
 .muted { color: var(--ink-2); }
 .small { font-size: 14.5px; }
 :not(pre) > code { font-size: .88em; padding: .1em .35em; border-radius: 5px; background: var(--sunk); }
-kbd { font-size: .82em; padding: .1em .4em; border-radius: 5px; border: 1px solid var(--line-2); background: var(--surface); }
+kbd { font-size: .86em; padding: .1em .4em; border-radius: 5px; border: 1px solid var(--line-2); background: var(--surface); }
 pre {
   margin: 0; padding: 16px 18px; overflow-x: auto; border-radius: var(--r-m);
   background: var(--term-bg); color: var(--term-ink); font-size: 14px; line-height: 1.55;
@@ -154,7 +156,9 @@ footer .wrap { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2
   .theme { width: 40px; height: 40px; }
   footer .wrap { grid-template-columns: minmax(0, 1fr); }
   .links { justify-content: flex-start; }
-  .links a { display: inline-block; padding-block: 4px; }
+  .links a { display: inline-block; padding-block: 10px; }
+  .links { gap: 0 22px; }
+  .btn-sm { min-height: 40px; }
 }
 @media (max-width: 480px) {
   body { font-size: 16.5px; }
