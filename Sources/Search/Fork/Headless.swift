@@ -178,7 +178,7 @@ enum Headless {
     /// `bench ui welcome on` in a probe world: the panel stays up, for a picture of it.
     @MainActor static var benchWelcome = false
     /// Fork (ardia polish): `bench ui welcomepage N` opens the panel on page N (the look step is 2).
-    @MainActor static var benchWelcomePage = 0
+    nonisolated(unsafe) static var benchWelcomePage = 0
 
     /// Nothing the browser would put in front of a person stays up.
     @MainActor static func start(for browser: Browser) {
