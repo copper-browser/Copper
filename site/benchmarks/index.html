@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mac browser benchmarks: Copper vs Safari, Chrome and Ardia</title>
+<meta name="description" content="Copper, Safari, Chrome and Ardia on one Mac mini: cold launch, memory with 1 to 20 tabs, idle CPU and power, Speedometer 3. Medians, losses left in.">
+<link rel="canonical" href="https://copper.exowatt.com/benchmarks/">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#F8F2EA" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0C0A09" media="(prefers-color-scheme: dark)">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Copper">
+<meta property="og:title" content="Mac browser benchmarks: Copper vs Safari, Chrome and Ardia">
+<meta property="og:description" content="Copper, Safari, Chrome and Ardia on one Mac mini: cold launch, memory with 1 to 20 tabs, idle CPU and power, Speedometer 3. Medians, losses left in.">
+<meta property="og:url" content="https://copper.exowatt.com/benchmarks/">
+<meta property="og:image" content="https://copper.exowatt.com/assets/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Mac browser benchmarks: Copper vs Safari, Chrome and Ardia">
+<meta name="twitter:description" content="Copper, Safari, Chrome and Ardia on one Mac mini: cold launch, memory with 1 to 20 tabs, idle CPU and power, Speedometer 3. Medians, losses left in.">
+<meta name="twitter:image" content="https://copper.exowatt.com/assets/og.jpg">
+<link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32.png">
+<link rel="icon" type="image/png" sizes="64x64" href="../assets/favicon-64.png">
+<link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
+<link rel="stylesheet" href="../assets/pages.css">
+<script>
+  document.documentElement.classList.add('js');
+  try { var t = localStorage.getItem('copper-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+<script src="../assets/pages.js" defer></script>
+<style>
+  .facts { margin-top: 18px; line-height: 1.7; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 16px; margin-top: 24px; }
+  .metric { margin: 0; padding: 20px 20px 16px; border-radius: var(--r-l); background: var(--surface); border: 1px solid var(--line); }
+  .metric figcaption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; margin-bottom: 12px; }
+  .metric .label { font: 600 16px/1.3 var(--display); }
+  .metric .hint { font-size: 13px; color: var(--ink-2); }
+  .bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .bar { display: grid; grid-template-columns: 4.6em minmax(0, 1fr) auto; grid-template-areas: "who track value" "who track range"; column-gap: 10px; align-items: center; font-size: 14.5px; color: var(--ink-2); }
+  .bar .who { grid-area: who; }
+  .bar .track { grid-area: track; height: 10px; }
+  .bar i { display: block; height: 10px; width: calc(var(--v) * 100%); min-width: 6px; border-radius: 999px; background: var(--line-2); }
+  .bar b { grid-area: value; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .bar small { grid-area: range; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .bar.us { color: var(--ink); font-weight: 600; }
+  .bar.us i { background: var(--accent); }
+  .bar.best b::after { content: " ★" / ""; color: var(--patina); font-size: .85em; }
+  .gap { margin-top: 10px; font-size: 13px; color: var(--ink-2); }
+  .gap a, .section small a { color: var(--ink); text-underline-offset: 3px; }
+  #agents h3 { margin-top: 28px; font: 600 1.1rem/1.3 var(--display); }
+  #agents .table, #polar .table { margin-top: 12px; }
+  td small { display: block; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+  tfoot th, tfoot td { border-bottom: 0; }
+  .section > .small { margin-top: 14px; max-width: 46rem; }
+  @media (max-width: 480px) { .bar { grid-template-columns: 4.2em minmax(0, 1fr) auto; font-size: 14px; } }
+</style>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Dataset", "name": "Mac browser benchmarks: Copper vs Safari, Chrome and Ardia", "description": "Cold launch, memory with 1 to 20 tabs, idle CPU, wakeups and power, and Speedometer 3.1, measured on one Mac mini; medians with range and run count. Also the tokens Claude Code and Codex spend driving Copper, Ardia and Playwright MCP through eight agent tasks.", "url": "https://copper.exowatt.com/benchmarks/", "dateModified": "2026-11-25", "isAccessibleForFree": true, "license": "https://opensource.org/licenses/MIT", "creator": {"@type": "Organization", "name": "Copper", "url": "https://copper.exowatt.com/"}, "distribution": [{"@type": "DataDownload", "encodingFormat": "application/json", "contentUrl": "https://copper.exowatt.com/assets/bench.json"}, {"@type": "DataDownload", "encodingFormat": "application/json", "contentUrl": "https://copper.exowatt.com/assets/agentbench.json"}], "variableMeasured": ["Cold launch → window on screen", "Cold launch → restored tab painted", "Cold launch → page painted (link opened from another app)", "Memory, 1 tab", "Memory, 10 tabs", "Memory, 20 tabs", "Memory, back to 1 tab after 20", "Idle CPU, 1 tab", "Idle CPU, 20 tabs", "Idle wakeups, 1 tab", "Idle wakeups, 20 tabs", "Idle power, 1 tab", "Idle power, 20 tabs", "Speedometer 3.1", "Memory, 1 tab, its page drawing", "Idle CPU, 1 tab, its page drawing", "Idle wakeups, 1 tab, its page drawing", "Idle power, 1 tab, its page drawing", "Agent tokens per task (median of runs)"]}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="../"><img src="../assets/icon-96.webp" alt="" width="30" height="30">Copper</a>
+    <nav aria-label="Pages">
+      <ul class="nav-links">
+        <li><a href="../try/">Try it</a></li>
+        <li><a href="../benchmarks/" aria-current="page">Benchmarks</a></li>
+        <li><a href="../arc/">Moving from Arc</a></li>
+        <li><a href="../release-notes/">Changelog</a></li>
+        <li><a href="https://github.com/copper-browser/Copper">GitHub</a></li>
+      </ul>
+    </nav>
+    <div class="nav-end">
+      <button class="theme" type="button" id="theme" aria-label="Switch to dark appearance">
+        <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+        <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
+      </button>
+      <a class="btn btn-sm" href="../#install">Download</a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap page-head">
+    <span class="kicker">Benchmarks</span>
+    <h1>Copper, timed against the browsers you’d use instead.</h1>
+    <p class="lead">Copper, Safari, Chrome and Ardia on the same Mac mini, launched and loaded by one harness that reads every browser from the outside, and the tokens AI agents spend getting the same jobs done in each. Every figure is a median with its range and run count, and the rows Copper loses stay on the page.</p>
+    <p class="facts small muted">Mac mini (Mac18,5) · Apple M6 · 24 GB · macOS 27.0.1 (26A434)<br>Copper 1.0.20261124.117 · Safari 27.0.1 · Google Chrome 158.0.8127.89 · Ardia 0.2.48<br>Measured 25 November 2026. <span aria-hidden="true">★</span> marks each row’s best median; overlapping ranges mean it’s close.</p>
+  </div>
+  <section class="wrap section" id="launch" aria-labelledby="launch-title">
+    <div class="section-head"><h2 id="launch-title">Launch</h2><p>With the browser closed, started by <code>open -g</code>, the way a link from another app starts it, in the background.</p></div>
+    <div class="metrics"><figure class="metric" id="launch-window"><figcaption><span class="label">Cold launch → window on screen</span><span class="hint">less is better</span></figcaption><ul class="bars"><li class="bar us best"><span class="who">Copper</span><span class="track"><i style="--v:0.2047"></i></span><b>394&nbsp;ms<span class=sr> (best median)</span></b><small>307–481, n=2</small></li><li class="bar"><span class="who">Safari</span><span class="track"><i style="--v:0.3060"></i></span><b>589&nbsp;ms</b><small>447–730, n=2</small></li><li class="bar"><span class="who">Chrome</span><span class="track"><i style="--v:1.0000"></i></span><b>1,925&nbsp;ms</b><small>402–3,448, n=2</small></li><li class="bar"><span class="who">Ardia</span><span class="track"><i style="--v:0.5231"></i></span><b>1,007&nbsp;ms</b><small>267–1,747, n=2</small></li></ul></figure><figure class="metric" id="launch-restore"><figcaption><span class="label">Cold launch → restored tab painted</span><span class="hint">less is better</span></figcaption><ul class="bars"><li class="bar us best"><span class="who">Copper</span><span class="track"><i style="--v:0.2340"></i></span><b>450&nbsp;ms<span class=sr> (best median)</span></b><small>332–568, n=2</small></li><li class="bar"><span class="who">Chrome</span><span class="track"><i style="--v:1.0000"></i></span><b>1,923&nbsp;ms</b><small>397–3,449, n=2</small></li><li class="bar"><span class="who">Ardia</span><span class="track"><i style="--v:0.5554"></i></span><b>1,068&nbsp;ms</b><small>323–1,813, n=2</small></li></ul><p class="gap">Not measured: Safari (see <a href="#method">how we measure</a>).</p></figure><figure class="metric" id="launch-link"><figcaption><span class="label">Cold launch → page painted (link opened from another app)</span><span class="hint">less is better</span></figcaption><ul class="bars"><li class="bar us"><span class="who">Copper</span><span class="track"><i style="--v:0.9681"></i></span><b>395&nbsp;ms</b><small>391–399, n=2</small></li><li class="bar"><span class="who">Chrome</span><span class="track"><i style="--v:1.0000"></i></span><b>408&nbsp;ms</b><small>400–416, n=2</small></li><li class="bar best"><span class="who">Ardia</span><span class="track"><i style="--v:0.9387"></i></span><b>383&nbsp;ms<span class=sr> (best median)</span></b><small>381–385, n=2</small></li></ul><p class="gap">Not measured: Safari (see <a href="#method">how we measure</a>).</p></figure></div>
+  </section>
+  <section class="wrap section" id="memory" aria-labelledby="memory-title">
+    <div class="section-head"><h2 id="memory-title">Memory</h2><p>Everything the browser runs, added up: the app, its helpers, the GPU and network processes and the pages’ web processes. Read 30 seconds after launch, 10 seconds after the 10th tab loaded, 15 seconds after the 20th, and 30 seconds after closing back to one.</p></div>
+    <div class="metrics"><figure class="metric" id="memory-1"><figcaption><span class="label">Memory, 1 tab</span><span class="hint">less is better</span></figcaption><ul class="bars"><li class="bar us best"><span class="who">Copper</span><span class="track"><i style="--v:0.3012"></i></span><b>103&nbsp;MB<span class=sr> (best median)</span></b><small>n=1</small></li><li class="bar"><span class="who">Safari</span><span class="track"><i style="--v:0.4825"></i></span><b>165&nbsp;MB</b><small>n=1</small></li><li class="bar"><span class="who">Chrome</span><span class="track"><i style="--v:0.7076"></i></span><b>242&nbsp;MB</b><small>n=1</small></li><li class="bar"><span class="who">Ardia</span><span class="track"><i style="--v:1.0000"></i></span><b>342&nbsp;MB</b><small>n=1</small></li></ul></figure><figure class="metric" id="memory-10"><figcaption><span class="label">Memory, 10 tabs</span><span class="hint">less is better</span></figcaption><ul class="bars"><li class="bar us best"><span class="who">Copper</span><span class="track"><i style="--v:0.4750"></i></span><b>276&nbsp;MB<span class=sr> (best median)</span></b><small>n=1</small></li><li class="bar"><span class="who">Safari</span><span class="track"><i style="--v:0.5766"></i></span><b>335&nbsp;MB</b><small>n=1</small></li><li class="bar"><span class="who">Chrome</span><span class="track"><i style="--v:0.9466"></i></span><b>550&nbsp;MB</b><small>n=1</small></li><li class="bar"><span class="who">Ardia</span><span class="track"><i style="--v:1.0000"></i></span><b>581&nbsp;MB</b><small>n=1</small></li></ul></figure><figure class="metric" id="memory-20"><figcaption><span class="label">Memory, 20 tabs</span><span class="hint">less is better</span></figcaption><ul class="bars"><li class="bar us best"><span class="who">Copper</span><span class="track"><i style="--v:0.5297"></i></span><b>464&nbsp;MB<span class=sr> (best median)</span></b><small>n=1</small></li><li class="bar"><span class="who">Safari</span><span class="track"><i style="--v:0.5890"></i></span><b>516&nbsp;MB</b><small>n=1</small></li><li class="bar"><span class="who">Chrome</span><span class="track"><i style="--v:1.0000"></i></span><b>876&nbsp;MB</b><small>n=1</small></li><li class="bar"><span class="who">Ardia</span><span class="track"><i style="--v:0.9338"></i></span><b>818&nbsp;MB</b><small>n=1</small></li></ul></figure><figure class="metric" id="memory-closed"><figcaption><span class="label">Memory, back to 1 tab after 20</span><span class="hint">less is better</span></figcaption><ul class="bars"><li class="bar us best"><span class="who">Copper</span><span class="track"><i style="--v:0.3031"></i></span><b>98.8&nbsp;MB<span class=sr> (best median)</span></b><small>n=1</small></li><li class="bar"><span class="who">Safari</span><span class="track"><i style="--v:0.5337"></i></span><b>174&nbsp;MB</b><small>n=1</small></li><li class="bar"><span class="who">Chrome</span><span class="track"><i style="--v:0.7607"></i></span><b>248&nbsp;MB</b><small>n=1</small></li><li class="bar"><span class="who">Ardia</span><span class="track"><i style="--v:1.0000"></i></span><b>326&nbsp;MB</b><small>n=1</small></li></ul></figure></div>
+  </section>
+  <section class="wrap section" id="idle" aria-labelledby="idle-title">
+    <div class="section-head"><h2 id="idle-title">Idle</h2><p>A minute of doing nothing, right after the 1-tab and 20-tab memory readings; every page runs a one-second timer. With the Mac’s screen locked, Copper and Safari draw nothing here while Chrome and Ardia draw their front tab: read these with <a href="#method">the locked screen</a> in mind.</p></div>
+    <div class="metrics"><figure class="metric" id="idle-cpu-1"><figcaption><span class="label">Idle CPU, 1 tab</span><span class="hint">less is better</span></figcaption><ul class="bars"><li class="bar us"><span class="who">Copper</span><span class="track"><i style="--v:0.1636"></i></span><b>0.18%</b><small>n=1</small></li><li class="bar best"><span class="who">Safari</span><span class="track"><i style="--v:0.0273"></i></span><b>0.03%<span class=sr> (best median)</span></b><small>n=1</small></li><li class="bar"><span class="who">Chrome</span><span class="track"><i style="--v:0.9091"></i></span><b>1.00%</b><small>n=1</small></li><li class="bar"><span class="who">Ardia</span><span class="track"><i style="--v:1.0000"></i></span><b>1.10%</b><small>n=1</small></li></ul></figure><figure class="metric" id="idle-cpu-20"><figcaption><span class="label">Idle CPU, 20 tabs</span><span class="hint">less is better</span></figcaption><ul class="bars"><li class="bar us"><span class="who">Copper</span><span class="track"><i style="--v:0.0333"></i></span><b>0.30%</b><small>n=1</small></li><li class="bar best"><span class="who">Safari</span><span class="track"><i style="--v:0.0156"></i></span><b>0.14%<span class=sr> (best median)</span></b><small>n=1</small></li><li class="bar"><span class="who">Chrome</span><span class="track"><i style="--v:1.0000"></i></span><b>9.00%</b><small>n=1</small></li><li class="bar"><span class="who">Ardia</span><span class="track"><i style="--v:0.2000"></i></span><b>1.80%</b><small>n=1</small></li></ul></figure><figure class="metric" id="idle-wakeups-1"><figcaption><span class="label">Idle wakeups, 1 tab</span><span class="hint">less is better</span></figcaption><ul class="bars"><li class="bar us"><span class="who">Copper</span><span class="track"><i style="--v:0.2511"></i></span><b>17.6&nbsp;/s</b><small>n=1</small></li><li class="bar best"><span class="who">Safari</span><span class="track"><i style="--v:0.0257"></i></span><b>1.80&nbsp;/s<span class=sr> (best median)</span></b><small>n=1</small></li><li class="bar"><span class="who">Chrome</span><span class="track"><i style="--v:0.1141"></i></span><b>8.00&nbsp;/s</b><small>n=1</small></li><li class="bar"><span class="who">Ardia</span><span class="track"><i style="--v:1.0000"></i></span><b>70.1&nbsp;/s</b><small>n=1</small></li></ul></figure><figure class="metric" id="idle-wakeups-20"><figcaption><span class="label">Idle wakeups, 20 tabs</span><span class="hint">less is better</span></figcaption><ul class="bars"><li class="bar us"><span class="who">Copper</span><span class="track"><i style="--v:0.1331"></i></span><b>35&nbsp;/s</b><small>n=1</small></li><li class="bar best"><span class="who">Safari</span><span class="track"><i style="--v:0.1011"></i></span><b>26.6&nbsp;/s<span class=sr> (best median)</span></b><small>n=1</small></li><li class="bar"><span class="who">Chrome</span><span class="track"><i style="--v:1.0000"></i></span><b>263&nbsp;/s</b><small>n=1</small></li><li class="bar"><span class="who">Ardia</span><span class="track"><i style="--v:0.3240"></i></span><b>85.2&nbsp;/s</b><small>n=1</small></li></ul></figure><figure class="metric" id="idle-power-1"><figcaption><span class="label">Idle power, 1 tab</span><span class="hint">less is better</span></figcaption><ul class="bars"><li class="bar us"><span class="who">Copper</span><span class="track"><i style="--v:0.0269"></i></span><b>0.14&nbsp;mW</b><small>n=1</small></li><li class="bar best"><span class="who">Safari</span><span class="track"><i style="--v:0.0038"></i></span><b>0.02&nbsp;mW<span class=sr> (best median)</span></b><small>n=1</small></li><li class="bar"><span class="who">Chrome</span><span class="track"><i style="--v:1.0000"></i></span><b>5.20&nbsp;mW</b><small>n=1</small></li><li class="bar"><span class="who">Ardia</span><span class="track"><i style="--v:0.1654"></i></span><b>0.86&nbsp;mW</b><small>n=1</small></li></ul></figure><figure class="metric" id="idle-power-20"><figcaption><span class="label">Idle power, 20 tabs</span><span class="hint">less is better</span></figcaption><ul class="bars"><li class="bar us"><span class="who">Copper</span><span class="track"><i style="--v:0.0218"></i></span><b>0.19&nbsp;mW</b><small>n=1</small></li><li class="bar best"><span class="who">Safari</span><span class="track"><i style="--v:0.0092"></i></span><b>0.08&nbsp;mW<span class=sr> (best median)</span></b><small>n=1</small></li><li class="bar"><span class="who">Chrome</span><span class="track"><i style="--v:1.0000"></i></span><b>8.70&nbsp;mW</b><small>n=1</small></li><li class="bar"><span class="who">Ardia</span><span class="track"><i style="--v:0.1609"></i></span><b>1.40&nbsp;mW</b><small>n=1</small></li></ul></figure></div>
+  </section>
+  <section class="wrap section" id="speed" aria-labelledby="speed-title">
+    <div class="section-head"><h2 id="speed-title">Speed</h2><p>Speedometer 3.1, Apple, Google and Mozilla’s benchmark of web app responsiveness, served from the same Mac.</p></div>
+    <div class="metrics"><figure class="metric" id="speedometer"><figcaption><span class="label">Speedometer 3.1</span><span class="hint">more is better</span></figcaption><ul class="bars"><li class="bar us"><span class="who">Copper</span><span class="track"><i style="--v:0.7691"></i></span><b>62.3&nbsp;points</b><small>n=1</small></li><li class="bar best"><span class="who">Chrome</span><span class="track"><i style="--v:1.0000"></i></span><b>81&nbsp;points<span class=sr> (best median)</span></b><small>n=1</small></li><li class="bar"><span class="who">Ardia</span><span class="track"><i style="--v:0.9494"></i></span><b>76.9&nbsp;points</b><small>n=1</small></li></ul><p class="gap">Not measured: Safari (see <a href="#method">how we measure</a>).</p></figure></div>
+  </section>
+  <section class="wrap section" id="losses" aria-labelledby="losses-title">
+    <div class="prose">
+      <h2 id="losses-title">Where Copper loses</h2>
+      <p>Where another browser beats Copper’s median. These stay on the page.</p>
+      <ul><li><a href="#launch-link">Cold launch → page painted (link opened from another app)</a>: Ardia 383 ms against Copper’s 395 ms (3%).</li><li><a href="#idle-cpu-1">Idle CPU, 1 tab</a>: Safari 0.03% against Copper’s 0.18% (6.0×).</li><li><a href="#idle-cpu-20">Idle CPU, 20 tabs</a>: Safari 0.14% against Copper’s 0.30% (2.1×).</li><li><a href="#idle-wakeups-1">Idle wakeups, 1 tab</a>: Safari 1.80 /s against Copper’s 17.6 /s (9.8×).</li><li><a href="#idle-wakeups-20">Idle wakeups, 20 tabs</a>: Safari 26.6 /s against Copper’s 35 /s (32%).</li><li><a href="#idle-power-1">Idle power, 1 tab</a>: Safari 0.02 mW against Copper’s 0.14 mW (7.0×).</li><li><a href="#idle-power-20">Idle power, 20 tabs</a>: Safari 0.08 mW against Copper’s 0.19 mW (2.4×).</li><li><a href="#speedometer">Speedometer 3.1</a>: Chrome 81 points against Copper’s 62.3 points (23%).</li><li><a href="#agents">Agent tokens, Claude Code</a>: Ardia 3.25M against Copper’s 6.93M (2.1×) over all eight tasks.</li><li><a href="#agents">Agent tokens, Codex</a>: Ardia 2.30M against Copper’s 5.40M (2.3×) over all eight tasks.</li></ul>
+    </div>
+  </section>
+  <section class="wrap section" id="agents" aria-labelledby="agents-title">
+    <div class="section-head">
+      <h2 id="agents-title">Agents: tokens to get the same job done</h2>
+      <p>Claude Code and Codex, each driving a browser through its own tools, on the eight local web apps of Ardia’s public agent bench (Apache-2.0). A checker on each app’s server says whether the job got done. Fewer tokens is cheaper and faster for the same agent. Each cell is the median tokens of that task’s runs; under it, the runs that passed out of those run, and the median time. 70 of 144 planned runs finished, 25 November 2026.</p>
+    </div>
+    <h3>Claude Code · Opus 5.5</h3><div class="table"><table><thead><tr><th scope="col">Task</th><th scope="col" class="num">Copper</th><th scope="col" class="num">Ardia</th><th scope="col" class="num">Playwright MCP in Chrome</th></tr></thead><tbody><tr><th scope="row">Calendar: five events</th><td class="num">260k<small>1/1 · 30 s</small></td><td class="num">202k<small>1/1 · 18 s</small></td><td class="num">425k<small>1/1 · 72 s</small></td></tr><tr><th scope="row">Docs research: vendor integration review</th><td class="num">368k<small>2/2 · 29 s</small></td><td class="num">261k<small>2/2 · 25 s</small></td><td class="num">367k<small>2/2 · 33 s</small></td></tr><tr><th scope="row">Flight booking: two seats together</th><td class="num">1,269k<small>2/2 · 79 s</small></td><td class="num">345k<small>2/2 · 32 s</small></td><td class="num">740k<small>2/2 · 53 s</small></td></tr><tr><th scope="row">Shop: cheapest qualifying docks with a promo code</th><td class="num">853k<small>2/2 · 62 s</small></td><td class="num">694k<small>2/2 · 52 s</small></td><td class="num">955k<small>2/2 · 60 s</small></td></tr><tr><th scope="row">Schedule a kickoff across inbox, directory and calendar</th><td class="num">2,059k<small>1/1 · 104 s</small></td><td class="num">418k<small>2/2 · 51 s</small></td><td class="num">830k<small>2/2 · 95 s</small></td></tr><tr><th scope="row">News: research a review and its follow-up</th><td class="num">583k<small>1/1 · 40 s</small></td><td class="num">350k<small>1/1 · 29 s</small></td><td class="num">884k<small>1/1 · 57 s</small></td></tr><tr><th scope="row">Issue triage: label, assign, comment, close a duplicate</th><td class="num">886k<small>1/1 · 53 s</small></td><td class="num">495k<small>1/1 · 55 s</small></td><td class="num">1,189k<small>1/1 · 63 s</small></td></tr><tr><th scope="row">SaaS evaluation: pricing, security and a procurement form</th><td class="num">647k<small>1/1 · 59 s</small></td><td class="num">481k<small>1/1 · 48 s</small></td><td class="num">457k<small>1/1 · 43 s</small></td></tr></tbody><tfoot><tr><th scope="row">All tasks</th><td class="num"><b>6.93M</b><small>11/11</small></td><td class="num"><b>3.25M<span class=sr> (fewest)</span></b><small>12/12</small></td><td class="num"><b>5.85M</b><small>12/12</small></td></tr></tfoot></table></div><h3>Codex · GPT-6.1 Sol</h3><div class="table"><table><thead><tr><th scope="col">Task</th><th scope="col" class="num">Copper</th><th scope="col" class="num">Ardia</th><th scope="col" class="num">Playwright MCP in Chrome</th></tr></thead><tbody><tr><th scope="row">Calendar: five events</th><td class="num">227k<small>1/1 · 61 s</small></td><td class="num">138k<small>1/1 · 38 s</small></td><td class="num">231k<small>1/1 · 54 s</small></td></tr><tr><th scope="row">Docs research: vendor integration review</th><td class="num">545k<small>2/2 · 67 s</small></td><td class="num">196k<small>2/2 · 42 s</small></td><td class="num">296k<small>2/2 · 51 s</small></td></tr><tr><th scope="row">Flight booking: two seats together</th><td class="num">490k<small>2/2 · 68 s</small></td><td class="num">208k<small>2/2 · 36 s</small></td><td class="num">432k<small>2/2 · 48 s</small></td></tr><tr><th scope="row">Shop: cheapest qualifying docks with a promo code</th><td class="num">899k<small>2/2 · 104 s</small></td><td class="num">390k<small>2/2 · 57 s</small></td><td class="num">603k<small>2/2 · 61 s</small></td></tr><tr><th scope="row">Schedule a kickoff across inbox, directory and calendar</th><td class="num">1,662k<small>2/2 · 174 s</small></td><td class="num">496k<small>2/2 · 87 s</small></td><td class="num">662k<small>1/1 · 85 s</small></td></tr><tr><th scope="row">News: research a review and its follow-up</th><td class="num">368k<small>1/1 · 64 s</small></td><td class="num">213k<small>1/1 · 38 s</small></td><td class="num">358k<small>1/1 · 56 s</small></td></tr><tr><th scope="row">Issue triage: label, assign, comment, close a duplicate</th><td class="num">766k<small>1/1 · 75 s</small></td><td class="num">382k<small>1/1 · 57 s</small></td><td class="num">601k<small>1/1 · 64 s</small></td></tr><tr><th scope="row">SaaS evaluation: pricing, security and a procurement form</th><td class="num">444k<small>1/1 · 81 s</small></td><td class="num">277k<small>1/1 · 68 s</small></td><td class="num">459k<small>1/1 · 78 s</small></td></tr></tbody><tfoot><tr><th scope="row">All tasks</th><td class="num"><b>5.40M</b><small>12/12</small></td><td class="num"><b>2.30M<span class=sr> (fewest)</span></b><small>12/12</small></td><td class="num"><b>3.64M</b><small>11/11</small></td></tr></tfoot></table></div>
+    <p class="small muted">How each browser was reached: Copper through its built-in MCP server (plain browser tools only; nothing in Copper calls a model), Ardia through its <code>ardia</code> CLI and skill, Chrome through Playwright MCP. The tasks, prompts, checkers and token counts are Ardia’s harness, unchanged. Raw runs and the adapter: <a href="https://github.com/copper-browser/Copper/tree/fork/perf/agentbench">perf/agentbench</a>.</p>
+  </section>
+  <section class="wrap section" id="polar" aria-labelledby="polar-title">
+    <div class="section-head">
+      <h2 id="polar-title">Copper and Polar, the agent browser</h2>
+      <p>An earlier run on the same Mac mini, 18 November 2026: Copper 1.0.20261117.114 against Polar 0.2.12, each handed 28 web tasks twice over MCP and run by its own agent (in Copper, <code>jev_run</code>).</p>
+    </div>
+    <div class="table"><table>
+      <thead><tr><th scope="col"></th><th scope="col" class="num">Copper</th><th scope="col" class="num">Polar</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Time per finished task, median</th><td class="num"><b>2.0 s</b></td><td class="num">11.6 s</td></tr>
+        <tr><th scope="row">Cold launch → first window, median</th><td class="num"><b>0.56 s</b><small>0.51–0.61, n=5</small></td><td class="num">3.96 s<small>3.3–6.7, n=5</small></td></tr>
+        <tr><th scope="row">Memory, idle with example.com open</th><td class="num"><b>111 MB</b><small>n=2</small></td><td class="num">390 MB<small>n=2</small></td></tr>
+      </tbody>
+    </table></div>
+    <p class="small muted">Polar plans with a frontier model; Copper’s agent is a small, fast one, so this is a speed comparison, not a like-for-like of the models. Rows and the script that recomputes them: <a href="https://github.com/copper-browser/Copper/tree/fork/perf/xbench/polar-2026-11-18">perf/xbench/polar-2026-11-18</a>.</p>
+  </section>
+  <section class="wrap section" id="method" aria-labelledby="method-title">
+    <div class="prose">
+      <h2 id="method-title">How we measure</h2>
+      <h3>The Mac</h3>
+      <p>Mac mini (Mac18,5), Apple M6, 24 GB, macOS 27.0.1 (26A434), measured 25 November 2026. Nobody sits at it, so its screen is locked. Other jobs share it, so every run happened while the harness held the Mac’s shared lock (no build or test that takes it could start), and each hold began once the load average was under 2. Median load average as the measurements started: 1.69.</p>
+      <h3>The browsers</h3>
+      <p>Copper 1.0.20261124.117, Safari 27.0.1, Google Chrome 158.0.8127.89, Ardia 0.2.48. Each as shipped, with default settings, in a profile of its own that starts from the same template (one launch, our test page opened, a minute to settle, quit), so every launch restores the same one tab.</p>
+      <ul>
+        <li><strong>Copper</strong> runs in a test world of its own: the same app, with its own data folder, told to behave exactly as shipped (hidden pages slowed down, App Nap left to macOS).</li>
+        <li><strong>Safari</strong> can’t run from a copy or in a profile of its own, and this Mac’s Safari profile belongs to its owner. So it only gets the launch to a window (its Start Page, no address), and its memory and idle runs happen in a WebDriver session, Safari’s own private window set.</li>
+        <li><strong>Chrome</strong> runs from Google’s download with its own profile folder and its DevTools port open (that’s how tabs are opened and closed), restoring its last session like the others.</li>
+        <li><strong>Ardia</strong> runs from its release download with its own data folder, onboarding marked done and its DevTools port open, not in the background test mode Ardia’s own benchmark gives it.</li>
+        <li><strong>Arc</strong> isn’t here: it wants an Arc account at first launch, and nobody can sign in on a Mac nobody sits at.</li>
+      </ul>
+      <h3>The locked screen</h3>
+      <p>With the screen locked, macOS calls every window hidden. WebKit then stops drawing pages, so Copper’s and Safari’s pages draw nothing during the idle minutes, while Chrome and Ardia keep drawing the tab in front. That tilts the idle rows toward Copper and Safari by one page’s drawing. Kept drawing (headless, which ignores the lock), Copper idles at 0.96% CPU with one tab against 0.18% with it hidden, 97.8 /s wakeups against 17.6 /s (n=1). Speedometer needs a page that draws, so Copper runs it headless (its pages ignore the lock there, drawn into a window off every screen, which may cost a little less than one on screen) and Safari has no score.</p>
+      <h3>The runs</h3>
+      <p>One harness drives every browser from outside the app, on the same local test page (60 boxes, 120 paragraphs, a one-second timer). Browsers take turns item by item, in an order that rotates each round, so nobody always goes first. A window counts once one at least 300×200 is on screen; a page counts at its first contentful paint, which the page reports itself. Memory is phys_footprint summed over every process the browser runs or macOS holds it responsible for; CPU, wakeups and energy are the kernel’s own per-process counters over the same processes. Each figure is the median of the runs, with the range and the count. So far this page has 1 of the 3 planned rounds: most figures are one run, and n on each figure counts them.</p>
+      <h3>Not measured here</h3>
+      <p>New tab, tab switch and new window need a driver inside each browser, and every browser has a different one; the clicks a person would make need an unlocked screen, and so does power while scrolling or playing video.</p>
+      <p>The data: <a href="../assets/bench.json">bench.json</a>, every run in <a href="https://github.com/copper-browser/Copper/tree/fork/perf/xbench/results">perf/xbench/results</a>, the harness and its method in <a href="https://github.com/copper-browser/Copper/tree/fork/perf/xbench">perf/xbench</a>.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-id"><img src="../assets/icon-96.webp" alt="" width="28" height="28"><span>Copper, made by <a href="https://collinrijock.com">Collin</a> and <a href="https://felipearce.dev">Felipe</a>. MIT licensed.</span></div>
+    <ul class="links" aria-label="Project">
+      <li><a href="https://github.com/copper-browser/Copper">Source code</a></li>
+      <li><a href="../#install">Download</a></li>
+      <li><a href="../try/">Try the demo</a></li>
+      <li><a href="../benchmarks/">Benchmarks</a></li>
+      <li><a href="../arc/">Moving from Arc</a></li>
+      <li><a href="../release-notes/">Changelog</a></li>
+      <li><a href="../press/">Press kit</a></li>
+      <li><a href="../privacy/">Privacy</a></li>
+      <li><a href="https://github.com/copper-browser/Copper/issues/new">Report a bug</a></li>
+    </ul>
+  </div>
+</footer>
+</body>
+</html>

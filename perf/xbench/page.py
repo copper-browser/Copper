@@ -87,12 +87,12 @@ def metric(row, names):
         c = cells[n]
         top_n = n in winners(row)
         cls = ["bar"] + (["us"] if n == "copper" else []) + (["best"] if top_n else [])
-        rng = f"{num(c['min'])}–{num(c['max'])}" if c["n"] > 1 else "one run"
+        rng = f"{num(c['min'])}–{num(c['max'])}, " if c["n"] > 1 else ""
         bars.append(
             f'<li class="{" ".join(cls)}"><span class="who">{esc(names[n])}</span>'
             f'<span class="track"><i style="--v:{c["median"] / top:.4f}"></i></span>'
             f'<b>{nbsp(num(c["median"], row["unit"]))}{"<span class=sr> (best median)</span>" if top_n else ""}</b>'
-            f'<small>{rng}, n={c["n"]}</small></li>')
+            f'<small>{rng}n={c["n"]}</small></li>')
     missing = [n for n in names if n not in cells]
     note = ""
     if missing:
@@ -182,7 +182,7 @@ def agents_section(data):
                     cells.append('<td class="num">–</td>')
                     continue
                 secs = f' · {x["time"]:.0f} s' if x.get("time") is not None else ""
-                cells.append(f'<td class="num">{x["tokens"] / 1000:,.0f}k<small>{x.get("passes", 0)}/{x["runs"]} passed{secs}</small></td>')
+                cells.append(f'<td class="num">{x["tokens"] / 1000:,.0f}k<small>{x.get("passes", 0)}/{x["runs"]}{secs}</small></td>')
             body.append(f'<tr><th scope="row">{esc(task["title"])}</th>{"".join(cells)}</tr>')
         foot = ""
         if common:
@@ -190,7 +190,7 @@ def agents_section(data):
             best = min(totals[c["id"]]["tokens"] for c in mine)
             tds = "".join(
                 f'<td class="num"><b>{totals[c["id"]]["tokens"] / 1e6:.2f}M{"<span class=sr> (fewest)</span>" if totals[c["id"]]["tokens"] == best else ""}</b>'
-                f'<small>{totals[c["id"]]["passes"]}/{totals[c["id"]]["runs"]} passed</small></td>' for c in mine)
+                f'<small>{totals[c["id"]]["passes"]}/{totals[c["id"]]["runs"]}</small></td>' for c in mine)
             foot = f'<tfoot><tr><th scope="row">{label}</th>{tds}</tr></tfoot>'
         blocks.append(
             f'<h3>{esc(t["agent"])} · {esc(t["model"])}</h3><div class="table"><table><thead><tr><th scope="col">Task</th>{head}</tr></thead>'
@@ -202,7 +202,7 @@ def agents_section(data):
   <section class="wrap section" id="agents" aria-labelledby="agents-title">
     <div class="section-head">
       <h2 id="agents-title">Agents: tokens to get the same job done</h2>
-      <p>Claude Code and Codex, each driving a browser through its own tools, on the eight local web apps of Ardia’s public agent bench (Apache-2.0). A checker on each app’s server says whether the job got done. Fewer tokens is cheaper and faster for the same agent. Each cell is the median of that task’s runs, with how many passed and the median time; {runs} of {planned} planned runs finished{when}.</p>
+      <p>Claude Code and Codex, each driving a browser through its own tools, on the eight local web apps of Ardia’s public agent bench (Apache-2.0). A checker on each app’s server says whether the job got done. Fewer tokens is cheaper and faster for the same agent. Each cell is the median tokens of that task’s runs; under it, the runs that passed out of those run, and the median time. {runs} of {planned} planned runs finished{when}.</p>
     </div>
     {"".join(blocks)}
     <p class="small muted">How each browser was reached: Copper through its built-in MCP server (plain browser tools only; nothing in Copper calls a model), Ardia through its <code>ardia</code> CLI and skill, Chrome through Playwright MCP. The tasks, prompts, checkers and token counts are Ardia’s harness, unchanged. Raw runs and the adapter: <a href="{REPO}/tree/fork/perf/agentbench">perf/agentbench</a>.</p>
@@ -240,18 +240,23 @@ def method_section(bench, names):
     load = f" Median load average as the measurements started: {cond['load1Median']}." if cond.get("load1Median") is not None else ""
     quiet, total = cond.get("quiet"), cond.get("samples")
     if quiet is not None and total and quiet < total:
-        wait = (f"Other jobs share it. {quiet} of the {total} runs ran in rounds that held the Mac’s shared lock (so no "
-                f"build or test that takes it could start) and began with the load average under 2; the other "
-                f"{total - quiet} ran without it.")
+        wait = (f"Other jobs share it. {quiet} of the {total} runs happened while the harness held the Mac’s shared lock "
+                f"(no build or test that takes it could start), each hold beginning with the load average under 2; the "
+                f"other {total - quiet} ran without it.")
     else:
-        wait = ("Other jobs share it, so each round held the Mac’s shared lock for its whole length (no build or test "
-                "that takes it could start) and began once the load average was under 2.")
+        wait = ("Other jobs share it, so every run happened while the harness held the Mac’s shared lock (no build or "
+                "test that takes it could start), and each hold began once the load average was under 2.")
     asleep, unlocked = cond.get("displayAsleep"), cond.get("screenUnlocked")
     if asleep:
         wait += f" The display was asleep for {asleep} of the runs."
     if unlocked:
         wait += f" The screen was unlocked for {unlocked} of the runs."
     seen = visible_words(rows)
+    rounds = bench.get("rounds") or {}
+    partial = ""
+    if rounds.get("planned") and rounds.get("done", 0) < rounds["planned"]:
+        partial = (f" So far this page has {rounds['done']} of the {rounds['planned']} planned rounds: most figures are "
+                   f"one run, and n on each figure counts them.")
     return f"""
   <section class="wrap section" id="method" aria-labelledby="method-title">
     <div class="prose">
@@ -270,7 +275,7 @@ def method_section(bench, names):
       <h3>The locked screen</h3>
       <p>With the screen locked, macOS calls every window hidden. WebKit then stops drawing pages, so Copper’s and Safari’s pages draw nothing during the idle minutes, while Chrome and Ardia keep drawing the tab in front. That tilts the idle rows toward Copper and Safari by one page’s drawing.{seen} Speedometer needs a page that draws, so Copper runs it headless (its pages ignore the lock there, drawn into a window off every screen, which may cost a little less than one on screen) and Safari has no score.</p>
       <h3>The runs</h3>
-      <p>One harness drives every browser from outside the app, on the same local test page (60 boxes, 120 paragraphs, a one-second timer). Browsers take turns item by item, in an order that rotates each round, so nobody always goes first. A window counts once one at least 300×200 is on screen; a page counts at its first contentful paint, which the page reports itself. Memory is phys_footprint summed over every process the browser runs or macOS holds it responsible for; CPU, wakeups and energy are the kernel’s own per-process counters over the same processes. Each figure is the median of the runs, with the range and the count.</p>
+      <p>One harness drives every browser from outside the app, on the same local test page (60 boxes, 120 paragraphs, a one-second timer). Browsers take turns item by item, in an order that rotates each round, so nobody always goes first. A window counts once one at least 300×200 is on screen; a page counts at its first contentful paint, which the page reports itself. Memory is phys_footprint summed over every process the browser runs or macOS holds it responsible for; CPU, wakeups and energy are the kernel’s own per-process counters over the same processes. Each figure is the median of the runs, with the range and the count.{esc(partial)}</p>
       <h3>Not measured here</h3>
       <p>New tab, tab switch and new window need a driver inside each browser, and every browser has a different one; the clicks a person would make need an unlocked screen, and so does power while scrolling or playing video.</p>
       <p>The data: <a href="../assets/bench.json">bench.json</a>, every run in <a href="{REPO}/tree/fork/perf/xbench/results">perf/xbench/results</a>, the harness and its method in <a href="{REPO}/tree/fork/perf/xbench">perf/xbench</a>.</p>
@@ -353,7 +358,7 @@ STYLE = """<style>
   .gap a, .section small a { color: var(--ink); text-underline-offset: 3px; }
   #agents h3 { margin-top: 28px; font: 600 1.1rem/1.3 var(--display); }
   #agents .table, #polar .table { margin-top: 12px; }
-  td small { display: block; font-size: 12px; color: var(--ink-2); }
+  td small { display: block; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
   tfoot th, tfoot td { border-bottom: 0; }
   .section > .small { margin-top: 14px; max-width: 46rem; }
   @media (max-width: 480px) { .bar { grid-template-columns: 4.2em minmax(0, 1fr) auto; font-size: 14px; } }
