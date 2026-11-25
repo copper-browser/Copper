@@ -122,6 +122,9 @@ enum FlowModel {
         /// Safari's own counts (Reading List, pins, cards, its extensions,
         /// whether its files and an export were read); nil for Chrome or Arc.
         var safari: FlowSafari.Look? = nil
+        /// What stays in the other browser, a sentence each, for the summary
+        /// (Firefox: its add-ons).
+        var stays: [String] = []
 
         var tabCount: Int { spaces.reduce(0) { $0 + $1.tabs.count } }
         var groupCount: Int { spaces.reduce(0) { $0 + $1.groups.count } }

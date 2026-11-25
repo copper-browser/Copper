@@ -125,6 +125,7 @@ enum SettingsIndex {
     static let rows: [SettingsEntry] = [
         general, downloads, tabs, spaces, intelligence, voice, agents, cloud,
         extensions, passwords, privacy, updates, about,
+        AirTrafficSettingsIndex.entries, // Fork (ardia: windows): Fork/AirTrafficSettings.swift
         AddonSettingsIndex.entries, // Fork (addons): Fork/Addons/AddonUI.swift — last, so Copper's own update rows win a tie
     ].flatMap { $0 }
 
@@ -171,7 +172,7 @@ enum SettingsIndex {
           ["pins", "pinned", "favourites", "memory", "sleep pins", "keep pins loaded"], "tabs.pins",
           toggle: { _ in Binding(get: { PinsAwake.bigPinsSleep }, set: { Store.settings.set($0, forKey: "pins.sleep") }) }),
         e(.tabs, "Tabs you leave", "Archive Today after", "Untouched rows below the New Tab line close themselves",
-          ["auto archive", "archive", "close old tabs", "today", "clean up", "12 hours", "24 hours", "cleanup"], "tabs.archive"),
+          ["auto archive", "archive", "close old tabs", "today", "clean up", "12 hours", "24 hours", "cleanup", "recently cleaned"], "tabs.archive"),
     ]
 
     // MARK: spaces
@@ -497,6 +498,7 @@ enum SettingsShortcuts {
         .init(keys: "⌘K", does: "Switch tab", words: ["command bar", "tab search", "palette"]),
         .init(keys: "⌘T  ⌘W  ⇧⌘T", does: "New, close, reopen tab", words: ["new tab", "close tab", "reopen closed tab"]),
         .init(keys: "⌘N  ⇧⌘N", does: "New window, new private tab", words: ["new window", "private tab", "private browsing"]),
+        .init(keys: "⌥⌘N  ⇧-click", does: "Little Copper, peek at a link", words: ["little copper", "little arc", "small window", "peek", "preview link"]), // Fork (ardia: windows)
         .init(keys: "⌃⇧E", does: "New canvas", words: ["whiteboard", "new board"]),
         .init(keys: "⌘D", does: "Duplicate tab", words: ["duplicate", "copy tab"]),
         .init(keys: "⇧⌘C", does: "Copy the address", words: ["copy url", "copy link"]),

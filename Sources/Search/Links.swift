@@ -9,9 +9,9 @@ import AppKit
 
 final class Links: NSObject, NSApplicationDelegate {
     /// Where an address goes once there is somewhere for it to go.
-    private static var deliver: ((URL) -> Void)?
+    private static var deliver: ((URL, String?) -> Void)? // Fork (ardia: windows): and the app it came from, for Air Traffic Control
     /// Addresses that arrived first.
-    private static var waiting: [URL] = []
+    private static var waiting: [(url: URL, from: String?)] = []
     /// The browser's window, once there is one.
     static weak var window: NSWindow?
     /// Whether the window has been asked for on a link's behalf (summon).
@@ -64,7 +64,7 @@ final class Links: NSObject, NSApplicationDelegate {
         guard let text = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue,
               let url = URL(string: text).flatMap(LinkRelay.accept) // Fork: http(s), copper://, and a page file or .webloc (Fork/LinkRelay.swift)
         else { return }
-        Links.take(url)
+        Links.take(url, from: AirTraffic.sender(of: event)) // Fork (ardia: windows): who sent it, for Air Traffic Control (Fork/AirTraffic.swift)
     }
 
     /// Files and anything else the system opens with the app.
@@ -109,12 +109,15 @@ final class Links: NSObject, NSApplicationDelegate {
         // Fork: into the window in front, or this one brought back from closed
         // (Fork/LinkRelay.swift `land` — upstream's "window closed with the
         // app still running" case lives there too).
-        deliver = { [weak browser] url in LinkRelay.land(url, first: browser) }
+        deliver = { [weak browser] url, from in LinkRelay.land(url, from: from, first: browser) }
         flush = { [weak browser] in browser?.flushSession() }
         let early = waiting
         waiting = []
-        guard let first = early.first else { return }
+        guard !early.isEmpty else { return }
         onceShown { [weak browser] in
+            // Fork (ardia: windows): a rule's Little Copper or new window takes its link first (Fork/AirTraffic.swift).
+            let early = early.filter { !AirTraffic.shared.route($0.url, from: $0.from, in: browser) }.map { $0.url }
+            guard let first = early.first else { return }
             browser?.arrive(first)
             for (n, url) in early.dropFirst().enumerated() {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15 * Double(n + 1)) { [weak browser] in
@@ -137,12 +140,12 @@ final class Links: NSObject, NSApplicationDelegate {
         }
     }
 
-    private static func take(_ url: URL) {
+    private static func take(_ url: URL, from: String? = nil) {
         if LinkRelay.hand(url) { return } // Fork: a probe world hands a link from outside to the main Copper (Fork/LinkRelay.swift)
         if let deliver {
-            deliver(url)
+            deliver(url, from)
         } else {
-            waiting.append(url)
+            waiting.append((url, from))
             DispatchQueue.main.async { summon() }
         }
     }

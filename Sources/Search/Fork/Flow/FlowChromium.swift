@@ -7,11 +7,13 @@ import SQLite3
 /// session, history and bookmark files, so those paths are walked directly.
 enum FlowChromium {
     static func bookmarks(in source: FlowSource) -> FlowBookmarks.Read {
+        if source.isGecko { return FlowFirefox.bookmarks(root: source.root) }
         let profiles = source.profiles.map { source.root.appendingPathComponent($0, isDirectory: true) }
         return FlowBookmarks.bookmarks(in: profiles)
     }
 
     static func places(in source: FlowSource, limit: Int = Int.max) -> [Chromium.Place] {
+        if source.isGecko { return FlowFirefox.places(root: source.root, limit: limit) }
         guard source.rootOverride != nil else { return Chromium.places(in: source.readerSource, limit: limit) }
         var out: [Chromium.Place] = []
         for profile in source.profiles {
@@ -149,7 +151,7 @@ extension Browser {
         let count = FlowBookmarks.count(found.nodes)
         // Fork (move-in-polish): with Move in up, its summary says this; no toast under it.
         if !Flow.shared.open { announce(count == 0 ? "No bookmarks in \(source.name)" : "\(count) bookmarks from \(source.name)") }
-        guard source.rootOverride == nil, count > 0 else { return (found, new) }
+        guard source.rootOverride == nil, !source.isGecko, count > 0 else { return (found, new) }
         let urls = FlowBookmarks.urls(found.nodes)
         DispatchQueue.global(qos: .utility).async {
             let icons = Chromium.icons(in: source.readerSource, for: urls)

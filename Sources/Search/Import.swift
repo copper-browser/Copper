@@ -62,6 +62,9 @@ enum Chromium {
         Source(name: "Edge", folder: "Microsoft Edge", service: "Microsoft Edge Safe Storage", account: "Microsoft Edge"),
         Source(name: "Vivaldi", folder: "Vivaldi", service: "Vivaldi Safe Storage", account: "Vivaldi"),
         Source(name: "Chromium", folder: "Chromium", service: "Chromium Safe Storage", account: "Chromium"),
+        Source(name: "Opera", folder: "com.operasoftware.Opera", service: "Opera Safe Storage", account: "Opera"),
+        Source(name: "Helium", folder: "net.imput.helium", service: "Helium Storage Key", account: "Helium"),
+        Source(name: "Comet", folder: "Comet", service: "Comet Safe Storage", account: "Comet"),
     ]
 
     /// Only the browsers actually on this Mac, with something to read.

@@ -34,6 +34,8 @@ enum CommandBar {
         var list: [Command] = [
             .init(id: "new-tab", name: "New Tab", glyph: "plus") { $0.newTab() },
             .init(id: "new-private", name: "New Private Tab", glyph: "eyeglasses") { $0.newShyTab() },
+            .init(id: "little", name: "New Little Copper Window", glyph: "macwindow") { _ in Little.open(nil) }, // Fork (ardia: windows)
+            .init(id: "air-traffic", name: "Air Traffic Control: where links open", glyph: "arrow.triangle.branch") { $0.openSettings(.general, at: "general.atc") }, // Fork (ardia: windows)
             .init(id: "new-canvas", name: "New Canvas", glyph: "scribble.variable") { CanvasTabs.newCanvas(in: $0) }, // Fork (canvas): a local one, in front
             .init(id: "share-canvas", name: "Share Canvas", glyph: "square.and.arrow.up") { browser in
                 if let id = CanvasHost.active(in: browser) { CanvasUI.shared.openShare(id, in: browser) }
@@ -91,6 +93,7 @@ enum CommandBar {
             list.insert(.init(id: "update", name: "Update Copper to \(Updates.shared.latest?.version ?? "")", glyph: "arrow.down.circle") { _ in Updates.shared.upgrade() }, at: 0)
         }
         AddonCommands.add(to: &list) // Fork (addons): Install <addon>, the check, Settings › Extensions › Addons
+        list += Cleaned.commands(browser) // Fork (ardia-tabs): Clean Up Tabs, Recently Cleaned (Fork/Cleaned.swift)
         if Spaces.shared.all.count > 1 {
             list.append(.init(id: "delete-space", name: "Delete Space…", glyph: "trash") { b in SpaceDelete.ask(Spaces.shared.current(in: b), in: b) })
         }

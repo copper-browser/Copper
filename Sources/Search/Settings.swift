@@ -319,6 +319,7 @@ struct SettingsPanel: View {
                 SearchEngineLine()
                     .settingsAnchor("general.search")
             }
+            AirTrafficSection() // Fork (ardia: windows): Air Traffic Control + Peek for pins (Fork/AirTrafficSettings.swift)
             downloads // Fork (settings-merge): was its own page
             SettingsSection("Moving in") {
                 FlowSettingsLine(browser: browser)
