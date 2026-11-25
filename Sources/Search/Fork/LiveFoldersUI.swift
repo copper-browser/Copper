@@ -54,6 +54,14 @@ struct LiveFolderView: View {
                 ForEach(folder.items) { item in
                     LiveItemRow(browser: browser, folder: folder.id, item: item, unread: folder.unread(item), tint: tint)
                         .padding(.leading, Folders.step)
+                        // A folder's hair down from its glyph, as GroupedRows draws it.
+                        .overlay(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 0.5)
+                                .fill(colour.opacity(0.2))
+                                .frame(width: 1)
+                                .padding(.vertical, 3)
+                                .offset(x: SideBar.rowInset + 7.5)
+                        }
                 }
             }
         }
