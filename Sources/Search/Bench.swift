@@ -261,6 +261,9 @@ final class Bench {
         case "spaces", "bar", "split", "summon", "window", "groups", "sections", "passkeys", "passwords", "privacy", "about", "agent", "ai", "swipe", "mouse", "heat", "downloads", "updates", "bw", "op", "flow", "history", "drive", "render", "ext-manager", "storage", "windows", "flight", "trails", "pace", "stage", "calendar", "pins", "covers":
             answer(Fork.bench(verb, request, in: browser))
 
+        case "little", "peek", "atc": // Fork (ardia: windows): Fork/Little.swift, Fork/Peek.swift, Fork/AirTraffic.swift
+            answer(Fork.bench(verb, request, in: browser))
+
         case "settings": // Fork (settings-revamp): open/search/pick/index check — Fork/SettingsBench.swift
             SettingsBench.handle(request, in: browser, answer: answer)
 
