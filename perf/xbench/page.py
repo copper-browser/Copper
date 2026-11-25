@@ -27,7 +27,7 @@ REPO = "https://github.com/copper-browser/Copper"
 ORDER = ["copper", "safari", "chrome", "ardia", "arc"]
 SHORT = {"copper": "Copper", "safari": "Safari", "chrome": "Chrome", "ardia": "Ardia", "arc": "Arc"}
 GROUPS = [
-    ("launch", "Launch", "From <code>open</code> with the browser closed, as a click on its Dock icon or on a link in another app would start it.",
+    ("launch", "Launch", "With the browser closed, started by <code>open -g</code>, the way a link from another app starts it, in the background.",
      ["launch-window", "launch-restore", "launch-link"]),
     ("memory", "Memory", "Everything the browser runs, added up: the app, its helpers, the GPU and network processes and the pages’ web processes. Read 30 seconds after launch, 10 seconds after the 10th tab loaded, 15 seconds after the 20th, and 30 seconds after closing back to one.",
      ["memory-1", "memory-10", "memory-20", "memory-closed"]),
@@ -85,12 +85,13 @@ def metric(row, names):
     bars = []
     for n in present:
         c = cells[n]
-        cls = ["bar"] + (["us"] if n == "copper" else []) + (["best"] if n == row["best"] else [])
+        top_n = n in winners(row)
+        cls = ["bar"] + (["us"] if n == "copper" else []) + (["best"] if top_n else [])
         rng = f"{num(c['min'])}–{num(c['max'])}" if c["n"] > 1 else "one run"
         bars.append(
             f'<li class="{" ".join(cls)}"><span class="who">{esc(names[n])}</span>'
             f'<span class="track"><i style="--v:{c["median"] / top:.4f}"></i></span>'
-            f'<b>{nbsp(num(c["median"], row["unit"]))}{"<span class=sr> (best median)</span>" if n == row["best"] else ""}</b>'
+            f'<b>{nbsp(num(c["median"], row["unit"]))}{"<span class=sr> (best median)</span>" if top_n else ""}</b>'
             f'<small>{rng}, n={c["n"]}</small></li>')
     missing = [n for n in names if n not in cells]
     note = ""
@@ -100,6 +101,11 @@ def metric(row, names):
             f'<span class="hint">{BETTER[row["lowerIsBetter"]]}</span></figcaption><ul class="bars">{"".join(bars)}</ul>{note}</figure>')
 
 
+def winners(row):
+    """The browser with the best median, or every browser tied for it."""
+    return [row["best"]] if row.get("best") else row.get("tie", [])
+
+
 def overlap(a, b):
     return a["min"] <= b["max"] and b["min"] <= a["max"]
 
@@ -107,12 +113,13 @@ def overlap(a, b):
 def losses(rows, names):
     out = []
     for r in rows:
-        c = r["browsers"].get("copper")
-        if not c or r["best"] == "copper":
+        c, top = r["browsers"].get("copper"), winners(r)
+        if not c or not top or "copper" in top:
             continue
-        best = r["browsers"][r["best"]]
+        best = r["browsers"][top[0]]
         close = " The ranges overlap, so it’s close." if overlap(c, best) and min(c["n"], best["n"]) > 1 else ""
-        out.append(f'<li><a href="#{esc(r["id"])}">{esc(r["label"])}</a>: {esc(ratio_words(r, c, names[r["best"]], best))}.{close}</li>')
+        who = " and ".join(names[n] for n in top)
+        out.append(f'<li><a href="#{esc(r["id"])}">{esc(r["label"])}</a>: {esc(ratio_words(r, c, who, best))}.{close}</li>')
     return out
 
 
@@ -233,11 +240,17 @@ def method_section(bench, names):
     load = f" Median load average as the measurements started: {cond['load1Median']}." if cond.get("load1Median") is not None else ""
     quiet, total = cond.get("quiet"), cond.get("samples")
     if quiet is not None and total and quiet < total:
-        wait = (f"Other jobs share it. {quiet} of the {total} runs ran in rounds that held the Mac’s lock (no other job "
-                f"running) and began with the load average under 2; the other {total - quiet} ran while it was busy.")
+        wait = (f"Other jobs share it. {quiet} of the {total} runs ran in rounds that held the Mac’s shared lock (so no "
+                f"build or test that takes it could start) and began with the load average under 2; the other "
+                f"{total - quiet} ran without it.")
     else:
-        wait = ("Other jobs share it, so each round took the Mac’s lock (no other job running) for its whole length "
-                "and began once the load average was under 2.")
+        wait = ("Other jobs share it, so each round held the Mac’s shared lock for its whole length (no build or test "
+                "that takes it could start) and began once the load average was under 2.")
+    asleep, unlocked = cond.get("displayAsleep"), cond.get("screenUnlocked")
+    if asleep:
+        wait += f" The display was asleep for {asleep} of the runs."
+    if unlocked:
+        wait += f" The screen was unlocked for {unlocked} of the runs."
     seen = visible_words(rows)
     return f"""
   <section class="wrap section" id="method" aria-labelledby="method-title">
@@ -255,7 +268,7 @@ def method_section(bench, names):
         <li><strong>Arc</strong> isn’t here: it wants an Arc account at first launch, and nobody can sign in on a Mac nobody sits at.</li>
       </ul>
       <h3>The locked screen</h3>
-      <p>With the screen locked, macOS calls every window hidden. WebKit then stops drawing pages, so Copper’s and Safari’s pages draw nothing during the idle minutes, while Chrome and Ardia keep drawing the tab in front. That tilts the idle rows toward Copper and Safari by one page’s drawing.{seen} Speedometer needs a page that draws, so Copper runs it headless (its pages ignore the lock there) and Safari has no score.</p>
+      <p>With the screen locked, macOS calls every window hidden. WebKit then stops drawing pages, so Copper’s and Safari’s pages draw nothing during the idle minutes, while Chrome and Ardia keep drawing the tab in front. That tilts the idle rows toward Copper and Safari by one page’s drawing.{seen} Speedometer needs a page that draws, so Copper runs it headless (its pages ignore the lock there, drawn into a window off every screen, which may cost a little less than one on screen) and Safari has no score.</p>
       <h3>The runs</h3>
       <p>One harness drives every browser from outside the app, on the same local test page (60 boxes, 120 paragraphs, a one-second timer). Browsers take turns item by item, in an order that rotates each round, so nobody always goes first. A window counts once one at least 300×200 is on screen; a page counts at its first contentful paint, which the page reports itself. Memory is phys_footprint summed over every process the browser runs or macOS holds it responsible for; CPU, wakeups and energy are the kernel’s own per-process counters over the same processes. Each figure is the median of the runs, with the range and the count.</p>
       <h3>Not measured here</h3>
@@ -391,6 +404,14 @@ def selftest():
     row = {"lowerIsBetter": True, "unit": "MB"}
     assert ratio_words(row, {"median": 300}, "Chrome", {"median": 100}) == "Chrome 100 MB against Copper’s 300 MB (3.0×)"
     assert ratio_words(row, {"median": 110}, "Chrome", {"median": 100}) == "Chrome 100 MB against Copper’s 110 MB (10%)"
+    tie = {"id": "m", "label": "M", "unit": "MB", "lowerIsBetter": True, "best": None, "tie": ["safari", "ardia"],
+           "browsers": {"copper": {"median": 420, "min": 410, "max": 430, "n": 3},
+                        "safari": {"median": 300, "min": 290, "max": 310, "n": 3},
+                        "ardia": {"median": 300, "min": 295, "max": 305, "n": 3}}}
+    names = {"copper": "Copper", "safari": "Safari", "ardia": "Ardia"}
+    assert winners(tie) == ["safari", "ardia"] and "Safari and Ardia 300 MB" in losses([tie], names)[0]
+    assert losses([dict(tie, tie=["copper", "safari"])], names) == []
+    assert metric(tie, names).count("(best median)") == 2
     print("page selftest ok")
 
 

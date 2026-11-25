@@ -6,7 +6,7 @@ so this harness reads every browser the same way from outside the app:
 
 | What | How |
 |---|---|
-| a window | `xbprobe waitwindow` polls `CGWindowListCopyWindowInfo` every 4 ms for the first on-screen window ≥ 300×200, alpha > 0, of a process running from the browser's bundle |
+| a window | `xbprobe waitwindow` polls `CGWindowListCopyWindowInfo` about every 2 ms for the first on-screen window ≥ 300×200, alpha > 0, of a process running from the browser's bundle |
 | a page | the test page reports its own Navigation Timing (`load`) and paint timing (`first-contentful-paint`) to the harness's server with `sendBeacon`; times are the page's `performance.timeOrigin` + entry time, against the wall clock taken just before `open` |
 | memory | `phys_footprint` summed over every process of the instance: the app, its descendants, every process macOS holds the app *responsible* for (WebKit's WebContent, Networking and GPU processes are launchd's children, not the app's) and anything running from inside its bundle (`xbprobe procs`) |
 | idle CPU, wakeups, power | `proc_pid_rusage` (CPU time, idle + interrupt wakeups, `ri_energy_nj`) over the same processes at both ends of the window; processes present at both ends count, as in Ardia's harness |
@@ -20,9 +20,9 @@ and Ardia (`PUT /json/new`, `/json/close`), WebDriver for Safari, and the bench 
 
 | Row | How |
 |---|---|
-| Cold launch → window on screen | `open -n -g -a APP` with the browser closed, its template profile restored → first window |
+| Cold launch → window on screen | `open -n -g -a APP` with the browser closed (in the background, as a link from another app starts it), its template profile restored → first window |
 | Cold launch → restored tab painted | the same launch → the restored test page's first contentful paint |
-| Cold launch → page painted (link opened from another app) | `open -n -g -a APP URL` with the browser closed → that page's first contentful paint |
+| Cold launch → page painted (link opened from another app) | `open -n -g -a APP URL` with the browser closed → that page's first contentful paint. Chrome gets `--restore-last-session` here too, as in Ardia's bench, so it restores the template's tab on the way as Copper and Ardia do by default; each sample records whether the browser did (`restoredToo`) |
 | Memory, 1 / 10 / 20 tabs, back to 1 | one launch (restore): 30 s after launch; 10 s after the 10th tab loaded; 15 s after the 20th; 30 s after closing back to the first |
 | Idle CPU, wakeups, power, 1 and 20 tabs | 60 s windows right after the 1-tab and 20-tab memory readings |
 | Speedometer 3.1 | a fresh launch, Speedometer opened in a new tab, its score |
@@ -73,7 +73,13 @@ Mac's other jobs (builds, tests: they wait in `lockf`), holds it for the whole r
 (`../agentbench`) to hold its next run (`~/hc/ardia-site-bench/PAUSE`) and starts once the 1-minute load average is
 under 2. If the load stays up for 12 minutes, the lock goes back and the round queues again. Every item records the
 load average at its start and end. A row's figure is the median of its runs, with min–max and n; `best` is the best
-median, not a win (compare the ranges).
+median, picked from the unrounded medians (an exact tie names no single best), not a win (compare the ranges).
+
+An item counts only when every value its rows need came: a window and a paint for a launch, a score from a visible
+page for Speedometer, every tab loaded within 15 s for a session, a drawing page for the visible check. Anything
+else is recorded with its error and tried once more at the end of the run (and again by a later `run`). Each item
+also records whether the display was asleep and the screen locked (`xbprobe display`), and each launch the gap
+between the server's clock and the page's (`skew`).
 
 What isn't measured: new tab, tab switch and new window (each browser needs its own driver for them, and a person's
 clicks need an unlocked screen); Safari's link and restore launches (they'd write to the owner's Safari history);

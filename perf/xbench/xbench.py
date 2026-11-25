@@ -5,7 +5,7 @@ Ardia's own cross-browser bench (apps/browser/scripts/perf/xbench.mjs in ardia-b
 over CDP, so it can only measure Chromium. This one reads every browser the same way from the outside, so a WebKit
 browser and a Chromium one get the same rulers:
 
-  window      xbprobe polls CGWindowList every 4 ms for the first window ≥ 300×200 on screen
+  window      xbprobe polls CGWindowList about every 2 ms for the first window ≥ 300×200 on screen
   page        a local test page reports its own Navigation Timing (load event) and paint timing to this server
   memory      phys_footprint summed over every process of the instance (xbprobe procs: the app, its children,
               every process macOS holds the app responsible for (WebKit's XPC services), anything in its bundle)
@@ -44,6 +44,7 @@ import socket
 import statistics
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
@@ -389,7 +390,10 @@ class Browser:
             left = self.find()
             if left:
                 log(f"{self.key}: SIGKILL {left}")
-                os.kill(left, signal.SIGKILL)
+                try:
+                    os.kill(left, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
                 time.sleep(1)
         self.pid = None
         self.handles = []
@@ -849,6 +853,15 @@ def launch_item(b, kind, tag):
                 facts = page_facts(got["id"], t0)
                 r["fcp"] = round(facts["fcp"] - t0, 1) if facts["fcp"] else None
                 r.update({"frames": facts["frames"], "vis": facts["vis"]})
+                if got.get("wall") is not None:
+                    r["skew"] = round(got["rx"] - got["wall"], 1)  # server clock minus page clock at the beacon
+            # Did the launch also restore the template's tab (Copper and Ardia do by default; Chrome has the switch)?
+            r["restoredToo"] = kind == "link" and bool(BEACONS.all(
+                lambda x: x.get("kind") == "load" and x["rx"] >= t0 and x.get("id") in ("template", "restore")))
+            if r.get("fcp") is None:
+                raise RuntimeError(f"no paint reported (window {r['window']} ms)")
+        if r["window"] is None:
+            raise RuntimeError("no window seen")
         time.sleep(1)
         return r
     finally:
@@ -895,6 +908,7 @@ def session_item(b, tag, idle_s, settle):
                 first = loaded(f"{tag}-t0", since, 30)
         if not first:
             raise RuntimeError("the first page never loaded")
+        keep = set(b.handles)  # the first tab, if the harness opened it (Safari, or nothing restored)
         r["firstVis"] = first.get("vis")
         time.sleep(max(0, 30 - (now_ms() - t0) / 1000))
         r["memory"]["1"] = footprint(b)
@@ -918,12 +932,13 @@ def session_item(b, tag, idle_s, settle):
             time.sleep(max(0, 120 - (now_ms() - last) / 1000))
             r["idle"]["20settled"] = idle_window(b, idle_s)
         for h in list(b.handles):
-            if isinstance(b, Safari) and h == b.handles[0]:
-                continue
-            b.close_tab(h)
+            if h not in keep:
+                b.close_tab(h)
         time.sleep(30)
         r["memory"]["closed"] = footprint(b)
         r["frames"] = page_facts(f"{tag}-t19").get("frames")
+        if r["misses"]:
+            raise RuntimeError(f"{r['misses']} tabs never loaded")
         return r
     finally:
         b.quit()
@@ -946,6 +961,8 @@ def visible_item(b, tag, idle_s):
         time.sleep(max(0, 30 - (now_ms() - t0) / 1000))
         r["memory"]["1"] = footprint(b)
         r["vis1"] = latest_vis(first["id"], t0)
+        if r["vis1"] != "visible":
+            raise RuntimeError(f"its page was {r['vis1']}, not visible")
         r["idle"]["1"] = idle_window(b, idle_s)
         return r
     finally:
@@ -971,8 +988,11 @@ def speedometer_item(b, tag, timeout=900):
         b.new_tab(url)
         start = BEACONS.wait(lambda x: x.get("id") == tag and x.get("kind") == "sp3-start" and x["rx"] >= since, 60)
         got = BEACONS.wait(lambda x: x.get("id") == tag and x.get("kind") == "sp3" and x["rx"] >= since, timeout)
-        return {"score": got and got.get("score"), "delta": got and got.get("delta"), "vis": (start or {}).get("vis"),
-                "secs": round((now_ms() - since) / 1000, 1), "started": bool(start)}
+        r = {"score": got and got.get("score"), "delta": got and got.get("delta"), "vis": (start or {}).get("vis"),
+             "secs": round((now_ms() - since) / 1000, 1), "started": bool(start)}
+        if not start or r["score"] is None or r["vis"] != "visible":
+            raise RuntimeError(f"no score from a visible page ({r})")
+        return r
     finally:
         b.quit()
 
@@ -1042,7 +1062,12 @@ class Quiet:
             os.remove(PAUSE)
 
     def conditions(self):
-        return {"load1": round(load1(), 2), "locked": self.fd is not None}
+        try:
+            d = (probe("display") or [{}])[0]
+        except Exception:  # noqa: BLE001 - a reading, not a reason to fail the item
+            d = {}
+        return {"load1": round(load1(), 2), "locked": self.fd is not None,
+                "displayAsleep": d.get("asleep"), "screenLocked": d.get("locked")}
 
     def release(self):
         # The token bench runs again while the next round queues (that can take an hour).
@@ -1081,7 +1106,11 @@ def versions(names):
     out = {}
     for n in names:
         b = BROWSERS[n]()
-        i = b.info()
+        try:
+            i = b.info()
+        except Exception as e:  # noqa: BLE001 - the run goes on without it
+            log(f"{n}: no version ({type(e).__name__}: {e})")
+            i = {}
         out[n] = {"name": b.name, "engine": b.engine, "version": i.get("CFBundleShortVersionString"),
                   "build": i.get("CFBundleVersion")}
     return out
@@ -1128,16 +1157,28 @@ def run(args):
     done = {s["key"] for s in read_samples(args.out) if s.get("ok")}
     items = [i for i in plan(names, args.rounds, args.launches, args.phases.split(",")) if i["key"] not in done]
     log(f"{len(items)} items to run ({len(done)} done)")
-    for n in names:
+    for n in list(names):
         b = BROWSERS[n]()
         if not isinstance(b, Safari) and not os.path.isdir(b.template):
             log(f"{n}: making its template")
-            b.make_template()
+            try:
+                b.make_template()
+            except Exception as e:  # noqa: BLE001 - the others still run
+                log(f"{n}: template failed ({type(e).__name__}: {e}); leaving it out of this run")
+                shutil.rmtree(b.template, ignore_errors=True)
+                names.remove(n)
+                items = [i for i in items if i["browser"] != n]
     deadline = time.time() + args.deadline * 60
     quiet = Quiet(args.quiet)
     group = None
+    # Items that fail (an exception, or a value the row needs that never came) go round once more at the end.
+    retry = [dict(i, retry=True) for i in items]
+    items = items + retry
     try:
         for item in items:
+            if item.get("retry"):
+                if item["key"] in {x["key"] for x in read_samples(args.out) if x.get("ok")}:
+                    continue
             if time.time() > deadline:
                 log("deadline: stopping; run again to resume")
                 break
@@ -1153,6 +1194,7 @@ def run(args):
             b = BROWSERS[item["browser"]]()
             tag = f"{item['key'].replace('/', '-')}-{int(time.time())}"
             sample = dict(item, at=time.strftime("%F %T"), version=b.version(), conditions=quiet.conditions())
+            sample.pop("retry", None)
             started = time.time()
             try:
                 if item["phase"] == "launch":
@@ -1286,7 +1328,7 @@ def report(args):
     names = list(meta["browsers"]) if meta else sorted({s["browser"] for s in samples})
     rows = []
     for rid, label, unit, lower, phase, get in ROWS:
-        cells = {}
+        cells, raw = {}, {}
         for n in names:
             vals = []
             for s in samples:
@@ -1301,29 +1343,38 @@ def report(args):
                     vals.append(float(v))
             if vals:
                 cells[n] = stat(vals)
+                raw[n] = statistics.median(vals)
         if not cells:
             continue
-        best = (min if lower else max)(cells, key=lambda n: cells[n]["median"])
-        rows.append({"id": rid, "label": label, "unit": unit, "lowerIsBetter": lower, "browsers": cells, "best": best})
+        top = (min if lower else max)(raw.values())
+        tied = [n for n in names if raw.get(n) == top]  # picked from unrounded medians, in no browser's favour
+        row = {"id": rid, "label": label, "unit": unit, "lowerIsBetter": lower, "browsers": cells,
+               "best": tied[0] if len(tied) == 1 else None}
+        if len(tied) > 1:
+            row["tie"] = tied
+        rows.append(row)
     dates = sorted({s["at"][:10] for s in samples})
     out = {"date": dates[-1] if dates else None, "span": [dates[0], dates[-1]] if dates else None,
            "machine": meta and meta["machine"], "harness": HARNESS, "browsers": meta and meta["browsers"], "rows": rows,
            # quiet: samples whose phase began with the lock taken and the load under the limit (--quiet); with the
            # lock held the item's own browsers raise the load, so load1 is read as each item starts, after the last.
            "conditions": {"load1Median": round(statistics.median([s["conditions"]["load1"] for s in samples]), 2) if samples else None,
-                          "samples": len(samples), "quiet": sum(1 for s in samples if s["conditions"].get("locked"))},
+                          "samples": len(samples), "quiet": sum(1 for s in samples if s["conditions"].get("locked")),
+                          "displayAsleep": sum(1 for s in samples if s["conditions"].get("displayAsleep")),
+                          "screenUnlocked": sum(1 for s in samples if s["conditions"].get("screenLocked") is False)},
            "method": "perf/xbench/README.md"}
     if args.json:
         json.dump(out, open(args.json, "w"), indent=1)
         open(args.json, "a").write("\n")
-    md = ["| Row | " + " | ".join(meta["browsers"][n]["name"] + " " + str(meta["browsers"][n]["version"]) for n in names) + " |",
+    title = lambda n: f'{meta["browsers"][n]["name"]} {meta["browsers"][n]["version"]}' if meta else n
+    md = ["| Row | " + " | ".join(title(n) for n in names) + " |",
           "|---|" + "---|" * len(names)]
     for r in rows:
         cells = []
         for n in names:
             c = r["browsers"].get(n)
             text = f"{c['median']:g} {r['unit']} ({c['min']:g}–{c['max']:g}, n={c['n']})" if c else "–"
-            cells.append(f"**{text}**" if c and n == r["best"] else text)
+            cells.append(f"**{text}**" if c and (n == r["best"] or n in r.get("tie", [])) else text)
         md.append(f"| {r['label']} | " + " | ".join(cells) + " |")
     text = "\n".join(md) + "\n"
     if args.md:
@@ -1335,6 +1386,18 @@ def report(args):
 def selftest():
     assert stat([3, 1, 2]) == {"median": 2.0, "min": 1.0, "max": 3.0, "n": 3}
     assert stat([150.4, 149.6]) == {"median": 150.0, "min": 150.0, "max": 150.0, "n": 2}
+    with tempfile.TemporaryDirectory() as d:  # best from raw medians; an exact tie names no single best
+        rows = []
+        for k, (n, mb) in enumerate([("copper", 412.4), ("chrome", 411.6), ("safari", 300.0), ("ardia", 300.0)]):
+            rows.append({"key": f"r0/session/{n}", "browser": n, "phase": "session", "kind": "session", "ok": True,
+                         "at": "2026-11-25 10:00:00", "conditions": {"load1": 1.0, "locked": True},
+                         "memory": {"1": {"mb": mb}, "10": {"mb": 500 + k}}, "idle": {}})
+        open(os.path.join(d, "samples.jsonl"), "w").write("".join(json.dumps(r) + "\n" for r in rows))
+        out = os.path.join(d, "bench.json")
+        report(argparse.Namespace(out=[d], json=out, md=os.path.join(d, "t.md")))
+        got = {r["id"]: r for r in json.load(open(out))["rows"]}
+        assert got["memory-1"]["best"] is None and sorted(got["memory-1"]["tie"]) == ["ardia", "safari"], got["memory-1"]
+        assert got["memory-10"]["best"] == "copper"
     assert kind_of({"why": "main"}) == "browser"
     assert kind_of({"path": "/x/com.apple.WebKit.WebContent"}) == "renderer"
     assert kind_of({"path": "/x/Google Chrome Helper (Renderer)"}) == "renderer"
@@ -1345,7 +1408,6 @@ def selftest():
     assert not any(i["browser"] == "safari" and i["kind"] == "link" for i in p)
     assert [i["key"] for i in p if i["kind"] == "visible"] == ["r0/visible/copper", "r1/visible/copper"]
     assert not any(i["browser"] == "safari" for i in plan(["copper", "safari"], 1, 1, ["speedometer"]))
-    import tempfile
     with tempfile.NamedTemporaryFile() as f:  # two open files of one path: their flocks exclude each other
         a, b = os.open(f.name, os.O_RDONLY), os.open(f.name, os.O_RDONLY)
         fcntl.flock(a, fcntl.LOCK_EX)
@@ -1360,7 +1422,7 @@ def selftest():
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command", choices=["check", "template", "speedometer", "run", "report", "stop", "selftest"])
-    ap.add_argument("--browsers", default="copper,safari,chrome,arc,ardia")
+    ap.add_argument("--browsers", default="copper,safari,chrome,ardia")  # Arc wants an account at first launch
     ap.add_argument("--out", action="append", default=[])
     ap.add_argument("--rounds", type=int, default=3)
     ap.add_argument("--launches", type=int, default=2)
