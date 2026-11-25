@@ -487,14 +487,20 @@ enum Isolate {
     /// hiding the body and turning it back on for the video alone leaves the
     /// player's own machinery running untouched — which is what keeps the
     /// stream alive where cutting the DOM about would kill it.
-    static let on = """
+    ///
+    /// Fork (ardia polish): `strict` — floating on its own from a site that
+    /// isn't a known player — takes only a video you can hear, at least
+    /// 200×112: a hero background plays muted, a film doesn't.
+    static func on(strict: Bool = false) -> String { """
     (function () {
+      var strict = \(strict ? "true" : "false");
       var videos = document.querySelectorAll('video');
       var best = null, area = 0;
       for (var i = 0; i < videos.length; i++) {
         var v = videos[i];
         if (v.paused || v.ended || v.readyState < 2) continue;
         var box = v.getBoundingClientRect();
+        if (strict && (v.muted || v.volume === 0 || box.width < 200 || box.height < 112)) continue;
         if (box.width * box.height >= area) { area = box.width * box.height; best = v; }
       }
       if (!best) return 'none';
@@ -558,7 +564,7 @@ enum Isolate {
 
       return 'floating';
     })();
-    """
+    """ }
 
     /// Stop or start it, and say which it is now.
     /// Step over the bit you missed, or back to it.
