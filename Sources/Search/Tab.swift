@@ -1689,6 +1689,7 @@ final class PageView: WKWebView {
     /// What extensions added to the right-click menu, at the end of it.
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
+        ImageRelay.clean(menu) // Fork (page-tools): Copy Link without its trackers (ImageMenu.swift)
         guard #available(macOS 15.4, *),
               let tab = Windows.all.flatMap(\.tabs).first(where: { $0.built === self }) // Fork: windows
         else { return }
