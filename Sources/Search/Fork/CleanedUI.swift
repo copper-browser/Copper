@@ -50,7 +50,7 @@ struct CleanedList: View {
                     Text("Recently Cleaned")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Palette.ink)
-                    Text("Tabs cleaned from this space, kept for a week")
+                    Text("Kept for a week, then gone")
                         .font(.system(size: 11))
                         .foregroundStyle(Palette.muted)
                 }

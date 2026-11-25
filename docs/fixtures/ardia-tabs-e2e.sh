@@ -138,8 +138,10 @@ grep -q "recently cleaned" "$tmp/ra.txt" && fail "Recently Cleaned not empty aft
 ok "Restore All brought the rest back; the list is empty"
 
 # 3. A relaunch keeps Recently Cleaned (and the folder).
-bench sections age "$(id_of en.wikipedia.org)" 30 >/dev/null
-bench sections cleanup >/dev/null
+# `sections archive 0`: the sweep against no age at all, every Today row but the one in front.
+bench sections archive 0 | tee "$tmp/a0.txt"
+grep -q "archived 2 tab" "$tmp/a0.txt" && grep -q "recently cleaned (2)" "$tmp/a0.txt" || fail "archive 0 did not sweep Wikipedia and Fresh into Recently Cleaned"
+ok "sections archive 0 swept the two Today rows not in front into Recently Cleaned"
 before=$(count)
 [ "${before:-0}" -ge 1 ] || fail "nothing cleaned before the relaunch"
 bench windows quit >/dev/null
