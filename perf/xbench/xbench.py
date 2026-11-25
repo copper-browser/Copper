@@ -1032,7 +1032,7 @@ class Quiet:
         to a waiter the moment it is let go, so polling for it would never win), then, holding it, asks the token
         bench to hold its next run (PAUSE) and waits up to 90 seconds for the 1-minute load average to fall under
         the limit, so a round's hold, wait included, stays under 20 minutes. If it doesn't, the lock goes back for
-        2 minutes and the wait starts again."""
+        10 minutes (so a busy Mac's jobs lose at most 90 s in 11.5 minutes to the wait) and the wait starts again."""
         if not self.enabled:
             return True
         while time.time() < deadline:
@@ -1048,10 +1048,10 @@ class Quiet:
                 time.sleep(10)
             if load1() < self.limit:
                 return True
-            log(f"lock held but load still {load1():.2f}; letting it go for 2 minutes")
+            log(f"lock held but load still {load1():.2f}; letting it go for 10 minutes")
             self.release()
             self.unpause()
-            time.sleep(120)
+            time.sleep(600)
         self.unpause()
         return False
 

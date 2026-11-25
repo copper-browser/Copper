@@ -71,7 +71,7 @@ the visibility its pages reported.
 (about 18 minutes: every launch, session and Speedometer run of every browser) queues for `~/hc/mini.lock` like the
 Mac's other jobs (builds, tests: they wait in `lockf`) and holds it for the whole round. Holding it, it asks the token
 bench (`../agentbench`) to hold its next run (`~/hc/ardia-site-bench/PAUSE`) and starts once the 1-minute load
-average is under 2; if the load stays up for 90 seconds, the lock goes back and the round queues again, so a hold
+average is under 2; if the load stays up for 90 seconds, the lock goes back for 10 minutes and the round queues again, so a hold
 stays under 20 minutes. Every item records the load average at its start and end.
 A row's figure is the median of its runs, with min–max and n; `best` is the best
 median, picked from the unrounded medians (an exact tie names no single best), not a win (compare the ranges).
