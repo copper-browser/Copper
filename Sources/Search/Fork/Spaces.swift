@@ -1082,6 +1082,7 @@ final class Spaces: ObservableObject {
         defer { SessionGuard.finishRestore() }
         defer { CloudSync.shared.start(for: browser) } // Fork (cloud): sync starts once yesterday's rows are back
         defer { FolderSync.shared.start(for: browser) } // Fork (icloud): Fork/FolderSync/
+        defer { SharedFolders.shared.start(for: browser); LiveFolders.shared.start() } // Fork (ardia folders): Fork/SharedFolders.swift, Fork/LiveFolders.swift
         if let spaces = saved.spaces, !spaces.isEmpty {
             all = spaces
             rows = Dictionary(uniqueKeysWithValues: spaces.map { ($0.id, []) })

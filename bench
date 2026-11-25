@@ -390,6 +390,9 @@
     ./bench icloud status|folder PATH|on|join WORD…|phrase|off [delete]|now|set DOMAIN on|off|doc DOMAIN|log|files
     ./bench icloud setting KEY VALUE|unbookmark URL|picture PATH [dark] [kit]|kit PATH
                                        iCloud sync (serverless, end-to-end encrypted, a folder + a 24-word phrase)
+    ./bench folders live [add|api URL|token-file PATH|refresh|read|open N|forget|remove|log|picture PATH]
+    ./bench folders shared [root PATH|add NAME URL [SUB]|share NAME|join LINK|links NAME|close NAME URL|rename|move|stop|let|back|now|log|files|picture|sheet]
+                                       live folders (GitHub pull requests) and shared folders (iCloud Drive)
     ./bench passkeys list|count|forget --id ID|answer yes|no|ask
                                        Copper's own test-world passkeys (no private keys in list)
     ./bench mcp transcript begin|append TEXT|live on|off|forget|share on|off|state
@@ -708,6 +711,12 @@ def main(argv):
         request["op"] = args[0] if args else "status"
         if request["op"] in ("picture", "kit", "folder") and len(args) > 1: args[1] = os.path.abspath(os.path.expanduser(args[1]))
         request["arg"] = " ".join(args[1:]) if len(args) > 1 else ""
+    elif verb == "folders":  # Fork (ardia folders): Fork/FoldersBench.swift
+        request["op"] = args[0] if args else "shared"
+        rest = args[1:]
+        if len(rest) > 1 and rest[0] in ("picture", "root", "token-file"): rest[1] = os.path.abspath(os.path.expanduser(rest[1]))
+        if len(rest) > 2 and rest[0] == "sheet": rest[-1] = os.path.abspath(os.path.expanduser(rest[-1]))
+        request["arg"] = " ".join(rest)
     elif verb == "voice":
         request["op"] = args[0] if args else "status"
         if request["op"] == "replay":
@@ -981,7 +990,7 @@ def main(argv):
     elif verb == "settings" and request["op"] == "search" and "--table" in args:
         for r in answer.get("results", []):
             print(f"{r['rank']:>2}  {r['score']:>6}  {r['page']:<12} {r['marked']}")
-    elif verb in ("cloud", "icloud"):
+    elif verb in ("cloud", "icloud", "folders"):
         print(json.dumps(answer, ensure_ascii=False, sort_keys=True, indent=2))
     elif request.get("do") == "newtab" and request.get("type"):
         if request.get("json"):
