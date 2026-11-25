@@ -122,9 +122,10 @@ struct FlowSheet: View {
                 }
                 // Under the switches it is about, in the part that scrolls,
                 // so a short window keeps its room for the list. Safari's
-                // passwords come from its export: macOS asks nothing.
+                // passwords come from its export, Firefox's from its own
+                // key4.db: macOS asks nothing.
                 if flow.choice.passwords || flow.choice.passkeys || flow.choice.cookies,
-                   let source = flow.selected, !source.isSafari {
+                   let source = flow.selected, !source.isSafari, !source.isGecko {
                     Text("macOS will ask once to let Copper use \(source.name)'s saved passwords and sign-ins. Say Allow; the window keeps working while it asks.")
                         .font(.system(size: 11.5)).foregroundStyle(Palette.muted)
                         .fixedSize(horizontal: false, vertical: true)
@@ -359,13 +360,13 @@ struct FlowSheet: View {
     /// switch of its own; they fold into one muted line under the list.
     private var checklist: some View {
         let kinds: [(title: String, hint: String, on: Binding<Bool>, n: (FlowModel.Haul) -> Int)] = [
-            (flow.selected?.isArc == true ? "Tabs and spaces" : "Tabs and windows", tabHint, binding(\.tabs), { $0.tabCount }),
+            (flow.selected?.hasSpaces == true ? "Tabs and spaces" : "Tabs and windows", tabHint, binding(\.tabs), { $0.tabCount }),
             ("Bookmarks", count { FlowSummary.plural($0.bookmarkCount, "bookmark") }, binding(\.bookmarks), { $0.bookmarkCount }),
             ("History", count { FlowSummary.plural($0.placeCount, "place") }, binding(\.history), { $0.placeCount }),
             ("Passwords", count { FlowSummary.plural($0.loginCount, "password") }, binding(\.passwords), { $0.loginCount }),
             ("Passkeys", count { FlowSummary.plural($0.passkeyCount, "passkey") }, binding(\.passkeys), { $0.passkeyCount }),
             ("Sign-ins", "Stay signed in to your sites", binding(\.cookies), { _ in 1 }), // Fork (ui-flows)
-            ("Site data", "What sites kept on this Mac, like settings and drafts", binding(\.localStorage), { _ in 1 }),
+            ("Site data", "What sites kept on this Mac, like settings and drafts", binding(\.localStorage), { _ in flow.selected?.isGecko == true ? 0 : 1 }),
             ("Extensions", count { FlowSummary.plural($0.extensions.count, "extension") }, binding(\.extensions), { $0.extensions.count }),
         ]
         let live = kinds.filter { has($0.n) }
@@ -507,7 +508,7 @@ struct FlowSheet: View {
     private var tabHint: String {
         guard case .preview(let haul) = flow.phase else { return countingHint }
         let open = haul.spaces.filter { !$0.tabs.isEmpty }.count
-        let unit = flow.selected?.isArc == true ? "space" : "window"
+        let unit = flow.selected?.hasSpaces == true ? "space" : "window"
         return haul.tabCount == 0 ? "none open" : "\(FlowSummary.plural(haul.tabCount, "tab")) in \(FlowSummary.plural(open, unit))"
     }
 
