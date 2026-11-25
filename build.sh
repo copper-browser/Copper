@@ -109,6 +109,8 @@ mkdir -p "$APP/Contents/Resources/phonon-coreml"
 cp Sources/Search/Fork/Voice/Phonon/LICENSE Sources/Search/Fork/Voice/Phonon/NOTICE "$APP/Contents/Resources/phonon-coreml/"
 # Copper's own licence, which carries the MIT notice it was forked under.
 cp LICENSE "$APP/Contents/Resources/LICENSE"
+# Fork (ardia: automation): the AppleScript dictionary (Fork/Scripting.swift).
+cp Sources/Search/Fork/Copper.sdef "$APP/Contents/Resources/Copper.sdef"
 
 # Symbols stay out of the app. The linker leaves every function's name and a
 # map back to the source in the binary — 15,000 entries, more than half of
@@ -148,6 +150,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
   <key>NSHumanReadableCopyright</key><string>© Collin Rijock and Felipe Arce.</string>
   <key>NSHighResolutionCapable</key><true/>
+  <!-- AppleScript: windows, tabs, execute javascript (Fork/Copper.sdef). -->
+  <key>NSAppleScriptEnabled</key><true/>
+  <key>OSAScriptingDefinition</key><string>Copper.sdef</string>
   <!-- Owning http and https is what lets macOS offer this app as the default
        browser, and what sends a link clicked in Mail here. -->
   <key>CFBundleURLTypes</key>

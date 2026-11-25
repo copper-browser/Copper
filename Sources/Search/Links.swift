@@ -67,6 +67,20 @@ final class Links: NSObject, NSApplicationDelegate {
         Links.take(url, from: AirTraffic.sender(of: event)) // Fork (ardia: windows): who sent it, for Air Traffic Control (Fork/AirTraffic.swift)
     }
 
+    /// Fork (ardia: automation): a page handed over from an iPhone or another
+    /// Mac (Handoff) lands as a link from another app does (Fork/PageHandoff.swift).
+    func application(_ application: NSApplication, willContinueUserActivityWithType userActivityType: String) -> Bool {
+        userActivityType == NSUserActivityTypeBrowsingWeb
+    }
+
+    func application(_ application: NSApplication, continue userActivity: NSUserActivity,
+                     restorationHandler: @escaping ([any NSUserActivityRestoring]) -> Void) -> Bool {
+        guard userActivity.activityType == NSUserActivityTypeBrowsingWeb, let url = userActivity.webpageURL,
+              ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return false }
+        Links.take(url)
+        return true
+    }
+
     /// Files and anything else the system opens with the app.
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls.compactMap(LinkRelay.accept) { // Fork: http(s), copper://, and a page file or .webloc (Fork/LinkRelay.swift)

@@ -305,12 +305,14 @@ final class Spaces: ObservableObject {
     }
 
     func frontChanged(_ browser: Browser) {
+        PageHandoff.shared.soon() // Fork (ardia: automation): Handoff follows the window in front
         guard currentByBrowser[ObjectIdentifier(browser)] != nil else { return }
         current = current(in: browser)
         objectWillChange.send()
     }
 
     func activeChanged(_ browser: Browser) {
+        PageHandoff.shared.soon() // Fork (ardia: automation): and its active tab
         guard let space = currentByBrowser[ObjectIdentifier(browser)] else { return }
         if let active = browser.activeID {
             activeByBrowserSpace[ObjectIdentifier(browser), default: [:]][space] = active
@@ -1264,6 +1266,11 @@ struct ForkCommands: Commands {
         // The Groups menu lives in GroupsUI.swift; it rides here because
         // App.swift's .commands builder is at its cap of ten.
         GroupCommands(browser: browser)
+        // Fork (ardia: automation): Window › Task Manager (Fork/TaskManager.swift).
+        CommandGroup(before: .windowList) {
+            Button("Task Manager") { TaskManager.shared.show() }
+            Divider()
+        }
     }
 }
 

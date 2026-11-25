@@ -436,6 +436,9 @@
                                        `sections release` lets go of a held one)
     ./bench little [open [URL]|copper [N]|close [N]|shot N PATH]
                                        Little Copper windows (⌥⌘N): list, open one, Open in Copper, close, a PNG
+    ./bench tasks [show|sleep ID|end ID|shot PATH]   Window › Task Manager's rows (memory, CPU, process)
+    ./bench handoff                                  the page offered to Handoff now
+    ./bench script run|here SRC | allow on|off       AppleScript through osascript (a child of Copper) or in-process
     ./bench peek [open URL|click SELECTOR|key ⎋|⌘↩|⌥⌘↩|tab|split|close|pins on|off]
                                        Peek (⇧-click): what is up, open one over the active tab, a real ⇧-click on
                                        SELECTOR there, a key through the app's monitor, keep it as a tab (⌘↩) or a
@@ -715,6 +718,11 @@ def main(argv):
         words = [a for a in args if a != "--table"]
         request["op"] = words[0] if words else "state"
         request["arg"] = " ".join(words[1:]) if len(words) > 1 else ""
+    elif verb in ("tasks", "handoff", "script"):  # Fork (ardia: automation): tasks [show|sleep ID|end ID|shot PATH]; script run|here SRC, allow on|off
+        request["op"] = args[0] if args else "list"
+        rest = args[1:]
+        if verb == "tasks" and request["op"] == "shot" and rest: rest = [os.path.abspath(rest[0])]
+        request["arg"] = " ".join(rest)
     elif verb in ("little", "peek", "atc"):  # Fork (ardia: windows)
         request["op"] = args[0] if args else ("state" if verb == "peek" else "list")
         request["arg"] = " ".join(args[1:]) if len(args) > 1 else ""

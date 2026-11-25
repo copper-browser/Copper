@@ -117,6 +117,7 @@ struct AppCommands: Commands {
             TranslateItems(browser: browser) // Fork (page-tools): Translate Page / Show Original, Never Translate This Site (Fork/Translate.swift)
             Button("Inspect Element") { browser.inspectElement() }
                 .keyboardShortcut("i", modifiers: [.command, .shift])
+            AppleEventsJavaScriptItem() // Fork (ardia: automation): Fork/Scripting.swift
             Button("Float Video") { browser.toggleFloat() }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
             Divider()

@@ -264,6 +264,11 @@ final class Bench {
         case "little", "peek", "atc": // Fork (ardia: windows): Fork/Little.swift, Fork/Peek.swift, Fork/AirTraffic.swift
             answer(Fork.bench(verb, request, in: browser))
 
+        case "tasks", "handoff": // Fork (ardia: automation): Fork/TaskManager.swift, Fork/PageHandoff.swift
+            answer(Fork.bench(verb, request, in: browser))
+
+        case "script": Scripting.bench(request, answer: answer) // Fork (ardia: automation): AppleScript, Fork/Scripting.swift
+
         case "settings": // Fork (settings-revamp): open/search/pick/index check — Fork/SettingsBench.swift
             SettingsBench.handle(request, in: browser, answer: answer)
 

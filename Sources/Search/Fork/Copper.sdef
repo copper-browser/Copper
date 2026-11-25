@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<!-- Fork (ardia: automation): Copper's AppleScript dictionary, in Chrome's and
+     Arc's words so the Raycast and Alfred scripts written for them work here:
+     windows, their tabs (URL, title, loading), the active tab, make new tab,
+     select, close, and execute javascript, which needs View › Allow JavaScript
+     from Apple Events (off by default, as in Safari and Chrome). The objects
+     are Fork/Scripting.swift; build.sh copies this file into the app and names
+     it in Info.plist (OSAScriptingDefinition). -->
+<dictionary title="Copper Terminology">
+
+  <suite name="Standard Suite" code="????" description="Common classes and commands for all applications.">
+
+    <command name="close" code="coreclos" description="Close a window or a tab.">
+      <cocoa class="NSCloseCommand"/>
+      <direct-parameter type="specifier" description="The window(s) or tab(s) to close."/>
+    </command>
+
+    <command name="count" code="corecnte" description="Return the number of elements of a particular class within an object.">
+      <cocoa class="NSCountCommand"/>
+      <direct-parameter type="specifier" description="The objects to be counted."/>
+      <parameter name="each" code="kocl" type="type" optional="yes" description="The class of objects to be counted." hidden="yes">
+        <cocoa key="ObjectClass"/>
+      </parameter>
+      <result type="integer" description="The count."/>
+    </command>
+
+    <command name="exists" code="coredoex" description="Verify that an object exists.">
+      <cocoa class="NSExistsCommand"/>
+      <direct-parameter type="any" description="The object(s) to check."/>
+      <result type="boolean" description="Did the object(s) exist?"/>
+    </command>
+
+    <command name="make" code="corecrel" description="Make a new window or tab.">
+      <cocoa class="NSCreateCommand"/>
+      <parameter name="new" code="kocl" type="type" description="The class of the new object.">
+        <cocoa key="ObjectClass"/>
+      </parameter>
+      <parameter name="at" code="insh" type="location specifier" optional="yes" description="The location at which to insert the object.">
+        <cocoa key="Location"/>
+      </parameter>
+      <parameter name="with properties" code="prdt" type="record" optional="yes" description="The initial values for properties of the object.">
+        <cocoa key="KeyDictionary"/>
+      </parameter>
+      <result type="specifier" description="The new object."/>
+    </command>
+
+    <command name="quit" code="aevtquit" description="Quit Copper.">
+      <cocoa class="NSQuitCommand"/>
+    </command>
+
+    <class name="application" code="capp" description="Copper.">
+      <cocoa class="NSApplication"/>
+      <property name="name" code="pnam" type="text" access="r" description="The name of the application."/>
+      <property name="frontmost" code="pisf" type="boolean" access="r" description="Is this the active application?">
+        <cocoa key="isActive"/>
+      </property>
+      <property name="version" code="vers" type="text" access="r" description="The version number of the application."/>
+      <element type="window">
+        <cocoa key="scriptWindows"/>
+      </element>
+      <responds-to command="quit">
+        <cocoa method="handleQuitScriptCommand:"/>
+      </responds-to>
+    </class>
+
+    <class name="window" code="cwin" description="A browser window, front to back.">
+      <cocoa class="CopperScriptWindow"/>
+      <property name="name" code="pnam" type="text" access="r" description="The title of its active tab.">
+        <cocoa key="name"/>
+      </property>
+      <property name="id" code="ID  " type="text" access="r" description="The unique identifier of the window.">
+        <cocoa key="uniqueID"/>
+      </property>
+      <property name="index" code="pidx" type="integer" access="r" description="The index of the window, front to back.">
+        <cocoa key="orderedIndex"/>
+      </property>
+      <property name="active tab" code="acTa" type="tab" access="r" description="The tab on screen in this window.">
+        <cocoa key="activeTab"/>
+      </property>
+      <property name="active tab index" code="acTI" type="integer" description="The index of the active tab; set it to switch tabs.">
+        <cocoa key="activeTabIndex"/>
+      </property>
+      <property name="URL" code="URL " type="text" hidden="yes" description="The active tab's address; with make new window, where the window opens.">
+        <cocoa key="URL"/>
+      </property>
+      <element type="tab">
+        <cocoa key="tabs"/>
+      </element>
+      <responds-to command="close">
+        <cocoa method="handleCloseScriptCommand:"/>
+      </responds-to>
+    </class>
+
+  </suite>
+
+  <suite name="Copper Suite" code="CopS" description="Tabs and their pages.">
+
+    <class name="tab" code="CrTb" description="A tab in a browser window.">
+      <cocoa class="CopperScriptTab"/>
+      <property name="id" code="ID  " type="text" access="r" description="The unique identifier of the tab.">
+        <cocoa key="uniqueID"/>
+      </property>
+      <property name="URL" code="URL " type="text" description="The address of the page; set it to go somewhere else.">
+        <cocoa key="URL"/>
+      </property>
+      <property name="title" code="pTtl" type="text" access="r" description="The title of the page.">
+        <cocoa key="title"/>
+      </property>
+      <property name="loading" code="pLod" type="boolean" access="r" description="Is the page still loading?">
+        <cocoa key="loading"/>
+      </property>
+      <responds-to command="close">
+        <cocoa method="handleCloseScriptCommand:"/>
+      </responds-to>
+      <responds-to command="select">
+        <cocoa method="handleSelectScriptCommand:"/>
+      </responds-to>
+      <responds-to command="execute">
+        <cocoa method="handleExecuteScriptCommand:"/>
+      </responds-to>
+    </class>
+
+    <command name="select" code="CopSselc" description="Make a tab the active tab of its window.">
+      <direct-parameter type="specifier" description="The tab."/>
+    </command>
+
+    <command name="execute" code="CopSexec" description="Run JavaScript in a tab's page and return its result. Needs View › Allow JavaScript from Apple Events.">
+      <direct-parameter type="specifier" description="The tab."/>
+      <parameter name="javascript" code="JaSc" type="text" description="The JavaScript to run.">
+        <cocoa key="javascript"/>
+      </parameter>
+      <result type="any" description="What the JavaScript returned."/>
+    </command>
+
+  </suite>
+
+</dictionary>
