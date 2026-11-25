@@ -160,6 +160,12 @@ sleep 0.3
 [ "$(bench little | json 'len(d["littles"])')" = 0 ] || fail "a Slack-only rule opened a Little Copper for Terminal"
 echo "ok a rule for Slack leaves a link from Terminal alone"
 
+# 6. Who sent it: an app is itself; a shell (this script) walks up to no app over ssh.
+if finder="$(pgrep -x Finder | head -1)" && [ -n "$finder" ]; then
+  [ "$(bench atc from "$finder" | json 'd["app"]')" = com.apple.finder ] || fail "Finder's pid is not Finder: $(bench atc from "$finder")"
+fi
+echo "ok sender: Finder → com.apple.finder; this shell → '$(bench atc from $$ | json 'd["app"]')'"
+
 # Settings search lands on every new row, and each row it names is drawn.
 check="$(bench settings index check)"
 [ "$(echo "$check" | json 'd["ok"]')" = True ] || fail "settings index check: $check"
