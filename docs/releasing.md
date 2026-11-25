@@ -169,15 +169,18 @@ the release here.
   API answers *"can only be performed by the Account Holder"*); the API can fetch it once it
   exists (`GET /v1/certificates`).
 - **The keys** exist in two places: Copper's Mac mini, `~/.config/copper-developer-id/` (0600:
-  `devid.key` and its CSR, `copper-developer-id.p12` with the G2 intermediate inside,
-  `p12-password`, and the notary key `AuthKey_<key id>.p8` with `notary-issuer`), and the
+  `devid.key` and its CSR, `copper-developer-id.p12` (the key and the certificate only:
+  rcodesign takes the first certificate in a p12 as the signer, so Apple's intermediate is not
+  in it), `p12-password`, and the notary key `AuthKey_<key id>.p8` with `notary-issuer`), and the
   repository secrets `COPPER_DEVELOPER_ID_P12_BASE64` / `COPPER_DEVELOPER_ID_P12_PASSWORD`,
   `COPPER_NOTARY_KEY_BASE64` / `COPPER_NOTARY_KEY_ID` / `COPPER_NOTARY_ISSUER`. The notary key is
   an App Store Connect team key, *Copper notarize*, with the Developer role (the least
   notarytool takes) and nothing else. Neither is ever in the repository.
 - **On the runner.** *Signing keychain and notary key* decodes the p12 into a keychain made for
   that run (random password, on the search list only for the run) and the notary key into the
-  run's temporary folder, checks that the certificate in the p12 is the one `release/` holds and
+  run's temporary folder, adds Apple's *Developer ID G2* intermediate (`release/DeveloperIDG2CA.cer`;
+  macOS ships only the G1 one, and codesign needs the chain), checks that the certificate in the
+  p12 is the one `release/` holds and
   that the requirement names its team, and *Delete the signing keychain and notary key* removes
   both again (`if: always()`).
 - **The requirement.** `release/package-app.sh` signs with the certificate's SHA-1 and an
@@ -329,14 +332,13 @@ timestamp.
    **Developer ID Application** › G2 Sub-CA and uploads `devid.csr`. The `.cer` can then be
    fetched with the App Store Connect API (`GET /v1/certificates?filter[certificateType]=DEVELOPER_ID_APPLICATION_G2`,
    `certificateContent` is the DER, base64).
-3. The p12, with Apple's intermediate inside so `codesign` can build the chain on any runner:
+3. The p12: the key and the certificate, nothing else (rcodesign signs with the first certificate
+   in it; Apple's intermediate is `release/DeveloperIDG2CA.cer`):
 
    ```sh
-   curl -fsSLO https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
    /usr/bin/openssl x509 -inform der -in devid.cer -out devid.pem
-   /usr/bin/openssl x509 -inform der -in DeveloperIDG2CA.cer -out g2ca.pem
    /usr/bin/openssl rand -base64 60 | tr -dc 'A-Za-z0-9' | head -c 40 > p12-password
-   /usr/bin/openssl pkcs12 -export -inkey devid.key -in devid.pem -certfile g2ca.pem \
+   /usr/bin/openssl pkcs12 -export -inkey devid.key -in devid.pem \
      -name "Developer ID Application: Collin Rijock (95X7XYUVNX)" -out copper-developer-id.p12 \
      -passout file:p12-password -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1   # what `security import` reads
    ```
