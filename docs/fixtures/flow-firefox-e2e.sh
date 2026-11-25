@@ -84,6 +84,11 @@ for NAME in Firefox Zen; do
   printf '%s\n' "$SOURCES" | jq -e --arg n "$NAME" '.sources[] | select(.name == $n) | .locked' >/dev/null || continue
   FOLDER=$(printf '%s\n' "$SOURCES" | jq -r --arg n "$NAME" '.sources[] | select(.name == $n) | .root')
   ok "$NAME is locked for this build (the card says so); reading a copy of $FOLDER"
+  B flow open --again >/dev/null
+  until_state '.showing and .sourcesKnown' >/dev/null
+  shot "$(echo "$NAME" | tr A-Z a-z)-locked"
+  B flow close >/dev/null
+  until_state '.showing | not' >/dev/null
   cp -R "$FOLDER" "$TEMP/$NAME"
   B flow root --source "$NAME" --path "$TEMP/$NAME" >/dev/null
   SOURCES=$(B flow sources)

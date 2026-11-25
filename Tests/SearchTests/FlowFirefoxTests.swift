@@ -197,6 +197,16 @@ private func hex(_ text: String) -> String { "X'\(text)'" }
         #expect(abs((cookies[0].expires?.timeIntervalSince1970 ?? 0) - Double(soon)) < 1) // seconds and milliseconds both read
         #expect(abs((cookies[1].expires?.timeIntervalSince1970 ?? 0) - Double(soon)) < 1)
         #expect(cookies.allSatisfy { $0.profile == "Profiles/a.default" })
+
+        // Add-ons stay in Firefox, and the summary names the person's own only.
+        let addons: [String: Any] = ["addons": [
+            ["type": "extension", "location": "app-profile", "hidden": true, "defaultLocale": ["name": "New Tab"]],
+            ["type": "extension", "location": "app-builtin-addons", "hidden": true, "defaultLocale": ["name": "Form Autofill"]],
+            ["type": "theme", "location": "app-profile", "hidden": false, "defaultLocale": ["name": "A theme"]],
+            ["type": "extension", "location": "app-profile", "hidden": false, "defaultLocale": ["name": "uBlock Origin"]],
+        ]]
+        try JSONSerialization.data(withJSONObject: addons).write(to: profile.appendingPathComponent("extensions.json"))
+        #expect(FlowFirefox.addons(root: scratch.root) == ["uBlock Origin"])
     }
 }
 

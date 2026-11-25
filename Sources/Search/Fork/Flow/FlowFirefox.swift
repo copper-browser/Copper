@@ -591,7 +591,8 @@ enum FlowFirefox {
 
     // MARK: - add-ons
 
-    /// The add-ons a person installed (not Mozilla's built-in ones), by name.
+    /// The add-ons a person installed, by name. Mozilla's own (New Tab, Form
+    /// Autofill…) are hidden, even the updated copies kept in the profile.
     static func addons(root: URL) -> [String] {
         var out: [String] = []
         for profile in profiles(at: root) {
@@ -600,6 +601,7 @@ enum FlowFirefox {
                   let top = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
             for addon in top["addons"] as? [[String: Any]] ?? [] {
                 guard addon["type"] as? String == "extension", addon["location"] as? String == "app-profile",
+                      addon["hidden"] as? Bool != true,
                       let name = (addon["defaultLocale"] as? [String: Any])?["name"] as? String, !out.contains(name) else { continue }
                 out.append(name)
             }
