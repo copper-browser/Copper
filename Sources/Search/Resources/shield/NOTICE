@@ -1,0 +1,10 @@
+Copper's block lists, converted for WebKit by tools/shield/refresh.py with AdGuard's
+SafariConverterLib (GPLv3; used as a build tool, not shipped).
+
+Each file is converted from the filter lists named in index.json, which keep their own
+licences and authors:
+- EasyList, EasyPrivacy, EasyList Cookie (https://easylist.to): GPLv3 or CC BY-SA 3.0
+- uBlock Origin filters (https://github.com/uBlockOrigin/uAssets): GPLv3
+- AdGuard filters (https://github.com/AdguardTeam/AdguardFilters): GPLv3
+- Regional lists: their authors' licences; sources in tools/shield/lists.json in
+  https://github.com/copper-browser/Copper

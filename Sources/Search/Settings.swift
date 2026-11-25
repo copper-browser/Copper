@@ -503,6 +503,7 @@ struct SettingsPanel: View {
                     }
                     .settingsAnchor("privacy.site")
                 }
+                if prefs.shielded { ShieldListLines() } // Fork (ardia-shield): the lists, and your own — Fork/PrivacySettings.swift
             }
             SettingsSection("Permissions") {
                 Line("Camera and microphone", "What each site was allowed") { // Fork (page-capture): a refusal is never kept (docs/capture.md)

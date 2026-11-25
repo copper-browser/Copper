@@ -80,6 +80,7 @@ struct AppCommands: Commands {
                 .keyboardShortcut("w")
         }
         CommandGroup(replacing: .printItem) {
+            ShareItem(browser: browser) // Fork (page-tools): File › Share… (Fork/PageShare.swift)
             Button("Print…") { browser.printPage() }
                 .keyboardShortcut("p")
                 .disabled(browser.active?.isBlank ?? true)
@@ -113,6 +114,7 @@ struct AppCommands: Commands {
                 .keyboardShortcut("r", modifiers: [.command, .shift])
             Button("Reading Mode") { browser.toggleReader() }
                 .keyboardShortcut("r", modifiers: [.command, .option])
+            TranslateItems(browser: browser) // Fork (page-tools): Translate Page / Show Original, Never Translate This Site (Fork/Translate.swift)
             Button("Inspect Element") { browser.inspectElement() }
                 .keyboardShortcut("i", modifiers: [.command, .shift])
             Button("Float Video") { browser.toggleFloat() }
@@ -160,6 +162,7 @@ struct AppCommands: Commands {
             Button("Copy Address") { browser.copyAddress() }
                 .keyboardShortcut("c", modifiers: [.command, .shift])
                 .disabled(browser.active?.isBlank ?? true)
+            CopyLinkItems(browser: browser) // Fork (page-tools): Copy as Markdown ⌥⇧⌘C, Copy Link to Highlight (Fork/CleanLinks.swift)
             Button("Paste and Go") { browser.pasteAndGo() }
                 .keyboardShortcut("v", modifiers: [.command, .shift])
             Divider()
