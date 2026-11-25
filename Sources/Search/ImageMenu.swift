@@ -29,26 +29,61 @@ final class ImageRelay: NSObject, WKScriptMessageHandler {
     /// Every frame: an image inside an ad or a map embed is still an image.
     /// Only a genuine <img> with something to point at is worth the trip —
     /// a broken one, or a 1×1 tracking pixel, isn't worth a menu at all.
+    ///
+    /// Fork (page-tools): the link under the pointer too, if any, for Copy
+    /// Link without its trackers (`clean`) and the image menu's link items.
     static let watch = """
     (function () {
       if (window.__officeImages) return;
       window.__officeImages = true;
       document.addEventListener('contextmenu', function (e) {
+        var a = e.target && e.target.closest ? e.target.closest('a[href], area[href]') : null;
+        var link = a && typeof a.href === 'string' ? a.href : '';
         var el = e.target;
         while (el && el.tagName !== 'IMG') el = el.parentElement;
-        if (!el || !el.currentSrc || el.naturalWidth < 2) return;
+        if (!el || !el.currentSrc || el.naturalWidth < 2) {
+          if (link) window.webkit.messageHandlers.officeImages.postMessage({ link: link });
+          return;
+        }
         e.preventDefault();
-        window.webkit.messageHandlers.officeImages.postMessage({ src: el.currentSrc });
+        window.webkit.messageHandlers.officeImages.postMessage({ src: el.currentSrc, link: link });
       }, true);
     })();
     """
+
+    /// Fork (page-tools): the link the last right-click was on, and when.
+    @MainActor private static var link: (url: URL, at: TimeInterval)?
+
+    /// That link, if the right-click was just now: a page that kept the
+    /// event from Copper's listener must not get an older link copied.
+    @MainActor static var recentLink: URL? {
+        guard let link, ProcessInfo.processInfo.systemUptime - link.at < 2 else { return nil }
+        return link.url
+    }
+
+    /// Fork (page-tools): WebKit's own Copy Link, in the menu it is about to
+    /// show (PageView.willOpenMenu), swapped for one that copies the link
+    /// without its trackers (Fork/CleanLinks.swift). Its place and title stay.
+    @MainActor static func clean(_ menu: NSMenu) {
+        guard let url = recentLink,
+              let at = menu.items.firstIndex(where: { $0.identifier?.rawValue == "WKMenuItemIdentifierCopyLink" })
+        else { return }
+        let webkit = menu.items[at]
+        let ours = ImageMenuItem(webkit.title) { CleanLinks.copy(url) }
+        ours.identifier = webkit.identifier
+        menu.removeItem(at: at)
+        menu.insertItem(ours, at: at)
+    }
 
     func userContentController(
         _ controller: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
-        guard let body = message.body as? [String: Any],
-              let src = body["src"] as? String,
+        guard let body = message.body as? [String: Any] else { return }
+        MainActor.assumeIsolated {
+            ImageRelay.link = (body["link"] as? String).flatMap(URL.init(string:)).map { (url: $0, at: ProcessInfo.processInfo.systemUptime) }
+        }
+        guard let src = body["src"] as? String,
               let url = URL(string: src)
         else { return }
         MainActor.assumeIsolated { [weak self] in
@@ -66,6 +101,14 @@ extension Browser {
         guard let webView = tab.built else { return }
         let menu = NSMenu()
         menu.autoenablesItems = false
+        // Fork (page-tools): an image inside a link is the link's too.
+        if let link = ImageRelay.recentLink {
+            menu.addItem(ImageMenuItem("Open Link in New Tab") { [weak self] in
+                self?.open(link, foreground: true)
+            })
+            menu.addItem(ImageMenuItem("Copy Link") { CleanLinks.copy(link) })
+            menu.addItem(.separator())
+        }
         menu.addItem(ImageMenuItem("Open Image in New Tab") { [weak self] in
             self?.open(url, foreground: true)
         })
