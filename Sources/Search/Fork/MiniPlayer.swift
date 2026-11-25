@@ -191,31 +191,31 @@ private struct MiniPlayerStrip: View {
     @State private var hovering = false
 
     var body: some View {
-        // ±15 s go on a narrow column; play/pause stays.
-        let roomy = browser.prefs.sideWidth >= 230
-        VStack(spacing: 6) {
-            HStack(spacing: 8) {
-                Button { browser.select(tab) } label: {
-                    HStack(spacing: 8) {
-                        artwork
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(now.title.isEmpty ? tab.title : now.title)
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(tint.ink)
-                            Text(now.artist)
-                                .font(.system(size: 11))
-                                .foregroundStyle(tint.muted)
-                        }
-                        .lineLimit(1)
-                        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        // Two rows: the words get the column's whole width, the buttons
+        // their own line under them (one row cut the title to a word).
+        VStack(spacing: 4) {
+            Button { browser.select(tab) } label: {
+                HStack(spacing: 8) {
+                    artwork
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(now.title.isEmpty ? tab.title : now.title)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(tint.ink)
+                        Text(now.artist)
+                            .font(.system(size: 11))
+                            .foregroundStyle(tint.muted)
                     }
-                    .contentShape(Rectangle())
+                    .lineLimit(1)
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                 }
-                .buttonStyle(.plain)
-                .help("Go to the tab")
-                if roomy { control("gobackward.15", "Back 15 seconds", size: 12) { MiniPlayer.shared.skip(-15) } }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Go to the tab")
+            HStack(spacing: 18) {
+                control("gobackward.15", "Back 15 seconds", size: 12) { MiniPlayer.shared.skip(-15) }
                 control(now.playing ? "pause.fill" : "play.fill", now.playing ? "Pause" : "Play", size: 14) { MiniPlayer.shared.toggle() }
-                if roomy { control("goforward.15", "Forward 15 seconds", size: 12) { MiniPlayer.shared.skip(15) } }
+                control("goforward.15", "Forward 15 seconds", size: 12) { MiniPlayer.shared.skip(15) }
             }
             if now.length > 0 {
                 GeometryReader { room in
