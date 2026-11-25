@@ -198,8 +198,9 @@ jobs:
           security import "$p12" -k "$keychain" -f pkcs12 -P "$P12_PASSWORD" -T /usr/bin/codesign >/dev/null
           rm -f "$p12"
           # Apple's Developer ID G2 intermediate (public, in release/): macOS
-          # ships only the G1 one, and codesign needs the chain to sign.
-          security import release/DeveloperIDG2CA.cer -k "$keychain" >/dev/null
+          # ships only the G1 one, and codesign needs the chain to sign. A Mac
+          # with Xcode signed in may have it already ("already exists" is fine).
+          security import release/DeveloperIDG2CA.cer -k "$keychain" >/dev/null 2>&1 || true
           # codesign may use the key without a prompt nobody could answer.
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$pass" "$keychain" >/dev/null
           # On the search list too, so codesign can build the identity's chain.
