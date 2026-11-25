@@ -812,7 +812,7 @@ extension FolderSync {
         let cutoff = Date().addingTimeInterval(-90 * 86_400)
         for visit in CloudApply.visits() where visit.last >= cutoff {
             let key = "h:" + visit.key
-            let value = SyncRecords.encode(SyncRecords.Place(u: visit.url, t: visit.title, n: visit.count, l: visit.last.timeIntervalSince1970.rounded()))
+            let value = SyncRecords.encode(SyncRecords.Place(u: visit.url, t: visit.title, n: visit.count, l: visit.last.timeIntervalSince1970.rounded(), p: visit.profiles))
             guard state.base[key] != value else { continue }
             state.base[key] = value
             if state.replica.records[key]?.v != value {
@@ -826,7 +826,7 @@ extension FolderSync {
             for key in remote where !published.contains(key) {
                 guard let value = state.replica.records[key]?.v, value != state.base[key],
                       let place = SyncRecords.decode(SyncRecords.Place.self, value), let url = URL(string: place.u) else { continue }
-                browser.history.take(url, title: place.t, count: place.n, last: Date(timeIntervalSince1970: place.l))
+                browser.history.take(url, title: place.t, count: place.n, last: Date(timeIntervalSince1970: place.l), profiles: place.p)
                 state.base[key] = value
                 took += 1
             }
@@ -870,18 +870,29 @@ extension FolderSync {
         let store = Extensions.shared
         let mine = SyncRecords.of(.extensions)
         let installed = Dictionary(store.installed.filter(\.fromStore).map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
+        // Fork (ardia profiles): where each runs goes with it. A change read
+        // from the folder this cycle is taken here before anything goes out.
+        var scopes = Dictionary(store.installed.filter(\.fromStore).map { ($0.id, $0.profiles) }, uniquingKeysWith: { a, _ in a })
         let seen = Set(state.extSeen ?? [])
         var ignored = Set(state.extIgnored).subtracting(Set(installed.keys).subtracting(seen)) // installed again here: counts again
         var ops: [SyncOp] = []
         func record(_ id: String) -> SyncRecords.Ext? { state.replica.records["ext:\(id)"]?.v.flatMap { SyncRecords.decode(SyncRecords.Ext.self, $0) } }
+        if state.extSeen != nil {
+            for key in changed.filter(mine) {
+                let id = String(key.dropFirst(4))
+                guard let have = record(id), have.removed != true, let here = scopes[id], here != have.p else { continue }
+                store.setProfiles(id, have.p)
+                scopes[id] = have.p
+            }
+        }
         // Removed elsewhere, still here from before: stays, and isn't sent
         // back. (Joining is a union: what this Mac has goes out.)
         if state.extSeen != nil {
             for (id, _) in installed where seen.contains(id) && record(id)?.removed == true { ignored.insert(id) }
         }
         for (id, name) in installed where !ignored.contains(id) {
-            if let have = record(id), have.removed != true { continue }
-            ops.append(SyncOp(k: "ext:\(id)", h: "", v: SyncRecords.encode(SyncRecords.Ext(n: name))))
+            if let have = record(id), have.removed != true, have.p == scopes[id] ?? nil { continue }
+            ops.append(SyncOp(k: "ext:\(id)", h: "", v: SyncRecords.encode(SyncRecords.Ext(n: name, p: scopes[id] ?? nil))))
         }
         if state.extSeen != nil {
             for id in seen where installed[id] == nil {
@@ -895,7 +906,7 @@ extension FolderSync {
             let id = String(key.dropFirst(4))
             guard let have = record(id), have.removed != true, installed[id] == nil,
                   !installing.contains(id), !failedInstalls.contains(id) else { continue }
-            install(id, name: have.n)
+            install(id, name: have.n, profiles: have.p)
         }
         state.extIgnored = Array(ignored).sorted()
         state.extSeen = Array(installed.keys).sorted()
@@ -903,11 +914,11 @@ extension FolderSync {
     }
 
     @available(macOS 15.4, *)
-    private func install(_ id: String, name: String) {
+    private func install(_ id: String, name: String, profiles: [String]? = nil) {
         installing.insert(id)
         note("Installing \(name) from the Web Store")
         Task {
-            let landed = await Extensions.shared.installAgreed(id: id, enabled: true)
+            let landed = await Extensions.shared.installAgreed(id: id, enabled: true, profiles: profiles)
             installing.remove(id)
             if landed { state.extSeen = ((state.extSeen ?? []) + [id]).sorted() } else { failedInstalls.insert(id) }
             note(landed ? "Installed \(name)" : "Couldn't install \(name) — try again from Settings › Extensions")

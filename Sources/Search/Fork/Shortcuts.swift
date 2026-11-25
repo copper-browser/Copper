@@ -374,7 +374,8 @@ struct ShortcutTable {
     static let reserved: [String: String] = {
         var keys = ["⌘Q": "Quit", "⌘H": "Hide Copper", "⌥⌘H": "Hide Others", "⌘M": "Minimize", "⌘C": "Copy", "⌘V": "Paste",
                     "⌘X": "Cut", "⌘A": "Select All", "⌘Z": "Undo", "⇧⌘Z": "Redo", "⌘`": "the next window",
-                    "⌃⇥": "the next tab", "⌃⇧⇥": "the previous tab"]
+                    "⌃⇥": "the next tab", "⌃⇧⇥": "the previous tab",
+                    "⌥⌘←": "the space before", "⌥⌘→": "the space after"] // the profile keys (App.swift `take`, ardia profiles)
         for n in 1...9 { keys["⌘\(n)"] = "tab \(n)"; keys["⌃\(n)"] = "space \(n)" }
         return keys
     }()

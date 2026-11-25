@@ -97,6 +97,8 @@
                                        allow or take back one site it asked for (kept across launches)
     ./bench ext-manager remove ID | answer remove|cancel
                                        the Remove sheet, and its buttons
+    ./bench ext-manager profiles ID all|NAME,…
+                                       the profiles it runs in (shared = Shared); `extensions` lists profiles + runs
     ./bench updates status|check|stub URL|stage|dry-run on|off|upgrade|requirement [TEXT|off]
     ./bench updates pill [available|downloading [F]|ready|installing|failed [swap] [WHY]|off] [v=VERSION]
                                        the sidebar's update pill forced into a state (its clicks are
@@ -126,6 +128,7 @@
                                        1Password through the op CLI (SEARCH_OP_PATH may point at
                                        docs/fixtures/op-mock/op); status never holds a secret
     ./bench spaces [new NAME|select N|next|prev|move N|remove N [--keep]|profile NAME]
+    ./bench spaces history [TEXT]      the places the page in front's profile lists (⌘Y, the field)
                                        lists global pins once and loose tabs per space
     ./bench spaces [icon N EMOJI|sf:symbol|none|colour N NAME|reorder N M]
     ./bench spaces [page [N]|page close|tap N|tap header]
@@ -387,6 +390,9 @@
     ./bench icloud status|folder PATH|on|join WORD…|phrase|off [delete]|now|set DOMAIN on|off|doc DOMAIN|log|files
     ./bench icloud setting KEY VALUE|unbookmark URL|picture PATH [dark] [kit]|kit PATH
                                        iCloud sync (serverless, end-to-end encrypted, a folder + a 24-word phrase)
+    ./bench folders live [add|api URL|token-file PATH|refresh|read|open N|forget|remove|log|picture PATH]
+    ./bench folders shared [root PATH|add NAME URL [SUB]|share NAME|join LINK|links NAME|close NAME URL|rename|move|stop|let|back|now|log|files|picture|sheet]
+                                       live folders (GitHub pull requests) and shared folders (iCloud Drive)
     ./bench passkeys list|count|forget --id ID|answer yes|no|ask
                                        Copper's own test-world passkeys (no private keys in list)
     ./bench mcp transcript begin|append TEXT|live on|off|forget|share on|off|state
@@ -710,6 +716,12 @@ def main(argv):
         request["op"] = args[0] if args else "status"
         if request["op"] in ("picture", "kit", "folder") and len(args) > 1: args[1] = os.path.abspath(os.path.expanduser(args[1]))
         request["arg"] = " ".join(args[1:]) if len(args) > 1 else ""
+    elif verb == "folders":  # Fork (ardia folders): Fork/FoldersBench.swift
+        request["op"] = args[0] if args else "shared"
+        rest = args[1:]
+        if len(rest) > 1 and rest[0] in ("picture", "root", "token-file"): rest[1] = os.path.abspath(os.path.expanduser(rest[1]))
+        if len(rest) > 2 and rest[0] == "sheet": rest[-1] = os.path.abspath(os.path.expanduser(rest[-1]))
+        request["arg"] = " ".join(rest)
     elif verb == "voice":
         request["op"] = args[0] if args else "status"
         if request["op"] == "replay":
@@ -984,7 +996,7 @@ def main(argv):
     elif verb == "settings" and request["op"] == "search" and "--table" in args:
         for r in answer.get("results", []):
             print(f"{r['rank']:>2}  {r['score']:>6}  {r['page']:<12} {r['marked']}")
-    elif verb in ("cloud", "icloud"):
+    elif verb in ("cloud", "icloud", "folders"):
         print(json.dumps(answer, ensure_ascii=False, sort_keys=True, indent=2))
     elif request.get("do") == "newtab" and request.get("type"):
         if request.get("json"):
@@ -1026,6 +1038,7 @@ def main(argv):
             print(f"latency: {answer['milliseconds']:.2f} ms")
     elif verb == "spaces":
         if "slide" in answer: print(json.dumps(answer["slide"], ensure_ascii=False))
+        if "places" in answer: print(json.dumps({"profile": answer["profile"], "places": answer["places"]}, ensure_ascii=False))
         if "preview" in answer: print(json.dumps(answer["preview"], ensure_ascii=False, sort_keys=True))
         if "pinCount" in answer:
             print(f"global pins: {answer['pinCount']}")

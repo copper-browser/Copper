@@ -154,7 +154,8 @@ enum Credentials {
 
     static func touch(_ credential: Credential) {
         guard case .keychain(let host, let user) = credential.id else { return }
-        Vault.touch(Login(host: host, user: user, password: "", used: nil))
+        // Fork (ardia profiles): the drawer the profile in play reads it from.
+        Vault.touch(Vault.logins(for: host).first { $0.user == user } ?? Login(host: host, user: user, password: "", used: nil))
     }
 
     /// A keychain login as the picker sees it. `codes` is

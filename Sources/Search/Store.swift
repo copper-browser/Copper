@@ -57,6 +57,12 @@ enum Store {
     /// then as safe as wiping its folder.
     static var websites: WKWebsiteDataStore {
         if let profile = Spaces.profileStore { return profile }
+        return sharedWebsites
+    }
+
+    /// The jar of every space without a profile, whatever is being built.
+    /// (Fork: ardia profiles — the Shared extensions' pages use it.)
+    static var sharedWebsites: WKWebsiteDataStore {
         guard testing, !ownContainer else { return .default() }
         return WKWebsiteDataStore(forIdentifier: probeStore(1))
     }

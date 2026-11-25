@@ -95,6 +95,7 @@ struct ShortcutTableTests {
         #expect(table.check(KeyCombo("⌘Q"), for: .reload) == .reserved("Quit"))
         #expect(table.check(KeyCombo("⌘3"), for: .reload) == .reserved("tab 3"))
         #expect(table.check(KeyCombo("⌃⇥"), for: .reload) == .reserved("the next tab"))
+        #expect(table.check(KeyCombo("⌥⌘←"), for: .reload) == .reserved("the space before"))
         #expect(table.check(nil, for: .reload) == nil)
     }
 

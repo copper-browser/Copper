@@ -65,7 +65,7 @@ final class OnePasswordExtension: NSObject, ObservableObject, WKNavigationDelega
     /// Asks the 1Password app to let Copper connect, through the extension.
     func connect(_ id: String) {
         guard asking != .asking else { return }
-        guard let context = Extensions.shared.contexts[id],
+        guard let context = Extensions.shared.context(id), // Fork (ardia profiles): the profile in front's
               let url = URL(string: "credits.html", relativeTo: context.baseURL) else {
             asking = .refused("The 1Password extension isn't on")
             return
