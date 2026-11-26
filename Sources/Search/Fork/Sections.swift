@@ -338,7 +338,7 @@ final class Sections: ObservableObject {
                 return ["error": "sections drag ID DY [STEPS] [hold]"]
             }
             let steps = words.count > 2 ? Int(words[2]) ?? 12 : 12
-            SideHand.how = words.first { ["post", "window", "view"].contains($0) } ?? "view"
+            SideHand.how = words.first { ["post", "window", "view"].contains($0) } ?? "window"
             note = SideHand.drag(tab, dy: dy, steps: steps, hold: words.contains("hold"), in: browser)
         case "click":
             // click ID [cross]: a real click on the row, or on its cross.

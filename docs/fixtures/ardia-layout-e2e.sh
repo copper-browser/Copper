@@ -148,15 +148,13 @@ sleep 0.6
 ok "resize from the column's left edge"
 
 # 4. A row carried onto the page's left edge joins a split at the leading end.
-#    `split hover` hands SplitDrop the point a drag over the page reports:
-#    `split drag` (real mouse events) stopped reaching SwiftUI's gestures in a
-#    probe window once build.sh stamped the macOS 27 SDK (#223).
-bench split hover "$C" 0.06 0.5 >/dev/null
-sleep 0.5
+#    Real mouse events (`split drag`), held over the edge, then let go.
+drag=$(bench split drag "$C" 0.06 0.5 hold)
+sleep 1
 zone=$(bench split state | python3 -c "import json,sys; print(json.load(sys.stdin).get('zone'))")
-[ "$zone" = leading ] || fail "a row over the page's left edge: zone $zone"
+[ "$zone" = leading ] || fail "a row over the page's left edge: zone $zone ($drag)"
 shot right-drop-preview
-bench split drop "$C" >/dev/null
+bench sections release >/dev/null
 sleep 1.2
 panes=$(bench split state | python3 -c "import json,sys; print(' '.join(json.load(sys.stdin)['panes']))")
 [ "$panes" = "$C $A" ] || fail "dropped row did not join at the left: '$panes'"
