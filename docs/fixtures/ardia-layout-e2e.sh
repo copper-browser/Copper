@@ -36,7 +36,7 @@ stop() {
 }
 cleanup() {
   stop
-  [ -n "$server" ] && kill "$server" 2>/dev/null || true
+  [ -n "$server" ] && { kill "$server"; wait "$server"; } 2>/dev/null || true
   defaults delete "$domain" >/dev/null 2>&1 || true
   rm -f "$HOME/Library/Preferences/$domain.plist"
   rm -rf "$folder" "$tmp"

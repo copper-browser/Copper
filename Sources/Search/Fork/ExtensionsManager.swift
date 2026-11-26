@@ -106,7 +106,7 @@ extension Extensions {
         var denied = Extensions.deniedSites(id)
         if allowed { denied.remove(pattern.string) } else { denied.insert(pattern.string) }
         if denied.isEmpty { Extensions.forgetSites(id) } else { Store.settings.set(denied.sorted(), forKey: Extensions.deniedKey(id)) }
-        contexts[id]?.setPermissionStatus(allowed ? .grantedExplicitly : .deniedExplicitly, for: pattern)
+        for context in Extensions.contexts(of: id) { context.setPermissionStatus(allowed ? .grantedExplicitly : .deniedExplicitly, for: pattern) } // Fork (ardia profiles)
         ExtensionManager.shared.noteChange()
     }
 }
@@ -124,7 +124,7 @@ final class ExtensionFacts: ObservableObject {
     private var reading: Set<String> = []
 
     func of(_ item: Installed, in extensions: Extensions) -> WKWebExtension? {
-        if let context = extensions.contexts[item.id] { return context.webExtension }
+        if let context = extensions.context(item.id) { return context.webExtension }
         let key = item.id + "@" + item.version
         if let known = read[key] { return known }
         if !reading.contains(key) {
@@ -139,7 +139,7 @@ final class ExtensionFacts: ObservableObject {
     /// Every switched-off one read ahead, so the first look — or the
     /// bench's picture — doesn't come before its icon.
     func warm(_ extensions: Extensions) {
-        for item in extensions.installed where extensions.contexts[item.id] == nil { _ = of(item, in: extensions) }
+        for item in extensions.installed where extensions.context(item.id) == nil { _ = of(item, in: extensions) }
     }
 }
 
@@ -321,7 +321,7 @@ private struct ExtensionCardRow: View {
     /// The view the popup hangs from when it is opened from here.
     @State private var spot = ExtensionPopupSpot()
 
-    private var context: WKWebExtensionContext? { extensions.contexts[item.id] }
+    private var context: WKWebExtensionContext? { extensions.context(item.id) }
     private var found: WKWebExtension? { facts.of(item, in: extensions) }
     private var open: Bool { manager.expanded == item.id }
 
@@ -395,7 +395,7 @@ private struct ExtensionCardRow: View {
             }
             Spacer(minLength: 8)
             HStack(spacing: 10) {
-                ExtensionPin(on: item.pinned == true, usable: context?.action(for: extensions.activeAdapter) != nil) {
+                ExtensionPin(on: item.pinned == true, usable: context?.action(for: Extensions.front.activeAdapter) != nil) {
                     extensions.setPinned(item.id, item.pinned != true)
                 }
                 Switch(on: Binding(get: { item.enabled }, set: { extensions.setEnabled(item.id, $0) }), label: item.name)
@@ -425,6 +425,7 @@ private struct ExtensionCardRow: View {
             .font(.system(size: 11))
             .foregroundStyle(Palette.muted)
         if !item.fromStore { ExtensionTag("Unpacked") }
+        if let profiles = item.profiles { ExtensionTag(profiles.isEmpty ? "No profile" : profiles.map { $0.isEmpty ? "Shared" : $0 }.joined(separator: ", ")) } // Fork (ardia profiles)
         if !problems.isEmpty { ExtensionTag("\(problems.count) error\(problems.count == 1 ? "" : "s")", warn: true) }
     }
 
@@ -464,13 +465,13 @@ private struct ExtensionDetails: View {
     /// The card is too narrow to indent the details under the name.
     @State private var narrow = false
 
-    private var context: WKWebExtensionContext? { extensions.contexts[item.id] }
+    private var context: WKWebExtensionContext? { extensions.context(item.id) }
     private var found: WKWebExtension? { facts.of(item, in: extensions) }
 
     var body: some View {
         let _ = manager.changed
         VStack(alignment: .leading, spacing: 16) {
-            if let context, item.enabled, let action = context.action(for: extensions.activeAdapter) {
+            if let context, item.enabled, let action = context.action(for: Extensions.front.activeAdapter) {
                 section("Button") {
                     HStack(spacing: 8) {
                         Pill(action.presentsPopup || Extensions.popupURL(for: context) != nil ? "Open Popup" : "Press") {
@@ -492,6 +493,7 @@ private struct ExtensionDetails: View {
             section("Shy tabs") {
                 note("Never. \(Fork.name) keeps every extension out of shy tabs — they can't see them, their pages or their cookies.")
             }
+            if !Spaces.shared.profiles.isEmpty { profiles }
             source
             if !problems.isEmpty { errors }
             about
@@ -731,6 +733,28 @@ private struct ExtensionDetails: View {
         if flags.contains(.shift) { out += "⇧" }
         if flags.contains(.command) { out += "⌘" }
         return out + key.uppercased()
+    }
+
+    /// Fork (ardia profiles): the profiles whose tabs it runs in. Each keeps
+    /// its own copy of the extension's storage.
+    private var profiles: some View {
+        let names = [""] + Spaces.shared.profiles
+        func turn(_ name: String, _ on: Bool) {
+            var list = item.profiles ?? names
+            if on { if !list.contains(name) { list.append(name) } } else { list.removeAll { $0 == name } }
+            extensions.setProfiles(item.id, Set(list).isSuperset(of: names) ? nil : list)
+        }
+        return section("Profiles", trailing: item.profiles == nil ? "Every profile" : nil) {
+            note("It runs in the tabs of the profiles on here, with its own sign-ins and settings in each. Installed from a profile's tab, it runs there; from Shared, everywhere.")
+            ForEach(names, id: \.self) { name in
+                HStack {
+                    Text(name.isEmpty ? "Shared" : name).font(.system(size: 12)).foregroundStyle(Palette.ink)
+                    Spacer(minLength: 8)
+                    Switch(on: Binding(get: { item.reaches(name.isEmpty ? nil : name) }, set: { turn(name, $0) }),
+                           label: "\(item.name) in \(name.isEmpty ? "Shared" : name)")
+                }
+            }
+        }
     }
 
     private var newTabs: some View {
@@ -982,7 +1006,8 @@ extension Extensions {
 
 extension ExtensionManager {
     /// `bench ext-manager [open [ID]|close|toggle|manage|expand ID|none|search TEXT|picture PATH [light|dark]
-    /// |site ID PATTERN on|off|remove ID|answer remove|cancel]`.
+    /// |site ID PATTERN on|off|remove ID|answer remove|cancel|profiles ID all|NAME,…]` (Fork, ardia
+    /// profiles: `shared` names Shared; each extension's list says where it runs, `runs`).
     func bench(_ request: [String: Any], in browser: Browser) -> [String: Any] {
         guard #available(macOS 15.4, *) else { return ["error": "extensions need macOS 15.4"] }
         let op = request["op"] as? String ?? "status"
@@ -1011,6 +1036,9 @@ extension ExtensionManager {
                 return ["error": "ext-manager site ID PATTERN on|off"]
             }
             extensions.setSite(pattern, allowed: words[2] == "on", for: words[0])
+        case "profiles":
+            guard words.count == 2, extensions.installed.contains(where: { $0.id == words[0] }) else { return ["error": "ext-manager profiles ID all|NAME,…"] }
+            extensions.setProfiles(words[0], words[1] == "all" ? nil : words[1].split(separator: ",").map { $0 == "shared" ? "" : String($0) })
         case "remove":
             guard let item = extensions.installed.first(where: { $0.id == arg }) else { return ["error": "no extension \(arg)"] }
             ExtensionRemoval.ask(item.id, name: item.name, icon: nil)
@@ -1022,10 +1050,13 @@ extension ExtensionManager {
         default: return ["error": "unknown ext-manager op \(op)"]
         }
         return ["showing": showing, "expanded": expanded ?? "", "query": query, "extensions": extensions.installed.map { item -> [String: Any] in
-            let context = extensions.contexts[item.id]
+            let context = extensions.context(item.id)
             let asked = context?.webExtension.allRequestedMatchPatterns.sorted { $0.string < $1.string } ?? []
             return [
                 "id": item.id, "name": item.name, "enabled": item.enabled, "pinned": item.pinned ?? false,
+                // Fork (ardia profiles): where it may run ("*" every profile, "" Shared), and where it is running.
+                "profiles": item.profiles ?? ["*"],
+                "runs": Extensions.every.filter { $0.contexts[item.id] != nil }.map { Profiles.key($0.profile) }.sorted(),
                 "sites": asked.map { ["pattern": $0.string, "allowed": (context?.permissionStatus(for: $0).rawValue ?? 0) >= 2] },
                 "denied": Extensions.deniedSites(item.id).sorted(),
                 "commands": (context?.commands ?? []).map { command in ExtensionDetails.keys(command).map { "\($0) \(command.title)" } ?? command.title },

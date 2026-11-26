@@ -10,6 +10,9 @@
 # once the cert is ISSUED, run it again with CertificateArn=<the default below> to attach the name.
 # DNS lives in Cloudflare (exowatt.com zone): copper CNAME -> the DistributionDomain output,
 # DNS only (grey). Proxied would break: the zone is on Flexible SSL and this redirects to HTTPS.
+# /ping is Copper's anonymous daily ping (Sources/Search/Fork/Ping.swift): CloudFront (no cache, no
+# access logs) -> PingFunction (Lambda URL behind OAC) -> atomic ADDs in the PingTable row for the day.
+# No IP or ID is stored or logged. Read it with tools/telemetry/active.sh.
 AWSTemplateFormatVersion: '2010-09-09'
 Description: copper.exowatt.com static site (S3 + CloudFront + GitHub deploy role)
 
@@ -102,6 +105,120 @@ Resources:
                    headers: { location: { value: uri + '/' + (qs ? '?' + qs : '') } } };
         }
 
+  # One row per UTC day: d/w/m/new = pings that were the client's first that day/ISO week/month/ever,
+  # plus v#<version>, os#<major.minor>, chip#<arch> counts of that day's pings.
+  PingTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: copper-pings
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{ AttributeName: day, AttributeType: S }]
+      KeySchema: [{ AttributeName: day, KeyType: HASH }]
+
+  PingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - { Effect: Allow, Principal: { Service: lambda.amazonaws.com }, Action: sts:AssumeRole }
+      ManagedPolicyArns: [arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole]
+      Policies:
+        - PolicyName: count-pings
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - { Effect: Allow, Action: dynamodb:UpdateItem, Resource: !GetAtt PingTable.Arn }
+
+  # Lambda writes only its START/END/REPORT lines here (the code prints nothing); kept a week.
+  PingLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/copper-ping
+      RetentionInDays: 7
+
+  PingFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: PingLogs
+    Properties:
+      FunctionName: copper-ping
+      Description: Counts Copper's anonymous daily pings (copper.exowatt.com/ping)
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt PingRole.Arn
+      MemorySize: 128
+      Timeout: 5
+      Environment: { Variables: { TABLE: !Ref PingTable } }
+      Code:
+        ZipFile: |
+          import datetime, os, re
+          import boto3
+          table = boto3.resource('dynamodb').Table(os.environ['TABLE'])
+          # shortcut: anyone can send a ping, so counts trust the client; add rate limits if they get gamed.
+          SHAPE = {'v': re.compile(r'[0-9A-Za-z.-]{1,32}'), 'os': re.compile(r'[0-9]{1,3}[.][0-9]{1,3}'),
+                   'chip': re.compile(r'arm64|x86_64')}
+          def handler(event, context):
+              q = event.get('queryStringParameters') or {}
+              if q.get('d') == '1':
+                  names, adds = {}, []
+                  for i, flag in enumerate(('d', 'w', 'm', 'new')):
+                      if q.get(flag) == '1':
+                          names['#f%d' % i] = flag
+                          adds.append('#f%d :one' % i)
+                  for i, key in enumerate(('v', 'os', 'chip')):
+                      value = q.get(key, '')
+                      names['#k%d' % i] = key + '#' + (value if SHAPE[key].fullmatch(value) else 'other')
+                      adds.append('#k%d :one' % i)
+                  day = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
+                  table.update_item(Key={'day': day}, UpdateExpression='ADD ' + ', '.join(adds),
+                                    ExpressionAttributeNames=names, ExpressionAttributeValues={':one': 1})
+              return {'statusCode': 204, 'headers': {'Cache-Control': 'no-store'}}
+
+  PingUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !Ref PingFunction
+      AuthType: AWS_IAM
+
+  # Only this distribution may call the URL (CloudFront signs with the Lambda OAC below).
+  PingInvokeUrl:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PingFunction
+      Action: lambda:InvokeFunctionUrl
+      FunctionUrlAuthType: AWS_IAM
+      Principal: cloudfront.amazonaws.com
+      SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+
+  PingInvoke:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PingFunction
+      Action: lambda:InvokeFunction
+      Principal: cloudfront.amazonaws.com
+      SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+
+  PingAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub ${AWS::StackName}-ping-oac
+        OriginAccessControlOriginType: lambda
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # The ping's own fields reach the Lambda; no headers, no cookies.
+  PingRequestPolicy:
+    Type: AWS::CloudFront::OriginRequestPolicy
+    Properties:
+      OriginRequestPolicyConfig:
+        Name: !Sub ${AWS::StackName}-ping
+        QueryStringsConfig: { QueryStringBehavior: whitelist, QueryStrings: [v, os, chip, d, w, m, new] }
+        HeadersConfig: { HeaderBehavior: none }
+        CookiesConfig: { CookieBehavior: none }
+
   Distribution:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -122,6 +239,18 @@ Resources:
             DomainName: !GetAtt SiteBucket.RegionalDomainName
             OriginAccessControlId: !GetAtt OriginAccessControl.Id
             S3OriginConfig: { OriginAccessIdentity: '' }
+          - Id: ping
+            DomainName: !Select [2, !Split ['/', !GetAtt PingUrl.FunctionUrl]]
+            OriginAccessControlId: !GetAtt PingAccessControl.Id
+            CustomOriginConfig: { OriginProtocolPolicy: https-only, OriginSSLProtocols: [TLSv1.2] }
+        CacheBehaviors:
+          - PathPattern: /ping
+            TargetOriginId: ping
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # Managed-CachingDisabled
+            OriginRequestPolicyId: !Ref PingRequestPolicy
+            ResponseHeadersPolicyId: !Ref HeadersPolicy
         DefaultCacheBehavior:
           TargetOriginId: s3-site
           ViewerProtocolPolicy: redirect-to-https
@@ -180,3 +309,5 @@ Outputs:
     Value: !GetAtt Distribution.DomainName
   DeployRoleArn:
     Value: !GetAtt DeployRole.Arn
+  PingTableName:
+    Value: !Ref PingTable

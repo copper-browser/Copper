@@ -85,6 +85,10 @@ final class Preferences: ObservableObject {
     @Published var sleepsTabs: Bool {
         didSet { store.set(sleepsTabs, forKey: "tabs.sleep") }
     }
+    /// Fork (telemetry): the anonymous daily ping (Fork/Ping.swift). On unless turned off.
+    @Published var pings: Bool {
+        didSet { store.set(pings, forKey: "ping") }
+    }
     /// The ad blocker. On unless turned off; there is nothing else to it.
     @Published var shielded: Bool {
         didSet { store.set(shielded, forKey: "shield") }
@@ -190,6 +194,7 @@ final class Preferences: ObservableObject {
         swipeDirection = store.string(forKey: "spaces.swipe").flatMap(SwipeDirection.init) ?? .system
         sleepsTabs = store.object(forKey: "tabs.sleep") as? Bool ?? true
         shielded = store.object(forKey: "shield") as? Bool ?? true
+        pings = store.object(forKey: "ping") as? Bool ?? true // Fork (telemetry)
         // Offered by default only in a build that can actually do them —
         // one with Apple's browser entitlement and its profile embedded. A
         // choice made while they couldn't work is not a choice about them:

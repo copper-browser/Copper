@@ -49,6 +49,13 @@ private struct Visit: Codable {
     var title: String
     var count: Int
     var last: Date
+    /// Fork (ardia profiles): the profiles it was visited in, which alone see
+    /// it; nil when it was visited in Shared (or before profiles kept their
+    /// own history), which every profile sees.
+    var profiles: [String]? = nil
+
+    func seen(by viewer: String?) -> Bool { History.sees(profiles, viewer) }
+    mutating func widen(_ profile: String?) { profiles = History.widened(profiles, by: profile) }
 }
 
 @MainActor
@@ -60,10 +67,26 @@ final class History: ObservableObject {
     /// was worked out from history knows when it has gone stale.
     private var generation = 0
     /// Fork (new-tab-launcher): `recent`'s answer, and the history it was for.
-    private var lately: (generation: Int, limit: Int, traces: [Trace])?
+    private var lately: (generation: Int, limit: Int, viewer: String?, traces: [Trace])?
+    /// Fork (ardia profiles): the profile the last snapshot was taken for.
+    private var snapshotViewer: String??
     private var saving = false
 
     init() { load() }
+
+    /// Fork (ardia profiles): whether a window of `viewer` (nil: Shared)
+    /// lists a place the `profiles` went to (nil: Shared, everyone's).
+    nonisolated static func sees(_ profiles: [String]?, _ viewer: String?) -> Bool {
+        guard let profiles else { return true }
+        return viewer.map(profiles.contains) ?? false
+    }
+
+    /// Fork (ardia profiles): who sees a place once it is visited again in
+    /// `profile` — that one too; Shared makes it everyone's.
+    nonisolated static func widened(_ profiles: [String]?, by profile: String?) -> [String]? {
+        guard let profile, let profiles else { return nil }
+        return profiles.contains(profile) ? profiles : profiles + [profile]
+    }
 
     /// How many distinct places are kept, including places brought in from
     /// another browser. The address field uses this to decide whether a first
@@ -72,7 +95,10 @@ final class History: ObservableObject {
 
     // MARK: - writing
 
-    func record(_ url: URL, title: String) {
+    func record(_ url: URL, title: String) { record(url, title: title, profile: Profiles.current) }
+
+    /// Fork (ardia profiles): `profile` is the tab's; its places stay its own.
+    func record(_ url: URL, title: String, profile: String?) {
         guard url.scheme == "http" || url.scheme == "https" else { return }
         let key = Address.pretty(url).lowercased()
         guard !key.isEmpty else { return }
@@ -84,10 +110,11 @@ final class History: ObservableObject {
         if let host = url.host(), key.contains("/") {
             let root = (host.hasPrefix("www.") ? String(host.dropFirst(4)) : host).lowercased()
             var home = visits[root] ?? Visit(
-                url: "https://" + root + "/", key: root, title: "", count: 0, last: Date()
+                url: "https://" + root + "/", key: root, title: "", count: 0, last: Date(), profiles: profile.map { [$0] }
             )
             home.count += 1
             home.last = Date()
+            home.widen(profile)
             visits[root] = home
         }
 
@@ -96,6 +123,7 @@ final class History: ObservableObject {
             seen.last = Date()
             seen.url = url.absoluteString
             if !title.isEmpty { seen.title = title }
+            seen.widen(profile)
             visits[key] = seen
         } else {
             visits[key] = Visit(
@@ -103,7 +131,8 @@ final class History: ObservableObject {
                 key: key,
                 title: title,
                 count: 1,
-                last: Date()
+                last: Date(),
+                profiles: profile.map { [$0] }
             )
         }
         save()
@@ -112,7 +141,9 @@ final class History: ObservableObject {
     /// Somewhere another browser has been. Counted as it was counted there,
     /// so a site visited daily for a year outranks one seen once — the day
     /// you switch, the field already knows you.
-    func take(_ url: URL, title: String, count: Int, last: Date) {
+    /// Fork (ardia profiles): `profiles` as iCloud sync carries them; nil
+    /// (an import, Copper Cloud) is Shared.
+    func take(_ url: URL, title: String, count: Int, last: Date, profiles: [String]? = nil) {
         guard url.scheme == "http" || url.scheme == "https" else { return }
         let key = Address.pretty(url).lowercased()
         guard !key.isEmpty else { return }
@@ -122,9 +153,10 @@ final class History: ObservableObject {
             seen.count = max(seen.count, count)
             if last > seen.last { seen.last = last }
             if !title.isEmpty && (seen.title.isEmpty || last >= seen.last) { seen.title = title }
+            if let profiles { profiles.forEach { seen.widen($0) } } else { seen.widen(nil) }
             visits[key] = seen
         } else {
-            visits[key] = Visit(url: url.absoluteString, key: key, title: title, count: count, last: last)
+            visits[key] = Visit(url: url.absoluteString, key: key, title: title, count: count, last: last, profiles: profiles)
         }
     }
 
@@ -159,7 +191,9 @@ final class History: ObservableObject {
 
     func everything(matching typed: String = "") -> [Trace] {
         let needle = typed.trimmingCharacters(in: .whitespaces).lowercased()
+        let viewer = Profiles.current // Fork (ardia profiles)
         return visits.values
+            .filter { $0.seen(by: viewer) }
             // Every visit to a page also credits its domain, so the address
             // field can offer the front door. Those credits have no title of
             // their own, and in a list of where you have been they are a second
@@ -191,16 +225,17 @@ final class History: ObservableObject {
     /// main thread for a tenth of a second each time. One pass keeps the
     /// eight, and the answer stands until history changes.
     func recent(_ limit: Int) -> [Trace] {
-        if let lately, lately.generation == generation, lately.limit == limit { return lately.traces }
+        let viewer = Profiles.current // Fork (ardia profiles)
+        if let lately, lately.generation == generation, lately.limit == limit, lately.viewer == viewer { return lately.traces }
         var kept: [Trace] = []
-        for visit in visits.values where !(visit.title.isEmpty && !visit.key.contains("/")) {
+        for visit in visits.values where !(visit.title.isEmpty && !visit.key.contains("/")) && visit.seen(by: viewer) {
             if kept.count == limit, let oldest = kept.last, visit.last <= oldest.last { continue }
             guard let url = URL(string: visit.url) else { continue }
             let trace = Trace(key: visit.key, title: visit.title, url: url, last: visit.last, count: visit.count)
             kept.insert(trace, at: kept.firstIndex { $0.last < trace.last } ?? kept.endIndex)
             if kept.count > limit { kept.removeLast() }
         }
-        lately = (generation, limit, kept)
+        lately = (generation, limit, viewer, kept)
         return kept
     }
 
@@ -232,17 +267,28 @@ final class History: ObservableObject {
         fileprivate let visits: [String: Visit]
         /// Which history this is: the same number, the same places.
         let generation: Int
+        /// Fork (ardia profiles): whose places these are.
+        let viewer: String?
 
         /// Every place, flat, each title lowercased once here rather than
         /// once per keystroke.
         func places() -> [Place] {
-            visits.values.map {
+            visits.values.filter { $0.seen(by: viewer) }.map {
                 Place(key: $0.key, title: $0.title, lowered: $0.title.lowercased(), url: $0.url, count: $0.count, last: $0.last)
             }
         }
     }
 
-    var snapshot: Snapshot { Snapshot(visits: visits, generation: generation) }
+    var snapshot: Snapshot {
+        // Fork (ardia profiles): another profile's places are another
+        // history to whoever kept the last one's, so it is a new generation.
+        let viewer = Profiles.current
+        if snapshotViewer != .some(viewer) {
+            snapshotViewer = viewer
+            generation &+= 1
+        }
+        return Snapshot(visits: visits, generation: generation, viewer: viewer)
+    }
 
     /// Best matches first. A place you have been always beats a place the app
     /// merely knows the name of, and among places you have been, one you go to
@@ -257,7 +303,8 @@ final class History: ObservableObject {
         let now = Date()
         var scored: [(Suggestion, Double)] = []
 
-        for visit in visits.values {
+        let viewer = Profiles.current // Fork (ardia profiles)
+        for visit in visits.values where visit.seen(by: viewer) {
             guard let rank = rank(visit.key, against: needle) else { continue }
             guard let url = URL(string: visit.url) else { continue }
             scored.append((

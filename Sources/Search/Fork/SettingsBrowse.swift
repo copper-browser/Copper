@@ -210,6 +210,7 @@ enum SettingsBrowseBench {
         return [
             "look": prefs.look.rawValue,
             "searchEngine": SearchEngines.current.id, // Fork (omnibox)
+            "searchSuggestions": SearchEngines.suggests, // Fork (suggest)
             "autocorrect": prefs.autocorrect,
             "sheer": prefs.sheer,
             "webkitAutocorrect": UserDefaults.standard.bool(forKey: "WebAutomaticSpellingCorrectionEnabled"),

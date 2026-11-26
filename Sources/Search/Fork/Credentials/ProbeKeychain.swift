@@ -40,6 +40,8 @@ enum ProbeKeychain {
         var used: Double?
         /// Fork (origin-save): where it was saved from, when the save knew.
         var origin: String?
+        /// Fork (ardia profiles): the profile's drawer it is in; nil, Shared's.
+        var profile: String?
     }
 
     struct Passkey: Codable, Equatable {
@@ -71,10 +73,10 @@ enum ProbeKeychain {
 
     /// Rows as the keychain would list them: server, account and the
     /// "last used" comment — never the secret.
-    nonisolated static func rows(server: String?) -> [[String: Any]] {
+    nonisolated static func rows(server: String?, drawer: String? = nil) -> [[String: Any]] {
         lock.lock(); defer { lock.unlock() }
         return read().passwords
-            .filter { server == nil || $0.host == server }
+            .filter { (server == nil || $0.host == server) && $0.profile == drawer }
             .map { item in
                 var row: [String: Any] = [kSecAttrServer as String: item.host, kSecAttrAccount as String: item.user]
                 if let used = item.used { row[kSecAttrComment as String] = String(used) }
@@ -83,37 +85,37 @@ enum ProbeKeychain {
             }
     }
 
-    nonisolated static func secret(host: String, user: String) -> String? {
+    nonisolated static func secret(host: String, user: String, drawer: String? = nil) -> String? {
         lock.lock(); defer { lock.unlock() }
-        return read().passwords.first { $0.host == host && $0.user == user }?.password
+        return read().passwords.first { $0.host == host && $0.user == user && $0.profile == drawer }?.password
     }
 
-    nonisolated static func save(host: String, user: String, password: String, used: Date?, origin: String? = nil) -> Bool {
+    nonisolated static func save(host: String, user: String, password: String, used: Date?, origin: String? = nil, drawer: String? = nil) -> Bool {
         lock.lock(); defer { lock.unlock() }
         var disk = read()
-        if let at = disk.passwords.firstIndex(where: { $0.host == host && $0.user == user }) {
+        if let at = disk.passwords.firstIndex(where: { $0.host == host && $0.user == user && $0.profile == drawer }) {
             disk.passwords[at].password = password
             if let used { disk.passwords[at].used = used.timeIntervalSince1970 }
             if let origin { disk.passwords[at].origin = origin }
         } else {
-            disk.passwords.append(Item(host: host, user: user, password: password, used: used?.timeIntervalSince1970, origin: origin))
+            disk.passwords.append(Item(host: host, user: user, password: password, used: used?.timeIntervalSince1970, origin: origin, profile: drawer))
         }
         write(disk)
         return true
     }
 
-    nonisolated static func touch(host: String, user: String) {
+    nonisolated static func touch(host: String, user: String, drawer: String? = nil) {
         lock.lock(); defer { lock.unlock() }
         var disk = read()
-        guard let at = disk.passwords.firstIndex(where: { $0.host == host && $0.user == user }) else { return }
+        guard let at = disk.passwords.firstIndex(where: { $0.host == host && $0.user == user && $0.profile == drawer }) else { return }
         disk.passwords[at].used = Date().timeIntervalSince1970
         write(disk)
     }
 
-    nonisolated static func forget(host: String, user: String) {
+    nonisolated static func forget(host: String, user: String, drawer: String? = nil) {
         lock.lock(); defer { lock.unlock() }
         var disk = read()
-        disk.passwords.removeAll { $0.host == host && $0.user == user }
+        disk.passwords.removeAll { $0.host == host && $0.user == user && $0.profile == drawer }
         write(disk)
     }
 

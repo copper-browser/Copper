@@ -105,6 +105,9 @@ struct SideBar: View {
             // the foot, not over the page (Fork/MCP/HandsUI.swift).
             DriveSlot(browser: browser, activeID: browser.activeID)
 
+            MiniPlayerSlot(browser: browser) // Fork (ardia polish): a tab you left that plays (Fork/MiniPlayer.swift)
+            UpdateNewsSlot(browser: browser) // Fork (ardia polish): once, after an update (Fork/UpdateNews.swift)
+
             // Fork (update-pill): Arc's update button, just above the foot,
             // only while there is a newer Copper (Fork/UpdatePill.swift).
             UpdatePillSlot(browser: browser)
@@ -357,6 +360,7 @@ struct SideBar: View {
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(SavedDrop.space)) } action: { SideDrag.of(browser).header = $0 } // Fork (saved-drag)
                     if drag.slot { SavedDropSlot(drag: drag, tint: tint) } // Fork (saved-drag): an empty Saved block's drop target
                     rows(kept, homeless: true, block: .saved)
+                    LiveFolderBlock(browser: browser, tint: tint) // Fork (ardia folders): GitHub pull requests, Fork/LiveFoldersUI.swift
                     if !today.isEmpty {
                         if clearCount > 0 {
                             ClearTabsDivider(browser: browser, tint: tint, count: clearCount)

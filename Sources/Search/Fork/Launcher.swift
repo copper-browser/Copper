@@ -229,7 +229,8 @@ final class Launcher: ObservableObject {
             row.hint = pageHint(browser)
             if keep(row) { searches.append(row) }
         }
-        let words = completions[needle] ?? lastCompletions.filter { $0.lowercased().hasPrefix(needle) }
+        // Fork (suggest): with suggestions off, none kept from before shows either.
+        let words = !SearchEngines.suggests ? [] : completions[needle] ?? lastCompletions.filter { $0.lowercased().hasPrefix(needle) }
         var phrases = 0
         for phrase in words where phrase.lowercased() != needle {
             guard let url = Google.url(for: phrase) else { continue }
@@ -613,10 +614,9 @@ final class Launcher: ObservableObject {
         if fetch != nil { fetch?.cancel(); fetch = nil; dropped += 1 }
         // A command is not a search, and a pasted address with its scheme is
         // not a query anyone completes. Fork (omnibox): nor is a sum, a .new
-        // or a !bang, worked out here; and an engine with no completions is
-        // asked nothing.
-        guard completions[needle] == nil, !needle.hasPrefix("/"), !needle.contains("://"),
-              !SearchEngines.local(needle), SearchEngines.current.suggest != nil else { return }
+        // or a !bang, worked out here; an engine with no completions, or
+        // Search suggestions turned off, asks nothing (SearchEngines.suggestURL).
+        guard completions[needle] == nil, SearchEngines.suggestURL(for: needle) != nil else { return }
         let work = DispatchWorkItem { [weak self] in self?.ask(needle) }
         waiting = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
@@ -625,7 +625,7 @@ final class Launcher: ObservableObject {
     private func ask(_ needle: String) {
         guard asked.lowercased() == needle else { return }
         // Fork (omnibox): the picked engine's own completions (Fork/SearchEngines).
-        guard let template = SearchEngines.current.suggest, let url = SearchEngines.fill(template, with: needle) else { return }
+        guard let url = SearchEngines.suggestURL(for: needle) else { return }
         sent += 1
         // Offline, refused or slow: the group simply never appears. There is
         // nothing to tell anyone — the search row above it still works.
