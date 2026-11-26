@@ -21,7 +21,6 @@ struct SettingsPanel: View {
     @State private var isDefault = SettingsDefaultBrowser.isDefault // Fork (settings-perf): one LaunchServices ask per opening, not per redraw
     /// Fork (settings-revamp): the panel's own width, for the rail's.
     @State private var width: CGFloat = 900
-    @State private var allShortcuts = false // Fork (settings-merge): About's shortcut list folds
     /// Fork (settings-revamp): the page has scrolled under its header.
     /// Fork (settings-perf): an object only the header's hairline watches,
     /// so crossing the edge redraws the hairline rather than the panel.
@@ -43,6 +42,7 @@ struct SettingsPanel: View {
 
     enum Page: String, CaseIterable, Identifiable {
         case general, tabs, spaces, intelligence, agents, cloud, extensions, passwords, privacy, about // Fork: spaces, intelligence, agents, cloud (settings-merge: downloads → General, labs → Tabs, voice → Intelligence, addons → Extensions, updates → About)
+        case shortcuts // Fork (ardia-shortcuts): Fork/ShortcutsSettings.swift
         var id: String { rawValue }
         var title: String {
             switch self {
@@ -56,6 +56,7 @@ struct SettingsPanel: View {
             case .passwords: return "Passwords"
             case .privacy: return "Privacy"
             case .about: return "About"
+            case .shortcuts: return "Shortcuts" // Fork (ardia-shortcuts)
             }
         }
         var icon: String {
@@ -70,6 +71,7 @@ struct SettingsPanel: View {
             case .passwords: return "key"
             case .privacy: return "hand.raised"
             case .about: return "info.circle"
+            case .shortcuts: return "command" // Fork (ardia-shortcuts)
             }
         }
     }
@@ -237,6 +239,7 @@ struct SettingsPanel: View {
                         case .passwords: passwords
                         case .privacy: privacy
                         case .about: about
+                        case .shortcuts: ShortcutsPage() // Fork (ardia-shortcuts)
                         }
                     }
                 }
@@ -557,25 +560,6 @@ struct SettingsPanel: View {
             }
 
             CrashesSection() // Fork: the last crash, only when there is one (Fork/CrashesUI.swift)
-
-            SettingsSection("Keyboard shortcuts", carded: false) {
-                Card {
-                    // Fork (settings-merge): the list was twenty rows ending every About;
-                    // folded, it is one row. Search still finds each keystroke.
-                    Line("Every keystroke Copper answers to", "\(SettingsShortcuts.all.count) shortcuts, from ⌘L to ⌘,") {
-                        Pill(allShortcuts ? "Hide" : "Show") { withAnimation(Motion.settle) { allShortcuts.toggle() } }
-                            .accessibilityLabel(allShortcuts ? "Hide keyboard shortcuts" : "Show keyboard shortcuts")
-                    }
-                    if allShortcuts {
-                        ForEach(Array(SettingsShortcuts.all.enumerated()), id: \.offset) { _, shortcut in
-                            Rule()
-                            Shortcut(shortcut.keys, shortcut.does)
-                        }
-                    }
-                }
-                .settingsAnchor("about.shortcuts", card: true)
-            }
-            .task(id: finder.pending?.anchor) { if finder.pending?.anchor == "about.shortcuts" { allShortcuts = true } } // a search for a shortcut opens the list
         }
     }
 
@@ -593,29 +577,6 @@ struct SettingsPanel: View {
         let prefs = prefs
         SettingsPanels.present(panel, on: Windows.window(of: browser)) { url in
             if let url { prefs.downloads = url }
-        }
-    }
-
-    // MARK: - pieces
-
-    /// A keystroke and what it does.
-    private struct Shortcut: View {
-        let keys: String
-        let does: String
-        init(_ keys: String, _ does: String) { self.keys = keys; self.does = does }
-
-        var body: some View {
-            HStack {
-                Text(does)
-                    .font(.system(size: 13))
-                    .foregroundStyle(Palette.ink)
-                Spacer()
-                Text(keys)
-                    .font(.system(size: 12.5, design: .rounded))
-                    .foregroundStyle(SettingsInk.detail) // Fork (settings-revamp)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
         }
     }
 }

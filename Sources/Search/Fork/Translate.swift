@@ -563,14 +563,17 @@ struct TranslateOfferCard: View {
 /// View › Translate Page / Show Original and Never Translate This Site, under Reading Mode (App.swift).
 struct TranslateItems: View {
     let browser: Browser
+    @ObservedObject var keys = Shortcuts.shared // Fork (ardia-shortcuts)
 
     var body: some View {
         if PageTranslate.available {
             let translate = PageTranslate.shared
             let tab = browser.active
             Button(translate.translated(tab) ? "Show Original" : "Translate Page") { translate.toggle(in: browser) }
+                .shortcut(.translate)
                 .disabled(tab?.isBlank ?? true)
             Toggle("Never Translate This Site", isOn: Binding(get: { translate.isNever(tab) }, set: { _ in translate.toggleNever(in: browser) }))
+                .shortcut(.neverTranslate)
                 .disabled(tab?.address?.host == nil)
         }
     }

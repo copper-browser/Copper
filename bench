@@ -463,6 +463,11 @@
                  try URL [APP]|route URL [APP]|last|from PID]
                                        Air Traffic Control: the rules, add one, Everything else, what a link from
                                        APP would do, route one for real (as from another app), the last routed
+    ./bench shortcuts [list|set ID KEYS|none|record ID|replace|cancel|reset ID|all|menu|press KEYS|picture PATH [dark]]
+                                       Settings › Shortcuts: every menu command and its key; give one new keys
+                                       (a key another holds asks: replace or cancel); record = the next key
+                                       pressed (bench key --app) is the row's; menu = the menu bar's keys;
+                                       press = a keystroke handed to the menu bar (test worlds); a PNG
     ./bench mouse back|forward|middle [X Y] [--shift] [--window N]
                                        a click of that mouse button at window point X Y (top-left
                                        origin; the page's middle by default), through the app's routing;
@@ -748,8 +753,9 @@ def main(argv):
     elif verb == "player":  # Fork (ardia polish): Fork/MiniPlayer.swift
         request["op"] = args[0] if args else "state"
         request["arg"] = " ".join(args[1:])
-    elif verb in ("little", "peek", "atc"):  # Fork (ardia: windows)
+    elif verb in ("little", "peek", "atc", "shortcuts"):  # Fork (ardia: windows); (ardia-shortcuts)
         request["op"] = args[0] if args else ("state" if verb == "peek" else "list")
+        if verb == "shortcuts" and request["op"] == "picture" and len(args) > 1: args[1] = os.path.abspath(args[1])
         request["arg"] = " ".join(args[1:]) if len(args) > 1 else ""
     elif verb in ("spaces", "groups", "sections", "agent", "ai", "updates", "bw", "op", "downloads", "drive", "ext-manager", "windows", "pace", "calendar", "pins", "covers"):
         request["op"] = args[0] if args else ("status" if verb in ("updates", "bw", "op", "drive", "pace", "covers") else "state" if verb == "calendar" else "list")

@@ -81,6 +81,7 @@ enum Fork {
         case "little": return Little.bench(request) // Fork (ardia: windows)
         case "peek": return Peek.bench(request, in: Windows.current) // Fork (ardia: windows)
         case "atc": return AirTraffic.bench(request) // Fork (ardia: windows)
+        case "shortcuts": return Shortcuts.bench(request) // Fork (ardia-shortcuts)
         case "tasks": return TaskManager.bench(request) // Fork (ardia: automation)
         case "handoff": return PageHandoff.bench() // Fork (ardia: automation)
         case "ai":

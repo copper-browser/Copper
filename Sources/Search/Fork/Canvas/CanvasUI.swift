@@ -161,7 +161,7 @@ struct CanvasDoor: View {
         if mentioned > 0 { parts.append("\(mentioned) mention\(mentioned == 1 ? "" : "s") of you") }
         if waiting > 0 { parts.append("\(waiting) invitation\(waiting == 1 ? "" : "s")") }
         if others > 0 { parts.append(CanvasRow.live(others)) }
-        return parts.joined(separator: " · ") + "   ⌘⇧O"
+        return parts.joined(separator: " · ") + Shortcuts.hint(.canvas) // Fork (ardia-shortcuts)
     }
 
     var body: some View {

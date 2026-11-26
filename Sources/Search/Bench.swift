@@ -263,7 +263,7 @@ final class Bench {
 
         case "player": answer(MiniPlayer.bench(request, in: browser)) // Fork (ardia polish): Fork/MiniPlayer.swift
 
-        case "little", "peek", "atc": // Fork (ardia: windows): Fork/Little.swift, Fork/Peek.swift, Fork/AirTraffic.swift
+        case "little", "peek", "atc", "shortcuts": // Fork (ardia: windows): Fork/Little.swift, Fork/Peek.swift, Fork/AirTraffic.swift; (ardia-shortcuts) Fork/Shortcuts.swift
             answer(Fork.bench(verb, request, in: browser))
 
         case "tasks", "handoff": // Fork (ardia: automation): Fork/TaskManager.swift, Fork/PageHandoff.swift
