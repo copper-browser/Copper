@@ -153,7 +153,7 @@ final class SharedFolders: ObservableObject {
     static let shared = SharedFolders()
     nonisolated static let scopeID = "folder"
     nonisolated static let directory = "Copper Shared"
-    static let service = "Copper Shared Folder"
+    nonisolated static let service = "Copper Shared Folder"
     nonisolated static let io = DispatchQueue(label: "copper.shared-folders", qos: .utility)
 
     struct Binding: Codable, Equatable, Identifiable {

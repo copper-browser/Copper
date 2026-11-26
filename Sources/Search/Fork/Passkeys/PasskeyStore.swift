@@ -62,23 +62,23 @@ enum PasskeyStore {
                 .sorted { $0.created > $1.created }
         }
         var out: CFTypeRef?
-        let status = SecItemCopyMatching([
+        let status = CopperKeychain.copyMatching([ // Fork (exowatt signing)
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecReturnAttributes as String: true,
             kSecMatchLimit as String: kSecMatchLimitAll,
-        ] as CFDictionary, &out)
+        ], &out)
         guard status == errSecSuccess, let rows = out as? [[String: Any]] else { return [] }
         return rows.compactMap { row in
             guard let account = row[kSecAttrAccount as String] as? String else { return nil }
             var value: CFTypeRef?
-            let itemStatus = SecItemCopyMatching([
+            let itemStatus = CopperKeychain.copyMatching([
                 kSecClass as String: kSecClassGenericPassword,
                 kSecAttrService as String: service,
                 kSecAttrAccount as String: account,
                 kSecReturnData as String: true,
                 kSecMatchLimit as String: kSecMatchLimitOne,
-            ] as CFDictionary, &value)
+            ], &value)
             guard itemStatus == errSecSuccess, let data = value as? Data else { return nil }
             return try? JSONDecoder().decode(Wire.self, from: data).credential
         }.sorted { $0.created > $1.created }
@@ -108,12 +108,7 @@ enum PasskeyStore {
             kSecValueData as String: data,
             kSecAttrLabel as String: "\(credential.rpId) — \(credential.label)",
         ]
-        let status = SecItemUpdate(identity as CFDictionary, fields as CFDictionary)
-        if status == errSecSuccess { return true }
-        guard status == errSecItemNotFound else { return false }
-        var fresh = identity.merging(fields) { _, new in new }
-        fresh[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
-        return SecItemAdd(fresh as CFDictionary, nil) == errSecSuccess
+        return CopperKeychain.save(identity, fields) // Fork (exowatt signing): update, else add
     }
 
     /// One passkey was just used: bump the counter, note the time.
@@ -126,11 +121,11 @@ enum PasskeyStore {
 
     static func forget(id: Data) {
         if ProbeKeychain.active { return ProbeKeychain.forgetPasskey(id.base64URL) }
-        SecItemDelete([
+        CopperKeychain.delete([ // Fork (exowatt signing)
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: id.base64URL,
-        ] as CFDictionary)
+        ])
     }
 
     /// A fresh passkey for a site: new key, new 16-byte id.

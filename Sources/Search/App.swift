@@ -16,6 +16,7 @@ struct SearchApp: App {
         Pace.start() // Fork (pace): the launch clock and the main-thread watch, first (Fork/Pace.swift)
         Instance.acquireIfNeeded() // Fork: one process per world, before anything is restored (Fork/Instance.swift)
         Fork.migratePasskeysPreference()
+        CopperKeychain.sweepSoon() // Fork (exowatt signing): are any old login-keychain items left? (Fork/Credentials/CopperKeychain.swift)
         Bridge.runIfAsked()
         Voice.shared.boot() // Fork (voice): the speech engine behind Settings › Voice, and ⌃⇧D (Fork/Voice/VoiceSession.swift)
     } // Fork: `--mcp-stdio` pipes to the running app and exits

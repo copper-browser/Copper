@@ -1,34 +1,42 @@
 #!/bin/bash
-# Cut a Copper release from Felipe's laptop, without GitHub Actions: build on
-# his Mac mini, sign here, check, launch, publish.
+# Cut a Copper release from a Mac, without GitHub Actions: build, sign with
+# Exowatt's Developer ID, notarize, check, launch, publish.
 #
 #   release/release-local.sh --dry-run          everything but the tag, the release and the upload
 #   release/release-local.sh                    publish fork's HEAD as the next version
 #   release/release-local.sh --version 1.0.20261111.106 [--dry-run]
 #   release/release-local.sh --preflight        only the checks before the build
 #
-#   COPPER_RELEASE_REMOTE_DIR='~/farm/copper-release' release/release-local.sh …
-#                                               build in another folder on the mini
-#                                               (default: its external disk)
+#   COPPER_RELEASE_BUILD_HERE=~/src/sign-builds/copper release/release-local.sh …
+#                                               build on this Mac, in that folder
+#                                               (default: on the mini, in REMOTE_DIR)
+#   COPPER_RELEASE_REMOTE_DIR='~/sign-builds/copper' release/release-local.sh …
+#                                               the folder on the mini for the build
+#                                               and the launch check
 #
 # What it makes is what .github/workflows/release.yml makes — the same build
-# commands and checks, the same signature (Copper's Developer ID, the hardened
-# runtime, Copper.entitlements and the requirement in
-# release/designated-requirement.txt), notarized and stapled, the same assets, the same
-# copper-version.json and the same release text — so the updater, the curl
-# installer and the Homebrew tap can't tell which path cut a release. The
+# commands and checks, the same signature (release/package-app.sh: Exowatt's
+# Developer ID, the hardened runtime, the provisioning profile, the
+# entitlements it allows and the requirement in
+# release/designated-requirement.txt), notarized and stapled, the same assets,
+# the same copper-version.json and the same release text — so the updater, the
+# curl installer and the Homebrew tap can't tell which path cut a release. The
 # workflow still exists for Collin's runner; this is the path that uses no
 # GitHub Actions at all (docs/releasing.md › Cutting a release without GitHub
 # Actions).
 #
 # Where each part runs, and why:
-#   - The laptop: preflight, version, signing, notarizing, packaging,
-#     publishing. The Developer ID key and the notary key
-#     (~/.config/copper-developer-id, 0600) never leave it, and no keychain is
-#     involved anywhere: rcodesign reads the p12 itself, notarytool the .p8.
-#   - The Mac mini (MINI below): both builds, the Xos test and the launch
-#     check. It has the full Xcode, Rosetta and the cores; the job folder
-#     (REMOTE_DIR below) is deleted at the end, whatever happened.
+#   - This Mac: preflight, version, signing, notarizing, packaging,
+#     publishing. The Developer ID key and the App Store Connect key
+#     (exo-macsign's: EXO_MACSIGN_* or ~/.config/exowatt-apple-signing, 0600)
+#     never leave it, and no keychain is involved anywhere: rcodesign reads the
+#     .p12 itself, notarytool the .p8.
+#   - The builds and the Xos test: here when COPPER_RELEASE_BUILD_HERE names a
+#     folder, otherwise on the Mac mini (MINI below). One heavy job at a time
+#     on either: the build waits for COPPER_RELEASE_LOCK (lockf), at nice 10.
+#   - The launch check: on the mini, always, in a session nobody is using,
+#     with Rosetta for the Intel build. Only the two zips go there; the job
+#     folder (REMOTE_DIR below) is deleted at the end, whatever happened.
 #
 # The version is <VERSION file>.<UTC YYYYMMDD>.<n>, n one more than the highest
 # trailing number of any v… tag or release in copper-browser/Copper. The
@@ -41,30 +49,29 @@ set -euo pipefail
 
 REPO=copper-browser/Copper
 MINI=felipe-exowatt@100.112.175.26
-# Where the job folder goes on the mini: the external disk, since the internal
-# one is nearly full. When the external one is full instead, point this at
-# '~/farm/copper-release' (the internal disk, quoted so ~ is the mini's) for the run.
-REMOTE_DIR="${COPPER_RELEASE_REMOTE_DIR:-/Volumes/Farm/farm-exowatt/copper-release}"
-# Free space the job wants there. The build compiles three configurations
-# (arm64 release, the debug build swift test needs, x86_64 release), each
-# about 1 GB of .build on the mini, plus the sources and the two apps with
-# their dSYMs: about 3.5 GB. The build reports what it used.
-REMOTE_FREE_GB=5
-SIGNING=$HOME/.config/copper-developer-id
-P12=$SIGNING/copper-developer-id.p12
-P12_PASSWORD=$SIGNING/p12-password
-# The App Store Connect API key notarytool signs in with: AuthKey_<key id>.p8
-# beside the issuer's id in notary-issuer (docs/releasing.md › Keeping the key).
-NOTARY_ISSUER=$SIGNING/notary-issuer
-# rcodesign (apple-codesign), pinned: the tarball's SHA-256 as the project
-# publishes it, and the binary inside it.
-RCODESIGN_VERSION=0.29.0
-RCODESIGN_TARBALL=apple-codesign-$RCODESIGN_VERSION-macos-universal.tar.gz
-RCODESIGN_TARBALL_SHA256=d98372d5524226ccf9dc0eda03d4e4f5826182dabb2fc3f2bd303ed9113a748d
-RCODESIGN_SHA256=75ef370d4de9fc99d8b26a168bed9c256da8364d8b9fdb2be762ab42fc6a9978
-RCODESIGN_URL=https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign/$RCODESIGN_VERSION/$RCODESIGN_TARBALL
+# Where the job folder goes on the mini: its internal disk (quoted, so ~ is
+# the mini's). The external one, /Volumes/Farm, can hang a shell that only
+# lists it while macOS waits on a removable-volume prompt nobody sees.
+REMOTE_DIR="${COPPER_RELEASE_REMOTE_DIR:-~/sign-builds/copper}"
+# Build here instead, in this folder (absolute, or ~/…).
+BUILD_HERE="${COPPER_RELEASE_BUILD_HERE:-}"
+# The lock every heavy build on a Mac shares with the other app releases cut
+# there, so two compiles never fight for its cores and memory.
+LOCK="${COPPER_RELEASE_LOCK:-/tmp/exo-sign-build.lock}"
+# Free space the build wants. It compiles three configurations (arm64
+# release, the debug build swift test needs, x86_64 release), each about 1 GB
+# of .build, plus the sources and the two apps with their dSYMs: about 3.5 GB.
+# The build reports what it used, and stops if the disk drops below
+# BUILD_FLOOR_GB while it runs (the mini's disk is shared and nearly full).
+# The launch check alone wants the zips.
+BUILD_FREE_GB=6
+BUILD_FLOOR_GB=3
+LAUNCH_FREE_GB=1
+# The signing credentials: exo-macsign's (docs/releasing.md › Credentials).
+SIGNING="${EXO_MACSIGN_CONFIG_DIR:-$HOME/.config/exowatt-apple-signing}"
+BUNDLE_ID=com.collinrijock.copper
 
-usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; }
 step() { printf '\n==> [%s] %s\n' "$(date +%H:%M:%S)" "$*"; }
 note() { printf '    %s\n' "$*"; }
 fail() { printf 'release-local: %s\n' "$*" >&2; exit 1; }
@@ -94,7 +101,7 @@ mini() { local seconds="$1"; shift; timeout "$seconds" ssh "${ssh_opts[@]}" "$MI
 # ---------------------------------------------------------------------------
 step "Preflight"
 
-for tool in git gh node curl shasum ditto codesign csreq plutil lipo dwarfdump tar timeout ssh xcrun spctl python3; do
+for tool in git gh node curl shasum ditto codesign csreq plutil lipo dwarfdump tar timeout ssh xcrun spctl python3 hdiutil openssl; do
   command -v "$tool" > /dev/null || fail "needs $tool on PATH"
 done
 gh auth status > /dev/null 2>&1 || fail "gh is not signed in (gh auth login)"
@@ -117,32 +124,44 @@ if [ -n "$dirty" ]; then
   note "dry run: uncommitted changes are not in the build (it is $(git rev-parse --short=12 HEAD) as committed)"
 fi
 
-# The keys and the password: present, and private to this account. Never
-# printed, copied or sent anywhere; rcodesign and notarytool read them where
-# they are.
-notary_keys=("$SIGNING"/AuthKey_*.p8)
-[ "${#notary_keys[@]}" = 1 ] && [ -f "${notary_keys[0]}" ] \
-  || fail "want exactly one $SIGNING/AuthKey_<key id>.p8 (docs/releasing.md › Keeping the key)"
-NOTARY_KEY="${notary_keys[0]}"
-NOTARY_KEY_ID="$(basename "$NOTARY_KEY" .p8)"
-NOTARY_KEY_ID="${NOTARY_KEY_ID#AuthKey_}"
-for secret in "$P12" "$P12_PASSWORD" "$NOTARY_KEY" "$NOTARY_ISSUER"; do
-  [ -f "$secret" ] || fail "missing $secret (docs/releasing.md › Keeping the key)"
-  mode="$(stat -f %Lp "$secret")"
-  [ "$mode" = 600 ] || fail "$secret is mode $mode; it must be 0600"
-done
+# The keys and the password, exo-macsign's: from the environment
+# (EXO_MACSIGN_P12_BASE64, _P12_PASSWORD, _ASC_KEY_P8_BASE64, _ASC_KEY_ID,
+# _ASC_ISSUER), else files in $SIGNING, present and private to this account.
+# Never printed, copied or sent anywhere; release/package-app.sh hands them to
+# rcodesign and notarytool, and to nothing else.
+private() {
+  [ -f "$1" ] || fail "missing $1 (docs/releasing.md › Credentials)"
+  local mode
+  mode="$(stat -f %Lp "$1")"
+  [ "$mode" = 600 ] || [ "$mode" = 400 ] || fail "$1 is mode $mode; it must be 0600"
+}
+setting() { # setting ENV_VAR FILE: the variable, else the file
+  if [ -n "${!1:-}" ]; then printf '%s' "${!1}" | tr -d ' \t\r\n'; elif [ -f "$SIGNING/$2" ]; then tr -d ' \t\r\n' < "$SIGNING/$2"; fi
+}
+notary_key_id="$(setting EXO_MACSIGN_ASC_KEY_ID asc-key-id)"
+notary_issuer="$(setting EXO_MACSIGN_ASC_ISSUER asc-issuer)"
+[ -n "$notary_key_id" ] || fail "no App Store Connect key id: EXO_MACSIGN_ASC_KEY_ID or $SIGNING/asc-key-id"
+[ -n "$notary_issuer" ] || fail "no App Store Connect issuer: EXO_MACSIGN_ASC_ISSUER or $SIGNING/asc-issuer"
+[ -n "${EXO_MACSIGN_P12_BASE64:-}" ] || private "$SIGNING/developer-id-application.p12"
+[ -n "${EXO_MACSIGN_P12_PASSWORD+set}" ] || private "$SIGNING/p12-password"
+[ -n "${EXO_MACSIGN_ASC_KEY_P8_BASE64:-}" ] || private "$SIGNING/AuthKey_$notary_key_id.p8"
+if [ -n "${EXO_MACSIGN_P12_BASE64:-}" ]; then note "signing  EXO_MACSIGN_* from the environment, then $SIGNING"; else note "signing  $SIGNING"; fi
 
 requirement="$(git show "$commit:release/designated-requirement.txt" | tr -d '\n')"
-# The requirement names the team of the certificate in release/, and the p12
-# holds that certificate (hashes are public).
-want="$(git show "$commit:release/copper-developer-id.cer" | shasum -a 1 | cut -d' ' -f1)"
-team="$(git show "$commit:release/copper-developer-id.cer" | openssl x509 -inform der -noout -subject | sed -n 's/.*OU *= *\([0-9A-Z]*\).*/\1/p')"
+# The requirement accepts the team of the certificate in release/; that the
+# .p12 holds that certificate, release/package-app.sh checks before it signs.
+want="$(git show "$commit:release/exowatt-developer-id.cer" | shasum -a 1 | cut -d' ' -f1)"
+team="$(git show "$commit:release/exowatt-developer-id.cer" | openssl x509 -inform der -noout -subject | sed -n 's/.*OU *= *\([0-9A-Z]*\).*/\1/p')"
 case "$requirement" in
   *"certificate leaf[subject.OU] = \"$team\""*) ;;
-  *) fail "release/designated-requirement.txt does not name release/copper-developer-id.cer's team (${team:-none})" ;;
+  *) fail "release/designated-requirement.txt does not accept release/exowatt-developer-id.cer's team (${team:-none})" ;;
 esac
-have="$(openssl pkcs12 -in "$P12" -passin "file:$P12_PASSWORD" -nokeys -clcerts 2> /dev/null | openssl x509 -outform der | shasum -a 1 | cut -d' ' -f1)"
-[ "$have" = "$want" ] || fail "$P12 does not hold release/copper-developer-id.cer ($want). Renewed? See docs/releasing.md."
+if [ -z "${EXO_MACSIGN_P12_BASE64:-}" ] && [ -z "${EXO_MACSIGN_P12_PASSWORD+set}" ]; then
+  have="$(openssl pkcs12 -in "$SIGNING/developer-id-application.p12" -passin "file:$SIGNING/p12-password" -nokeys -clcerts 2> /dev/null \
+    | openssl x509 -outform der 2> /dev/null | shasum -a 1 | cut -d' ' -f1)"
+  [ "$have" = "$want" ] || fail "$SIGNING/developer-id-application.p12 does not hold release/exowatt-developer-id.cer ($want). Renewed? See docs/releasing.md."
+fi
+note "team     $team (certificate $want)"
 
 # Every tag and release name in the repository, drafts included.
 existing="$(
@@ -187,11 +206,14 @@ out="$root/build/release-local/$version"
 assets="$out/assets"
 logs="$out/logs"
 work="$(mktemp -d "${TMPDIR:-/tmp}/copper-release.XXXXXX")"
+chmod 700 "$work"
 job=""
 on_mini=false
+here_job=""
 
 # Whatever happens: nothing of ours keeps running on the mini, its job folder
-# and the throwaway worlds go, and so does the scratch folder here.
+# and the throwaway worlds go, and so do the build folder and the scratch
+# folder here.
 cleanup() {
   local status=$?
   set +e
@@ -241,34 +263,49 @@ REMOTE
       echo "release-local: could not remove $MINI:$job — delete it by hand" >&2
     fi
   fi
+  if [ -n "$here_job" ]; then
+    rm -rf "$here_job"
+    echo "    removed $here_job"
+  fi
   rm -rf "$work"
   exit "$status"
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 
-# rcodesign, fetched once into a cache and checked against the pins on every
-# run: the tarball against the published SHA-256 and the pinned one, the
-# binary against its own.
-rcodesign="${XDG_CACHE_HOME:-$HOME/.cache}/copper-release/apple-codesign-$RCODESIGN_VERSION/rcodesign"
-if [ ! -x "$rcodesign" ] || [ "$(shasum -a 256 "$rcodesign" | cut -d' ' -f1)" != "$RCODESIGN_SHA256" ]; then
-  note "fetching rcodesign $RCODESIGN_VERSION"
-  curl -fsSL --retry 3 -o "$work/$RCODESIGN_TARBALL" "$RCODESIGN_URL"
-  published="$(curl -fsSL --retry 3 "$RCODESIGN_URL.sha256" | tr -d '[:space:]')"
-  actual="$(shasum -a 256 "$work/$RCODESIGN_TARBALL" | cut -d' ' -f1)"
-  [ "$published" = "$RCODESIGN_TARBALL_SHA256" ] || fail "rcodesign's published SHA-256 is $published, pinned $RCODESIGN_TARBALL_SHA256"
-  [ "$actual" = "$RCODESIGN_TARBALL_SHA256" ] || fail "$RCODESIGN_TARBALL is $actual, pinned $RCODESIGN_TARBALL_SHA256"
-  tar -xzf "$work/$RCODESIGN_TARBALL" -C "$work"
-  binary="$work/${RCODESIGN_TARBALL%.tar.gz}/rcodesign"
-  [ "$(shasum -a 256 "$binary" | cut -d' ' -f1)" = "$RCODESIGN_SHA256" ] || fail "the rcodesign in $RCODESIGN_TARBALL is not the pinned binary"
-  mkdir -p "$(dirname "$rcodesign")"
-  install -m 755 "$binary" "$rcodesign"
+# What release/package-app.sh signs with, from this commit: the script, the
+# requirement, the certificate, the profile tool and Copper.entitlements.
+mkdir -p "$work/src"
+git archive --format=tar "$commit" release Copper.entitlements | tar -x -C "$work/src"
+
+# The provisioning profile, once for both apps: the newest active Developer ID
+# profile App Store Connect has for the App ID, else the one in $SIGNING.
+key_file="$SIGNING/AuthKey_$notary_key_id.p8"
+if [ -n "${EXO_MACSIGN_ASC_KEY_P8_BASE64:-}" ]; then
+  key_file="$work/AuthKey.p8"
+  (umask 077; case "$EXO_MACSIGN_ASC_KEY_P8_BASE64" in
+    -----BEGIN*) printf '%s\n' "$EXO_MACSIGN_ASC_KEY_P8_BASE64" ;;
+    *) printf '%s' "$EXO_MACSIGN_ASC_KEY_P8_BASE64" | tr -d ' \t\r\n' | base64 --decode ;;
+  esac > "$key_file") || fail "EXO_MACSIGN_ASC_KEY_P8_BASE64 is not valid base64"
 fi
+profile="$work/embedded.provisionprofile"
+if ! python3 "$work/src/release/provisioning.py" fetch --key "$key_file" --key-id "$notary_key_id" --issuer "$notary_issuer" \
+  --bundle-id "$BUNDLE_ID" --team "$team" --cert-sha1 "$want" --out "$profile" 2> "$work/profile.log"; then
+  [ -f "$SIGNING/Copper_Developer_ID.provisionprofile" ] || { cat "$work/profile.log" >&2; fail "no profile from App Store Connect, and no $SIGNING/Copper_Developer_ID.provisionprofile"; }
+  cp "$SIGNING/Copper_Developer_ID.provisionprofile" "$profile"
+  note "profile  App Store Connect could not be asked; $SIGNING/Copper_Developer_ID.provisionprofile"
+fi
+sed 's/^/    /' "$work/profile.log"
+python3 "$work/src/release/provisioning.py" check --profile "$profile" --bundle-id "$BUNDLE_ID" --team "$team" --cert-sha1 "$want" \
+  || fail "the provisioning profile can't sign $BUNDLE_ID (docs/releasing.md › The provisioning profile)"
+python3 "$work/src/release/provisioning.py" entitlements --base "$work/src/Copper.entitlements" --profile "$profile" \
+  --bundle-id "$BUNDLE_ID" --team "$team" --out "$work/entitlements.plist" 2>&1 | sed 's/^/    /'
+profile_uuid="$(python3 "$work/src/release/provisioning.py" uuid --profile "$profile")"
+rcodesign="$("$work/src/release/rcodesign.sh")"
 note "signer   $("$rcodesign" --version) ($rcodesign)"
 
 # ---------------------------------------------------------------------------
-step "Build on the Mac mini ($MINI)"
-
+# The folder on the mini: the launch check's, and the build's unless it is here.
 remote_dir="$REMOTE_DIR"
 # A literal ~/ (quoted, so this shell leaves it be) is the mini's home.
 # shellcheck disable=SC2088,SC2016  # both are for the mini's shell, not this one
@@ -281,12 +318,27 @@ esac
 case "$remote_dir" in
   *[!A-Za-z0-9._/-]*) fail "COPPER_RELEASE_REMOTE_DIR may hold letters, digits, . _ - and / only, got: $remote_dir" ;;
 esac
+# The external disk can hang whoever lists it (see REMOTE_DIR); not even df goes there.
+case "$remote_dir" in
+  /Volumes/*) fail "COPPER_RELEASE_REMOTE_DIR is on an external disk ($remote_dir); use the mini's internal one, e.g. '~/sign-builds/copper'" ;;
+esac
+remote_free_gb=$LAUNCH_FREE_GB
+[ -n "$BUILD_HERE" ] || remote_free_gb=$BUILD_FREE_GB
 # The disk it is on, or will be: the nearest folder of it that exists.
 free_kb="$(mini 60 "d='$remote_dir'; while [ ! -d \"\$d\" ]; do d=\"\$(dirname \"\$d\")\"; done; df -k \"\$d\" | awk 'NR == 2 { print \$4 }'")"
 free_gb="$(awk -v k="$free_kb" 'BEGIN { printf "%.1f", k / 1048576 }')"
-note "$free_gb GB free for $remote_dir"
-[ "$free_kb" -ge $((REMOTE_FREE_GB * 1024 * 1024)) ] \
-  || fail "the mini has $free_gb GB free for $remote_dir; a release build wants $REMOTE_FREE_GB (COPPER_RELEASE_REMOTE_DIR='~/farm/copper-release' builds on its internal disk)"
+note "mini     $free_gb GB free for $remote_dir"
+[ "$free_kb" -ge $((remote_free_gb * 1024 * 1024)) ] \
+  || fail "the mini has $free_gb GB free for $remote_dir; this release wants $remote_free_gb there"
+if [ -n "$BUILD_HERE" ]; then
+  # shellcheck disable=SC2088  # a literal ~/, as the variable may hold it
+  case "$BUILD_HERE" in "~/"*) BUILD_HERE="$HOME/${BUILD_HERE#"~/"}" ;; esac
+  case "$BUILD_HERE" in /*) ;; *) fail "COPPER_RELEASE_BUILD_HERE must be absolute or start with ~/, got: $BUILD_HERE" ;; esac
+  mkdir -p "$BUILD_HERE"
+  here_free_kb="$(df -k "$BUILD_HERE" | awk 'NR == 2 { print $4 }')"
+  note "here     $(awk -v k="$here_free_kb" 'BEGIN { printf "%.1f", k / 1048576 }') GB free for $BUILD_HERE"
+  [ "$here_free_kb" -ge $((BUILD_FREE_GB * 1024 * 1024)) ] || fail "$BUILD_HERE has less than $BUILD_FREE_GB GB free"
+fi
 if $preflight; then
   step "Preflight only: everything checks out for $tag; nothing was built"
   exit 0
@@ -295,33 +347,51 @@ fi
 # Only now: a run that stopped in preflight leaves the last one's output be.
 rm -rf "$out"
 mkdir -p "$assets" "$logs"
-job="$remote_dir/$version-$(date -u +%H%M%S)-$$"
+stamp="$version-$(date -u +%H%M%S)-$$"
+job="$remote_dir/$stamp"
 on_mini=true
-mini 60 mkdir -p "$job/src"
-note "job      $job"
-# Exactly the commit's tree: nothing uncommitted, nothing ignored.
-git archive --format=tar "$commit" | mini 600 tar -x -C "$job/src"
+mini 60 mkdir -p "$job"
+note "job      $MINI:$job"
 
-mini 60 "cat > '$job/build.sh'" <<'REMOTE'
+cat > "$work/build.sh" <<'BUILD'
 #!/bin/bash
-# The workflow's three build steps, on the mini, with its assertions.
+# The workflow's three build steps, with its assertions, in <job>/src:
+#   build.sh <job> <free GB> <floor GB>
+# Everything the build writes stays in <job>: HOME and TMPDIR point into it,
+# so SwiftPM's and the compilers' caches go when the job folder goes. It
+# starts only with <free GB> free (checked once it holds the lock, since it
+# may have waited for it), and is stopped if the disk drops under <floor GB>.
 set -euo pipefail
-job="$1"
+job="$1" floor_kb=$(($3 * 1024 * 1024))
 cd "$job/src"
 fail() { echo "error: $*" >&2; exit 1; }
-export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+free="$(df -k "$job" | awk 'NR == 2 { print $4 }')"
+[ "$free" -ge $(($2 * 1024 * 1024)) ] || fail "$((free / 1024)) MB free on the build's disk; a build wants $2 GB"
+mkdir -p "$job/home" "$job/tmp"
+export HOME="$job/home" TMPDIR="$job/tmp/"
+caches="$(getconf DARWIN_USER_CACHE_DIR 2> /dev/null || true)"
+before="$(ls "$caches" 2> /dev/null || true)"
+# The full Xcode when there is one; the Command Line Tools build Copper too.
+if [ -d /Applications/Xcode.app/Contents/Developer ]; then
+  export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+fi
 # With SEARCH_SIGN_IDENTITY empty, build.sh asks the keychain for a Developer
-# ID. A release never wants one (it is signed again on the laptop), and this
-# path touches no keychain on either Mac, so build.sh gets a `security` that
-# finds nothing: its ad-hoc signature, as on the runner.
+# ID. A release never wants one (release/package-app.sh signs it again), and
+# this path touches no keychain, so build.sh gets a `security` that finds
+# nothing: its ad-hoc signature, as on the runner.
 mkdir -p "$job/no-keychain"
 printf '#!/bin/sh\nexit 0\n' > "$job/no-keychain/security"
 chmod 755 "$job/no-keychain/security"
 export PATH="$job/no-keychain:$PATH"
 
 echo "--- toolchain"
-xcodebuild -version
+xcrun --show-sdk-version
 swift --version
+
+# Job control: the steps below run in a process group of their own, which the
+# watch can stop whole (swift-build and every compiler it started).
+set -m
+(
 
 echo "--- COPPER_RELEASE=1 ./build.sh release app"
 COPPER_RELEASE=1 SEARCH_SIGN_IDENTITY= ./build.sh release app
@@ -349,120 +419,110 @@ diff <(ls build/Copper.app/Contents/Resources) <(ls build/x86_64/Copper.app/Cont
 test -d build/x86_64/Copper.app/Contents/Resources/Search_Search.bundle || fail "no Search_Search.bundle in the Intel app"
 test "$(plutil -extract CFBundleIdentifier raw -o - build/x86_64/Copper.app/Contents/Info.plist)" = com.collinrijock.copper \
   || fail "build/x86_64/Copper.app is not com.collinrijock.copper"
+) &
+steps=$!
+low=false
+while kill -0 "$steps" 2> /dev/null; do
+  free="$(df -k "$job" | awk 'NR == 2 { print $4 }')"
+  if [ "$free" -lt "$floor_kb" ]; then
+    echo "error: $((free / 1024)) MB free on the build's disk, under the floor of $3 GB: stopping the build" >&2
+    low=true
+    kill -TERM -- "-$steps" 2> /dev/null || true
+    sleep 5
+    kill -KILL -- "-$steps" 2> /dev/null || true
+    break
+  fi
+  sleep 10
+done
+status=0
+wait "$steps" || status=$?
+# The compilers' caches the build made outside the job folder, if any (only
+# compiler-named ones that were not there before).
+for made in $(comm -13 <(printf '%s\n' "$before" | sort) <(ls "$caches" 2> /dev/null | sort)); do
+  case "$made" in
+    clang | org.llvm.* | org.swift.* | com.apple.DeveloperTools | swift*) rm -rf "${caches:?}/$made" ;;
+  esac
+done
+$low && exit 1
+[ "$status" = 0 ] || exit "$status"
 echo "--- built"
-REMOTE
+BUILD
 
-# The build streams here and into logs/; the mini is shared, so one build at a time.
-mini 5400 bash "$job/build.sh" "$job" < /dev/null 2>&1 | tee "$logs/mini-build.log"
-
-step "Bring the unsigned apps and dSYMs back"
 mkdir -p "$work/build"
-# Only the bundles; COPYFILE_DISABLE keeps the mini's tar from adding ._ files.
-mini 900 "cd '$job/src/build' && COPYFILE_DISABLE=1 tar -cf - \$(ls -d Copper.app Copper.app.dSYM x86_64/Copper.app x86_64/Copper.app.dSYM 2> /dev/null)" \
-  | tar -x -C "$work/build"
-# What the build took on the mini, for REMOTE_FREE_GB above.
-note "the build used $(mini 120 "du -sk '$job' | awk '{ printf \"%.1f\", \$1 / 1048576 }'") GB on the mini"
-# The sources and the build products are gigabytes on a shared disk; only the
-# launch check still needs the mini, and it brings its own files.
-mini 300 rm -rf "$job/src"
+if [ -n "$BUILD_HERE" ]; then
+  step "Build here ($BUILD_HERE)"
+  here_job="$BUILD_HERE/$stamp"
+  mkdir -p "$here_job/src"
+  note "job      $here_job"
+  # Exactly the commit's tree: nothing uncommitted, nothing ignored.
+  git archive --format=tar "$commit" | tar -x -C "$here_job/src"
+  # One heavy job at a time on this Mac, and never ahead of what someone is doing on it.
+  note "waiting for $LOCK"
+  nice -n 10 /usr/bin/lockf -t 10800 "$LOCK" bash "$work/build.sh" "$here_job" "$BUILD_FREE_GB" "$BUILD_FLOOR_GB" < /dev/null 2>&1 | tee "$logs/build.log"
+  # shellcheck disable=SC2046  # names without spaces, only those that exist
+  (cd "$here_job/src/build" && COPYFILE_DISABLE=1 tar -cf - $(ls -d Copper.app Copper.app.dSYM x86_64/Copper.app x86_64/Copper.app.dSYM 2> /dev/null)) \
+    | tar -x -C "$work/build"
+  note "the build used $(du -sk "$here_job" | awk '{ printf "%.1f", $1 / 1048576 }') GB"
+  # The sources and the build products (gigabytes) are done with.
+  rm -rf "$here_job"
+  here_job=""
+else
+  step "Build on the Mac mini ($MINI)"
+  mini 60 mkdir -p "$job/src"
+  git archive --format=tar "$commit" | mini 600 tar -x -C "$job/src"
+  mini 60 "cat > '$job/build.sh'" < "$work/build.sh"
+  # The build streams here and into logs/; the mini is shared, so one build at a time.
+  # shellcheck disable=SC2029  # the mini's shell expands nothing in it: the paths are quoted
+  mini 14400 "nice -n 10 /usr/bin/lockf -t 10800 '$LOCK' bash '$job/build.sh' '$job' '$BUILD_FREE_GB' '$BUILD_FLOOR_GB'" < /dev/null 2>&1 | tee "$logs/build.log"
+  step "Bring the unsigned apps and dSYMs back"
+  # Only the bundles; COPYFILE_DISABLE keeps the mini's tar from adding ._ files.
+  mini 900 "cd '$job/src/build' && COPYFILE_DISABLE=1 tar -cf - \$(ls -d Copper.app Copper.app.dSYM x86_64/Copper.app x86_64/Copper.app.dSYM 2> /dev/null)" \
+    | tar -x -C "$work/build"
+  note "the build used $(mini 120 "du -sk '$job' | awk '{ printf \"%.1f\", \$1 / 1048576 }'") GB on the mini"
+  # The sources, the build products and the caches are gigabytes on a shared
+  # disk: all of it goes now. The launch check brings its own files.
+  mini 300 rm -rf "$job"
+  mini 30 "test ! -e '$job'" || fail "could not remove $MINI:$job"
+  note "removed $MINI:$job"
+fi
 for app in "$work/build/Copper.app" "$work/build/x86_64/Copper.app"; do
   [ -x "$app/Contents/MacOS/Copper" ] || fail "missing $app"
 done
 
 # ---------------------------------------------------------------------------
-step "Stamp $version, sign with rcodesign, notarize, zip"
+step "Stamp $version, sign, notarize, staple, zip, disk image (release/package-app.sh)"
 
-git show "$commit:release/designated-requirement.txt" > "$work/requirement.txt"
-# rcodesign takes the requirement compiled, not as text; csreq compiles it the
-# way codesign -r would.
-csreq -r "$work/requirement.txt" -b "$work/requirement.bin"
-[ "$(csreq -r "$work/requirement.bin" -t | sed 's: /\* exists \*/::g')" = "$requirement" ] || fail "csreq did not round-trip the requirement"
-git show "$commit:Copper.entitlements" > "$work/entitlements.plist"
-
-# release/package-app.sh's stamp and checks, with rcodesign doing what
-# codesign and a keychain do there.
-sign_and_zip() {
-  local app="$1" arch="$2"
-  local plist="$app/Contents/Info.plist"
-  [ "$(lipo -archs "$app/Contents/MacOS/Copper")" = "$arch" ] || fail "$app is not built for $arch"
-  local bundle_id
-  bundle_id="$(plutil -extract CFBundleIdentifier raw -o - "$plist")"
-  case "$requirement" in
-    *"identifier \"$bundle_id\" "*) ;;
-    *) fail "bundle id $bundle_id is not the release's ($requirement)" ;;
-  esac
-  # The updater inside checks every later release against the same team
-  # (Fork/Signing.swift); a bundle that pins another isn't signed.
-  LC_ALL=C grep -a -q -F "certificate leaf[subject.OU] = \"$team\"" "$app/Contents/MacOS/Copper" \
-    || fail "the $arch app's updater does not pin team $team (Fork/Signing.swift)"
-
-  # Homebrew needs a monotonic version; About and MCP serverInfo show it.
-  plutil -replace CFBundleShortVersionString -string "$version" "$plist"
-
-  # rcodesign carries an existing signature's flags and entitlements over, so
-  # build.sh's ad-hoc one goes first: the release signature has only what is
-  # given below — the hardened runtime, Copper.entitlements and Apple's
-  # timestamp, like package-app.sh's.
-  codesign --remove-signature "$app"
-  rm -rf "$app/Contents/_CodeSignature"
-  # One pass, inside out: nested code first, then the app with the explicit
-  # requirement (rcodesign applies --code-requirements-file to the main
-  # entity only, as package-app.sh's second codesign does). Contents/Resources
-  # is data, as codesign's own rules have it: the SwiftPM resource bundle there
-  # is sealed file by file, not signed as a bundle of its own.
-  "$rcodesign" sign \
-    --p12-file "$P12" --p12-password-file "$P12_PASSWORD" \
-    --code-requirements-file "$work/requirement.bin" \
-    --code-signature-flags runtime \
-    --entitlements-xml-file "$work/entitlements.plist" \
-    --exclude 'Contents/Resources/**' \
-    "$app" > "$logs/rcodesign-$arch.log" 2>&1 \
-    || { tail -20 "$logs/rcodesign-$arch.log" >&2; fail "rcodesign could not sign the $arch app"; }
-  if ! codesign --verify --deep --strict -R="$requirement" "$app"; then
-    codesign -d --extract-certificates="$work/cert-$arch-" "$app" 2> /dev/null
-    fail "the $arch app does not satisfy $requirement (signed with $(shasum -a 1 "$work/cert-$arch-0" 2> /dev/null | cut -d' ' -f1))"
-  fi
-  note "$arch: $(codesign -d -r- "$app" 2> /dev/null | grep '^designated')"
-
-  # This Mac gives every file a com.apple.provenance attribute, and ditto
-  # would carry it into the zip as ._ AppleDouble files — which a plain unzip
-  # leaves in the bundle, unsealed. The runner's zips have none, nor do these.
-  local zip="copper-${version}-macos-${arch}.zip"
-  ditto -c -k --norsrc --noextattr --noqtn --noacl --keepParent "$app" "$assets/$zip"
-  # Apple's notary service looks the zip over; its ticket is stapled to the
-  # app and the zip made again around it, as package-app.sh does.
-  xcrun notarytool submit "$assets/$zip" --key "$NOTARY_KEY" --key-id "$NOTARY_KEY_ID" \
-    --issuer "$(cat "$NOTARY_ISSUER")" --wait --timeout 45m --output-format json > "$logs/notary-$arch.json" || true
-  local status id
-  status="$(plutil -extract status raw -o - "$logs/notary-$arch.json" 2> /dev/null || true)"
-  id="$(plutil -extract id raw -o - "$logs/notary-$arch.json" 2> /dev/null || true)"
-  note "$arch: notarized ${status:-no answer} (${id:-no id})"
-  if [ "$status" != Accepted ]; then
-    [ -z "$id" ] || xcrun notarytool log "$id" --key "$NOTARY_KEY" --key-id "$NOTARY_KEY_ID" \
-      --issuer "$(cat "$NOTARY_ISSUER")" > "$logs/notary-$arch-log.json" 2>&1 || true
-    fail "Apple did not notarize the $arch app ($logs/notary-$arch.json, $logs/notary-$arch-log.json)"
-  fi
-  xcrun stapler staple "$app" > "$logs/staple-$arch.log" 2>&1 || { cat "$logs/staple-$arch.log" >&2; fail "could not staple the $arch app"; }
-  rm -f "$assets/$zip"
-  ditto -c -k --norsrc --noextattr --noqtn --noacl --keepParent "$app" "$assets/$zip"
-  (cd "$assets" && shasum -a 256 "$zip" > "$zip.sha256")
-  note "$arch: stamped $(plutil -extract CFBundleShortVersionString raw -o - "$plist") (build $(plutil -extract CFBundleVersion raw -o - "$plist")), packed $zip ($(du -h "$assets/$zip" | cut -f1 | tr -d " "))"
-}
-
-sign_and_zip "$work/build/Copper.app" arm64
-sign_and_zip "$work/build/x86_64/Copper.app" x86_64
-if [ -x "$work/build/Copper.app/Contents/Resources/bin/copper" ]; then has_cli=true; else has_cli=false; fi
+# The dSYMs stay with the unsigned build: signing keeps LC_UUID, so they
+# still name the shipped binaries.
+for arch in arm64 x86_64; do
+  app="$work/build/Copper.app"
+  [ "$arch" = arm64 ] || app="$work/build/$arch/Copper.app"
+  COPPER_PROFILE="$profile" COPPER_RCODESIGN="$rcodesign" EXO_MACSIGN_CONFIG_DIR="$SIGNING" \
+    bash "$work/src/release/package-app.sh" "$app" "$version" "$assets" "$arch" \
+    > "$logs/package-$arch.out" 2> "$logs/package-$arch.log" \
+    || { tail -40 "$logs/package-$arch.log" >&2; fail "release/package-app.sh failed for $arch ($logs/package-$arch.log)"; }
+  sed 's/^/    /' "$logs/package-$arch.log" | grep -v '^    $' | grep -E '^    (profile|  claims|  not claimed|  allowed|signed|notary|stamped|packed)' || true
+  grep -q "^profile=$profile_uuid\$" "$logs/package-$arch.out" || fail "$arch: package-app.sh did not embed profile $profile_uuid"
+  printf -v "notary_$arch" '%s' "$(sed -n 's/^notary_id=//p' "$logs/package-$arch.out")"
+  printf -v "dmg_notary_$arch" '%s' "$(sed -n 's/^dmg_notary_id=//p' "$logs/package-$arch.out")"
+done
+has_cli="$(sed -n 's/^has_cli=//p' "$logs/package-arm64.out")"
+notary_arm64="${notary_arm64:-}" dmg_notary_arm64="${dmg_notary_arm64:-}"
+notary_x86_64="${notary_x86_64:-}" dmg_notary_x86_64="${dmg_notary_x86_64:-}"
 sha256="$(cut -d' ' -f1 < "$assets/$zip_name.sha256")"
 x86_64_sha256="$(cut -d' ' -f1 < "$assets/$x86_64_zip_name.sha256")"
 # Stable names for releases/latest/download/… (installer, site).
-cp "$assets/$zip_name" "$assets/copper-macos-arm64.zip"
-printf '%s  copper-macos-arm64.zip\n' "$sha256" > "$assets/copper-macos-arm64.zip.sha256"
-cp "$assets/$x86_64_zip_name" "$assets/copper-macos-x86_64.zip"
-printf '%s  copper-macos-x86_64.zip\n' "$x86_64_sha256" > "$assets/copper-macos-x86_64.zip.sha256"
+for arch in arm64 x86_64; do
+  for kind in zip dmg; do
+    cp "$assets/copper-${version}-macos-${arch}.$kind" "$assets/copper-macos-${arch}.$kind"
+    printf '%s  copper-macos-%s.%s\n' "$(cut -d' ' -f1 < "$assets/copper-${version}-macos-${arch}.$kind.sha256")" "$arch" "$kind" \
+      > "$assets/copper-macos-${arch}.$kind.sha256"
+  done
+done
 git show "$commit:release/copper-install.sh" > "$assets/copper-install.sh"
 
 # ---------------------------------------------------------------------------
-step "Check the signature (the shipped zips)"
+step "Check the signature (the shipped zips and disk images)"
 
 for arch in arm64 x86_64; do
   echo "--- $arch"
@@ -490,10 +550,12 @@ for arch in arm64 x86_64; do
   printf '%s\n' "$details" | grep -q '^CodeDirectory .* flags=0x10000(runtime) ' || fail "$arch: the flags are not the hardened runtime alone"
   printf '%s\n' "$details" | grep -q '^Timestamp=' || fail "$arch: no secure timestamp"
   printf '%s\n' "$details" | grep -q "^Authority=Developer ID Application: .*($team)\$" || fail "$arch: not signed by a Developer ID of team $team"
-  # The entitlements are Copper.entitlements, no more, no less.
+  # The profile is this run's, and the entitlements are Copper.entitlements
+  # and what it allows (release/provisioning.py), no more, no less.
+  cmp -s "$app/Contents/embedded.provisionprofile" "$profile" || fail "$arch: Contents/embedded.provisionprofile is not profile $profile_uuid"
   codesign -d --entitlements - --xml "$app" 2> /dev/null > "$work/entitlements-$arch.plist"
   python3 -c 'import plistlib, sys; a, b = (plistlib.load(open(f, "rb")) for f in sys.argv[1:]); sys.exit(a != b)' \
-    "$work/entitlements.plist" "$work/entitlements-$arch.plist" || fail "$arch: entitlements are not Copper.entitlements"
+    "$work/entitlements.plist" "$work/entitlements-$arch.plist" || fail "$arch: entitlements are not Copper.entitlements and the profile's"
   # Notarized and stapled: Gatekeeper opens it, offline too.
   xcrun stapler validate "$app" > /dev/null || fail "$arch: no valid stapled ticket"
   assessment="$(spctl -a -vvv -t exec "$app" 2>&1 || true)"
@@ -502,7 +564,31 @@ for arch in arm64 x86_64; do
     *"accepted"*"source=Notarized Developer ID"*) ;;
     *) fail "$arch: Gatekeeper does not accept it as a notarized Developer ID app" ;;
   esac
-  echo "cdhash $(codesign -dvvv "$app" 2>&1 | sed -n 's/^CDHash=//p' | head -1)"
+  cdhash="$(codesign -dvvv "$app" 2>&1 | sed -n 's/^CDHash=//p' | head -1)"
+  echo "cdhash $cdhash"
+
+  # The disk image: signed by the same Developer ID, its own ticket stapled,
+  # Gatekeeper opens it, and the app inside is the zip's, byte for byte.
+  dmg="$assets/copper-${version}-macos-${arch}.dmg"
+  codesign --verify --strict "$dmg" || fail "$arch: the disk image's signature does not verify"
+  codesign -dvv "$dmg" 2>&1 | grep -q "^Authority=Developer ID Application: .*($team)\$" || fail "$arch: the disk image is not signed by team $team"
+  xcrun stapler validate "$dmg" > /dev/null || fail "$arch: no valid stapled ticket on the disk image"
+  assessment="$(spctl -a -vv -t open --context context:primary-signature "$dmg" 2>&1 || true)"
+  echo "$assessment"
+  case "$assessment" in
+    *"accepted"*"source=Notarized Developer ID"*) ;;
+    *) fail "$arch: Gatekeeper does not accept the disk image as notarized Developer ID" ;;
+  esac
+  mount="$work/mount-$arch"
+  mkdir -p "$mount"
+  hdiutil attach -quiet -readonly -nobrowse -noautoopen -mountpoint "$mount" "$dmg"
+  inside="$(codesign -dvvv "$mount/Copper.app" 2>&1 | sed -n 's/^CDHash=//p' | head -1)"
+  diff -rq "$mount/Copper.app" "$app" > /dev/null 2>&1 && same=true || same=false
+  [ -L "$mount/Applications" ] && apps=true || apps=false
+  hdiutil detach -quiet "$mount" || hdiutil detach -quiet -force "$mount"
+  [ "$inside" = "$cdhash" ] && $same || fail "$arch: the app in the disk image is not the zip's"
+  $apps || fail "$arch: the disk image has no Applications shortcut"
+  echo "disk image: the zip's app (cdhash $inside), stapled"
 done
 
 # ---------------------------------------------------------------------------
@@ -619,17 +705,16 @@ COPYFILE_DISABLE=1 tar -C "$assets" -cf - "$zip_name" "$x86_64_zip_name" | mini 
 mini 60 "cat > '$job/launch.sh'" <<'REMOTE'
 #!/bin/bash
 # A signed release must start like any other: open the unzipped bundle
-# headless in a world of its own and ask it its version.
+# headless in a world of its own (its own folder and settings: a throwaway
+# profile) and ask it its version.
 set -euo pipefail
 job="$1" version="$2"
 fail() { echo "error: $*" >&2; exit 1; }
 # Nobody is at this Mac, but someone is logged in, and an app has to start in
 # that session: `open` from ssh has no window server (LaunchServices answers
 # -10810) and `launchctl asuser` needs root. A one-shot agent in the session's
-# own launchd domain runs `open` there instead. What runs in that session may
-# not read the external disk (macOS keeps removable volumes from it), so the
-# two unzipped apps go in this user's temporary folder on the internal one,
-# and are deleted with the job.
+# own launchd domain runs `open` there instead. The two unzipped apps go in
+# this user's temporary folder, and are deleted with the job.
 check="$(mktemp -d "$(getconf DARWIN_USER_TEMP_DIR)copper-release-check.XXXXXX")"
 echo "$check" > "$job/check-dir"
 gui="gui/$(id -u)"
@@ -712,6 +797,13 @@ PLIST
     *"$version"*) ;;
     *) fail "$arch: /health does not report $version" ;;
   esac
+  # What AMFI (the kernel's code-signing check and amfid) said about it. An
+  # entitlement the embedded profile doesn't allow gets the app killed at
+  # launch, so a /health answer already says it passed; this is the record.
+  log show --last 3m --style compact \
+    --predicate 'process == "amfid" OR subsystem == "com.apple.MobileFileIntegrity" OR sender == "AppleMobileFileIntegrity"' 2> /dev/null \
+    | grep -F "$app" | sed "s/^/  amfi: /" | tail -20 || true
+  echo "$arch: amfi: no rejection of $app"
 }
 launch arm64 90
 # The Intel bundle the same way, translated by Rosetta. A Mac without Rosetta
@@ -740,13 +832,18 @@ or
 curl -fsSL https://github.com/${REPO}/releases/latest/download/copper-install.sh | sh
 \`\`\`
 
-or download the zip for your Mac below — \`${zip_name}\` for Apple Silicon, \`${x86_64_zip_name}\` for Intel — unzip and move Copper.app to /Applications (signed with Copper's Developer ID and notarized by Apple).
+or download the disk image or zip for your Mac below — \`copper-${version}-macos-arm64.dmg\` / \`${zip_name}\` for Apple Silicon, \`copper-${version}-macos-x86_64.dmg\` / \`${x86_64_zip_name}\` for Intel — and move Copper.app to /Applications (signed with Exowatt Inc's Developer ID, team ${team}, and notarized by Apple).
 
 macOS 14 Sonoma or later, Apple Silicon or Intel. Already installed? Copper updates itself — Settings › Updates.
 
 sha256 \`${sha256}\` (arm64)
 sha256 \`${x86_64_sha256}\` (x86_64)
 EOF
+# A note for this release alone (release/release-note.md at this commit), above the rest.
+if git cat-file -e "$commit:release/release-note.md" 2> /dev/null; then
+  { git show "$commit:release/release-note.md"; echo; cat "$out/release-notes.md"; } > "$work/release-notes.md"
+  mv "$work/release-notes.md" "$out/release-notes.md"
+fi
 
 # ---------------------------------------------------------------------------
 if $dry_run; then
@@ -773,6 +870,10 @@ else
     "$assets/copper-macos-arm64.zip" "$assets/copper-macos-arm64.zip.sha256" \
     "$assets/$x86_64_zip_name" "$assets/$x86_64_zip_name.sha256" \
     "$assets/copper-macos-x86_64.zip" "$assets/copper-macos-x86_64.zip.sha256" \
+    "$assets/copper-${version}-macos-arm64.dmg" "$assets/copper-${version}-macos-arm64.dmg.sha256" \
+    "$assets/copper-macos-arm64.dmg" "$assets/copper-macos-arm64.dmg.sha256" \
+    "$assets/copper-${version}-macos-x86_64.dmg" "$assets/copper-${version}-macos-x86_64.dmg.sha256" \
+    "$assets/copper-macos-x86_64.dmg" "$assets/copper-macos-x86_64.dmg.sha256" \
     "$assets/copper-version.json" "$assets/copper-install.sh" \
     ${dsym_zips[@]+"${dsym_zips[@]}"}
 
@@ -793,6 +894,10 @@ else
   verify "https://github.com/$REPO/releases/download/$tag/$x86_64_zip_name" "$x86_64_sha256"
   verify "https://github.com/$REPO/releases/latest/download/copper-macos-arm64.zip" "$sha256"
   verify "https://github.com/$REPO/releases/latest/download/copper-macos-x86_64.zip" "$x86_64_sha256"
+  for arch in arm64 x86_64; do
+    verify "https://github.com/$REPO/releases/download/$tag/copper-${version}-macos-${arch}.dmg" \
+      "$(cut -d' ' -f1 < "$assets/copper-${version}-macos-${arch}.dmg.sha256")"
+  done
   verify "https://github.com/$REPO/releases/latest/download/copper-version.json" \
     "$(shasum -a 256 "$assets/copper-version.json" | cut -d' ' -f1)"
 fi
@@ -808,4 +913,7 @@ note "source: https://github.com/$REPO/commit/$commit"
 note "sha256 (arm64): $sha256"
 note "sha256 (x86_64): $x86_64_sha256"
 note "signed: $requirement ($("$rcodesign" --version))"
+note "profile: $profile_uuid; entitlements: $(python3 -c 'import plistlib, sys; print(", ".join(sorted(plistlib.load(open(sys.argv[1], "rb")))))' "$work/entitlements.plist")"
+note "notary (arm64): app $notary_arm64, disk image $dmg_notary_arm64"
+note "notary (x86_64): app $notary_x86_64, disk image $dmg_notary_x86_64"
 note "CLI shim in bundle: $has_cli"

@@ -32,6 +32,10 @@ enum Vault {
     /// password saved while trying something never sits among the real ones.
     private static let label = Store.world.map { "\(Fork.name) (\($0))" } ?? Fork.name
 
+    /// Fork (exowatt signing): an item label of ours, Shared's or a profile's
+    /// (CopperKeychain's sweep of the login keychain).
+    static func isOurs(_ itemLabel: String) -> Bool { itemLabel == label || itemLabel.hasPrefix(label + " · ") }
+
     // MARK: - drawers (Fork: ardia profiles)
     //
     // A profile keeps its own passwords: items labelled "Copper · Work",
@@ -112,7 +116,7 @@ enum Vault {
         ]
         extra.forEach { query[$0] = $1 }
         var out: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &out)
+        let status = CopperKeychain.copyMatching(query, &out) // Fork (exowatt signing)
         guard status == errSecSuccess, let rows = out as? [[String: Any]] else {
             // Nothing kept reads as "not found"; anything else is worth a
             // line in the log, because the panel will only say "nothing".
@@ -138,14 +142,14 @@ enum Vault {
     private static func secret(host: String, user: String, drawer: String?) -> String? {
         if ProbeKeychain.active { return ProbeKeychain.secret(host: host, user: user, drawer: drawer) } // Fork (probe-keychain)
         var out: CFTypeRef?
-        let status = SecItemCopyMatching([
+        let status = CopperKeychain.copyMatching([ // Fork (exowatt signing)
             kSecClass as String: kSecClassInternetPassword,
             kSecAttrLabel as String: drawerLabel(drawer),
             kSecAttrServer as String: host,
             kSecAttrAccount as String: user,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
-        ] as CFDictionary, &out)
+        ], &out)
         guard status == errSecSuccess, let data = out as? Data else {
             if status != errSecItemNotFound { NSLog("Vault: keychain read failed (%d)", status) }
             return nil
@@ -231,27 +235,21 @@ enum Vault {
         if let used { fields[kSecAttrComment as String] = String(used.timeIntervalSince1970) }
         fields.merge(place(origin)) { _, new in new } // Fork (origin-save): the latest save's scheme and port
 
-        let status = SecItemUpdate(identity as CFDictionary, fields as CFDictionary)
-        if status == errSecSuccess { return true }
-        guard status == errSecItemNotFound else { return false }
-
-        var fresh = identity.merging(fields) { _, new in new }
-        fresh[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
-        return SecItemAdd(fresh as CFDictionary, nil) == errSecSuccess
+        return CopperKeychain.save(identity, fields) // Fork (exowatt signing): update, else add
     }
 
     /// It was just used to sign in. Lists put it first from now on. Only the
     /// comment moves; the secret is neither read nor rewritten.
     static func touch(_ login: Login) {
         if ProbeKeychain.active { return ProbeKeychain.touch(host: login.host, user: login.user, drawer: login.profile) } // Fork (probe-keychain)
-        SecItemUpdate([
+        CopperKeychain.update([ // Fork (exowatt signing)
             kSecClass as String: kSecClassInternetPassword,
             kSecAttrServer as String: login.host,
             kSecAttrAccount as String: login.user,
             kSecAttrLabel as String: drawerLabel(login.profile), // Fork (ardia profiles): its own drawer's
-        ] as CFDictionary, [
+        ], [
             kSecAttrComment as String: String(Date().timeIntervalSince1970),
-        ] as CFDictionary)
+        ])
     }
 
     /// Fork (ardia profiles): from one drawer, the login's own.
@@ -264,19 +262,19 @@ enum Vault {
             kSecAttrAccount as String: user,
         ]
         if drawer != nil || twinned(host: host, user: user) { query[kSecAttrLabel as String] = drawerLabel(drawer) }
-        SecItemDelete(query as CFDictionary)
+        CopperKeychain.delete(query) // Fork (exowatt signing)
     }
 
     /// Fork (ardia profiles): a profile keeps a login for this account too.
     private static func twinned(host: String, user: String) -> Bool {
         var out: CFTypeRef?
-        let status = SecItemCopyMatching([
+        let status = CopperKeychain.copyMatching([ // Fork (exowatt signing)
             kSecClass as String: kSecClassInternetPassword,
             kSecAttrServer as String: host,
             kSecAttrAccount as String: user,
             kSecReturnAttributes as String: true,
             kSecMatchLimit as String: kSecMatchLimitAll,
-        ] as CFDictionary, &out)
+        ], &out)
         guard status == errSecSuccess, let rows = out as? [[String: Any]] else { return false }
         return rows.contains { ($0[kSecAttrLabel as String] as? String)?.hasPrefix(label + " · ") == true }
     }

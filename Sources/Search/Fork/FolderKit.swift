@@ -30,14 +30,8 @@ enum FolderSecrets {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
-        let status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: secret] as CFDictionary)
-        if status == errSecSuccess { return true }
-        guard status == errSecItemNotFound else { return false }
-        var fresh = query
-        fresh[kSecValueData as String] = secret
-        fresh[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked // not synchronizable: never iCloud Keychain
-        fresh[kSecAttrLabel as String] = service
-        return SecItemAdd(fresh as CFDictionary, nil) == errSecSuccess
+        // Fork (exowatt signing): update, else add; not synchronizable: never iCloud Keychain.
+        return CopperKeychain.save(query, [kSecValueData as String: secret], adding: [kSecAttrLabel as String: service])
     }
 
     static func load(service: String, account: String) -> Data? {
@@ -52,7 +46,7 @@ enum FolderSecrets {
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var out: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess else { return nil }
+        guard CopperKeychain.copyMatching(query, &out) == errSecSuccess else { return nil } // Fork (exowatt signing)
         return out as? Data
     }
 
@@ -66,7 +60,7 @@ enum FolderSecrets {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
-        SecItemDelete(query as CFDictionary)
+        CopperKeychain.delete(query) // Fork (exowatt signing)
     }
 }
 

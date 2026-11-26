@@ -13,20 +13,33 @@ private let repo = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 
 @Suite struct SigningTests {
-    @Test func theUpdaterPinsTheTeamInRelease() throws {
-        let cer = try Data(contentsOf: repo.appendingPathComponent("release/copper-developer-id.cer"))
+    @Test func theUpdaterPinsTheTeamsInRelease() throws {
+        // The signing team: Exowatt's certificate in release/.
+        let cer = try Data(contentsOf: repo.appendingPathComponent("release/exowatt-developer-id.cer"))
         let certificate = try #require(SecCertificateCreateWithData(nil, cer as CFData))
         let subject = SecCertificateCopySubjectSummary(certificate) as String? ?? ""
-        #expect(subject == "Developer ID Application: Collin Rijock (95X7XYUVNX)")
+        #expect(subject == "Developer ID Application: Exowatt Inc (\(Signing.team))")
+        // The team before it, still accepted (the bridge).
+        let previous = try Data(contentsOf: repo.appendingPathComponent("release/copper-developer-id.cer"))
+        let old = try #require(SecCertificateCreateWithData(nil, previous as CFData))
+        #expect((SecCertificateCopySubjectSummary(old) as String? ?? "") == "Developer ID Application: Collin Rijock (\(Signing.previousTeam))")
+
         let text = try String(contentsOf: repo.appendingPathComponent("release/designated-requirement.txt"), encoding: .utf8)
         #expect(text.trimmingCharacters(in: .whitespacesAndNewlines) == Signing.releaseRequirement)
         #expect(Signing.releaseRequirement == "identifier \"com.collinrijock.copper\" and \(Signing.developerIDRequirement)")
-        #expect(Signing.developerIDRequirement.hasSuffix("certificate leaf[subject.OU] = \"95X7XYUVNX\""))
+        // Each team as its own clause, as the signing scripts grep the binary for it.
+        for team in [Signing.team, Signing.previousTeam] {
+            #expect(Signing.developerIDRequirement.contains("certificate leaf[subject.OU] = \"\(team)\""))
+        }
+        #expect(Signing.developerIDRequirement.hasSuffix(
+            "(certificate leaf[subject.OU] = \"62D5L6T44Y\" or certificate leaf[subject.OU] = \"95X7XYUVNX\")"))
     }
 
     @Test func theRequirementCompiles() throws {
         // codesign -R refuses a requirement it can't parse the same way it
-        // refuses a bundle that fails it; csreq tells the two apart.
+        // refuses a bundle that fails it; csreq tells the two apart. And
+        // csreq gives the text back as written (Apple's /* exists */ notes
+        // aside): the release scripts compare codesign -dr - with the file.
         let csreq = Process()
         csreq.executableURL = URL(fileURLWithPath: "/usr/bin/csreq")
         csreq.arguments = ["-r=" + Signing.releaseRequirement, "-t"]
@@ -37,7 +50,9 @@ private let repo = URL(fileURLWithPath: #filePath)
         let out = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         csreq.waitUntilExit()
         #expect(csreq.terminationStatus == 0)
-        #expect(out.contains("anchor apple generic") && out.contains("95X7XYUVNX"))
+        #expect(out.contains("anchor apple generic") && out.contains("62D5L6T44Y") && out.contains("95X7XYUVNX"))
+        #expect(out.replacingOccurrences(of: " /* exists */", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+            == Signing.releaseRequirement)
     }
 
     @Test func eachIdentityIsHeldToItsOwnRequirement() {

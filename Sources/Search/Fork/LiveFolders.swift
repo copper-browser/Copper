@@ -223,7 +223,7 @@ enum GitHubPulls {
 final class LiveFolders: ObservableObject {
     static let shared = LiveFolders()
     static let every: TimeInterval = 300
-    private static let service = "Copper GitHub Token"
+    nonisolated static let service = "Copper GitHub Token" // Fork (exowatt signing): CopperKeychain sweeps it
     private static let account = "live-folders"
     static let noToken = "Add a GitHub token to fill this folder."
 

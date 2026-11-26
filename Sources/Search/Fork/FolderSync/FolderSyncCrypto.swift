@@ -129,15 +129,8 @@ enum SyncKeyStore {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
-        let update: [String: Any] = [kSecValueData as String: entropy]
-        let status = SecItemUpdate(query as CFDictionary, update as CFDictionary)
-        if status == errSecSuccess { return true }
-        guard status == errSecItemNotFound else { return false }
-        var fresh = query
-        fresh[kSecValueData as String] = entropy
-        fresh[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked // not synchronizable: never iCloud Keychain
-        fresh[kSecAttrLabel as String] = service
-        return SecItemAdd(fresh as CFDictionary, nil) == errSecSuccess
+        // Fork (exowatt signing): update, else add; not synchronizable: never iCloud Keychain.
+        return CopperKeychain.save(query, [kSecValueData as String: entropy], adding: [kSecAttrLabel as String: service])
     }
 
     static func load() -> Data? {
@@ -152,7 +145,7 @@ enum SyncKeyStore {
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var out: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess, let data = out as? Data, data.count == 32 else { return nil }
+        guard CopperKeychain.copyMatching(query, &out) == errSecSuccess, let data = out as? Data, data.count == 32 else { return nil } // Fork (exowatt signing)
         return data
     }
 
@@ -166,6 +159,6 @@ enum SyncKeyStore {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
-        SecItemDelete(query as CFDictionary)
+        CopperKeychain.delete(query) // Fork (exowatt signing)
     }
 }

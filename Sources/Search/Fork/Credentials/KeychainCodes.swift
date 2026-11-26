@@ -33,12 +33,12 @@ enum KeychainCodes {
     static func accounts() -> Set<String> {
         if ProbeKeychain.active { return Set(probe().keys) }
         var out: CFTypeRef?
-        let status = SecItemCopyMatching([
+        let status = CopperKeychain.copyMatching([ // Fork (exowatt signing)
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecReturnAttributes as String: true,
             kSecMatchLimit as String: kSecMatchLimitAll,
-        ] as CFDictionary, &out)
+        ], &out)
         guard status == errSecSuccess, let rows = out as? [[String: Any]] else { return [] }
         return Set(rows.compactMap { $0[kSecAttrAccount as String] as? String })
     }
@@ -52,13 +52,13 @@ enum KeychainCodes {
         let name = account(host: host, user: user)
         if ProbeKeychain.active { return probe()[name] }
         var out: CFTypeRef?
-        let status = SecItemCopyMatching([
+        let status = CopperKeychain.copyMatching([ // Fork (exowatt signing)
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: name,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
-        ] as CFDictionary, &out)
+        ], &out)
         guard status == errSecSuccess, let data = out as? Data else { return nil }
         return String(data: data, encoding: .utf8)
     }
@@ -88,12 +88,7 @@ enum KeychainCodes {
             kSecValueData as String: data,
             kSecAttrLabel as String: "\(host) — \(user) (two-step code)",
         ]
-        let status = SecItemUpdate(identity as CFDictionary, fields as CFDictionary)
-        if status == errSecSuccess { return true }
-        guard status == errSecItemNotFound else { return false }
-        var fresh = identity.merging(fields) { _, new in new }
-        fresh[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
-        return SecItemAdd(fresh as CFDictionary, nil) == errSecSuccess
+        return CopperKeychain.save(identity, fields) // Fork (exowatt signing): update, else add
     }
 
     static func forget(host: String, user: String) {
@@ -104,11 +99,11 @@ enum KeychainCodes {
             writeProbe(all)
             return
         }
-        SecItemDelete([
+        CopperKeychain.delete([ // Fork (exowatt signing)
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: name,
-        ] as CFDictionary)
+        ])
     }
 
     // MARK: - a probe world's stand-in

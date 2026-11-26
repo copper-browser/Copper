@@ -14,13 +14,15 @@ macOS keeps a person's permissions for Copper (Full Disk Access, Files & Folders
 the keychain's Always Allow) against the app's designated requirement. Before 1.0.20261007.42
 releases were signed ad hoc, so each one's requirement was its own cdhash and every update
 looked like a new app: the grants were dropped while System Settings still showed Copper
-switched on. Releases are now signed with a Developer ID of Copper's team (notarized), and the
+switched on. Releases are now signed with a Developer ID of Copper's team, Exowatt Inc's
+62D5L6T44Y since 1.0.20261126.125 (notarized), and the
 updater makes sure every update keeps that true. Why and how releases are signed: [releasing.md](releasing.md).
 
 `Updates.requirement` is `Signing.requirement(forBundleID:)` (`Fork/Signing.swift`): for the
 release id, `identifier "com.collinrijock.copper" and anchor apple generic and … certificate
-leaf[subject.OU] = "95X7XYUVNX"` (any Developer ID Application certificate of Copper's team;
-releasing.md › How a release is signed); for any other id (a development build, a test copy), `identifier
+leaf[subject.OU] = "62D5L6T44Y" or certificate leaf[subject.OU] = "95X7XYUVNX")` (any Developer
+ID Application certificate of either of Copper's teams, Exowatt's and the one before it;
+releasing.md › How a release is signed and › The move to Exowatt's team); for any other id (a development build, a test copy), `identifier
 "<that id>"`. The updater checks it twice:
 
 - **Staging** (`fetchAndStage`), after the checksum, identity, version and `codesign --verify
