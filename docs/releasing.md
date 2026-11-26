@@ -453,9 +453,17 @@ Once Apple grants it:
    if it isn't, and save.
 2. Profiles › *Copper Developer ID* (Developer ID, X629A3H7T8) › Edit › Save (generate it again):
    a profile only carries the entitlements the App ID had when it was made. Check it:
-   `python3 release/provisioning.py fetch --out /tmp/p.provisionprofile && python3 release/provisioning.py show /tmp/p.provisionprofile`
-   must list `com.apple.developer.web-browser.public-key-credential: true`. Put it in
-   `~/.config/exowatt-apple-signing/Copper_Developer_ID.provisionprofile` too (the fallback).
+
+   ```sh
+   S=~/.config/exowatt-apple-signing; K=$(tr -d '\n' < $S/asc-key-id)
+   python3 release/provisioning.py fetch --bundle-id com.collinrijock.copper --team 62D5L6T44Y \
+     --key $S/AuthKey_$K.p8 --key-id $K --issuer "$(tr -d '\n' < $S/asc-issuer)" --out /tmp/p.provisionprofile
+   python3 release/provisioning.py show --profile /tmp/p.provisionprofile
+   ```
+
+   must list `com.apple.developer.web-browser.public-key-credential`. Put it in
+   `~/.config/exowatt-apple-signing/Copper_Developer_ID.provisionprofile` too (the fallback), and
+   `release/release-local.sh --preflight` then shows it under `claims`.
 3. Nothing in the repository changes: the next release fetches the new profile and
    `release/provisioning.py` claims the entitlement because the profile grants it. Its summary
    (and `codesign -d --entitlements - --xml`) shows it; the launch check on the mini proves AMFI
