@@ -47,12 +47,17 @@ enum Windows {
     /// ⌘N. With no window ever made there is no `openWindow` to ask yet
     /// (it comes from the first window's view), so the first window comes
     /// instead of nothing (Fork/LaunchWatchdog.swift).
-    static func newWindow() {
+    /// Fork (ardia: automation): the new window's browser, made now (its
+    /// scene finds it by id), for AppleScript's `make new window`.
+    @discardableResult
+    static func newWindow() -> Browser? {
         guard let opener else {
             openFirst("new-window")
-            return
+            return nil
         }
-        opener(UUID())
+        let id = UUID()
+        opener(id)
+        return browser(for: id)
     }
 
     /// A browser window has been attached at some point in this run — the
