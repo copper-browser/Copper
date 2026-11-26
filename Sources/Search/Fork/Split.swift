@@ -1027,7 +1027,7 @@ extension Split {
                   let frame = SplitDrop.shared.stages[ObjectIdentifier(browser)], let from = SideHand.frame(of: row, in: browser)
             else { return ["error": "drag ID X Y [hold], with the row laid out"] }
             let to = CGPoint(x: frame.minX + frame.width * fx, y: frame.minY + frame.height * fy)
-            SideHand.how = "view"
+            SideHand.how = "window"
             out["drag"] = SideHand.drag(row, dy: to.y - from.midY, dx: to.x - from.midX, steps: 24, hold: words.contains("hold"), in: browser)
         case "link":
             guard let url = words.dropFirst().first.flatMap(URL.init(string:)), let source = browser.active else { return ["error": "link URL"] }

@@ -3,8 +3,14 @@ import AppKit
 // A hand on the column, for the bench: `./bench sections drag ID DY` picks
 // a row up by its middle and moves it DY points (negative is up) in small
 // steps, the way a person's drag arrives — each step a real mouse event
-// posted to the app's own queue, so it reaches SwiftUI's gestures by the
-// path a person's does — and lets go. With `hold`, it stops with the row
+// handed to the window (`NSWindow.sendEvent`), so it reaches SwiftUI's
+// gestures by the path a person's does — and lets go.
+//
+// Not to the view under the pointer: SwiftUI linked against the macOS 26+
+// SDK (#223 stamps sdk 27) takes a press only when it came through the
+// window's own dispatch, and a `mouseDown(with:)` called on the view straight
+// is ignored, so no DragGesture ever started. A person's events always go
+// NSApp → window, so only the bench's hand was cut off. With `hold`, it stops with the row
 // still in the hand, for a picture of the drop indicator mid-drag;
 // `sections release` lets go of it.
 //
@@ -25,10 +31,11 @@ enum SideHand {
     /// pointer is now, in window base coordinates.
     private static var held: (window: NSWindow, at: NSPoint)?
 
-    /// How the events go in: `post` (the app's queue, the default),
-    /// `window` (`NSWindow.sendEvent`, now) or `view` (the view under the
-    /// pointer, as the canvas bench hands its events to the page).
-    static var how = "view"
+    /// How the events go in: `window` (`NSWindow.sendEvent`, now; the
+    /// default), `post` (the app's queue) or `view` (the view under the
+    /// pointer, as the canvas bench hands its events to the page; SwiftUI on
+    /// an sdk-26+ build ignores it).
+    static var how = "window"
 
     static func window(of browser: Browser) -> NSWindow? {
         Windows.window(of: browser) ?? Links.window
@@ -66,16 +73,23 @@ enum SideHand {
     /// person at the Mac — and AppKit spends a press on a window that isn't
     /// key on making it key ("first mouse") unless the view under it says
     /// it takes the first click. In a test world, for the bench's hand only,
-    /// every view says so: the press reaches SwiftUI's gestures the way a
-    /// click-through press reaches any Mac app's.
+    /// the window lets every first click through: the press reaches SwiftUI's
+    /// gestures the way a click-through press reaches any Mac app's.
+    /// SwiftUI's own views answer `acceptsFirstMouse` themselves, so the
+    /// window's question is the one to answer (NSView's is the fallback).
     private static var clickThrough = false
     private static func acceptFirstMouse() {
         guard Store.testing, !clickThrough else { return }
-        let selector = #selector(NSView.acceptsFirstMouse(for:))
-        guard let method = class_getInstanceMethod(NSView.self, selector) else { return }
+        clickThrough = true
+        let asked = NSSelectorFromString("view:acceptsFirstMouseEvent:initialKeyWindow:")
+        if let method = class_getInstanceMethod(NSWindow.self, asked) {
+            let yes: @convention(block) (NSWindow, NSView?, NSEvent?, Bool) -> Bool = { _, _, _, _ in true }
+            method_setImplementation(method, imp_implementationWithBlock(yes))
+            return
+        }
+        guard let method = class_getInstanceMethod(NSView.self, #selector(NSView.acceptsFirstMouse(for:))) else { return }
         let yes: @convention(block) (NSView, NSEvent?) -> Bool = { _, _ in true }
         method_setImplementation(method, imp_implementationWithBlock(yes))
-        clickThrough = true
     }
 
     /// Pick `tab`'s row up and move it `dy` points over `steps` events, a
