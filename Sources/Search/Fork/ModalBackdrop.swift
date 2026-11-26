@@ -8,6 +8,10 @@ import SwiftUI
 struct ModalBackdrop: View {
     /// Where the page card starts (the column's width), or 0 for the window.
     var column: CGFloat = 0
+    /// Fork (ardia layout): that column on the right.
+    var right = false
+    /// Fork (ardia layout): the page frame now, so a change under an open panel redraws.
+    var pageFrame = SplitMetrics.frame
     let tap: () -> Void
     @Environment(\.colorScheme) private var scheme
 
@@ -21,10 +25,10 @@ struct ModalBackdrop: View {
                 .onTapGesture(perform: tap)
             // Fork (polish r5): a flat dim, no blur — the material picked up a
             // page's hero colour and glowed it round the panel.
-            let shape = RoundedRectangle(cornerRadius: column > 0 ? SplitMetrics.corner : 0, style: .continuous)
+            let shape = RoundedRectangle(cornerRadius: column > 0 ? pageFrame.corner : 0, style: .continuous)
             shape.fill(Color.black.opacity(Self.dim(dark: scheme == .dark)))
                 .padding(column > 0
-                         ? EdgeInsets(top: SplitMetrics.margin, leading: column, bottom: SplitMetrics.margin, trailing: SplitMetrics.margin)
+                         ? EdgeInsets(top: pageFrame.margin, leading: right ? pageFrame.margin : column, bottom: pageFrame.margin, trailing: right ? column : pageFrame.margin)
                          : EdgeInsets())
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
@@ -38,12 +42,13 @@ struct ModalBackdrop: View {
 struct FlowBackdrop: View {
     let browser: Browser
     var column: CGFloat
+    var right = false
     @ObservedObject private var presenter = FlowPresenter.shared
 
     var body: some View {
         if let number = presenter.hostNumber, Windows.window(of: browser)?.windowNumber == number {
             // A click on the window behind gives the keyboard back to Move in.
-            ModalBackdrop(column: column) { presenter.refocus() }
+            ModalBackdrop(column: column, right: right) { presenter.refocus() }
                 .transition(.opacity)
         }
     }

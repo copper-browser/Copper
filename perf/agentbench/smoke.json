@@ -1,0 +1,66 @@
+{
+  "name": "agentbench-smoke",
+  "repeats": 1,
+  "tasks": [
+    "news"
+  ],
+  "port_offset": 20000,
+  "ardia_port": 4621,
+  "copper_port": 4620,
+  "copper_world": "xbagent",
+  "playwright_cdp_port": 4623,
+  "cli": "dev",
+  "pause_file": "~/hc/ardia-site-bench/PAUSE",
+  "max_load_1m": 10,
+  "claude_token_file": "~/hc/ardia-site-bench/agentbench/.claude-oauth",
+  "contenders": [
+    {
+      "id": "copper-claude",
+      "label": "Copper + Claude Code (Opus 5.5 high)",
+      "kind": "copper",
+      "agent": "claude",
+      "model": "claude-opus-5-5",
+      "effort": "high"
+    },
+    {
+      "id": "copper-codex",
+      "label": "Copper + Codex (GPT-6.1 Sol high)",
+      "kind": "copper",
+      "agent": "codex",
+      "model": "gpt-6.1-sol",
+      "effort": "high"
+    },
+    {
+      "id": "ardia-claude",
+      "label": "Ardia + Claude Code (Opus 5.5 high)",
+      "kind": "ardia",
+      "agent": "claude",
+      "model": "claude-opus-5-5",
+      "effort": "high"
+    },
+    {
+      "id": "ardia-codex",
+      "label": "Ardia + Codex (GPT-6.1 Sol high)",
+      "kind": "ardia",
+      "agent": "codex",
+      "model": "gpt-6.1-sol",
+      "effort": "high"
+    },
+    {
+      "id": "playwright-claude",
+      "label": "Playwright MCP + Chrome + Claude Code (Opus 5.5 high)",
+      "kind": "playwright",
+      "agent": "claude",
+      "model": "claude-opus-5-5",
+      "effort": "high"
+    },
+    {
+      "id": "playwright-codex",
+      "label": "Playwright MCP + Chrome + Codex (GPT-6.1 Sol high)",
+      "kind": "playwright",
+      "agent": "codex",
+      "model": "gpt-6.1-sol",
+      "effort": "high"
+    }
+  ]
+}

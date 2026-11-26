@@ -26,6 +26,8 @@ final class ExtensionPopup: NSObject, WKUIDelegate, WKNavigationDelegate, NSPopo
     /// so "the current window" from a popup is the browser's, and so is the
     /// last focused one.
     private var page: PopupPage?
+    /// The profile's extensions the popup belongs to (Fork: ardia profiles).
+    private var owner: Extensions?
     private var measuring: Timer?
     private(set) var extensionID: String? {
         // Fork: said aloud, for the address pill that holds the button up.
@@ -65,9 +67,12 @@ final class ExtensionPopup: NSObject, WKUIDelegate, WKNavigationDelegate, NSPopo
         self.web = web
         self.popover = popover
         extensionID = context.uniqueIdentifier
-        let page = PopupPage(web: web)
+        // Fork (ardia profiles): told to the profile's controller it runs in.
+        let owner = Extensions.owner(of: context)
+        let page = PopupPage(web: web, window: owner.window)
         self.page = page
-        Extensions.shared.controller.didOpenTab(page)
+        self.owner = owner
+        owner.controller.didOpenTab(page)
 
         shown = false
         if let anchor, anchor.window != nil {
@@ -134,8 +139,9 @@ final class ExtensionPopup: NSObject, WKUIDelegate, WKNavigationDelegate, NSPopo
 
     /// Tells WebKit the popup's window and tab are gone.
     private func forget() {
-        if let page { Extensions.shared.controller.didCloseTab(page, windowIsClosing: false) }
+        if let page { (owner ?? Extensions.shared).controller.didCloseTab(page, windowIsClosing: false) }
         page = nil
+        owner = nil
         popover = nil
         web = nil
         extensionID = nil
@@ -309,10 +315,14 @@ final class ExtensionPopup: NSObject, WKUIDelegate, WKNavigationDelegate, NSPopo
 @MainActor
 final class PopupPage: NSObject, WKWebExtensionTab {
     weak var web: WKWebView?
+    let window: ExtensionWindow
 
-    init(web: WKWebView) { self.web = web }
+    init(web: WKWebView, window: ExtensionWindow) {
+        self.web = web
+        self.window = window
+    }
 
-    func window(for context: WKWebExtensionContext) -> (any WKWebExtensionWindow)? { Extensions.shared.window }
+    func window(for context: WKWebExtensionContext) -> (any WKWebExtensionWindow)? { window }
     func indexInWindow(for context: WKWebExtensionContext) -> Int { NSNotFound }
     func webView(for context: WKWebExtensionContext) -> WKWebView? { web }
     func title(for context: WKWebExtensionContext) -> String? { web?.title }

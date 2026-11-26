@@ -345,6 +345,72 @@ final class PageTranslate {
         }
     }
 
+    // MARK: - the offer (Fork (ardia polish))
+
+    /// The banner over a page in a language you don't read (App.swift's offer
+    /// slot): Translate, Not now, or never on this site. Once a site.
+    struct Offer: Equatable {
+        let tab: Tab.ID
+        let host: String
+        let from: String
+    }
+    private(set) var offer: Offer?
+    /// Hosts offered once already (`translate.offered`).
+    @ObservationIgnored private(set) var offered = Set(Store.settings.stringArray(forKey: "translate.offered") ?? [])
+
+    /// A page done loading in the tab in front (Browser's didFinish): offered
+    /// when it is in a language none of the Mac's are, this Mac can translate
+    /// it, and its site was never offered. Reads only a site not offered yet.
+    func consider(_ tab: Tab, in browser: Browser) {
+        guard #available(macOS 15, *), tab.id == browser.activeID, !translated(tab), !isNever(tab),
+              let host = tab.address?.host?.lowercased(), !offered.contains(host), let web = tab.built else { return }
+        if offer?.tab == tab.id { offer = nil }
+        Task {
+            let js = "return {lang: document.documentElement.lang || '', text: document.body ? document.body.innerText.slice(0, 4000) : ''}"
+            let page = try? await web.callAsyncJavaScript(js, arguments: [:], in: nil, contentWorld: .copper) as? [String: Any]
+            // Too little text to tell (a sign-in box, a player) says nothing.
+            guard let text = page?["text"] as? String, text.filter(\.isLetter).count >= 80,
+                  let source = Self.language(of: [text], declared: page?["lang"] as? String ?? ""), !Self.reads(source) else { return }
+            let target = Locale.Language(identifier: Locale.preferredLanguages.first ?? "en")
+            guard await LanguageAvailability().status(from: source, to: target) != .unsupported,
+                  !offered.contains(host), browser.activeID == tab.id, tab.address?.host?.lowercased() == host, !translated(tab) else { return }
+            offered.insert(host)
+            Store.settings.set(offered.sorted(), forKey: "translate.offered")
+            offer = Offer(tab: tab.id, host: host, from: Self.name(source))
+        }
+    }
+
+    /// The banner's answer: translate the page, or not now (`never` too: never this site).
+    func answer(_ yes: Bool, never: Bool = false, in browser: Browser) {
+        guard let offer else { return }
+        self.offer = nil
+        if never, !self.never.contains(offer.host) {
+            self.never.insert(offer.host)
+            Store.settings.set(self.never.sorted(), forKey: "translate.never")
+        }
+        guard yes, let tab = browser.tabs.first(where: { $0.id == offer.tab }) else { return }
+        translate(tab, in: browser)
+    }
+
+    /// The offer for the page in front of this window, if it is still on that site.
+    func offerShown(in browser: Browser) -> Offer? {
+        guard let offer, offer.tab == browser.activeID, browser.active?.address?.host?.lowercased() == offer.host else { return nil }
+        return offer
+    }
+
+    /// Forget the sites offered (the bench's `page offer reset`).
+    func forgetOffers() {
+        offered = []
+        offer = nil
+        Store.settings.removeObject(forKey: "translate.offered")
+    }
+
+    /// One of the Mac's languages (System Settings › Language & Region), by language alone: en-GB reads en-US.
+    nonisolated static func reads(_ language: Locale.Language, preferred: [String] = Locale.preferredLanguages) -> Bool {
+        guard let code = language.languageCode?.identifier else { return true }
+        return preferred.contains { Locale.Language(identifier: $0).languageCode?.identifier == code }
+    }
+
     // MARK: - languages
 
     /// What the page is written in: the text's own language when the
@@ -440,17 +506,74 @@ private struct TranslateHost: View {
     }
 }
 
+/// Fork (ardia polish): the once-a-site banner, where Save the password? sits (App.swift `offerSlot`).
+struct TranslateOfferCard: View {
+    let browser: Browser
+    let offer: PageTranslate.Offer
+
+    var body: some View {
+        let into = PageTranslate.name(Locale.Language(identifier: Locale.preferredLanguages.first ?? "en"))
+        HStack(spacing: 10) {
+            Image(systemName: "translate")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Palette.ink)
+                .frame(width: 22)
+                .padding(.trailing, 2)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Translate this page into \(into)?")
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(Palette.ink)
+                Text("It's in \(offer.from)")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Palette.muted)
+            }
+            .lineLimit(1)
+            .frame(maxWidth: 220, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityElement(children: .combine)
+            Pill("Translate", filled: true) { PageTranslate.shared.answer(true, in: browser) }
+            Pill("Not now") { PageTranslate.shared.answer(false, in: browser) }
+            Menu {
+                Button("Never Translate \(offer.host)") { PageTranslate.shared.answer(false, never: true, in: browser) }
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Palette.muted)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .tint(Palette.muted)
+            .fixedSize()
+            .frame(width: 24, height: 24)
+            .contentShape(Rectangle())
+            .help("Never translate \(offer.host)")
+            .accessibilityLabel("More")
+        }
+        .padding(.leading, 14)
+        .padding(.trailing, 10)
+        .padding(.vertical, 10)
+        .background(Palette.ground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 1))
+        .shadow(color: .black.opacity(0.12), radius: 20, y: 6)
+        .fixedSize()
+    }
+}
+
 /// View › Translate Page / Show Original and Never Translate This Site, under Reading Mode (App.swift).
 struct TranslateItems: View {
     let browser: Browser
+    @ObservedObject var keys = Shortcuts.shared // Fork (ardia-shortcuts)
 
     var body: some View {
         if PageTranslate.available {
             let translate = PageTranslate.shared
             let tab = browser.active
             Button(translate.translated(tab) ? "Show Original" : "Translate Page") { translate.toggle(in: browser) }
+                .shortcut(.translate)
                 .disabled(tab?.isBlank ?? true)
             Toggle("Never Translate This Site", isOn: Binding(get: { translate.isNever(tab) }, set: { _ in translate.toggleNever(in: browser) }))
+                .shortcut(.neverTranslate)
                 .disabled(tab?.address?.host == nil)
         }
     }

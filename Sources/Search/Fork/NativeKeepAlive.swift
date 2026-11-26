@@ -51,17 +51,20 @@ enum NativeKeepAlive {
             let pipes = all.filter { $0.value.running }
             all.values.filter { !$0.running }.forEach { release($0, for: id) }
             if pipes.isEmpty { continue }
-            guard let context = Extensions.shared.contexts[id] else {
+            // Fork (ardia profiles): the extension in every profile it runs in.
+            let contexts = Extensions.contexts(of: id)
+            guard !contexts.isEmpty else {
                 pipes.values.forEach { $0.stop() }
                 continue
             }
             // `_backgroundWebView` (Fork/ExtensionWorker.swift) is nil once
             // the background is unloaded; a WebKit without it just keeps it up.
-            if context.responds(to: NSSelectorFromString("_backgroundWebView")), ExtensionWorker.view(of: context) == nil {
+            let awake = contexts.filter { !$0.responds(to: NSSelectorFromString("_backgroundWebView")) || ExtensionWorker.view(of: $0) != nil }
+            if awake.isEmpty {
                 pipes.values.forEach { $0.stop() }
                 continue
             }
-            context.loadBackgroundContent { _ in }
+            awake.forEach { $0.loadBackgroundContent { _ in } }
         }
     }
 }

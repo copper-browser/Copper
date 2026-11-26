@@ -456,6 +456,8 @@ struct ThemeBackdrop: View {
         /// it rather than being blown up to the window. Nil is the whole
         /// width.
         var span: CGFloat? = nil
+        /// Fork (ardia layout): the column, and so the picture, on the right.
+        var right = false
 
         /// How far a picture is held down under light ink in the dark. At
         /// 0.3 the bright parts of a pastel picture came out a mid grey the
@@ -494,16 +496,17 @@ struct ThemeBackdrop: View {
                             Colour(theme: theme, dark: dark).opacity(dark ? 0.4 : 0.15)
                         }
                         .frame(width: wide, height: geo.size.height)
-                        .mask { if span != nil { Still.fade(wide) } else { Rectangle() } }
+                        .mask { if span != nil { Still.fade(wide, right: right) } else { Rectangle() } }
+                        .frame(width: geo.size.width, height: geo.size.height, alignment: right ? .trailing : .leading)
                     }
                 }
             }
         }
 
         /// The picture's last few points, into the colour beyond it.
-        static func fade(_ wide: CGFloat) -> some View {
+        static func fade(_ wide: CGFloat, right: Bool = false) -> some View {
             LinearGradient(stops: [.init(color: .black, location: max(0, 1 - 24 / max(wide, 1))), .init(color: .clear, location: 1)],
-                           startPoint: .leading, endPoint: .trailing)
+                           startPoint: right ? .trailing : .leading, endPoint: right ? .leading : .trailing)
         }
     }
 

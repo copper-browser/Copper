@@ -46,8 +46,10 @@ Four short pages, each skippable:
    passwords, bookmarks and history (**Bring them in**). If you plan to move
    in from Arc, Chrome or Safari with Move in (step 2), you can skip this — Move in
    brings all of that and more.
-3. **Two ways to hold it.** *Tab strip* (tabs across the top) or *Sidebar*.
-   Change your mind any time with <kbd>⇧⌘S</kbd>.
+3. **Pick a look.** *Light*, *Dark* or *System*; a colour for the space (the
+   same ten the space menu has); and *Tab strip* (tabs across the top) or
+   *Sidebar*. All of it is in Settings later, and <kbd>⇧⌘S</kbd> swaps the
+   tabs' place any time.
 4. **Links from other apps.** Make Copper the default browser if you want
    links from Mail, Slack and PDFs to open here.
 

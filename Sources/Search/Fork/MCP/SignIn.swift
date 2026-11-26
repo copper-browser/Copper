@@ -39,6 +39,10 @@ enum SignIn {
 
     @MainActor
     static func run(_ args: [String: Any], in browser: Browser, source: Source) async throws -> [String: Any] {
+        // Fork (ardia profiles): the logins of the agent tab's own profile.
+        if Profiles.bound == nil, let tab = AgentTabs.target(in: browser) {
+            return try await Profiles.$bound.withValue(Profiles.key(Profiles.of(tab))) { try await run(args, in: browser, source: source) }
+        }
         guard let tab = AgentTabs.target(in: browser) else { throw Failure(message: AgentTabs.missing()) }
         AgentTabs.prepare(tab)
         guard !tab.shy else { throw Failure(message: "sign-in is unavailable in private tabs") }

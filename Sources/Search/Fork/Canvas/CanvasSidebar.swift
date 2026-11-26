@@ -99,7 +99,7 @@ struct CanvasTabRow: ViewModifier {
         content
             .popover(isPresented: Binding(get: { renaming.target == tab.id },
                                           set: { if !$0, renaming.target == tab.id { renaming.target = nil } }),
-                     arrowEdge: .trailing) {
+                     arrowEdge: Windows.main.prefs.awayEdge) { // Fork (ardia layout): toward the page
                 CanvasRenameField(tab: tab)
             }
             .background { if CanvasTabs.showing(tab) != nil { CanvasRowSpot(id: tab.id) } }

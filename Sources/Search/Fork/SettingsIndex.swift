@@ -40,7 +40,7 @@ extension SettingsPanel.Page {
 
     var group: Group {
         switch self {
-        case .general, .tabs, .spaces, .extensions: return .browsing
+        case .general, .tabs, .spaces, .extensions, .shortcuts: return .browsing // Fork (ardia-shortcuts)
         case .intelligence, .agents: return .copper
         case .passwords, .privacy: return .data
         case .cloud, .about: return .about // Fork (settings-merge): Copper Cloud beside About
@@ -50,7 +50,7 @@ extension SettingsPanel.Page {
     /// The rail's order inside each group. `allCases` keeps upstream's order
     /// (and the stored `settings.page` values); this is only how it is drawn.
     static let railOrder: [SettingsPanel.Page] = [
-        .general, .tabs, .spaces, .extensions,
+        .general, .tabs, .spaces, .extensions, .shortcuts,
         .intelligence, .agents,
         .passwords, .privacy,
         .cloud, .about,
@@ -68,7 +68,8 @@ extension SettingsPanel.Page {
         case .extensions: return "Chrome extensions, and the addons your Copper Cloud assigns."
         case .passwords: return "Saved sign-ins, password managers, passkeys and what agents may use."
         case .privacy: return "Blocking ads and trackers, site permissions, and clearing what sites keep."
-        case .about: return "The version you have, what's new, feedback and shortcuts."
+        case .about: return "The version you have, what's new and feedback."
+        case .shortcuts: return "Every menu command and its keys. Click one to give it new ones."
         }
     }
 
@@ -86,7 +87,8 @@ extension SettingsPanel.Page {
         case .extensions: return ["add-ons", "addons", "addon", "plugins", "chrome web store", "agent sidebar", "web app"]
         case .passwords: return ["pw", "pwd", "logins", "keychain", "autofill", "credentials", "password manager"]
         case .privacy: return ["security", "tracking", "data", "clear"]
-        case .about: return ["version", "credits", "help", "shortcuts", "update", "updates", "upgrade", "release"]
+        case .about: return ["version", "credits", "help", "update", "updates", "upgrade", "release"]
+        case .shortcuts: return ["keyboard shortcuts", "shortcuts", "hotkeys", "keys", "keyboard", "key bindings", "rebind", "remap", "cheat sheet"]
         }
     }
 
@@ -126,6 +128,7 @@ enum SettingsIndex {
         general, downloads, tabs, spaces, intelligence, voice, agents, cloud,
         extensions, passwords, privacy, updates, about,
         AirTrafficSettingsIndex.entries, // Fork (ardia: windows): Fork/AirTrafficSettings.swift
+        ShortcutsSettingsIndex.entries, // Fork (ardia-shortcuts): Fork/ShortcutsSettings.swift
         AddonSettingsIndex.entries, // Fork (addons): Fork/Addons/AddonUI.swift — last, so Copper's own update rows win a tie
     ].flatMap { $0 }
 
@@ -134,16 +137,23 @@ enum SettingsIndex {
     private static let general: [SettingsEntry] = [
         e(.general, "Copper on this Mac", "Open links from other apps", "Make Copper the default browser so links from Mail, Slack and the rest open here",
           ["default browser", "make default", "links", "handler", "open with", "system browser"], "general.default"),
-        e(.general, "Copper on this Mac", "Appearance", "Light, dark, or whatever the Mac is doing — pages follow it too",
-          ["dark mode", "light mode", "theme", "night mode", "colour scheme", "color scheme", "system appearance"], "general.appearance"),
-        e(.general, "Copper on this Mac", "See-through window", "The desktop shows, blurred, through the sidebar and round the page",
-          ["transparent", "transparency", "translucent", "vibrancy", "blur", "glass", "frosted", "wallpaper", "desktop", "see through", "opaque"], "general.sheer",
-          toggle: pref(\.sheer)),
         e(.general, "Copper on this Mac", "Correct spelling as you type", "macOS's autocorrect inside pages",
           ["spelling", "spellcheck", "spell check", "autocorrect", "auto correct", "typos", "capitalise", "capitalize"], "general.autocorrect",
           toggle: pref(\.autocorrect)),
         e(.general, "Copper on this Mac", "Morning page", "Opens once a day, in the first window after 3 AM",
           ["daily page", "newspaper", "morning", "start page", "home page", "homepage", "startup page", "first window"], "general.daily"),
+        e(.general, "Appearance", "Appearance", "Light, dark, or whatever the Mac is doing — pages follow it too",
+          ["dark mode", "light mode", "theme", "night mode", "colour scheme", "color scheme", "system appearance"], "general.appearance"),
+        e(.general, "Appearance", "See-through window", "The desktop shows, blurred, through the sidebar and round the page",
+          ["transparent", "transparency", "translucent", "vibrancy", "blur", "glass", "frosted", "wallpaper", "desktop", "see through", "opaque"], "general.sheer",
+          toggle: pref(\.sheer)),
+        e(.general, "Appearance", "Sidebar on the right", "The tabs and the window's buttons down the right edge",
+          ["sidebar position", "right side", "right sidebar", "left sidebar", "sidebar side", "flip sidebar", "mirror", "left handed"], "general.side",
+          toggle: pref(\.sideRight)),
+        e(.general, "Appearance", "Interface size", "The sidebar and tab strip smaller or larger — small, default or large",
+          ["interface size", "ui scale", "text size", "font size", "bigger text", "larger text", "smaller text", "zoom interface", "scale", "accessibility"], "general.size"),
+        e(.general, "Appearance", "Page frame", "The margin round the page: default, thin or none",
+          ["page frame", "frame thickness", "margin", "border", "borderless", "edge to edge", "padding", "card"], "general.frame"),
         e(.general, "Search", "Search engine", "Where words go when they aren't an address — Google, DuckDuckGo, Bing, Kagi, Perplexity, Ecosia, Brave or your own",
           ["search engine", "default search", "google", "duckduckgo", "ddg", "bing", "kagi", "perplexity", "ecosia", "brave", "custom search", "bangs", "calculator"], "general.search"),
         e(.general, "Search", "Search suggestions", "As you type in ⌘T, what you've typed goes to your search engine for suggestions; off, nothing leaves before Return",
@@ -161,7 +171,7 @@ enum SettingsIndex {
     // MARK: tabs
 
     private static let tabs: [SettingsEntry] = [
-        e(.tabs, "Layout", "Tabs in a sidebar", "Down the left instead of across the top",
+        e(.tabs, "Layout", "Tabs in a sidebar", "Down the side instead of across the top",
           ["vertical tabs", "sidebar", "side bar", "left column", "tab bar", "horizontal tabs"], "tabs.sidebar",
           toggle: pref(\.sidebar)),
         e(.tabs, "Switching", "⌃Tab switches to", "Whether Control-Tab follows the row or your most recent tabs",
@@ -460,6 +470,10 @@ enum SettingsIndex {
         e(.privacy, "Blocking", "Block on this site", "Turn off on a site that breaks — the page reloads",
           ["pause blocking", "allow site", "allowlist", "whitelist", "broken site", "exception"], "privacy.site", fallback: "privacy.shield"),
         // Fork (ardia-shield): the lists under the main switch (Fork/PrivacySettings.swift ShieldListLines).
+        e(.privacy, "Blocking", "Ads", "EasyList and uBlock filters",
+          ["easylist", "ublock filters", "ad list", "ads list"], "privacy.shield.ads", fallback: "privacy.shield"),
+        e(.privacy, "Blocking", "Trackers", "EasyPrivacy and uBlock privacy",
+          ["easyprivacy", "tracker list", "ublock privacy"], "privacy.shield.trackers", fallback: "privacy.shield"),
         e(.privacy, "Blocking", "Cookie banners", "Hides consent pop-ups",
           ["cookie banner", "cookie consent", "cookie popup", "gdpr", "consent", "i don't care about cookies", "annoyances"], "privacy.shield.cookies", fallback: "privacy.shield"),
         e(.privacy, "Blocking", "Regional lists", "Block lists for the languages your Mac reads",
@@ -494,42 +508,5 @@ enum SettingsIndex {
         e(.about, "Diagnostics", "Copy crash report", "Copies the last crash's summary and breadcrumbs, or shows its report in Finder",
           ["copy report", "reveal in finder", "ips", "diagnostic report", "crash log", "symbolicate"],
           "about.crash", fallback: "about.feedback"),
-        e(.about, "Keyboard shortcuts", "Keyboard shortcuts", "Every keystroke Copper answers to",
-          ["shortcuts", "hotkeys", "keys", "keyboard", "key bindings", "cheat sheet"], "about.shortcuts"),
-    ] + SettingsShortcuts.all.map { shortcut in
-        e(.about, "Keyboard shortcuts", shortcut.does, shortcut.keys,
-          ["keyboard shortcut", "shortcut", "hotkey", "keys"] + shortcut.words, "about.shortcuts")
-    }
-}
-
-/// The keystrokes About lists — the same list search finds.
-enum SettingsShortcuts {
-    struct Shortcut {
-        let keys: String
-        let does: String
-        var words: [String] = []
-    }
-
-    static let all: [Shortcut] = [
-        .init(keys: "⌘L", does: "Address", words: ["location", "url bar", "omnibox"]),
-        .init(keys: "⌘K", does: "Switch tab", words: ["command bar", "tab search", "palette"]),
-        .init(keys: "⌘T  ⌘W  ⇧⌘T", does: "New, close, reopen tab", words: ["new tab", "close tab", "reopen closed tab"]),
-        .init(keys: "⌘N  ⇧⌘N", does: "New window, new private tab", words: ["new window", "private tab", "private browsing"]),
-        .init(keys: "⌥⌘N  ⇧-click", does: "Little Copper, peek at a link", words: ["little copper", "little arc", "small window", "peek", "preview link"]), // Fork (ardia: windows)
-        .init(keys: "⌃⇧E", does: "New canvas", words: ["whiteboard", "new board"]),
-        .init(keys: "⌘D", does: "Duplicate tab", words: ["duplicate", "copy tab"]),
-        .init(keys: "⇧⌘C", does: "Copy the address", words: ["copy url", "copy link"]),
-        .init(keys: "⇧⌘K", does: "Clear tabs", words: ["close tabs", "clean up tabs"]),
-        .init(keys: "⇧⌘B", does: "Bookmark this page", words: ["add bookmark"]),
-        .init(keys: "⌘Y", does: "History", words: ["show history"]),
-        .init(keys: "⇧⌘J", does: "Downloads", words: ["show downloads"]),
-        .init(keys: "⇧⌘S", does: "Tabs in a sidebar", words: ["toggle sidebar", "vertical tabs"]),
-        .init(keys: "⌘S", does: "Fold the sidebar away", words: ["hide sidebar", "collapse"]),
-        .init(keys: "⌥⌘R", does: "Reading mode", words: ["reader", "reader mode"]),
-        .init(keys: "⇧⌘R", does: "Hard reload", words: ["refresh", "clear cache reload"]),
-        .init(keys: "⇧⌘I", does: "Inspect element", words: ["web inspector", "devtools", "developer tools"]),
-        .init(keys: "⇧⌘H", does: "Hide something on this site", words: ["zap", "hide element", "block element"]),
-        .init(keys: "⇧⌘P", does: "Float the video", words: ["picture in picture", "pip"]),
-        .init(keys: "⌘,", does: "Settings", words: ["preferences", "settings"]),
     ]
 }

@@ -305,12 +305,14 @@ final class Spaces: ObservableObject {
     }
 
     func frontChanged(_ browser: Browser) {
+        PageHandoff.shared.soon() // Fork (ardia: automation): Handoff follows the window in front
         guard currentByBrowser[ObjectIdentifier(browser)] != nil else { return }
         current = current(in: browser)
         objectWillChange.send()
     }
 
     func activeChanged(_ browser: Browser) {
+        PageHandoff.shared.soon() // Fork (ardia: automation): and its active tab
         guard let space = currentByBrowser[ObjectIdentifier(browser)] else { return }
         if let active = browser.activeID {
             activeByBrowserSpace[ObjectIdentifier(browser), default: [:]][space] = active
@@ -1002,6 +1004,13 @@ final class Spaces: ObservableObject {
     /// A profile's jar by name, whether or not a space wears it yet (the
     /// storage import fills one ahead of time).
     nonisolated static func store(forProfile name: String) -> WKWebsiteDataStore {
+        WKWebsiteDataStore(forIdentifier: storeID(forProfile: name))
+    }
+
+    /// The fixed id of a profile's jar (`kind` C0FFEE00), or of another
+    /// store of that profile's — C0FFEE01 is its extensions' storage (Fork:
+    /// ardia profiles).
+    nonisolated static func storeID(forProfile name: String, kind: UInt32 = 0xC0FFEE00) -> UUID {
         // A fixed id per name, so the jar is the same one next launch. A
         // test world salts it with its own name: a probe shares this app's
         // WebKit container, and must never read or wipe the jar of the
@@ -1009,8 +1018,8 @@ final class Spaces: ObservableObject {
         var hash: UInt64 = 14_695_981_039_346_656_037
         let salted = Store.world.map { "\($0)\u{1}\(name)" } ?? name
         for byte in salted.utf8 { hash = (hash ^ UInt64(byte)) &* 1_099_511_628_211 }
-        let text = String(format: "C0FFEE00-%04X-4000-8000-%012llX", UInt16(truncatingIfNeeded: hash >> 48), hash & 0xFFFF_FFFF_FFFF)
-        return WKWebsiteDataStore(forIdentifier: UUID(uuidString: text)!)
+        let text = String(format: "%08X-%04X-4000-8000-%012llX", kind, UInt16(truncatingIfNeeded: hash >> 48), hash & 0xFFFF_FFFF_FFFF)
+        return UUID(uuidString: text)!
     }
 
     // MARK: - session
@@ -1075,6 +1084,7 @@ final class Spaces: ObservableObject {
         defer { SessionGuard.finishRestore() }
         defer { CloudSync.shared.start(for: browser) } // Fork (cloud): sync starts once yesterday's rows are back
         defer { FolderSync.shared.start(for: browser) } // Fork (icloud): Fork/FolderSync/
+        defer { SharedFolders.shared.start(for: browser); LiveFolders.shared.start() } // Fork (ardia folders): Fork/SharedFolders.swift, Fork/LiveFolders.swift
         if let spaces = saved.spaces, !spaces.isEmpty {
             all = spaces
             rows = Dictionary(uniqueKeysWithValues: spaces.map { ($0.id, []) })
@@ -1219,42 +1229,43 @@ struct ForkCommands: Commands {
     @ObservedObject var spaces = Spaces.shared
     @ObservedObject var split = Split.shared
     @ObservedObject var agent = Agent.shared
+    @ObservedObject var keys = Shortcuts.shared // Fork (ardia-shortcuts): the keys below are the table's
 
     var body: some Commands {
         CommandGroup(after: .sidebar) {
             Button("Move in from Another Browser…") { Flow.shared.present(from: Windows.current, via: .menu) }
-                .keyboardShortcut("i", modifiers: [.command, .shift, .option])
+                .shortcut(.moveIn)
             Button(split.on ? "Close Split View" : "Split View") { split.toggle(in: browser) }
-                .keyboardShortcut("d", modifiers: [.command, .shift])
+                .shortcut(.split)
             Menu("Split Panes") { SplitMenu(browser: browser) }.disabled(!split.on) // Fork (ardia split): flip, stack, even, separate
             Button(agent.open ? "Close Agent" : "Agent") { agent.toggle() }
-                .keyboardShortcut("e", modifiers: [.command])
+                .shortcut(.agent)
             Button("Ask About This Page") { agent.askOnPage(in: browser) }
-                .keyboardShortcut("e", modifiers: [.command, .shift])
+                .shortcut(.askPage)
             // ⌘⇧C is Copy Address; O for "open the board".
             Button("Canvas") { CanvasHost.show(Canvases.personalID, in: browser) }
-                .keyboardShortcut("o", modifiers: [.command, .shift])
+                .shortcut(.canvas)
             // Jev's timeline had no way back once closed; and with two or
             // three panes open there was no one move that put them all away.
             // The timeline is the agent pane's driver cards now: this opens
             // the pane at the newest one, even when the pane is already open.
             Button("Driver Timeline") { agent.reveal() }
-                .keyboardShortcut("j", modifiers: [.command, .option])
+                .shortcut(.driverTimeline)
             // Never disabled: a menu item's enabled state is decided when the
             // menu is built, and ⌘⌥E pressed with two panes open did nothing
             // because the item still remembered a window with none. Closing
             // nothing is harmless.
             Button("Close All Panes") { Panes.closeAll(in: browser) }
-                .keyboardShortcut("e", modifiers: [.command, .option])
+                .shortcut(.closePanes)
         }
         CommandMenu("Spaces") {
             Button("New Space") { spaces.add(in: browser) }
-                .keyboardShortcut("n", modifiers: [.control])
+                .shortcut(.newSpace)
             Divider()
             Button("Previous Space") { spaces.step(-1, in: browser) }
-                .keyboardShortcut(.leftArrow, modifiers: [.control, .option])
+                .shortcut(.previousSpace)
             Button("Next Space") { spaces.step(1, in: browser) }
-                .keyboardShortcut(.rightArrow, modifiers: [.control, .option])
+                .shortcut(.nextSpace)
             Divider()
             ForEach(Array(spaces.all.prefix(9).enumerated()), id: \.element.id) { i, space in
                 Button(space.name) { spaces.select(space.id, in: browser) }
@@ -1264,6 +1275,11 @@ struct ForkCommands: Commands {
         // The Groups menu lives in GroupsUI.swift; it rides here because
         // App.swift's .commands builder is at its cap of ten.
         GroupCommands(browser: browser)
+        // Fork (ardia: automation): Window › Task Manager (Fork/TaskManager.swift).
+        CommandGroup(before: .windowList) {
+            Button("Task Manager") { TaskManager.shared.show() }
+            Divider()
+        }
     }
 }
 
@@ -1359,6 +1375,10 @@ extension Spaces {
         case "scroll": return ["slide": SideScrollElasticity.script(arg)]
         case "preview": return ["preview": SpacePreview.bench(words, find: find, in: browser)]
         case "profile": profile(current(in: browser), named: arg)
+        case "history":
+            // Fork (ardia profiles): the places the page in front's profile
+            // lists (`spaces history [TEXT]`), as ⌘Y and the field read them.
+            return ["profile": Profiles.front ?? "", "places": browser.history.everything(matching: arg).map(\.key).sorted()]
         case "theme":
             if let error = benchTheme(words, find: find) { return ["error": error] }
         case "picture":

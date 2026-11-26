@@ -1,0 +1,588 @@
+{
+  "generated": "2026-11-26T03:01:53Z",
+  "from": "2026-11-25",
+  "to": "2026-11-26",
+  "versions": {
+    "copper": "1.0.20261124.117",
+    "ardia": "0.2.48",
+    "ardiaCli": "0.0.0-bench.1 (built from plugins d87fc6c, cli 0.7.0)",
+    "chrome": "158.0.8127.89",
+    "playwrightMcp": "0.0.86",
+    "claudeCode": "2.1.322",
+    "codex": "0.167.2",
+    "models": {
+      "claude": "claude-opus-5-5 (effort high)",
+      "codex": "gpt-6.1-sol (reasoning effort high)"
+    }
+  },
+  "machine": "Mac mini (Apple M6, 24 GB), macOS 27.0.1",
+  "pluginsCommit": "d87fc6cf8aa7b3fa26ad1393a7ef6caa7e7fec28",
+  "bench": "https://github.com/ardia-browser/plugins/tree/d87fc6cf8aa7b3fa26ad1393a7ef6caa7e7fec28/plugins/cli/bench",
+  "repeats": 3,
+  "planned": 144,
+  "runs": 98,
+  "metrics": {
+    "tokens": "median total tokens per run: input (fresh + cache write + cache read) + output, as the agent CLI reports them (Claude Code result.modelUsage, Codex turn.completed usage); Ardia's summary.median_tokens",
+    "time": "median wall seconds of the agent process, every graded run; summary.median_time_s",
+    "timePassing": "median wall seconds over passing runs; summary.median_time_s_passing",
+    "runs": "graded runs (harness errors and rate limits retried and not counted)",
+    "passes": "runs whose server-side check passed before the deadline with no reset by the agent (harness/grading.py)",
+    "totals.tokens": "sum over tasks of the cell's median tokens (the per-side total Ardia's chart shows)"
+  },
+  "tasks": [
+    {
+      "id": "calendar",
+      "title": "Calendar: five events"
+    },
+    {
+      "id": "research",
+      "title": "Docs research: vendor integration review"
+    },
+    {
+      "id": "booking",
+      "title": "Flight booking: two seats together"
+    },
+    {
+      "id": "shop",
+      "title": "Shop: cheapest qualifying docks with a promo code"
+    },
+    {
+      "id": "multitab",
+      "title": "Schedule a kickoff across inbox, directory and calendar"
+    },
+    {
+      "id": "news",
+      "title": "News: research a review and its follow-up"
+    },
+    {
+      "id": "triage",
+      "title": "Issue triage: label, assign, comment, close a duplicate"
+    },
+    {
+      "id": "compare",
+      "title": "SaaS evaluation: pricing, security and a procurement form"
+    }
+  ],
+  "contenders": [
+    {
+      "id": "copper-claude",
+      "side": "copper",
+      "agent": "Claude Code",
+      "model": "Opus 5.5",
+      "modelId": "claude-opus-5-5",
+      "effort": "high"
+    },
+    {
+      "id": "copper-codex",
+      "side": "copper",
+      "agent": "Codex",
+      "model": "GPT-6.1 Sol",
+      "modelId": "gpt-6.1-sol",
+      "effort": "high"
+    },
+    {
+      "id": "ardia-claude",
+      "side": "ardia",
+      "agent": "Claude Code",
+      "model": "Opus 5.5",
+      "modelId": "claude-opus-5-5",
+      "effort": "high"
+    },
+    {
+      "id": "ardia-codex",
+      "side": "ardia",
+      "agent": "Codex",
+      "model": "GPT-6.1 Sol",
+      "modelId": "gpt-6.1-sol",
+      "effort": "high"
+    },
+    {
+      "id": "playwright-claude",
+      "side": "playwright",
+      "agent": "Claude Code",
+      "model": "Opus 5.5",
+      "modelId": "claude-opus-5-5",
+      "effort": "high"
+    },
+    {
+      "id": "playwright-codex",
+      "side": "playwright",
+      "agent": "Codex",
+      "model": "GPT-6.1 Sol",
+      "modelId": "gpt-6.1-sol",
+      "effort": "high"
+    }
+  ],
+  "cells": [
+    {
+      "task": "calendar",
+      "contender": "copper-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 34.2,
+      "timePassing": 34.2,
+      "tokens": 319188
+    },
+    {
+      "task": "calendar",
+      "contender": "copper-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 61.6,
+      "timePassing": 61.6,
+      "tokens": 271310
+    },
+    {
+      "task": "calendar",
+      "contender": "ardia-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 18.4,
+      "timePassing": 18.4,
+      "tokens": 190378
+    },
+    {
+      "task": "calendar",
+      "contender": "ardia-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 38.0,
+      "timePassing": 38.0,
+      "tokens": 147358
+    },
+    {
+      "task": "calendar",
+      "contender": "playwright-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 67.0,
+      "timePassing": 67.0,
+      "tokens": 424909
+    },
+    {
+      "task": "calendar",
+      "contender": "playwright-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 51.3,
+      "timePassing": 51.3,
+      "tokens": 195404
+    },
+    {
+      "task": "research",
+      "contender": "copper-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 28.9,
+      "timePassing": 28.9,
+      "tokens": 367530
+    },
+    {
+      "task": "research",
+      "contender": "copper-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 67.2,
+      "timePassing": 67.2,
+      "tokens": 544790
+    },
+    {
+      "task": "research",
+      "contender": "ardia-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 25.3,
+      "timePassing": 25.3,
+      "tokens": 261278
+    },
+    {
+      "task": "research",
+      "contender": "ardia-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 41.8,
+      "timePassing": 41.8,
+      "tokens": 196170
+    },
+    {
+      "task": "research",
+      "contender": "playwright-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 32.7,
+      "timePassing": 32.7,
+      "tokens": 367137
+    },
+    {
+      "task": "research",
+      "contender": "playwright-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 51.3,
+      "timePassing": 51.3,
+      "tokens": 295990
+    },
+    {
+      "task": "booking",
+      "contender": "copper-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 78.8,
+      "timePassing": 78.8,
+      "tokens": 1269490
+    },
+    {
+      "task": "booking",
+      "contender": "copper-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 68.4,
+      "timePassing": 68.4,
+      "tokens": 490159
+    },
+    {
+      "task": "booking",
+      "contender": "ardia-claude",
+      "runs": 3,
+      "passes": 3,
+      "time": 30.6,
+      "timePassing": 30.6,
+      "tokens": 360498
+    },
+    {
+      "task": "booking",
+      "contender": "ardia-codex",
+      "runs": 3,
+      "passes": 3,
+      "time": 36.3,
+      "timePassing": 36.3,
+      "tokens": 212878
+    },
+    {
+      "task": "booking",
+      "contender": "playwright-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 52.8,
+      "timePassing": 52.8,
+      "tokens": 739708
+    },
+    {
+      "task": "booking",
+      "contender": "playwright-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 48.4,
+      "timePassing": 48.4,
+      "tokens": 432121
+    },
+    {
+      "task": "shop",
+      "contender": "copper-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 61.5,
+      "timePassing": 61.5,
+      "tokens": 852926
+    },
+    {
+      "task": "shop",
+      "contender": "copper-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 104.0,
+      "timePassing": 104.0,
+      "tokens": 898622
+    },
+    {
+      "task": "shop",
+      "contender": "ardia-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 52.2,
+      "timePassing": 52.2,
+      "tokens": 693552
+    },
+    {
+      "task": "shop",
+      "contender": "ardia-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 56.7,
+      "timePassing": 56.7,
+      "tokens": 389796
+    },
+    {
+      "task": "shop",
+      "contender": "playwright-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 59.5,
+      "timePassing": 59.5,
+      "tokens": 955352
+    },
+    {
+      "task": "shop",
+      "contender": "playwright-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 61.3,
+      "timePassing": 61.3,
+      "tokens": 602662
+    },
+    {
+      "task": "multitab",
+      "contender": "copper-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 106.1,
+      "timePassing": 106.1,
+      "tokens": 1932242
+    },
+    {
+      "task": "multitab",
+      "contender": "copper-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 174.1,
+      "timePassing": 174.1,
+      "tokens": 1662301
+    },
+    {
+      "task": "multitab",
+      "contender": "ardia-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 51.4,
+      "timePassing": 51.4,
+      "tokens": 417872
+    },
+    {
+      "task": "multitab",
+      "contender": "ardia-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 87.3,
+      "timePassing": 87.3,
+      "tokens": 496059
+    },
+    {
+      "task": "multitab",
+      "contender": "playwright-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 95.2,
+      "timePassing": 95.2,
+      "tokens": 830412
+    },
+    {
+      "task": "multitab",
+      "contender": "playwright-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 92.9,
+      "timePassing": 92.9,
+      "tokens": 694240
+    },
+    {
+      "task": "news",
+      "contender": "copper-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 42.8,
+      "timePassing": 42.8,
+      "tokens": 552815
+    },
+    {
+      "task": "news",
+      "contender": "copper-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 62.4,
+      "timePassing": 62.4,
+      "tokens": 356967
+    },
+    {
+      "task": "news",
+      "contender": "ardia-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 32.0,
+      "timePassing": 32.0,
+      "tokens": 351532
+    },
+    {
+      "task": "news",
+      "contender": "ardia-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 37.9,
+      "timePassing": 37.9,
+      "tokens": 201552
+    },
+    {
+      "task": "news",
+      "contender": "playwright-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 52.5,
+      "timePassing": 52.5,
+      "tokens": 812232
+    },
+    {
+      "task": "news",
+      "contender": "playwright-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 55.7,
+      "timePassing": 55.7,
+      "tokens": 353776
+    },
+    {
+      "task": "triage",
+      "contender": "copper-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 57.4,
+      "timePassing": 57.4,
+      "tokens": 872002
+    },
+    {
+      "task": "triage",
+      "contender": "copper-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 73.3,
+      "timePassing": 73.3,
+      "tokens": 722442
+    },
+    {
+      "task": "triage",
+      "contender": "ardia-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 53.4,
+      "timePassing": 53.4,
+      "tokens": 590034
+    },
+    {
+      "task": "triage",
+      "contender": "ardia-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 54.8,
+      "timePassing": 54.8,
+      "tokens": 397000
+    },
+    {
+      "task": "triage",
+      "contender": "playwright-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 63.9,
+      "timePassing": 63.9,
+      "tokens": 1166170
+    },
+    {
+      "task": "triage",
+      "contender": "playwright-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 63.8,
+      "timePassing": 63.8,
+      "tokens": 599992
+    },
+    {
+      "task": "compare",
+      "contender": "copper-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 56.8,
+      "timePassing": 56.8,
+      "tokens": 668521
+    },
+    {
+      "task": "compare",
+      "contender": "copper-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 93.3,
+      "timePassing": 93.3,
+      "tokens": 453722
+    },
+    {
+      "task": "compare",
+      "contender": "ardia-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 48.5,
+      "timePassing": 48.5,
+      "tokens": 464949
+    },
+    {
+      "task": "compare",
+      "contender": "ardia-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 61.5,
+      "timePassing": 61.5,
+      "tokens": 266549
+    },
+    {
+      "task": "compare",
+      "contender": "playwright-claude",
+      "runs": 2,
+      "passes": 2,
+      "time": 45.4,
+      "timePassing": 45.4,
+      "tokens": 553724
+    },
+    {
+      "task": "compare",
+      "contender": "playwright-codex",
+      "runs": 2,
+      "passes": 2,
+      "time": 75.8,
+      "timePassing": 75.8,
+      "tokens": 440097
+    }
+  ],
+  "totals": [
+    {
+      "contender": "copper-claude",
+      "runs": 16,
+      "passes": 16,
+      "tokens": 6834714
+    },
+    {
+      "contender": "copper-codex",
+      "runs": 16,
+      "passes": 16,
+      "tokens": 5400313
+    },
+    {
+      "contender": "ardia-claude",
+      "runs": 17,
+      "passes": 17,
+      "tokens": 3330093
+    },
+    {
+      "contender": "ardia-codex",
+      "runs": 17,
+      "passes": 17,
+      "tokens": 2307362
+    },
+    {
+      "contender": "playwright-claude",
+      "runs": 16,
+      "passes": 16,
+      "tokens": 5849644
+    },
+    {
+      "contender": "playwright-codex",
+      "runs": 16,
+      "passes": 16,
+      "tokens": 3614282
+    }
+  ]
+}

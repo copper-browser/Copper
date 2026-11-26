@@ -168,12 +168,14 @@ extension Browser {
 /// Tabs › Copy as Markdown and Copy Link to Highlight, under Copy Address (App.swift).
 struct CopyLinkItems: View {
     let browser: Browser
+    @ObservedObject var keys = Shortcuts.shared // Fork (ardia-shortcuts)
 
     var body: some View {
         Button("Copy as Markdown") { browser.copyMarkdownLink() }
-            .keyboardShortcut("c", modifiers: [.command, .option, .shift])
+            .shortcut(.copyMarkdown)
             .disabled(browser.active?.isBlank ?? true)
         Button("Copy Link to Highlight") { browser.copyHighlightLink() }
+            .shortcut(.copyHighlight)
             .disabled(browser.active?.isBlank ?? true)
     }
 }

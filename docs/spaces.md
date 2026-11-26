@@ -104,10 +104,41 @@ no tabs asks with a plain **Delete**. The last space cannot be deleted.
 | | |
 |---|---|
 | ⌃N | New Space |
-| ⌃⌥← / ⌃⌥→ | Previous / next space |
+| ⌃⌥← / ⌃⌥→, ⌥⌘← / ⌥⌘→ | Previous / next space (and so profile) |
 | ⌃1 … ⌃9 | Switch to the nth space |
 | two-finger swipe over the column | Previous / next space |
 | ⌘K | New Space, Edit Space, Delete Space…, Switch to *name* |
+
+## Profiles
+
+A profile is a name a space wears (Profile › in the space menu). Its tabs
+sign in with a cookie jar of their own, and each profile also keeps its own
+extensions, saved passwords and history (Ardia parity; `Fork/Profiles.swift`
+says which profile a tab, a jar or a moment belongs to). Shared, no name, is
+the drawer every space without a profile uses, and what is kept there
+reaches every profile; what a profile adds stays in that profile.
+
+- **Extensions.** Each profile runs its own `WKWebExtensionController`
+  (`Extensions.of(profile:)`, made the first time one of its pages is built),
+  with its own extension storage and only its own tabs. An extension runs
+  where `Installed.profiles` says: nil is every profile (everything installed
+  before profiles had their own, and an install from a Shared tab); an
+  install from a profile's tab runs there, and installing it again from
+  another profile adds that one. Settings › Extensions › Details › Profiles
+  switches each profile on or off; the buttons, popups, menus and keys are
+  the page in front's profile's.
+- **Passwords.** A profile's logins are keychain items labelled
+  `Copper · <profile>` (security domain the profile, so one never shares an
+  identity with a Shared login of the same account). A profile reads its
+  own and then Shared's; Shared reads only its own. A save in a profile
+  changes the login it already sees, else adds one to its own drawer.
+  Imports (Chrome, CSV, Move in) land in Shared. Settings › Passwords lists
+  the profile in front's.
+- **History.** Each place says which profiles went there (`profiles` in
+  history.json; nil is Shared, seen by every profile). The address field,
+  ⌘T, ⌘Y, the History menu and an extension's `chrome.history` list the
+  profile's places and Shared's. iCloud sync carries the profiles with each
+  place and each Web Store extension; Copper Cloud gets Shared's places only.
 
 ## The model
 

@@ -222,7 +222,8 @@ final class Heat: ObservableObject {
         return pid > 0 ? pid : nil
     }
 
-    private func processCPU(_ pid: pid_t) -> Double? {
+    /// CPU time a process has used, in nanoseconds (also Fork/TaskManager.swift).
+    func processCPU(_ pid: pid_t) -> Double? {
         var info = rusage_info_current()
         let result = withUnsafeMutablePointer(to: &info) { pointer in
             pointer.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {

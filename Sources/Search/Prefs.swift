@@ -46,6 +46,23 @@ final class Preferences: ObservableObject {
     @Published var sideWidth: CGFloat {
         didSet { store.set(Double(sideWidth), forKey: "sidebar.width") }
     }
+    /// Fork (ardia layout): the column down the right edge instead of the
+    /// left, the window's buttons riding with it (Lights.swift).
+    @Published var sideRight: Bool {
+        didSet { store.set(sideRight, forKey: "sidebar.right") }
+    }
+    /// Fork (ardia layout): how big the chrome is drawn — the column's rows,
+    /// titles and marks, the tab strip's (`Metrics.ui`). Pages keep their zoom.
+    @Published var interfaceSize: InterfaceSize {
+        // Before anything hears of the change: a view drawn in between would take the old scale.
+        willSet { Metrics.ui = newValue.scale }
+        didSet { store.set(interfaceSize.rawValue, forKey: "interface.size") }
+    }
+    /// Fork (ardia layout): the page card's frame — the margin round it.
+    @Published var pageFrame: PageFrameSize {
+        willSet { SplitMetrics.frame = newValue }
+        didSet { store.set(pageFrame.rawValue, forKey: "page.frame") }
+    }
     /// Fork (sheer): the desktop shows through the column and round the
     /// page (Fork/Sheer.swift). On unless turned off.
     @Published var sheer: Bool {
@@ -160,6 +177,13 @@ final class Preferences: ObservableObject {
         }
         let width = store.object(forKey: "sidebar.width") as? Double ?? Double(Metrics.side)
         sideWidth = min(Metrics.sideMax, max(Metrics.sideMin, CGFloat(width)))
+        sideRight = store.bool(forKey: "sidebar.right")
+        let size = store.string(forKey: "interface.size").flatMap(InterfaceSize.init(rawValue:)) ?? .standard
+        interfaceSize = size
+        Metrics.ui = size.scale
+        let frame = store.string(forKey: "page.frame").flatMap(PageFrameSize.init(rawValue:)) ?? .standard
+        pageFrame = frame
+        SplitMetrics.frame = frame
         let sheers = store.object(forKey: "sheer") as? Bool ?? true
         sheer = sheers
         Sheer.shared.chosen = sheers
@@ -213,6 +237,16 @@ final class Preferences: ObservableObject {
             store.removeObject(forKey: key)
         }
     }
+
+    /// Fork (ardia layout): the column's side, for paddings and popovers.
+    var columnEdge: Edge.Set { sideRight ? .trailing : .leading }
+    /// The page's side of the column: where a popover off the column opens.
+    var awayEdge: Edge { sideRight ? .leading : .trailing }
+    /// +1 with the column on the left, −1 on the right: an x shift toward it.
+    var columnSign: CGFloat { sideRight ? -1 : 1 }
+    /// The width of a right column the window's buttons ride on; nil when
+    /// they stay in the window's own corner (Lights.swift).
+    var lightsColumn: CGFloat? { sidebar && sideRight ? sideWidth : nil }
 
     /// Fork (settings-browse): a folder a test run chose for itself — inside
     /// its own world folder or under /tmp — is kept across its relaunch like

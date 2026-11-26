@@ -1,3 +1,6 @@
 results/
+# published runs behind the website's benchmarks page
+!/xbench/results/
+!/agentbench/results/
 site/
 RawLoad.app/
