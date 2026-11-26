@@ -300,6 +300,7 @@ struct GroupHead: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .foregroundStyle(tint.ink)
+            SharedFolderMark(group: group.id, tint: tint) // Fork (ardia folders): Fork/SharedFoldersUI.swift
             Spacer(minLength: 2)
             // Arc shows no count; a shut folder says how much it holds only
             // when the pointer asks.
@@ -359,6 +360,7 @@ struct GroupHead: View {
         }
         Button(group.collapsed ? "Expand" : "Collapse") { groups.toggleCollapsed(group.id) }
         Button("New Folder Inside…") { draft = ""; adding = true }
+        SharedFolderMenu(browser: browser, group: group) // Fork (ardia folders): Share Folder…, Fork/SharedFoldersUI.swift
         Divider()
         Button("Ungroup") { groups.dissolve(group.id) }
         Button("Close Tabs in Group", role: .destructive) { groups.closeAll(group.id, in: browser) }

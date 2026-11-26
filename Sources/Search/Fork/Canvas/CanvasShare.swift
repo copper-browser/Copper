@@ -89,6 +89,7 @@ enum CanvasJoinFlow {
     static func handle(_ url: URL, in browser: Browser) -> Bool {
         // copper://cloud/join — a cloud's /start page (Fork/Cloud/CloudSSO.swift).
         if CloudJoin.handle(url, in: browser) { return true }
+        if SharedFolderJoin.handle(url, in: browser) { return true } // Fork (ardia folders): copper://folder/join
         guard let link = accepts(url) else { return false }
         Task { await join(link, in: browser) }
         return true

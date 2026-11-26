@@ -308,6 +308,7 @@ final class Bench {
             CloudBench.handle(request, in: browser, answer: answer)
 
         case "icloud": FolderSyncBench.handle(request, in: browser, answer: answer) // Fork (icloud): Fork/FolderSync/FolderSyncBench.swift
+        case "folders": FoldersBench.handle(request, in: browser, answer: answer) // Fork (ardia folders): live and shared folders, Fork/FoldersBench.swift
 
         case "voice":
             // Fork (voice): the speech engine's selftest and replay, async (Fork/Voice/VoiceBench.swift).
