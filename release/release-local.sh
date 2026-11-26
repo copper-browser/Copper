@@ -6,6 +6,10 @@
 #   release/release-local.sh                    publish fork's HEAD as the next version
 #   release/release-local.sh --version 1.0.20261111.106 [--dry-run]
 #   release/release-local.sh --preflight        only the checks before the build
+#   release/release-local.sh --reuse-assets <commit>
+#                                               check, launch and publish the assets a
+#                                               run left in build/release-local/<version>
+#                                               (built from <commit>) without rebuilding
 #
 #   COPPER_RELEASE_BUILD_HERE=~/src/sign-builds/copper release/release-local.sh …
 #                                               build on this Mac, in that folder
@@ -71,7 +75,7 @@ LAUNCH_FREE_GB=1
 SIGNING="${EXO_MACSIGN_CONFIG_DIR:-$HOME/.config/exowatt-apple-signing}"
 BUNDLE_ID=com.collinrijock.copper
 
-usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; }
 step() { printf '\n==> [%s] %s\n' "$(date +%H:%M:%S)" "$*"; }
 note() { printf '    %s\n' "$*"; }
 fail() { printf 'release-local: %s\n' "$*" >&2; exit 1; }
@@ -79,12 +83,14 @@ fail() { printf 'release-local: %s\n' "$*" >&2; exit 1; }
 dry_run=false
 preflight=false
 version=""
+reuse=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) dry_run=true ;;
     --preflight) preflight=true; dry_run=true ;;
     --version) version="${2:?--version needs a value}"; shift ;;
     --version=*) version="${1#*=}" ;;
+    --reuse-assets) reuse="${2:?--reuse-assets needs the commit they were built from}"; shift ;;
     -h | --help) usage; exit 0 ;;
     *) fail "unknown argument: $1 (see --help)" ;;
   esac
@@ -122,6 +128,19 @@ fi
 if [ -n "$dirty" ]; then
   $dry_run || fail "the working tree has uncommitted changes; a release is built from a clean tree"
   note "dry run: uncommitted changes are not in the build (it is $(git rev-parse --short=12 HEAD) as committed)"
+fi
+# --reuse-assets: the signed, notarized assets of a run that stopped after
+# packaging (build/release-local/<version>/), checked and published as they
+# are instead of built and notarized again (two to four hours of Apple's
+# queue on a slow day). The release is the commit they were built from, and
+# that commit's tree must be HEAD's but for this script and docs/.
+if [ -n "$reuse" ]; then
+  reuse="$(git rev-parse --verify --quiet "$reuse^{commit}")" || fail "--reuse-assets: no such commit"
+  git merge-base --is-ancestor "$reuse" "$commit" || fail "--reuse-assets: $reuse is not an ancestor of HEAD"
+  changed="$(git diff --name-only "$reuse" "$commit" -- . ':(exclude)release/release-local.sh' ':(exclude)docs')"
+  [ -z "$changed" ] || fail "--reuse-assets: $reuse differs from HEAD in what a release is made of: $changed"
+  commit="$reuse"
+  note "reuse    the assets built from $commit"
 fi
 
 # The keys and the password, exo-macsign's: from the environment
@@ -328,7 +347,7 @@ case "$remote_dir" in
   /Volumes/*) fail "COPPER_RELEASE_REMOTE_DIR is on an external disk ($remote_dir); use the mini's internal one, e.g. '~/sign-builds/copper'" ;;
 esac
 remote_free_gb=$LAUNCH_FREE_GB
-[ -n "$BUILD_HERE" ] || remote_free_gb=$BUILD_FREE_GB
+[ -n "$BUILD_HERE" ] || [ -n "$reuse" ] || remote_free_gb=$BUILD_FREE_GB
 # The disk it is on, or will be: the nearest folder of it that exists.
 free_kb="$(mini 60 "d='$remote_dir'; while [ ! -d \"\$d\" ]; do d=\"\$(dirname \"\$d\")\"; done; df -k \"\$d\" | awk 'NR == 2 { print \$4 }'")"
 free_gb="$(awk -v k="$free_kb" 'BEGIN { printf "%.1f", k / 1048576 }')"
@@ -350,8 +369,20 @@ if $preflight; then
 fi
 
 # Only now: a run that stopped in preflight leaves the last one's output be.
-rm -rf "$out"
-mkdir -p "$assets" "$logs"
+if [ -n "$reuse" ]; then
+  for arch in arm64 x86_64; do
+    for file in "assets/copper-$version-macos-$arch.zip" "assets/copper-$version-macos-$arch.dmg" \
+      "assets/copper-$version-macos-$arch.zip.sha256" "assets/copper-$version-macos-$arch.dmg.sha256" "logs/package-$arch.out"; do
+      [ -s "$out/$file" ] || fail "--reuse-assets: no $out/$file"
+    done
+    (cd "$assets" && shasum -a 256 -c "copper-$version-macos-$arch.zip.sha256" "copper-$version-macos-$arch.dmg.sha256" > /dev/null) \
+      || fail "--reuse-assets: the $arch assets are not the ones their .sha256 name"
+  done
+  rm -f "$assets/copper-version.json" "$assets"/*.dSYM.zip
+else
+  rm -rf "$out"
+  mkdir -p "$assets" "$logs"
+fi
 stamp="$version-$(date -u +%H%M%S)-$$"
 job="$remote_dir/$stamp"
 on_mini=true
@@ -454,6 +485,10 @@ echo "--- built"
 BUILD
 
 mkdir -p "$work/build"
+if [ -n "$reuse" ]; then
+  step "Reuse the signed, notarized assets of $commit"
+  note "no build and no signing: the dSYMs went with that run's unsigned build"
+else
 if [ -n "$BUILD_HERE" ]; then
   step "Build here ($BUILD_HERE)"
   here_job="$BUILD_HERE/$stamp"
@@ -516,6 +551,7 @@ for i in 0 1; do
     || { tail -40 "$logs/package-$arch.log" >&2; fail "release/package-app.sh failed for $arch ($logs/package-$arch.log)"; }
 done
 packing=()
+fi
 for arch in arm64 x86_64; do
   sed 's/^/    /' "$logs/package-$arch.log" | grep -v '^    $' | grep -E '^    (profile|  claims|  not claimed|  allowed|signed|notary|stamped|packed)' || true
   grep -q "^profile=$profile_uuid\$" "$logs/package-$arch.out" || fail "$arch: package-app.sh did not embed profile $profile_uuid"
@@ -587,7 +623,10 @@ for arch in arm64 x86_64; do
   # Gatekeeper opens it, and the app inside is the zip's, byte for byte.
   dmg="$assets/copper-${version}-macos-${arch}.dmg"
   codesign --verify --strict "$dmg" || fail "$arch: the disk image's signature does not verify"
-  codesign -dvv "$dmg" 2>&1 | grep -q "^Authority=Developer ID Application: .*($team)\$" || fail "$arch: the disk image is not signed by team $team"
+  # Into a variable first: grep -q stops reading at the match, and codesign,
+  # still writing, would fail the pipeline (pipefail) on a good disk image.
+  dmg_details="$(codesign -dvv "$dmg" 2>&1)"
+  printf '%s\n' "$dmg_details" | grep -q "^Authority=Developer ID Application: .*($team)\$" || fail "$arch: the disk image is not signed by team $team"
   xcrun stapler validate "$dmg" > /dev/null || fail "$arch: no valid stapled ticket on the disk image"
   assessment="$(spctl -a -vv -t open --context context:primary-signature "$dmg" 2>&1 || true)"
   echo "$assessment"

@@ -70,6 +70,7 @@ release/release-local.sh --preflight                  # the checks before the bu
 release/release-local.sh --dry-run                    # build, sign, check, launch; publish nothing
 release/release-local.sh                              # publish fork's HEAD as the next version
 release/release-local.sh --version 1.0.20261111.106   # a version of your choosing
+release/release-local.sh --reuse-assets <commit>      # publish what a run that stopped after notarizing left
 COPPER_RELEASE_REMOTE_DIR='~/sign-builds/copper' release/release-local.sh   # the mini's folder (the default)
 COPPER_RELEASE_BUILD_HERE=~/src/sign-builds/copper release/release-local.sh # build on this Mac (needs Xcode)
 ```
@@ -154,6 +155,13 @@ In the workflow's order:
    every asset and the workflow's release text (with `release/release-note.md` above it, when
    there is one), and the published bytes are checked — the versioned zips and disk images, and
    the stable zips, disk images and manifest behind `releases/latest/download`.
+
+**A run that stops after notarizing** (a check that failed on good assets, a lost connection)
+leaves its signed, notarized, stapled assets in `build/release-local/<version>/`. Fix what
+stopped it, commit, and `--reuse-assets <commit they were built from>` checks, launches and
+publishes those instead of building and notarizing again; the release is that commit, whose tree
+must be HEAD's but for `release/release-local.sh` and `docs/`. Their dSYMs went with the unsigned
+build, so that release has none (crash reports from it won't symbolicate).
 
 Everything lands in `build/release-local/<version>/` (gitignored): `assets/` is exactly what a
 release uploads, `release-notes.md` its text, `logs/` the mini's build and launch output and
@@ -252,7 +260,12 @@ the release here.
   `release/exowatt-developer-id.cer`, or without the App Store Connect key. Then
   `codesign --verify --deep --strict -R=<requirement>`.
 - **Notarized and stapled.** The zip goes to Apple's notary service
-  (`xcrun notarytool submit --wait --key AuthKey_<id>.p8 --key-id … --issuer …`, a few minutes);
+  (`xcrun notarytool submit --wait --key AuthKey_<id>.p8 --key-id … --issuer …`). That usually
+  takes minutes, but the queue is shared with every app the team signs and a new team's first
+  submissions get a closer look: on 2026-11-26 each took over an hour. Past the first 45 minutes
+  the same submission is waited on again (`notarytool wait`, up to `COPPER_NOTARY_HOURS`,
+  default 4), never sent twice (`release-local.sh` packages the two CPUs side by side, so they
+  wait together);
   on *Accepted* the ticket is stapled to the app and the zip made again around it, so Gatekeeper
   opens a download offline too. The disk image (`hdiutil`, UDZO: the stapled app and an
   `/Applications` link, volume *Copper*) is made from that stapled app, signed with the same
