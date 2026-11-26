@@ -64,6 +64,17 @@ def day(date):
     return f"{d.day} {d.strftime('%B')} {d.year}"
 
 
+def days(a, b):
+    """'25 November 2026', '25–26 November 2026' or '30 November to 1 December 2026'."""
+    import datetime
+    if not b or a == b:
+        return day(a)
+    x, y = datetime.date.fromisoformat(a), datetime.date.fromisoformat(b)
+    if (x.year, x.month) == (y.year, y.month):
+        return f"{x.day}–{day(b)}"
+    return f"{day(a)} to {day(b)}"
+
+
 def ratio_words(row, copper, best_name, best):
     """How far Copper is from the best on a row it loses, in plain words."""
     a, b = copper["median"], best["median"]
@@ -97,7 +108,7 @@ def metric(row, names):
     parts = []
     if row.get("dates"):
         a, b = row["dates"]
-        parts.append(f"Measured {day(a)}." if a == b else f"Measured {day(a)} to {day(b)}.")
+        parts.append(f"Measured {days(a, b)}.")
     if missing:
         parts.append(f'Not measured: {", ".join(esc(names[n]) for n in missing)} (see <a href="#method">how we measure</a>).')
     note = f'<p class="gap">{" ".join(parts)}</p>' if parts else ""
@@ -158,14 +169,18 @@ def agent_losses(data):
             continue
         tot = t["totals"]
         copper = next((c for c in t["contenders"] if c["side"] == "copper"), None)
-        best = min(t["contenders"], key=lambda c: tot[c["id"]]["tokens"])
-        if not copper or best is copper or not tot[best["id"]]["tokens"]:
+        if not copper:
             continue
-        a, b = tot[copper["id"]]["tokens"], tot[best["id"]]["tokens"]
+        a = tot[copper["id"]]["tokens"]
+        beat = sorted((c for c in t["contenders"] if 0 < tot[c["id"]]["tokens"] < a), key=lambda c: tot[c["id"]]["tokens"])
+        if not beat:
+            continue
         n = len(t["common"])
         scope = "all eight tasks" if n == len(data["tasks"]) else f"the {n} tasks all three finished"
-        out.append(f'<li><a href="#agents">Agent tokens, {esc(t["agent"])}</a>: {esc(SIDE_NAME.get(best["side"], best["side"]))} '
-                   f'{b / 1e6:.2f}M against Copper’s {a / 1e6:.2f}M ({a / b:.1f}×) over {scope}.</li>')
+        who = " and ".join(f'{SIDE_NAME.get(c["side"], c["side"])} {tot[c["id"]]["tokens"] / 1e6:.2f}M' for c in beat)
+        first = SIDE_NAME.get(beat[0]["side"], beat[0]["side"])
+        out.append(f'<li><a href="#agents">Agent tokens, {esc(t["agent"])}</a>: {esc(who)} against Copper’s {a / 1e6:.2f}M '
+                   f'({a / tot[beat[0]["id"]]["tokens"]:.1f}× {esc(first)}’s) over {scope}.</li>')
     return out
 
 
@@ -196,18 +211,18 @@ def agents_section(data):
                 f'<td class="num"><b>{totals[c["id"]]["tokens"] / 1e6:.2f}M{"<span class=sr> (fewest)</span>" if totals[c["id"]]["tokens"] == best else ""}</b>'
                 f'<small>{totals[c["id"]]["passes"]}/{totals[c["id"]]["runs"]}</small></td>' for c in mine)
             foot = f'<tfoot><tr><th scope="row">{label}</th>{tds}</tr></tfoot>'
-        when_t = f' <span class="when">· {esc(day(data["to"]))}</span>' if data.get("to") else ""
+        when_t = f' <span class="when">· {esc(days(data["from"], data["to"]))}</span>' if data.get("from") else ""
         blocks.append(
             f'<h3>{esc(t["agent"])} · {esc(t["model"])}{when_t}</h3><div class="table"><table><thead><tr><th scope="col">Task</th>{head}</tr></thead>'
             f'<tbody>{"".join(body)}</tbody>{foot}</table></div>')
     planned = data.get("planned")
     runs = sum(c.get("runs", 0) for c in data["cells"])
-    when = f", {esc(day(data['to']))}" if data.get("to") else ""
+    when = f", {esc(days(data['from'], data['to']))}" if data.get("from") else ""
     return f"""
   <section class="wrap section" id="agents" aria-labelledby="agents-title">
     <div class="section-head">
       <h2 id="agents-title">Agents: tokens to get the same job done</h2>
-      <p>Claude Code and Codex, each driving a browser through its own tools, on the eight local web apps of Ardia’s public agent bench (Apache-2.0). A checker on each app’s server says whether the job got done. Fewer tokens is cheaper and faster for the same agent. Each cell is the median tokens of that task’s runs; under it, the runs that passed out of those run, and the median time. {runs} of {planned} planned runs finished{when}.</p>
+      <p>Claude Code and Codex, each driving a browser through its own tools, on the eight local web apps of Ardia’s public agent bench (Apache-2.0). A checker on each app’s server says whether the job got done. Fewer tokens is cheaper and faster for the same agent. Each cell is the median tokens of that task’s runs; under it, runs passed out of runs made, and their median time. {runs} of {planned} planned runs finished{when}.</p>
     </div>
     {"".join(blocks)}
     <p class="small muted">How each browser was reached: Copper through its built-in MCP server (plain browser tools only; nothing in Copper calls a model), Ardia through its <code>ardia</code> CLI and skill, Chrome through Playwright MCP. The tasks, prompts, checkers and token counts are Ardia’s harness, unchanged. Raw runs and the adapter: <a href="{REPO}/tree/fork/perf/agentbench">perf/agentbench</a>.</p>
@@ -302,7 +317,7 @@ def visible_words(rows):
 
 def span_words(bench):
     a, b = bench["span"]
-    return f"measured {day(a)}" if a == b else f"measured {day(a)} to {day(b)}"
+    return f"measured {days(a, b)}"
 
 
 def main_html(bench, agents):
@@ -429,6 +444,8 @@ def selftest():
     assert winners(tie) == ["safari", "ardia"] and "Safari and Ardia 300 MB" in losses([tie], names)[0]
     assert losses([dict(tie, tie=["copper", "safari"])], names) == []
     assert metric(tie, names).count("(best median)") == 2
+    assert days("2026-11-25", "2026-11-25") == "25 November 2026" and days("2026-11-25", "2026-11-26") == "25–26 November 2026"
+    assert days("2026-11-30", "2026-12-01") == "30 November 2026 to 1 December 2026"
     print("page selftest ok")
 
 

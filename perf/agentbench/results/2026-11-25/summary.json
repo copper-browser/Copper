@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated_at": "2026-11-25T21:07:37+00:00",
+  "generated_at": "2026-11-26T03:01:53+00:00",
   "plan": "agentbench-2026-11-25",
   "repeats": 3,
   "tasks": [
@@ -46,7 +46,7 @@
     }
   ],
   "sources": [
-    "/tmp/xbdry/ab/full"
+    "/tmp/xbt/res/full"
   ],
   "contenders": [
     {
@@ -108,18 +108,18 @@
     {
       "task": "calendar",
       "contender": "copper-claude",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 30.192,
-      "median_time_s_passing": 30.192,
-      "median_time_to_correct_s": 28.218,
-      "median_tokens": 260089,
-      "median_uncached_input": 20,
-      "median_output_chars": 0,
-      "median_commands": 23,
-      "total_wall_s": 30.19,
-      "total_tokens": 260089,
+      "median_time_s": 34.191,
+      "median_time_s_passing": 34.191,
+      "median_time_to_correct_s": 31.152,
+      "median_tokens": 319188.5,
+      "median_uncached_input": 24.0,
+      "median_output_chars": 0.0,
+      "median_commands": 24.0,
+      "total_wall_s": 68.38,
+      "total_tokens": 638377,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -130,30 +130,31 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": null,
       "run_ids": [
-        "calendar--copper-claude--r1"
+        "calendar--copper-claude--r1",
+        "calendar--copper-claude--r2"
       ],
       "serial_vs_parallel": null
     },
     {
       "task": "calendar",
       "contender": "copper-codex",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 61.404,
-      "median_time_s_passing": 61.404,
-      "median_time_to_correct_s": 58.576,
-      "median_tokens": 227102,
-      "median_uncached_input": 22772,
-      "median_output_chars": 0,
-      "median_commands": 28,
-      "total_wall_s": 61.4,
-      "total_tokens": 227102,
+      "median_time_s": 61.576,
+      "median_time_s_passing": 61.576,
+      "median_time_to_correct_s": 58.758,
+      "median_tokens": 271310.5,
+      "median_uncached_input": 23063.5,
+      "median_output_chars": 0.0,
+      "median_commands": 36.5,
+      "total_wall_s": 123.15,
+      "total_tokens": 542621,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -164,30 +165,31 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": null,
       "run_ids": [
-        "calendar--copper-codex--r1"
+        "calendar--copper-codex--r1",
+        "calendar--copper-codex--r2"
       ],
       "serial_vs_parallel": null
     },
     {
       "task": "calendar",
       "contender": "ardia-claude",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 17.625,
-      "median_time_s_passing": 17.625,
-      "median_time_to_correct_s": 12.125,
-      "median_tokens": 202132,
-      "median_uncached_input": 18,
-      "median_output_chars": 4422,
-      "median_commands": 6,
-      "total_wall_s": 17.62,
-      "total_tokens": 202132,
+      "median_time_s": 18.416,
+      "median_time_s_passing": 18.416,
+      "median_time_to_correct_s": 13.486,
+      "median_tokens": 190378.0,
+      "median_uncached_input": 17.0,
+      "median_output_chars": 5777.5,
+      "median_commands": 5.5,
+      "total_wall_s": 36.83,
+      "total_tokens": 380756,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -198,31 +200,32 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": null,
       "run_ids": [
-        "calendar--ardia-claude--r1"
+        "calendar--ardia-claude--r1",
+        "calendar--ardia-claude--r2"
       ],
       "serial_vs_parallel": null
     },
     {
       "task": "calendar",
       "contender": "ardia-codex",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 38.424,
-      "median_time_s_passing": 38.424,
-      "median_time_to_correct_s": 25.875,
-      "median_tokens": 137764,
-      "median_uncached_input": 19591,
-      "median_output_chars": 13161,
-      "median_commands": 7,
-      "total_wall_s": 38.42,
-      "total_tokens": 137764,
-      "total_cli_errors": 0,
+      "median_time_s": 38.01,
+      "median_time_s_passing": 38.01,
+      "median_time_to_correct_s": 24.938,
+      "median_tokens": 147357.5,
+      "median_uncached_input": 13796.5,
+      "median_output_chars": 13401.0,
+      "median_commands": 7.5,
+      "total_wall_s": 76.02,
+      "total_tokens": 294715,
+      "total_cli_errors": 1,
       "shortcuts": {
         "source_peeks": 0,
         "direct_api": 0,
@@ -232,30 +235,31 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": null,
       "run_ids": [
-        "calendar--ardia-codex--r1"
+        "calendar--ardia-codex--r1",
+        "calendar--ardia-codex--r2"
       ],
       "serial_vs_parallel": null
     },
     {
       "task": "calendar",
       "contender": "playwright-claude",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 71.763,
-      "median_time_s_passing": 71.763,
-      "median_time_to_correct_s": 61.085,
-      "median_tokens": 424803,
-      "median_uncached_input": 32,
-      "median_output_chars": 1454,
-      "median_commands": 22,
-      "total_wall_s": 71.76,
-      "total_tokens": 424803,
+      "median_time_s": 66.991,
+      "median_time_s_passing": 66.991,
+      "median_time_to_correct_s": 57.267,
+      "median_tokens": 424909.0,
+      "median_uncached_input": 32.0,
+      "median_output_chars": 727.0,
+      "median_commands": 21.5,
+      "total_wall_s": 133.98,
+      "total_tokens": 849818,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -266,30 +270,31 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": null,
       "run_ids": [
-        "calendar--playwright-claude--r1"
+        "calendar--playwright-claude--r1",
+        "calendar--playwright-claude--r2"
       ],
       "serial_vs_parallel": null
     },
     {
       "task": "calendar",
       "contender": "playwright-codex",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 53.68,
-      "median_time_s_passing": 53.68,
-      "median_time_to_correct_s": 32.33,
-      "median_tokens": 231455,
-      "median_uncached_input": 33771,
-      "median_output_chars": 0,
-      "median_commands": 14,
-      "total_wall_s": 53.68,
-      "total_tokens": 231455,
+      "median_time_s": 51.3,
+      "median_time_s_passing": 51.3,
+      "median_time_to_correct_s": 33.904,
+      "median_tokens": 195404.0,
+      "median_uncached_input": 33054.0,
+      "median_output_chars": 0.0,
+      "median_commands": 12.0,
+      "total_wall_s": 102.6,
+      "total_tokens": 390808,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -300,12 +305,13 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": null,
       "run_ids": [
-        "calendar--playwright-codex--r1"
+        "calendar--playwright-codex--r1",
+        "calendar--playwright-codex--r2"
       ],
       "serial_vs_parallel": null
     },
@@ -592,18 +598,18 @@
     {
       "task": "booking",
       "contender": "ardia-claude",
-      "runs": 2,
-      "passes": 2,
+      "runs": 3,
+      "passes": 3,
       "pass_rate": 1.0,
-      "median_time_s": 31.762,
-      "median_time_s_passing": 31.762,
-      "median_time_to_correct_s": 27.367,
-      "median_tokens": 344930.5,
-      "median_uncached_input": 25.0,
-      "median_output_chars": 22501.5,
-      "median_commands": 9.5,
-      "total_wall_s": 63.52,
-      "total_tokens": 689861,
+      "median_time_s": 30.608,
+      "median_time_s_passing": 30.608,
+      "median_time_to_correct_s": 26.304,
+      "median_tokens": 360498,
+      "median_uncached_input": 26,
+      "median_output_chars": 23779,
+      "median_commands": 10,
+      "total_wall_s": 91.65,
+      "total_tokens": 1051895,
       "total_cli_errors": 1,
       "shortcuts": {
         "source_peeks": 0,
@@ -614,31 +620,32 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 2
+        "ui": 3
       },
       "rejected_writes": 0,
       "invariant_failures": null,
       "run_ids": [
         "booking--ardia-claude--r1",
-        "booking--ardia-claude--r2"
+        "booking--ardia-claude--r2",
+        "booking--ardia-claude--r3"
       ],
       "serial_vs_parallel": null
     },
     {
       "task": "booking",
       "contender": "ardia-codex",
-      "runs": 2,
-      "passes": 2,
+      "runs": 3,
+      "passes": 3,
       "pass_rate": 1.0,
-      "median_time_s": 35.916,
-      "median_time_s_passing": 35.916,
-      "median_time_to_correct_s": 31.107,
-      "median_tokens": 207761.5,
-      "median_uncached_input": 20917.0,
-      "median_output_chars": 31814.0,
-      "median_commands": 9.0,
-      "total_wall_s": 71.83,
-      "total_tokens": 415523,
+      "median_time_s": 36.321,
+      "median_time_s_passing": 36.321,
+      "median_time_to_correct_s": 32.002,
+      "median_tokens": 212878,
+      "median_uncached_input": 20566,
+      "median_output_chars": 32098,
+      "median_commands": 9,
+      "total_wall_s": 112.07,
+      "total_tokens": 649188,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -649,13 +656,14 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 2
+        "ui": 3
       },
       "rejected_writes": 0,
       "invariant_failures": null,
       "run_ids": [
         "booking--ardia-codex--r1",
-        "booking--ardia-codex--r2"
+        "booking--ardia-codex--r2",
+        "booking--ardia-codex--r3"
       ],
       "serial_vs_parallel": null
     },
@@ -1572,18 +1580,18 @@
     {
       "task": "compare",
       "contender": "copper-claude",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 59.303,
-      "median_time_s_passing": 59.303,
-      "median_time_to_correct_s": 56.569,
-      "median_tokens": 647496,
-      "median_uncached_input": 40,
-      "median_output_chars": 0,
-      "median_commands": 39,
-      "total_wall_s": 59.3,
-      "total_tokens": 647496,
+      "median_time_s": 56.807,
+      "median_time_s_passing": 56.807,
+      "median_time_to_correct_s": 54.011,
+      "median_tokens": 668521.0,
+      "median_uncached_input": 41.0,
+      "median_output_chars": 0.0,
+      "median_commands": 38.5,
+      "total_wall_s": 113.61,
+      "total_tokens": 1337042,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1594,12 +1602,13 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": {},
       "run_ids": [
-        "compare--copper-claude--r1"
+        "compare--copper-claude--r1",
+        "compare--copper-claude--r2"
       ],
       "serial_vs_parallel": null
     },
@@ -1676,18 +1685,18 @@
     {
       "task": "compare",
       "contender": "ardia-codex",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 67.524,
-      "median_time_s_passing": 67.524,
-      "median_time_to_correct_s": 62.976,
-      "median_tokens": 276983,
-      "median_uncached_input": 22566,
-      "median_output_chars": 33753,
-      "median_commands": 13,
-      "total_wall_s": 67.52,
-      "total_tokens": 276983,
+      "median_time_s": 61.481,
+      "median_time_s_passing": 61.481,
+      "median_time_to_correct_s": 56.632,
+      "median_tokens": 266549.0,
+      "median_uncached_input": 23117.0,
+      "median_output_chars": 29113.0,
+      "median_commands": 13.0,
+      "total_wall_s": 122.96,
+      "total_tokens": 533098,
       "total_cli_errors": 2,
       "shortcuts": {
         "source_peeks": 0,
@@ -1698,30 +1707,31 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": {},
       "run_ids": [
-        "compare--ardia-codex--r1"
+        "compare--ardia-codex--r1",
+        "compare--ardia-codex--r2"
       ],
       "serial_vs_parallel": null
     },
     {
       "task": "compare",
       "contender": "playwright-claude",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 42.608,
-      "median_time_s_passing": 42.608,
-      "median_time_to_correct_s": 37.877,
-      "median_tokens": 456633,
-      "median_uncached_input": 30,
-      "median_output_chars": 0,
-      "median_commands": 27,
-      "total_wall_s": 42.61,
-      "total_tokens": 456633,
+      "median_time_s": 45.443,
+      "median_time_s_passing": 45.443,
+      "median_time_to_correct_s": 40.424,
+      "median_tokens": 553724.0,
+      "median_uncached_input": 35.0,
+      "median_output_chars": 0.0,
+      "median_commands": 29.5,
+      "total_wall_s": 90.89,
+      "total_tokens": 1107448,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1732,30 +1742,31 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": {},
       "run_ids": [
-        "compare--playwright-claude--r1"
+        "compare--playwright-claude--r1",
+        "compare--playwright-claude--r2"
       ],
       "serial_vs_parallel": null
     },
     {
       "task": "compare",
       "contender": "playwright-codex",
-      "runs": 1,
-      "passes": 1,
+      "runs": 2,
+      "passes": 2,
       "pass_rate": 1.0,
-      "median_time_s": 78.073,
-      "median_time_s_passing": 78.073,
-      "median_time_to_correct_s": 71.75,
-      "median_tokens": 459072,
-      "median_uncached_input": 53681,
-      "median_output_chars": 0,
-      "median_commands": 37,
-      "total_wall_s": 78.07,
-      "total_tokens": 459072,
+      "median_time_s": 75.828,
+      "median_time_s_passing": 75.828,
+      "median_time_to_correct_s": 69.957,
+      "median_tokens": 440097.0,
+      "median_uncached_input": 52434.5,
+      "median_output_chars": 0.0,
+      "median_commands": 36.0,
+      "total_wall_s": 151.66,
+      "total_tokens": 880194,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1766,12 +1777,13 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 1
+        "ui": 2
       },
       "rejected_writes": 0,
       "invariant_failures": {},
       "run_ids": [
-        "compare--playwright-codex--r1"
+        "compare--playwright-codex--r1",
+        "compare--playwright-codex--r2"
       ],
       "serial_vs_parallel": null
     }
@@ -1784,18 +1796,18 @@
       "hosts": [
         "mac-mini"
       ],
-      "runs": 14,
-      "passes": 14,
+      "runs": 16,
+      "passes": 16,
       "pass_rate": 1.0,
-      "median_time_s": 59.614,
-      "median_time_s_passing": 59.614,
-      "median_time_to_correct_s": 56.46,
-      "median_tokens": 821174.0,
+      "median_time_s": 56.807,
+      "median_time_s_passing": 56.807,
+      "median_time_to_correct_s": 53.902,
+      "median_tokens": 736869.5,
       "median_uncached_input": 40.0,
       "median_output_chars": 0.0,
       "median_commands": 34.0,
-      "total_wall_s": 840.61,
-      "total_tokens": 12601597,
+      "total_wall_s": 933.11,
+      "total_tokens": 13669431,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1806,7 +1818,7 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 14
+        "ui": 16
       },
       "rejected_writes": 0,
       "invariant_failures": {}
@@ -1818,18 +1830,18 @@
       "hosts": [
         "mac-mini"
       ],
-      "runs": 15,
-      "passes": 15,
+      "runs": 16,
+      "passes": 16,
       "pass_rate": 1.0,
-      "median_time_s": 75.095,
-      "median_time_s_passing": 75.095,
-      "median_time_to_correct_s": 69.929,
-      "median_tokens": 523776,
-      "median_uncached_input": 43774,
-      "median_output_chars": 0,
-      "median_commands": 41,
-      "total_wall_s": 1346.74,
-      "total_tokens": 10485109,
+      "median_time_s": 74.704,
+      "median_time_s_passing": 74.704,
+      "median_time_to_correct_s": 69.13,
+      "median_tokens": 493791.0,
+      "median_uncached_input": 39580.5,
+      "median_output_chars": 0.0,
+      "median_commands": 41.5,
+      "total_wall_s": 1408.49,
+      "total_tokens": 10800628,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1840,7 +1852,7 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 15
+        "ui": 16
       },
       "rejected_writes": 0,
       "invariant_failures": {}
@@ -1852,18 +1864,18 @@
       "hosts": [
         "mac-mini"
       ],
-      "runs": 15,
-      "passes": 15,
+      "runs": 17,
+      "passes": 17,
       "pass_rate": 1.0,
-      "median_time_s": 46.2,
-      "median_time_s_passing": 46.2,
-      "median_time_to_correct_s": 37.705,
-      "median_tokens": 410773,
-      "median_uncached_input": 28,
+      "median_time_s": 34.653,
+      "median_time_s_passing": 34.653,
+      "median_time_to_correct_s": 28.43,
+      "median_tokens": 362034,
+      "median_uncached_input": 26,
       "median_output_chars": 21450,
-      "median_commands": 11,
-      "total_wall_s": 606.72,
-      "total_tokens": 6450427,
+      "median_commands": 10,
+      "total_wall_s": 654.06,
+      "total_tokens": 6991085,
       "total_cli_errors": 1,
       "shortcuts": {
         "source_peeks": 0,
@@ -1874,7 +1886,7 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 15
+        "ui": 17
       },
       "rejected_writes": 0,
       "invariant_failures": {}
@@ -1886,19 +1898,19 @@
       "hosts": [
         "mac-mini"
       ],
-      "runs": 14,
-      "passes": 14,
+      "runs": 17,
+      "passes": 17,
       "pass_rate": 1.0,
-      "median_time_s": 48.824,
-      "median_time_s_passing": 48.824,
-      "median_time_to_correct_s": 43.489,
-      "median_tokens": 245038.0,
-      "median_uncached_input": 20917.0,
-      "median_output_chars": 31814.0,
-      "median_commands": 12.5,
-      "total_wall_s": 734.76,
-      "total_tokens": 4191425,
-      "total_cli_errors": 9,
+      "median_time_s": 45.211,
+      "median_time_s_passing": 45.211,
+      "median_time_to_correct_s": 41.301,
+      "median_tokens": 233665,
+      "median_uncached_input": 20566,
+      "median_output_chars": 30244,
+      "median_commands": 12,
+      "total_wall_s": 868.03,
+      "total_tokens": 4838156,
+      "total_cli_errors": 10,
       "shortcuts": {
         "source_peeks": 0,
         "direct_api": 0,
@@ -1908,7 +1920,7 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 14
+        "ui": 17
       },
       "rejected_writes": 0,
       "invariant_failures": {}
@@ -1920,18 +1932,18 @@
       "hosts": [
         "mac-mini"
       ],
-      "runs": 14,
-      "passes": 14,
+      "runs": 16,
+      "passes": 16,
       "pass_rate": 1.0,
       "median_time_s": 57.709,
       "median_time_s_passing": 57.709,
       "median_time_to_correct_s": 53.236,
-      "median_tokens": 776243.0,
+      "median_tokens": 757403.5,
       "median_uncached_input": 38.0,
       "median_output_chars": 0.0,
       "median_commands": 26.0,
-      "total_wall_s": 827.83,
-      "total_tokens": 10623460,
+      "total_wall_s": 938.33,
+      "total_tokens": 11699290,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1942,7 +1954,7 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 14
+        "ui": 16
       },
       "rejected_writes": 0,
       "invariant_failures": {}
@@ -1954,18 +1966,18 @@
       "hosts": [
         "mac-mini"
       ],
-      "runs": 14,
-      "passes": 14,
+      "runs": 16,
+      "passes": 16,
       "pass_rate": 1.0,
       "median_time_s": 58.095,
       "median_time_s_passing": 58.095,
       "median_time_to_correct_s": 51.941,
-      "median_tokens": 459003.0,
+      "median_tokens": 440028.0,
       "median_uncached_input": 38622.5,
       "median_output_chars": 0.0,
       "median_commands": 26.5,
-      "total_wall_s": 878.58,
-      "total_tokens": 6648085,
+      "total_wall_s": 1001.09,
+      "total_tokens": 7228560,
       "total_cli_errors": 0,
       "shortcuts": {
         "source_peeks": 0,
@@ -1976,7 +1988,7 @@
       "frontmost_during_run": null,
       "screenshot_timeouts": null,
       "method_labels": {
-        "ui": 14
+        "ui": 16
       },
       "rejected_writes": 0,
       "invariant_failures": {}

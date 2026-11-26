@@ -65,7 +65,27 @@ voice_transcript`.
 See `results/2026-11-25/` (`runs.jsonl`, one line per attempt; `summary.json`, Ardia's summary of the same runs)
 and `site/assets/agentbench.json` (the page's data, shaped like Ardia's `computerUse.json`).
 
-The run is still going: `site/assets/agentbench.json` says how many of the 144 planned runs are in (`runs`).
+Run 2026-11-25 18:56 to 2026-11-26 03:01 UTC: 98 of 144 planned runs (repeats 1 and 2 of every cell, plus
+repeat 3 of `booking` for the two Ardia contenders, which the round-robin had reached at the 03:00 cutoff). Every
+run passed its check; no harness errors, rate limits or retries. The mini was held for other timed runs from 21:15
+to about 02:40 UTC (the shared `PAUSE` file), which cost the third repeat. Median tokens per cell (passes/runs):
+
+| task | copper-claude | copper-codex | ardia-claude | ardia-codex | playwright-claude | playwright-codex |
+|---|---|---|---|---|---|---|
+| calendar | 2/2 319K | 2/2 271K | 2/2 190K | 2/2 147K | 2/2 425K | 2/2 195K |
+| research | 2/2 368K | 2/2 545K | 2/2 261K | 2/2 196K | 2/2 367K | 2/2 296K |
+| booking | 2/2 1269K | 2/2 490K | 3/3 360K | 3/3 213K | 2/2 740K | 2/2 432K |
+| shop | 2/2 853K | 2/2 899K | 2/2 694K | 2/2 390K | 2/2 955K | 2/2 603K |
+| multitab | 2/2 1932K | 2/2 1662K | 2/2 418K | 2/2 496K | 2/2 830K | 2/2 694K |
+| news | 2/2 553K | 2/2 357K | 2/2 352K | 2/2 202K | 2/2 812K | 2/2 354K |
+| triage | 2/2 872K | 2/2 722K | 2/2 590K | 2/2 397K | 2/2 1166K | 2/2 600K |
+| compare | 2/2 669K | 2/2 454K | 2/2 465K | 2/2 267K | 2/2 554K | 2/2 440K |
+| sum of medians | 6.83M | 5.40M | 3.33M | 2.31M | 5.85M | 3.61M |
+
+Ardia's CLI + skill used the fewest tokens on all eight tasks with both agents. Against Playwright MCP, Copper's
+MCP used fewer tokens on four of eight tasks with Claude Code (calendar, shop, news, triage; research a tie) and
+more on all eight with Codex; multitab and booking cost Copper the most. The smoke run (`news` once per contender,
+all passing) is in `smoke-runs.jsonl`; it is not on the page.
 
 ## Caveats
 
@@ -79,7 +99,8 @@ The run is still going: `site/assets/agentbench.json` says how many of the 144 p
   system prompt; that costs every Claude Code contender the same.
 - Ardia's CLI is built from the plugins commit (label `0.0.0-bench.1`, source version 0.7.0), as their
   `freeze-cli` does, not the copy an Ardia install would download.
-- Three repeats per cell; medians of three move run to run. Cells with fewer runs than planned keep their real count.
+- Two repeats per cell (three for Ardia on booking): a median of two is their mean and moves run to run. Cells keep
+  their real run counts.
 
 ## Rerun from scratch
 
