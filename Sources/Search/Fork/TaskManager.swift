@@ -128,7 +128,10 @@ final class TaskManager: ObservableObject {
         let arg = request["arg"] as? String ?? ""
         let picked = Set(AgentTabs.all.filter { !arg.isEmpty && $0.id.uuidString.lowercased().hasPrefix(arg.lowercased()) }.map(\.id))
         switch op {
-        case "show": model.show()
+        case "show":
+            model.show()
+            // Headless parks every window at the browser's size; the picture wants the window's own.
+            if Headless.on { model.window?.setContentSize(NSSize(width: 640, height: 400)) }
         case "sleep", "end":
             guard !picked.isEmpty else { return ["error": "tasks \(op) ID"] }
             if op == "sleep" { model.sleep(picked) } else { model.end(picked) }
