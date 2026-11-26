@@ -1,0 +1,43 @@
+{
+ "harness": 1,
+ "machine": {
+  "model": "Mac mini (Mac18,5)",
+  "chip": "Apple M6",
+  "cores": 12,
+  "ram": "24 GB",
+  "macOS": "27.0.1 (26A434)"
+ },
+ "browsers": {
+  "copper": {
+   "name": "Copper",
+   "engine": "WebKit",
+   "version": "1.0.20261124.117",
+   "build": "202611241318"
+  },
+  "safari": {
+   "name": "Safari",
+   "engine": "WebKit",
+   "version": "27.0.1",
+   "build": "22625.1.29.11.28"
+  },
+  "chrome": {
+   "name": "Google Chrome",
+   "engine": "Chromium",
+   "version": "158.0.8127.89",
+   "build": "8127.89"
+  },
+  "ardia": {
+   "name": "Ardia",
+   "engine": "Chromium",
+   "version": "0.2.48",
+   "build": "139"
+  }
+ },
+ "started": "2026-11-25 14:27:24 -0500",
+ "plan": {
+  "rounds": 3,
+  "launches": 2,
+  "phases": "launch,session,speedometer",
+  "idle": 60
+ }
+}

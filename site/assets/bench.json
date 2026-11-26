@@ -1,0 +1,631 @@
+{
+ "date": "2026-11-25",
+ "span": [
+  "2026-11-25",
+  "2026-11-25"
+ ],
+ "machine": {
+  "model": "Mac mini (Mac18,5)",
+  "chip": "Apple M6",
+  "cores": 12,
+  "ram": "24 GB",
+  "macOS": "27.0.1 (26A434)"
+ },
+ "harness": 1,
+ "browsers": {
+  "copper": {
+   "name": "Copper",
+   "engine": "WebKit",
+   "version": "1.0.20261124.117",
+   "build": "202611241318"
+  },
+  "safari": {
+   "name": "Safari",
+   "engine": "WebKit",
+   "version": "27.0.1",
+   "build": "22625.1.29.11.28"
+  },
+  "chrome": {
+   "name": "Google Chrome",
+   "engine": "Chromium",
+   "version": "158.0.8127.89",
+   "build": "8127.89"
+  },
+  "ardia": {
+   "name": "Ardia",
+   "engine": "Chromium",
+   "version": "0.2.48",
+   "build": "139"
+  }
+ },
+ "rows": [
+  {
+   "id": "launch-window",
+   "label": "Cold launch \u2192 window on screen",
+   "unit": "ms",
+   "lowerIsBetter": true,
+   "browsers": {
+    "copper": {
+     "median": 394.0,
+     "min": 307.0,
+     "max": 481.0,
+     "n": 2
+    },
+    "safari": {
+     "median": 589.0,
+     "min": 447.0,
+     "max": 730.0,
+     "n": 2
+    },
+    "chrome": {
+     "median": 1925.0,
+     "min": 402.0,
+     "max": 3448.0,
+     "n": 2
+    },
+    "ardia": {
+     "median": 1007.0,
+     "min": 267.0,
+     "max": 1747.0,
+     "n": 2
+    }
+   },
+   "best": "copper",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
+  },
+  {
+   "id": "launch-restore",
+   "label": "Cold launch \u2192 restored tab painted",
+   "unit": "ms",
+   "lowerIsBetter": true,
+   "browsers": {
+    "copper": {
+     "median": 450.0,
+     "min": 332.0,
+     "max": 568.0,
+     "n": 2
+    },
+    "chrome": {
+     "median": 1923.0,
+     "min": 397.0,
+     "max": 3449.0,
+     "n": 2
+    },
+    "ardia": {
+     "median": 1068.0,
+     "min": 323.0,
+     "max": 1813.0,
+     "n": 2
+    }
+   },
+   "best": "copper",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
+  },
+  {
+   "id": "launch-link",
+   "label": "Cold launch \u2192 page painted (link opened from another app)",
+   "unit": "ms",
+   "lowerIsBetter": true,
+   "browsers": {
+    "copper": {
+     "median": 395.0,
+     "min": 391.0,
+     "max": 399.0,
+     "n": 2
+    },
+    "chrome": {
+     "median": 408.0,
+     "min": 400.0,
+     "max": 416.0,
+     "n": 2
+    },
+    "ardia": {
+     "median": 383.0,
+     "min": 381.0,
+     "max": 385.0,
+     "n": 2
+    }
+   },
+   "best": "ardia",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
+  },
+  {
+   "id": "memory-1",
+   "label": "Memory, 1 tab",
+   "unit": "MB",
+   "lowerIsBetter": true,
+   "browsers": {
+    "copper": {
+     "median": 103.0,
+     "min": 103.0,
+     "max": 103.0,
+     "n": 1
+    },
+    "safari": {
+     "median": 165.0,
+     "min": 165.0,
+     "max": 165.0,
+     "n": 1
+    },
+    "chrome": {
+     "median": 242.0,
+     "min": 242.0,
+     "max": 242.0,
+     "n": 1
+    },
+    "ardia": {
+     "median": 342.0,
+     "min": 342.0,
+     "max": 342.0,
+     "n": 1
+    }
+   },
+   "best": "copper",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
+  },
+  {
+   "id": "memory-10",
+   "label": "Memory, 10 tabs",
+   "unit": "MB",
+   "lowerIsBetter": true,
+   "browsers": {
+    "copper": {
+     "median": 276.0,
+     "min": 276.0,
+     "max": 276.0,
+     "n": 1
+    },
+    "safari": {
+     "median": 335.0,
+     "min": 335.0,
+     "max": 335.0,
+     "n": 1
+    },
+    "chrome": {
+     "median": 550.0,
+     "min": 550.0,
+     "max": 550.0,
+     "n": 1
+    },
+    "ardia": {
+     "median": 581.0,
+     "min": 581.0,
+     "max": 581.0,
+     "n": 1
+    }
+   },
+   "best": "copper",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
+  },
+  {
+   "id": "memory-20",
+   "label": "Memory, 20 tabs",
+   "unit": "MB",
+   "lowerIsBetter": true,
+   "browsers": {
+    "copper": {
+     "median": 464.0,
+     "min": 464.0,
+     "max": 464.0,
+     "n": 1
+    },
+    "safari": {
+     "median": 516.0,
+     "min": 516.0,
+     "max": 516.0,
+     "n": 1
+    },
+    "chrome": {
+     "median": 876.0,
+     "min": 876.0,
+     "max": 876.0,
+     "n": 1
+    },
+    "ardia": {
+     "median": 818.0,
+     "min": 818.0,
+     "max": 818.0,
+     "n": 1
+    }
+   },
+   "best": "copper",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
+  },
+  {
+   "id": "memory-closed",
+   "label": "Memory, back to 1 tab after 20",
+   "unit": "MB",
+   "lowerIsBetter": true,
+   "browsers": {
+    "copper": {
+     "median": 98.8,
+     "min": 98.8,
+     "max": 98.8,
+     "n": 1
+    },
+    "safari": {
+     "median": 174.0,
+     "min": 174.0,
+     "max": 174.0,
+     "n": 1
+    },
+    "chrome": {
+     "median": 248.0,
+     "min": 248.0,
+     "max": 248.0,
+     "n": 1
+    },
+    "ardia": {
+     "median": 326.0,
+     "min": 326.0,
+     "max": 326.0,
+     "n": 1
+    }
+   },
+   "best": "copper",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
+  },
+  {
+   "id": "idle-cpu-1",
+   "label": "Idle CPU, 1 tab",
+   "unit": "%",
+   "lowerIsBetter": true,
+   "browsers": {
+    "copper": {
+     "median": 0.18,
+     "min": 0.18,
+     "max": 0.18,
+     "n": 1
+    },
+    "safari": {
+     "median": 0.03,
+     "min": 0.03,
+     "max": 0.03,
+     "n": 1
+    },
+    "chrome": {
+     "median": 1.0,
+     "min": 1.0,
+     "max": 1.0,
+     "n": 1
+    },
+    "ardia": {
+     "median": 1.1,
+     "min": 1.1,
+     "max": 1.1,
+     "n": 1
+    }
+   },
+   "best": "safari",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
+  },
+  {
+   "id": "idle-cpu-20",
+   "label": "Idle CPU, 20 tabs",
+   "unit": "%",
+   "lowerIsBetter": true,
+   "browsers": {
+    "copper": {
+     "median": 0.3,
+     "min": 0.3,
+     "max": 0.3,
+     "n": 1
+    },
+    "safari": {
+     "median": 0.14,
+     "min": 0.14,
+     "max": 0.14,
+     "n": 1
+    },
+    "chrome": {
+     "median": 9.0,
+     "min": 9.0,
+     "max": 9.0,
+     "n": 1
+    },
+    "ardia": {
+     "median": 1.8,
+     "min": 1.8,
+     "max": 1.8,
+     "n": 1
+    }
+   },
+   "best": "safari",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
+  },
+  {
+   "id": "idle-wakeups-1",
+   "label": "Idle wakeups, 1 tab",
+   "unit": "/s",
+   "lowerIsBetter": true,
+   "browsers": {
+    "copper": {
+     "median": 17.6,
+     "min": 17.6,
+     "max": 17.6,
+     "n": 1
+    },
+    "safari": {
+     "median": 1.8,
+     "min": 1.8,
+     "max": 1.8,
+     "n": 1
+    },
+    "chrome": {
+     "median": 8.0,
+     "min": 8.0,
+     "max": 8.0,
+     "n": 1
+    },
+    "ardia": {
+     "median": 70.1,
+     "min": 70.1,
+     "max": 70.1,
+     "n": 1
+    }
+   },
+   "best": "safari",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
+  },
+  {
+   "id": "idle-wakeups-20",
+   "label": "Idle wakeups, 20 tabs",
+   "unit": "/s",
+   "lowerIsBetter": true,
+   "browsers": {
+    "copper": {
+     "median": 35.0,
+     "min": 35.0,
+     "max": 35.0,
+     "n": 1
+    },
+    "safari": {
+     "median": 26.6,
+     "min": 26.6,
+     "max": 26.6,
+     "n": 1
+    },
+    "chrome": {
+     "median": 263.0,
+     "min": 263.0,
+     "max": 263.0,
+     "n": 1
+    },
+    "ardia": {
+     "median": 85.2,
+     "min": 85.2,
+     "max": 85.2,
+     "n": 1
+    }
+   },
+   "best": "safari",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
+  },
+  {
+   "id": "idle-power-1",
+   "label": "Idle power, 1 tab",
+   "unit": "mW",
+   "lowerIsBetter": true,
+   "browsers": {
+    "copper": {
+     "median": 0.14,
+     "min": 0.14,
+     "max": 0.14,
+     "n": 1
+    },
+    "safari": {
+     "median": 0.02,
+     "min": 0.02,
+     "max": 0.02,
+     "n": 1
+    },
+    "chrome": {
+     "median": 5.2,
+     "min": 5.2,
+     "max": 5.2,
+     "n": 1
+    },
+    "ardia": {
+     "median": 0.86,
+     "min": 0.86,
+     "max": 0.86,
+     "n": 1
+    }
+   },
+   "best": "safari",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
+  },
+  {
+   "id": "idle-power-20",
+   "label": "Idle power, 20 tabs",
+   "unit": "mW",
+   "lowerIsBetter": true,
+   "browsers": {
+    "copper": {
+     "median": 0.19,
+     "min": 0.19,
+     "max": 0.19,
+     "n": 1
+    },
+    "safari": {
+     "median": 0.08,
+     "min": 0.08,
+     "max": 0.08,
+     "n": 1
+    },
+    "chrome": {
+     "median": 8.7,
+     "min": 8.7,
+     "max": 8.7,
+     "n": 1
+    },
+    "ardia": {
+     "median": 1.4,
+     "min": 1.4,
+     "max": 1.4,
+     "n": 1
+    }
+   },
+   "best": "safari",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
+  },
+  {
+   "id": "speedometer",
+   "label": "Speedometer 3.1",
+   "unit": "points",
+   "lowerIsBetter": false,
+   "browsers": {
+    "copper": {
+     "median": 62.3,
+     "min": 62.3,
+     "max": 62.3,
+     "n": 1
+    },
+    "chrome": {
+     "median": 81.0,
+     "min": 81.0,
+     "max": 81.0,
+     "n": 1
+    },
+    "ardia": {
+     "median": 76.9,
+     "min": 76.9,
+     "max": 76.9,
+     "n": 1
+    }
+   },
+   "best": "chrome",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
+  },
+  {
+   "id": "memory-1-visible",
+   "label": "Memory, 1 tab, its page drawing",
+   "unit": "MB",
+   "lowerIsBetter": true,
+   "browsers": {
+    "copper": {
+     "median": 122.0,
+     "min": 122.0,
+     "max": 122.0,
+     "n": 1
+    }
+   },
+   "best": "copper",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
+  },
+  {
+   "id": "idle-cpu-1-visible",
+   "label": "Idle CPU, 1 tab, its page drawing",
+   "unit": "%",
+   "lowerIsBetter": true,
+   "browsers": {
+    "copper": {
+     "median": 0.96,
+     "min": 0.96,
+     "max": 0.96,
+     "n": 1
+    }
+   },
+   "best": "copper",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
+  },
+  {
+   "id": "idle-wakeups-1-visible",
+   "label": "Idle wakeups, 1 tab, its page drawing",
+   "unit": "/s",
+   "lowerIsBetter": true,
+   "browsers": {
+    "copper": {
+     "median": 97.8,
+     "min": 97.8,
+     "max": 97.8,
+     "n": 1
+    }
+   },
+   "best": "copper",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
+  },
+  {
+   "id": "idle-power-1-visible",
+   "label": "Idle power, 1 tab, its page drawing",
+   "unit": "mW",
+   "lowerIsBetter": true,
+   "browsers": {
+    "copper": {
+     "median": 0.67,
+     "min": 0.67,
+     "max": 0.67,
+     "n": 1
+    }
+   },
+   "best": "copper",
+   "dates": [
+    "2026-11-25",
+    "2026-11-25"
+   ]
+  }
+ ],
+ "conditions": {
+  "load1Median": 1.69,
+  "samples": 22,
+  "quiet": 22,
+  "displayAsleep": 0,
+  "screenUnlocked": 0
+ },
+ "rounds": {
+  "done": 1,
+  "planned": 3
+ },
+ "method": "perf/xbench/README.md"
+}

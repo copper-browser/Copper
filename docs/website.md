@@ -73,6 +73,10 @@ not apply it.
   tokens, header and footer, plus prose, tables and cards) and `assets/pages.js` (theme switch, copy
   buttons). Keep `<header>` and `<footer>` exactly as in the template: change the template and every
   page together, or the build fails. Link pages by folder (`../arc/`), never `index.html`.
+- `site/benchmarks/index.html` is written by [`perf/xbench/page.py`](../perf/xbench/page.py) from
+  `site/assets/bench.json` and `site/assets/agentbench.json`: change the script and run it again,
+  never the page by hand, so every number stays traceable to a measured run
+  ([`perf/xbench/README.md`](../perf/xbench/README.md) has the method).
 - `site/404.html` is served for a missing path at any depth, so it has `<base href="https://copper.exowatt.com/">`
   and writes its URLs root-relative (`./assets/…`); on the Pages mirror its links lead to the canonical host.
 - Every other path is relative (the mirror lives under `/Copper/`), except canonical,
