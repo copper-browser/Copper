@@ -13,7 +13,7 @@ let package = Package(
             path: "Sources/Search",
             // The runner's LICENSE and NOTICE travel with its sources; they
             // are kept beside them, not built or bundled.
-            exclude: ["Fork/Voice/Phonon/LICENSE", "Fork/Voice/Phonon/NOTICE"],
+            exclude: ["Fork/Voice/Phonon/LICENSE", "Fork/Voice/Phonon/NOTICE", "Fork/Copper.sdef"], // Fork (ardia: automation): the sdef goes into the app by build.sh
             // The animated space backdrop's page and its three.js, copied as a
             // folder into Search_Search.bundle beside the binary (build.sh
             // carries that bundle into the app; Fork/AnimatedBackdrop.swift

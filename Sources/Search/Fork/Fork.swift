@@ -82,6 +82,8 @@ enum Fork {
         case "peek": return Peek.bench(request, in: Windows.current) // Fork (ardia: windows)
         case "atc": return AirTraffic.bench(request) // Fork (ardia: windows)
         case "shortcuts": return Shortcuts.bench(request) // Fork (ardia-shortcuts)
+        case "tasks": return TaskManager.bench(request) // Fork (ardia: automation)
+        case "handoff": return PageHandoff.bench() // Fork (ardia: automation)
         case "ai":
             // `ai` reports; `ai lane key|claude`; `ai tier haiku|sonnet|opus`;
             // `ai router URL KEY MODEL` configures a probe-world router.
