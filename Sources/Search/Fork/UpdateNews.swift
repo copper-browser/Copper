@@ -105,7 +105,7 @@ struct UpdateNewsCorner: View {
 
     var body: some View {
         let off = !prefs.sidebar || (browser.folded && !browser.peeking)
-        ZStack(alignment: .bottomLeading) {
+        return ZStack(alignment: prefs.sidebar && prefs.sideRight ? .bottomTrailing : .bottomLeading) { // Fork (ardia layout): the column's corner
             if off, let version = news.version {
                 UpdateNewsCard(browser: browser, version: version, notes: news.notes(updates),
                                tint: SpaceTint(space: Spaces.shared.space(in: browser), dark: scheme == .dark), solid: true)

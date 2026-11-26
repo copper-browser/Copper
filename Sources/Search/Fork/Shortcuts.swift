@@ -136,7 +136,7 @@ enum MenuCommand: String, CaseIterable, Identifiable {
     // Edit
     case find, findNext, findPrevious
     // View
-    case tabsInSidebar, foldSidebar, reload, hardReload, readingMode, translate, neverTranslate, inspect, floatVideo,
+    case tabsInSidebar, foldSidebar, sidebarRight, reload, hardReload, readingMode, translate, neverTranslate, inspect, floatVideo,
          hideElements, hiddenOnSite, zoomIn, zoomOut, actualSize,
          moveIn, split, flipPanes, rotatePanes, evenPanes, separatePanes, agent, askPage, canvas, driverTimeline, closePanes
     // Tabs
@@ -156,7 +156,7 @@ enum MenuCommand: String, CaseIterable, Identifiable {
         switch self {
         case .newTab, .newWindow, .newLittle, .newPrivateTab, .newCanvas, .reopenTab, .openAddress, .closeTab, .share, .print: return "File"
         case .find, .findNext, .findPrevious: return "Edit"
-        case .tabsInSidebar, .foldSidebar, .reload, .hardReload, .readingMode, .translate, .neverTranslate, .inspect, .floatVideo,
+        case .tabsInSidebar, .foldSidebar, .sidebarRight, .reload, .hardReload, .readingMode, .translate, .neverTranslate, .inspect, .floatVideo,
              .hideElements, .hiddenOnSite, .zoomIn, .zoomOut, .actualSize,
              .moveIn, .split, .flipPanes, .rotatePanes, .evenPanes, .separatePanes, .agent, .askPage, .canvas, .driverTimeline, .closePanes: return "View"
         case .back, .forward, .nextTab, .previousTab, .searchTabs, .pinTab, .duplicateTab, .copyAddress, .copyMarkdown, .copyHighlight,
@@ -188,6 +188,7 @@ enum MenuCommand: String, CaseIterable, Identifiable {
         case .findPrevious: return "Find Previous"
         case .tabsInSidebar: return "Show Tabs in Sidebar"
         case .foldSidebar: return "Hide Sidebar"
+        case .sidebarRight: return "Sidebar on the Right" // Fork (ardia layout)
         case .reload: return "Reload Page"
         case .hardReload: return "Hard Reload"
         case .readingMode: return "Reading Mode"
@@ -301,7 +302,7 @@ enum MenuCommand: String, CaseIterable, Identifiable {
         case .settings: return KeyCombo("⌘,")
         case .passwords: return KeyCombo("⌥⌘L")
         case .searchAccounts: return KeyCombo("⇧⌘Y")
-        case .share, .translate, .neverTranslate, .flipPanes, .rotatePanes, .evenPanes, .separatePanes, .pinTab, .copyHighlight,
+        case .share, .sidebarRight, .translate, .neverTranslate, .flipPanes, .rotatePanes, .evenPanes, .separatePanes, .pinTab, .copyHighlight,
              .closeOtherTabs, .showBookmarks, .downloadsFolder, .clearHistory, .removeFromGroup, .welcome, .feedback:
             return nil
         }
@@ -320,6 +321,7 @@ enum MenuCommand: String, CaseIterable, Identifiable {
         case .addBookmark: return ["bookmark this page"]
         case .tabsInSidebar: return ["toggle sidebar", "vertical tabs"]
         case .foldSidebar: return ["collapse", "focus mode"]
+        case .sidebarRight: return ["sidebar position", "right side", "flip sidebar"]
         case .readingMode: return ["reader", "reader mode"]
         case .hardReload: return ["refresh", "clear cache reload"]
         case .inspect: return ["web inspector", "devtools", "developer tools"]

@@ -240,7 +240,7 @@ struct HandCapsule: View {
         }
         .modifier(SidePillGround(rim: swatch.fill.opacity(0.75), wash: swatch.fill.opacity(0.16)))
         .onHover { hovering = $0; settle() }
-        .popover(isPresented: $shown, arrowEdge: .trailing) {
+        .popover(isPresented: $shown, arrowEdge: Windows.main.prefs.awayEdge) { // Fork (ardia layout): toward the page
             HandCards(hands: [hand]).onHover { inCard = $0; settle() }
         }
         .onAppear {

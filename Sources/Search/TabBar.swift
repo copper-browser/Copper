@@ -6,6 +6,7 @@ import SwiftUI
 /// of one and into the other.
 struct TabBar: View {
     @Bindable var browser: Browser
+    var scale = Metrics.ui // Fork (ardia layout): a new interface size draws it again
     @ObservedObject private var downloads = Downloads.shared
 
     @Namespace private var pill
@@ -359,6 +360,7 @@ private struct TabPill: View {
     @ObservedObject var tab: Tab
     let live: Bool
     let width: CGFloat
+    var scale = Metrics.ui // Fork (ardia layout): a new interface size draws it again
     /// How much of the strip there is, for the field that grows over it.
     let room: CGFloat
     let pill: Namespace.ID
@@ -390,10 +392,10 @@ private struct TabPill: View {
                         PinField(browser: browser, tab: tab)
                     } else {
                         // Fork (polish r5): always the pinned site's own mark (or a globe), never its letter.
-                        Mark(icon: tab.pinMark, size: 16, dim: tab.asleep)
+                        Mark(icon: tab.pinMark, size: 16.ui, dim: tab.asleep) // Fork (ardia layout): at the interface size
                     }
                 }
-                .frame(width: 16, height: 16)
+                .frame(width: 16.ui, height: 16.ui)
                 .padding(.horizontal, 7)
                 .padding(.vertical, 6)
                 .frame(width: span)
@@ -448,10 +450,10 @@ private struct TabPill: View {
                 if tab.loading {
                     Ring()
                 } else {
-                    Mark(icon: tab.icon, size: 15, dim: tab.asleep)
+                    Mark(icon: tab.icon, size: 15.ui, dim: tab.asleep)
                 }
             }
-            .frame(width: 16, height: 16)
+            .frame(width: 16.ui, height: 16.ui)
             .overlay(alignment: .topTrailing) { HandBadges(tab: tab.id, size: 9).offset(x: 5, y: -4) } // Fork: agents' hands
             .padding(.vertical, 6)
             .frame(width: span)
@@ -467,22 +469,22 @@ private struct TabPill: View {
                     .frame(height: 16)
             } else {
                 if !tab.isBlank {
-                    Mark(icon: tab.icon, size: 15)
+                    Mark(icon: tab.icon, size: 15.ui)
                 }
                 if tab.bench {
                     // A script's tab, not yours.
                     Image(systemName: "flask")
-                        .font(.system(size: 10)) // Fork (uib): the 10 pt floor
+                        .font(.system(size: 10.ui)) // Fork (uib): the 10 pt floor
                         .foregroundStyle(colour.opacity(0.7))
                 }
                 if tab.shy {
                     // Quiet, and only on the tabs that keep nothing.
                     Image(systemName: "eye.slash")
-                        .font(.system(size: 10))
+                        .font(.system(size: 10.ui))
                         .foregroundStyle(colour.opacity(0.7))
                 }
                 FadingTitle(text: Text(shownTitle) // Fork (motion): a long title fades out, no "…"
-                    .font(.system(size: 12.5, weight: live ? .semibold : .regular))
+                    .font(.system(size: 12.5.ui, weight: live ? .semibold : .regular))
                     .foregroundStyle(colour))
                     .layoutPriority(1)
                 // Fork (uib): the live tab says whose page it is, after its
@@ -491,7 +493,7 @@ private struct TabPill: View {
                 // fading out 8 pt before the host); the address has it anyway.
                 if let host = liveHost, roomForHost(host) {
                     Text(host)
-                        .font(.system(size: 12))
+                        .font(.system(size: 12.ui))
                         .foregroundStyle(Palette.muted)
                         .lineLimit(1)
                         .fixedSize()
@@ -523,7 +525,7 @@ private struct TabPill: View {
     private var shownTitle: String {
         let title = CommandPalette.tidy(tab.label)
         let room = span - 11 - 7 - 15 - 6 - 2
-        guard TabPill.measure(title, size: 12.5, weight: live ? .semibold : .regular) > room else { return title }
+        guard TabPill.measure(title, size: 12.5.ui, weight: live ? .semibold : .regular) > room else { return title }
         return CommandPalette.head(title)
     }
 
@@ -531,7 +533,7 @@ private struct TabPill: View {
     /// its host — and the mark, the padding and the cross's slot around them.
     /// The strip gives the live tab no more than this.
     static func wants(_ tab: Tab) -> CGFloat {
-        let title = TabPill.measure(tab.label, size: 12.5, weight: .semibold)
+        let title = TabPill.measure(tab.label, size: 12.5.ui, weight: .semibold)
         let host = TabPill.host(of: tab).map { 8 + TabPill.measure($0, size: 12, weight: .regular) } ?? 0
         return ceil(11 + 15 + 6 + title + host + 2 + 7 + 15 + 3)
     }
@@ -542,9 +544,10 @@ private struct TabPill: View {
 
     /// Whether the host fits beside a title that still reads.
     private func roomForHost(_ host: String) -> Bool {
-        let words = span - 11 - 7 - 15 - 6 - 2 - (slotShown ? 25 : 0)
-        let hostWidth = 8 + TabPill.measure(host, size: 12, weight: .regular)
-        let title = TabPill.measure(tab.label, size: 12.5, weight: .semibold)
+        let mark: CGFloat = 15.ui
+        let words = span - 11 - 7 - mark - 6 - 2 - (slotShown ? 25 : 0)
+        let hostWidth = 8 + TabPill.measure(host, size: 12.ui, weight: .regular)
+        let title = TabPill.measure(tab.label, size: 12.5.ui, weight: .semibold)
         return words - hostWidth >= min(title, 140)
     }
 

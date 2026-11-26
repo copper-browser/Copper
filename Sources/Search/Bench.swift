@@ -541,6 +541,14 @@ final class Bench {
                 ]
             }
             if let window = Links.window { out["lights"] = Bench.lights(of: window) }
+            // Fork (ardia layout): the column's side and sizes, where the column and the page area are (global points).
+            let rows = SideDrag.of(browser).rows
+            let box = { (r: CGRect) in [Int(r.minX.rounded()), Int(r.minY.rounded()), Int(r.width.rounded()), Int(r.height.rounded())] }
+            out["layout"] = ["side": browser.prefs.sideRight ? "right" : "left", "size": browser.prefs.interfaceSize.rawValue, "frame": browser.prefs.pageFrame.rawValue,
+                             "column": box(SpaceSlide.shared.column(in: browser)), "stage": box(SplitDrop.shared.stages[ObjectIdentifier(browser)] ?? .zero),
+                             "window": Links.window.map { [Int($0.frame.width), Int($0.frame.height)] } ?? [],
+                             "rows": Dictionary(uniqueKeysWithValues: rows.map { (String($0.key.uuidString.prefix(8)).lowercased(), Double(($0.value.midY * 10).rounded() / 10)) }),
+                             "row": Double(SideBar.row)] as [String: Any] // rows: each loose row's centre, as a drag reads it
             out["keysQuieted"] = PageView.quieted
             // Who has the keyboard, and the last link click WebKit reported
             // (its button number and modifiers) — for the mouse-button work. (Fork)
@@ -730,6 +738,10 @@ final class Bench {
                 }
             }
             if let on = request["sidebar"] as? Bool { browser.prefs.sidebar = on }
+            // Fork (ardia layout): `ui side left|right`, `ui size small|default|large`, `ui frame none|thin|default`.
+            if let side = request["side"] as? String { browser.prefs.sideRight = side == "right" }
+            if let size = request["size"] as? String { browser.prefs.interfaceSize = InterfaceSize(rawValue: size == "default" ? "standard" : size) ?? .standard }
+            if let frame = request["frame"] as? String { browser.prefs.pageFrame = PageFrameSize(rawValue: frame == "default" ? "standard" : frame) ?? .standard }
             if let on = request["folded"] as? Bool { browser.folded = on }
             if let on = request["sheer"] as? Bool { browser.prefs.sheer = on } // Fork (sheer)
             // `ui fullscreen on|off`: the window into or out of full screen, as the green light does. (Fork: sheer)

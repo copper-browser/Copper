@@ -90,12 +90,13 @@ struct WindowGround: View {
         prefs = browser.prefs
     }
 
-    var body: some View { SpaceGroundView(browser: browser, dark: scheme == .dark, span: prefs.sideWidth, sheer: sheer.on(in: browser)) }
+    var body: some View { SpaceGroundView(browser: browser, dark: scheme == .dark, span: prefs.sideWidth, right: prefs.sideRight, sheer: sheer.on(in: browser)) }
 }
 
 /// One page as a card: rounded, hairlined, lifted off the ground.
 struct PageCard: View {
     @ObservedObject var tab: Tab
+    var pageFrame = SplitMetrics.frame // Fork (ardia layout): a new page frame draws the card again
 
     var body: some View {
         // Fork (ui-flows r3): a tab with nowhere to be yet is no white card;
@@ -137,6 +138,7 @@ struct PageCard: View {
 /// square corners inside the card's edge.
 struct PaneCard: ViewModifier {
     let on: Bool
+    var pageFrame = SplitMetrics.frame // Fork (ardia layout)
     @ObservedObject private var addons = AddonSync.shared
 
     func body(content: Content) -> some View {

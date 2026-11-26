@@ -9,6 +9,7 @@ import SwiftUI
 struct LiveFolderBlock: View {
     let browser: Browser
     let tint: SpaceTint
+    var scale = Metrics.ui // Fork (ardia layout): a new interface size draws it again
     @ObservedObject private var live = LiveFolders.shared
 
     var body: some View {
@@ -27,6 +28,7 @@ struct LiveFolderView: View {
     let browser: Browser
     let folder: LiveFolder
     let tint: SpaceTint
+    var scale = Metrics.ui // Fork (ardia layout): a new interface size draws it again
     @ObservedObject private var live = LiveFolders.shared
     @State private var hovering = false
     @State private var renaming = false
@@ -167,6 +169,7 @@ struct LiveItemRow: View {
     let item: LiveItem
     let unread: Bool
     let tint: SpaceTint
+    var scale = Metrics.ui // Fork (ardia layout): a new interface size draws it again
     @State private var hovering = false
 
     private var shown: Bool {

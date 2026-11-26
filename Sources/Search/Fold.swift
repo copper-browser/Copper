@@ -27,10 +27,16 @@ extension Browser {
         peeking = false
         withAnimation(Motion.glide) { folded.toggle() }
     }
+
+    /// Fork (ardia layout): View › Sidebar on the Right, and back.
+    func toggleSide() {
+        withAnimation(Motion.glide) { prefs.sideRight.toggle() }
+    }
 }
 
 /// Over the window's left edge while the column is folded: the strip of edge
-/// that brings it out, and the column itself while it is out.
+/// that brings it out, and the column itself while it is out. Fork (ardia
+/// layout): the right edge, with the column on the right.
 struct Fold: View {
     let browser: Browser
     @ObservedObject var prefs: Preferences
@@ -45,7 +51,8 @@ struct Fold: View {
     private static let grace: TimeInterval = 0.3
 
     var body: some View {
-        ZStack(alignment: .leading) {
+        let right = prefs.sideRight
+        return ZStack(alignment: right ? .trailing : .leading) {
             Color.clear.frame(width: 0)
             if folding {
                 Color.clear
@@ -56,9 +63,9 @@ struct Fold: View {
             }
             if folding, browser.peeking {
                 SideBar(browser: browser, prefs: prefs)
-                    .shadow(color: .black.opacity(0.14), radius: 20, x: 4)
+                    .shadow(color: .black.opacity(0.14), radius: 20, x: right ? -4 : 4)
                     .onHover { over in peek(over) }
-                    .transition(.move(edge: .leading))
+                    .transition(.move(edge: right ? .trailing : .leading))
             }
         }
         .frame(maxHeight: .infinity)

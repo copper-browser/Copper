@@ -62,8 +62,8 @@ struct SpacePreviewModel {
     }
 
     /// The column's measures, as `SideBar` has them.
-    static let row = SideBar.row
-    static let gap = SideBar.gap
+    static var row: CGFloat { SideBar.row } // Fork (ardia layout): at the interface size
+    static var gap: CGFloat { SideBar.gap }
     static let inset = SideBar.inset
     static let rowInset = SideBar.rowInset
     /// The rows' padding inside the scroll: 2 above, 12 below.
@@ -252,8 +252,8 @@ struct SpacePreview: View, Equatable {
                 // `Quiet`, at rest.
                 HStack(spacing: 10) {
                     Image(systemName: "plus")
-                        .font(.system(size: 14, weight: .regular))
-                        .frame(width: 16)
+                        .font(.system(size: 14.ui, weight: .regular))
+                        .frame(width: 16.ui)
                     Text("New Tab")
                         .font(.system(size: SideBar.title))
                         .foregroundStyle(tint.heading)
@@ -276,8 +276,8 @@ struct SpacePreview: View, Equatable {
 
         var body: some View {
             HStack(spacing: 0) {
-                SpaceGlyph(space: space, size: 16, dark: dark, ink: tint.mark, bare: true) // Fork (switch): on its plate, as SpaceHeader draws it
-                    .frame(width: 24, height: 24)
+                SpaceGlyph(space: space, size: 16.ui, dark: dark, ink: tint.mark, bare: true) // Fork (switch): on its plate, as SpaceHeader draws it
+                    .frame(width: 24.ui, height: 24.ui)
                     .padding(.leading, -4)
                     .padding(.trailing, 6)
                 HStack(spacing: 10) {
@@ -287,7 +287,7 @@ struct SpacePreview: View, Equatable {
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Spacer(minLength: 4)
-                    Color.clear.frame(width: 16)
+                    Color.clear.frame(width: 16.ui)
                 }
                 .frame(height: SpacePreviewModel.row)
                 .frame(maxWidth: .infinity)
@@ -324,13 +324,13 @@ struct SpacePreview: View, Equatable {
                         Image(systemName: "folder.fill").foregroundStyle(paper)
                         Image(systemName: "folder").foregroundStyle(colour)
                         Image(systemName: "ellipsis")
-                            .font(.system(size: 7, weight: .heavy))
+                            .font(.system(size: 7.ui, weight: .heavy))
                             .foregroundStyle(colour)
                             .offset(y: 1.5)
                     }
                 }
-                .font(.system(size: 15))
-                .frame(width: 16, height: 16)
+                .font(.system(size: 15.ui))
+                .frame(width: 16.ui, height: 16.ui)
                 .padding(.trailing, 10)
                 Folders.title(label)
                     .lineLimit(1)
@@ -355,17 +355,17 @@ struct SpacePreview: View, Equatable {
             HStack(spacing: 10) {
                 if !tab.isBlank {
                     // As the column draws it: Tabs show Letters / Site icons.
-                    RowMark(icon: tab.icon, tint: tint, size: 16)
+                    RowMark(icon: tab.icon, tint: tint, size: 16.ui)
                         .opacity(live ? 1 : 0.9)
                 }
                 if tab.bench {
                     Image(systemName: "flask")
-                        .font(.system(size: 9))
+                        .font(.system(size: 9.ui))
                         .foregroundStyle(tint.ink.opacity(0.7))
                 }
                 if tab.shy {
                     Image(systemName: "eye.slash")
-                        .font(.system(size: 9))
+                        .font(.system(size: 9.ui))
                         .foregroundStyle(tint.ink.opacity(0.7))
                 }
                 FadingTitle(text: Text(tab.label) // Fork (switch): as SideRow's, a long title fades, not "…"
@@ -379,9 +379,9 @@ struct SpacePreview: View, Equatable {
             .overlay(alignment: .trailing) {
                 if tab.noisy {
                     Image(systemName: "speaker.wave.2.fill")
-                        .font(.system(size: 8))
+                        .font(.system(size: 8.ui))
                         .foregroundStyle(tint.muted)
-                        .frame(width: 15, height: 15)
+                        .frame(width: 15.ui, height: 15.ui)
                         .padding(.trailing, 8)
                 }
             }

@@ -24,7 +24,7 @@ struct CleanedRow: View {
                         .padding(.trailing, 10)
                         .allowsHitTesting(false)
                 }
-                .popover(isPresented: $open, arrowEdge: .trailing) {
+                .popover(isPresented: $open, arrowEdge: browser.prefs.awayEdge) { // Fork (ardia layout): toward the page
                     CleanedList(browser: browser) { open = false }
                 }
                 .accessibilityLabel("Recently Cleaned, \(count) tab\(count == 1 ? "" : "s")")

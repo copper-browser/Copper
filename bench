@@ -536,7 +536,8 @@
                                        look light|dark|system, sidebar on|off, folded on|off, peek on|off,
                                        tabswitch row|recent, page general|tabs (which Settings page), focus none (the keyboard to the window itself), width N (the sidebar),
                                        addressHover on|off (the sidebar's address pill as under the pointer), clearHover on|off (force the Clear divider visible),
-                                       sheer on|off (the see-through window), fullscreen on|off
+                                       sheer on|off (the see-through window), fullscreen on|off,
+                                       side left|right, size small|default|large (interface size), frame none|thin|default (page frame)
 
 Needs Settings › General › "Let a script drive Copper" switched on in the
 running app. IDs are the first characters of a tab's id, as `tabs` prints
@@ -828,7 +829,7 @@ def main(argv):
         if len(args) != 2: sys.exit("usage: bench ui KEY VALUE")
         key, value = args
         if key == "width": request[key] = float(value)
-        elif key in ("look", "focus", "tabswitch", "page", "welcomepage"): request[key] = value
+        elif key in ("look", "focus", "tabswitch", "page", "welcomepage", "side", "size", "frame"): request[key] = value
         else: request[key] = value in ("on", "true", "1", "yes")
     elif verb in ("ext-add", "ext-press", "ext-remove", "ext-reload"):
         if len(args) != 1: sys.exit(f"usage: bench {verb} ID")

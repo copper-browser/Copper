@@ -221,6 +221,7 @@ shape (`CloudSettingsKeys` in `Fork/Cloud/CloudMerge.swift`):
 | `look` | Light / Dark / System |
 | `sheer` | See-through window |
 | `sidebar` | Tabs in a sidebar |
+| `sidebar.right` | Sidebar on the right |
 | `tabs.switching` | ⌃Tab: next in the row or most recent |
 | `tabs.sleep` | Put idle tabs to sleep |
 | `spaces.swipe` | Swipe between spaces direction |
@@ -230,7 +231,7 @@ shape (`CloudSettingsKeys` in `Fork/Cloud/CloudMerge.swift`):
 
 Deliberately left out: `bench` (the script socket), `passkeys*`,
 `passwords.*`, `autofill.everything`, `downloads` and `downloads.ask` (a path,
-and where files land), `sidebar.width` (a screen's business), `welcomed`,
+and where files land), `sidebar.width`, `interface.size` and `page.frame` (a screen's business), `welcomed`,
 `settings.page`, everything in `agent.json`, `intelligence`/model keys,
 Bitwarden, extensions and their grants.
 

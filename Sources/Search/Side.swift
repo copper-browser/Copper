@@ -55,16 +55,16 @@ struct SideBar: View {
 
     /// Arc's measures: a row every forty points, a mark eighteen in from the
     /// window's edge and ten clear of its title.
-    static let row: CGFloat = GroupedRows.row
-    static let gap: CGFloat = GroupedRows.gap
+    static var row: CGFloat { GroupedRows.row } // Fork (ardia layout): at the interface size
+    static var gap: CGFloat { GroupedRows.gap }
     /// The column's own edges. A row's mark lands at `inset + rowInset` from
     /// the window's edge.
     static let inset: CGFloat = 8
     static let rowInset: CGFloat = 10
     /// Fork (uitype): a row's title (Arc's 14, the live one semibold), and
     /// the space's name over the rows, a size under it.
-    static let title: CGFloat = 14
-    static let heading: CGFloat = 13
+    static var title: CGFloat { 14.ui } // Fork (ardia layout): at the interface size
+    static var heading: CGFloat { 13.ui }
     private static let pinGap: CGFloat = 8
 
     private var tint: SpaceTint { SpaceTint(space: spaces.space(in: browser), dark: scheme == .dark) }
@@ -129,10 +129,11 @@ struct SideBar: View {
         .overlay(alignment: .topLeading) { SpaceSlideCurtain(browser: browser) }
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { SpaceSlide.shared.place(column: $0, in: browser) }
         .onDisappear { SpaceSlide.shared.place(column: nil, in: browser) }
-        .overlay(alignment: .trailing) {
+        // Fork (ardia layout): on the page's side of the column, either way round.
+        .overlay(alignment: prefs.sideRight ? .leading : .trailing) {
             if grounded { Rectangle().fill(tint.hairline.opacity(0.6)).frame(width: 1) }
         }
-        .overlay(alignment: .trailing) { edge }
+        .overlay(alignment: prefs.sideRight ? .leading : .trailing) { edge }
         // Fork: the wheel button closes the favourite or row under it — one
         // listener for the column, reading where every row is from the
         // frames they hand up, rather than one per row (see SideTargets).
@@ -196,11 +197,11 @@ struct SideBar: View {
             HStack(spacing: 0) {
                 Color.clear.frame(width: 4 + Metrics.sideLights)
                     .allowsHitTesting(false)
-                Door(icon: "sidebar.left", help: "Hide Sidebar" + Shortcuts.hint(.foldSidebar), size: 28, ink: tint.ink, glow: tint.hover, glyph: 15) {
+                Door(icon: prefs.sideRight ? "sidebar.right" : "sidebar.left", help: "Hide Sidebar" + Shortcuts.hint(.foldSidebar), size: 28.ui, ink: tint.ink, glow: tint.hover, glyph: 15.ui) {
                     browser.toggleFold()
                 }
                 Color.clear.frame(maxWidth: .infinity).allowsHitTesting(false)
-                Helm(browser: browser, size: 30, glyph: 15, ink: tint.ink, glow: tint.hover)
+                Helm(browser: browser, size: 30.ui, glyph: 15.ui, ink: tint.ink, glow: tint.hover)
                     .padding(.trailing, 6)
             }
         }
@@ -239,7 +240,7 @@ struct SideBar: View {
     /// columns' worth of room the cell stops growing taller and the mark
     /// inside it stays where the eye expects it.
     private var pinHeight: CGFloat {
-        min(48, max(34, pinWidth * 0.52))
+        min(48.ui, max(34.ui, pinWidth * 0.52))
     }
 
     /// The grid itself: fixed-size cells, left-aligned, so a half-empty last
@@ -498,7 +499,8 @@ struct SideBar: View {
                 DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { value in
                         if grabbed == nil { grabbed = prefs.sideWidth }
-                        let wanted = (grabbed ?? prefs.sideWidth) + value.translation.width
+                        // Fork (ardia layout): a right column widens to the left.
+                        let wanted = (grabbed ?? prefs.sideWidth) + prefs.columnSign * value.translation.width
                         prefs.sideWidth = min(Metrics.sideMax, max(Metrics.sideMin, wanted))
                     }
                     .onEnded { _ in grabbed = nil }
@@ -557,7 +559,7 @@ private struct PinDropGhost: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: min(12, min(width, height) * 0.28), style: .continuous)
         RowMark(icon: tab.icon, tint: tint,
-                      size: max(14, min(20, height * 0.46)))
+                      size: max(14.ui, min(20.ui, height * 0.46)))
             .opacity(0.7)
             .frame(width: width, height: height)
             .background(shape.fill(tint.hover))
@@ -578,6 +580,7 @@ private struct PinSquare: View {
     let pill: Namespace.ID
     var width: CGFloat = 34
     var height: CGFloat = 34
+    var scale = Metrics.ui // Fork (ardia layout): a new interface size draws it again
 
     @State private var pointing = false
     @ObservedObject private var benchHover = SideRowHover.shared // Fork (calendar-peek): `bench sections hover ID` peeks too
@@ -590,7 +593,7 @@ private struct PinSquare: View {
     /// cell can hold with air around it.
     /// Fork (polish r5): 16 pt like every other favicon in the chrome (was
     /// up to 20, so two pins' marks read as two sizes).
-    private var mark: CGFloat { min(16, max(14, height * 0.46)) }
+    private var mark: CGFloat { min(16.ui, max(14.ui, height * 0.46)) }
 
     var body: some View {
         Group {
@@ -628,7 +631,7 @@ private struct PinSquare: View {
         // Fork (calendar-peek): a Calendar pin shows the next meetings while
         // the pointer rests on it or on the card.
         .task(id: hovering || overCard) { await settlePeek() }
-        .popover(isPresented: $peeking, arrowEdge: .trailing) {
+        .popover(isPresented: $peeking, arrowEdge: browser.prefs.awayEdge) { // Fork (ardia layout): toward the page
             CalendarPeekCard(browser: browser).onHover { overCard = $0 }
         }
         .contextMenu { TabMenu(browser: browser, tab: tab, close: { browser.close(tab) }) }
@@ -659,11 +662,12 @@ private struct SidePairHalf: View {
     @ObservedObject var tab: Tab
     let live: Bool
     let tint: SpaceTint
+    var scale = Metrics.ui // Fork (ardia layout): a new interface size draws it again
 
     var body: some View {
         HStack(spacing: 8) {
             if !tab.isBlank {
-                RowMark(icon: tab.icon, tint: tint, size: 16)
+                RowMark(icon: tab.icon, tint: tint, size: 16.ui)
             }
             FadingTitle(text: Text(tab.label)
                 .font(.system(size: SideBar.title, weight: live ? .semibold : .regular))
@@ -703,11 +707,13 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
     /// pill, as Arc's split items. `pairLive`: the one of them that is live.
     var pair: [Tab] = []
     var pairLive: Tab.ID? = nil
+    var scale = Metrics.ui // Fork (ardia layout): a new interface size draws it again
 
     static func == (a: SideRow, b: SideRow) -> Bool {
         a.tab === b.tab && a.live == b.live && a.editing == b.editing && a.hot == b.hot && a.refusals == b.refusals
             && a.pair.elementsEqual(b.pair, by: ===) && a.pairLive == b.pairLive
             && a.pill == b.pill && a.tint.theme == b.tint.theme && a.tint.dark == b.tint.dark && a.tint.night == b.tint.night
+            && a.scale == b.scale // Fork (ardia layout)
     }
 
     @State private var pointing = false
@@ -722,28 +728,28 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
         HStack(spacing: 10) {
             if editing {
                 TabAddressField(browser: browser)
-                    .frame(height: 18)
+                    .frame(height: 18.ui)
             } else {
                 if !tab.isBlank {
-                    RowMark(icon: tab.icon, tint: tint, size: 16) // Fork (polish r5): always the site icon
+                    RowMark(icon: tab.icon, tint: tint, size: 16.ui) // Fork (polish r5): always the site icon
                         .opacity(live ? 1 : 0.9)
                 }
                 if tab.bench {
                     // A script's tab, not yours.
                     Image(systemName: "flask")
-                        .font(.system(size: 10)) // Fork (uib): the 10 pt floor
+                        .font(.system(size: 10.ui)) // Fork (uib): the 10 pt floor
                         .foregroundStyle(colour.opacity(0.7))
                 }
                 if tab.shy {
                     Image(systemName: "eye.slash")
-                        .font(.system(size: 10))
+                        .font(.system(size: 10.ui))
                         .foregroundStyle(colour.opacity(0.7))
                 }
                 FadingTitle(text: Text(tab.label) // Fork (motion): a long title fades out, no "…"
                     .font(.system(size: SideBar.title, weight: own ? .semibold : .regular))
                     .foregroundStyle(colour))
                 ForEach(pair) { half in
-                    Rectangle().fill(tint.hairline).frame(width: 1, height: 16)
+                    Rectangle().fill(tint.hairline).frame(width: 1, height: 16.ui)
                     SidePairHalf(browser: browser, tab: half, live: half.id == pairLive, tint: tint)
                 }
             }
@@ -807,30 +813,30 @@ struct SideRow: View, Equatable { // Fork: was private; GroupedRows draws it
         ZStack {
             if hovering, !editing {
                 Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 10.ui, weight: .semibold))
                     .foregroundStyle(tint.ink.opacity(0.7)) // muted is ~4.4:1 on the column; this is ≥4.5
-                    .frame(width: 15, height: 15)
+                    .frame(width: 15.ui, height: 15.ui)
                     .background(tint.ink.opacity(0.07), in: Circle())
                     .transition(.opacity)
             } else if tab.loading {
                 Ring().transition(.opacity)
             } else if tab.noisy {
                 Image(systemName: "speaker.wave.2.fill")
-                    .font(.system(size: 10))
+                    .font(.system(size: 10.ui))
                     .foregroundStyle(tint.ink.opacity(0.7)) // muted is ~4.4:1 on the column; this is ≥4.5
                     .transition(.opacity)
             } else if hot, let reading = Heat.shared.reading(for: tab) {
                 Image(systemName: "flame.fill")
-                    .font(.system(size: 10))
+                    .font(.system(size: 10.ui))
                     .foregroundStyle(Color.orange.opacity(0.9))
                     .help("Using \(Int(reading.cpu))% CPU")
                     .transition(.opacity)
             }
         }
-        .frame(width: 15, height: 15)
+        .frame(width: 15.ui, height: 15.ui)
         .overlay {
             Color.clear
-                .frame(width: 30, height: 28)
+                .frame(width: 30.ui, height: 28.ui)
                 .contentShape(Rectangle())
                 .onTapGesture { if hovering { close() } }
                 .allowsHitTesting(hovering)
@@ -930,8 +936,8 @@ struct Quiet: View {
         Button(action: act) {
             HStack(spacing: 10) {
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .regular))
-                    .frame(width: 16)
+                    .font(.system(size: 14.ui, weight: .regular))
+                    .frame(width: 16.ui)
                 Text(title)
                     .font(.system(size: SideBar.title))
                     .foregroundStyle(words ?? ink ?? Palette.muted) // Fork (uitype): words never in faint
@@ -1001,6 +1007,7 @@ struct Door: View {
 struct SideAddress: View {
     @Bindable var browser: Browser
     let tint: SpaceTint
+    var scale = Metrics.ui // Fork (ardia layout): a new interface size draws it again
     @ObservedObject private var downloads = Downloads.shared
     @ObservedObject private var bench = SideAddressHover.shared
     @State private var hovering = false
@@ -1038,7 +1045,7 @@ struct SideAddress: View {
         }
         .padding(.leading, 12)
         .padding(.trailing, 5)
-        .frame(height: 36)
+        .frame(height: 36.ui)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(hovering || bench.forced ? tint.hover : tint.square)
@@ -1062,8 +1069,8 @@ struct SideAddress: View {
                     // Fork (uib): a page over plain http says so, as Safari and Chrome do.
                     if open, url.scheme?.lowercased() == "http" {
                         HStack(spacing: 3) {
-                            Image(systemName: "lock.open").font(.system(size: 11, weight: .medium))
-                            Text("Not secure").font(.system(size: 12, weight: .medium))
+                            Image(systemName: "lock.open").font(.system(size: 11.ui, weight: .medium))
+                            Text("Not secure").font(.system(size: 12.ui, weight: .medium))
                         }
                         .foregroundStyle(tint.ink.opacity(0.82))
                         .fixedSize()
@@ -1071,7 +1078,7 @@ struct SideAddress: View {
                         .transition(.opacity)
                     }
                     Text(SideAddress.host(url))
-                        .font(.system(size: 14.5))
+                        .font(.system(size: 14.5.ui))
                         .foregroundStyle(tint.ink.opacity(0.82))
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -1084,9 +1091,10 @@ struct SideAddress: View {
 
     private struct Placeholder: View {
         let tint: SpaceTint
+        var scale = Metrics.ui // Fork (ardia layout)
         var body: some View {
             Text("Search or enter address") // Fork (first-run): one wording, readable
-                .font(.system(size: 14.5))
+                .font(.system(size: 14.5.ui))
                 .foregroundStyle(tint.ink.opacity(0.8)) // Fork (uitype): 0.7 drew 3.8:1 on a mid colour
                 .lineLimit(1)
         }

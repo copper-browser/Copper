@@ -299,6 +299,16 @@ struct SettingsPanel: View {
                 }
                 .settingsAnchor("general.default")
                 Rule()
+                Line("Correct spelling as you type", "macOS's autocorrect inside pages — the one that capitalises for you") {
+                    Switch(on: $prefs.autocorrect)
+                }
+                .settingsAnchor("general.autocorrect")
+                Rule()
+                DailyPageLine() // Fork (daily-page)
+                    .settingsAnchor("general.daily")
+            }
+            // Fork (ardia layout): how the window looks, in one place.
+            SettingsSection("Appearance") {
                 Line("Appearance", "Light, dark, or whatever the Mac is doing — pages follow it too") {
                     Segmented(options: Look.allCases.map { ($0, $0.title) }, selection: $prefs.look)
                 }
@@ -312,13 +322,20 @@ struct SettingsPanel: View {
                 }
                 .settingsAnchor("general.sheer")
                 Rule()
-                Line("Correct spelling as you type", "macOS's autocorrect inside pages — the one that capitalises for you") {
-                    Switch(on: $prefs.autocorrect)
+                Line("Sidebar on the right", "The tabs and the window's buttons down the right edge, the page on the left") {
+                    Switch(on: Binding(get: { prefs.sideRight }, set: { on in withAnimation(Motion.glide) { prefs.sideRight = on } }))
                 }
-                .settingsAnchor("general.autocorrect")
+                .settingsAnchor("general.side")
                 Rule()
-                DailyPageLine() // Fork (daily-page)
-                    .settingsAnchor("general.daily")
+                Line("Interface size", "The sidebar's rows, titles and icons, and the tab strip. Pages keep their own zoom (⌘+).") {
+                    Segmented(options: InterfaceSize.allCases.map { ($0, $0.title) }, selection: $prefs.interfaceSize)
+                }
+                .settingsAnchor("general.size")
+                Rule()
+                Line("Page frame", "The room round the page: the default margin, a thin one, or none, edge to edge") {
+                    Segmented(options: PageFrameSize.allCases.map { ($0, $0.title) }, selection: $prefs.pageFrame)
+                }
+                .settingsAnchor("general.frame")
             }
             SettingsSection("Search") { // Fork (omnibox): Fork/SearchEngines.swift
                 SearchEngineLine()
@@ -347,7 +364,7 @@ struct SettingsPanel: View {
     private var tabs: some View {
         Group {
             SettingsSection("Layout") {
-                Line("Tabs in a sidebar", "Down the left instead of across the top. Drag its edge to resize.") { // Fork (settings-browse): copy
+                Line("Tabs in a sidebar", "Down the side instead of across the top. Drag its edge to resize.") { // Fork (settings-browse): copy
                     Switch(on: Binding(
                         get: { prefs.sidebar },
                         set: { on in withAnimation(Motion.glide) { prefs.sidebar = on } }
