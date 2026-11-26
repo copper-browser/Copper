@@ -163,7 +163,42 @@ enum Metrics {
     static let side: CGFloat = 232
     static let sideMin: CGFloat = 176
     static let sideMax: CGFloat = 440
+    /// Fork (ardia layout): the interface size's scale (`Preferences.interfaceSize`),
+    /// read through `.ui`: `14.ui` is a 14 pt title at this size.
+    static var ui: CGFloat = 1
 }
+
+/// Fork (ardia layout): Settings › General › Interface size — the column's
+/// rows, titles, marks and doors, and the tab strip's, drawn smaller or
+/// larger. Pages keep their own zoom; the traffic lights keep theirs.
+enum InterfaceSize: String, CaseIterable, Identifiable {
+    case small, standard, large
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .small: return "Small"
+        case .standard: return "Default"
+        case .large: return "Large"
+        }
+    }
+    /// A 14 pt title is 12.25, 14 or 16.1; a 34 pt row 29.75, 34 or 39.1.
+    var scale: CGFloat {
+        switch self {
+        case .small: return 0.875
+        case .standard: return 1
+        case .large: return 1.15
+        }
+    }
+}
+
+extension CGFloat {
+    /// At the interface size — never shrunk under the 10 pt floor (uib), so
+    /// small words stay readable at Small.
+    var ui: CGFloat { Swift.max(self * Metrics.ui, Swift.min(self, 10)) }
+}
+extension Double { var ui: CGFloat { CGFloat(self).ui } }
+extension Int { var ui: CGFloat { CGFloat(self).ui } }
 
 // One spring for anything that moves between two places, one for anything that
 // arrives or leaves. Using the same two everywhere is most of why a thing feels

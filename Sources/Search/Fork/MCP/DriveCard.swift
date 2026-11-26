@@ -752,7 +752,7 @@ struct DrivePill: View {
             }
             .modifier(SidePillGround())
             .onHover { over in hovering = over; settle() }
-            .popover(isPresented: $carded, arrowEdge: .trailing) {
+            .popover(isPresented: $carded, arrowEdge: Windows.main.prefs.awayEdge) { // Fork (ardia layout): toward the page
                 card(name: name, task: elsewhere ? (goal.isEmpty ? task : "\(goal)\n\(task)") : task)
                     .onHover { inCard = $0; settle() }
             }

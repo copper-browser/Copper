@@ -441,14 +441,15 @@ struct UpdateCorner: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
+        let corner: Alignment = prefs.sideRight ? .bottomTrailing : .bottomLeading // Fork (ardia layout): the column's side
+        return ZStack(alignment: corner) {
             if folded, let cue = pill.shown(updates) {
                 UpdatePillView(browser: browser, cue: cue,
                                tint: SpaceTint(space: spaces.space(in: browser), dark: scheme == .dark).offColumn,
                                style: .corner)
-                    .padding(.leading, 12)
+                    .padding(prefs.columnEdge, 12)
                     .padding(.bottom, 12)
-                    .transition(still ? .opacity : .scale(scale: 0.6, anchor: .bottomLeading).combined(with: .opacity))
+                    .transition(still ? .opacity : .scale(scale: 0.6, anchor: prefs.sideRight ? .bottomTrailing : .bottomLeading).combined(with: .opacity))
             }
         }
         .animation(still ? .easeOut(duration: 0.2) : Motion.glide, value: folded && pill.shown(updates) != nil)
@@ -532,7 +533,7 @@ struct UpdatePillView: View {
         .accessibilityLabel(cue.title(compact: false))
         .accessibilityHint(cue.help(current: updates.current, host: updates.feedHost))
         .contextMenu { menu }
-        .popover(isPresented: $notesOpen, arrowEdge: style == .compact ? .bottom : .trailing) {
+        .popover(isPresented: $notesOpen, arrowEdge: style == .compact ? .bottom : browser.prefs.awayEdge) { // Fork (ardia layout): toward the page
             UpdateNotes(browser: browser, cue: cue) { notesOpen = false }
         }
         .onAppear { introduce() }

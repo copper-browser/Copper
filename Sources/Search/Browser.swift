@@ -56,6 +56,9 @@ final class Browser: NSObject {
         }
     }
 
+    /// Fork (ardia polish): the video out now went because you left (`away`), so it comes back when you do.
+    @ObservationIgnored private var awayFloated = false
+
     /// Everything there is to set. Held here so the whole window redraws when
     /// one of them changes.
     private(set) var prefs: Preferences // Fork: windows — one set, shared by every window; observe: tracked, so a view reading it hears `prefs` change (`redraw`)
@@ -448,7 +451,7 @@ final class Browser: NSObject {
         // Preserve the old synchronous keychain path exactly when Bitwarden
         // (or 1Password — Fork) is not the active destination.
         guard offer.target != .keychain else {
-            guard Vault.save(host: login.host, user: login.user, password: login.password, used: Date(), origin: login.origin) else {
+            guard Vault.save(host: login.host, user: login.user, password: login.password, used: Date(), origin: login.origin, in: login.profile) else { // Fork (ardia profiles): the signing-in tab's
                 announce("The keychain refused it")
                 return
             }
@@ -656,6 +659,10 @@ final class Browser: NSObject {
     /// before the first await — the fill goes there or nowhere.
     func makeNewPassword(in tab: Tab, at target: Tab.FormTarget, page: NewPasswordPage, named: String? = nil,
                          save: Bool = true) async throws -> (made: NewPassword.Made, filled: Int) {
+        // Fork (ardia profiles): kept in, and checked against, the tab's own profile.
+        if Profiles.bound == nil {
+            return try await Profiles.$bound.withValue(Profiles.key(Profiles.of(tab))) { try await makeNewPassword(in: tab, at: target, page: page, named: named, save: save) }
+        }
         let host = target.host
         if save, Credentials.saveTarget != .keychain {
             announce("Saving a strong password to \(Credentials.saveTarget.title)…")
@@ -768,7 +775,7 @@ final class Browser: NSObject {
     }
 
     func forget(_ login: Login) {
-        Vault.forget(host: login.host, user: login.user)
+        Vault.forget(host: login.host, user: login.user, in: login.profile) // Fork (ardia profiles): from its own drawer
         relist()
     }
 
@@ -787,7 +794,7 @@ final class Browser: NSObject {
         case .success(let found):
             var kept = 0
             for login in found.logins
-            where Vault.save(host: login.host, user: login.user, password: login.password, used: login.used) {
+            where Vault.save(host: login.host, user: login.user, password: login.password, used: login.used, in: nil) { // Fork (ardia profiles): imports land in Shared
                 kept += 1
             }
             var never = Vault.never
@@ -1055,6 +1062,7 @@ final class Browser: NSObject {
         if prefs.bench { Bench.shared.start(for: self) }
         MCP.shared.start(for: self) // Fork: agents drive this window
         Updates.shared.start(for: self) // Fork: Copper feed updates
+        Ping.start(for: self) // Fork (telemetry): the anonymous daily ping
         welcoming = !prefs.welcomed
         // Once a day, quietly: is there a newer one?
         Updater.shared.checkIfDue { [weak self] line in self?.announce(line) }
@@ -1301,6 +1309,7 @@ final class Browser: NSObject {
             }
         }
         floater.onClose = { [weak self] in self?.land() }
+        wireAway() // Fork (ardia polish): Fork/MiniPlayer.swift
     }
 
     /// A window opened with ⌘N shares the canonical Spaces rows. Only its
@@ -1399,7 +1408,7 @@ final class Browser: NSObject {
     /// field — otherwise holding ⌘T leaves a row of identical empty tabs.
     func newTab() {
         // An extension's new tab page, if one asked and you said yes.
-        if #available(macOS 15.4, *), let page = Extensions.shared.newTabPage {
+        if #available(macOS 15.4, *), let page = Extensions.of(profile: Profiles.shown(in: self)).newTabPage { // Fork (ardia profiles): this window's profile's
             open(page, foreground: true)
             summoning = false
             launching = false
@@ -1423,7 +1432,7 @@ final class Browser: NSObject {
         editing = false
         focusRequest += 1
         rememberSession()
-        if #available(macOS 15.4, *) { Extensions.shared.offerNewTabPage(into: tab) }
+        if #available(macOS 15.4, *) { Extensions.of(profile: Profiles.of(tab)).offerNewTabPage(into: tab) }
     }
 
     /// A blank tab given an extension's new tab page: the page needs a view
@@ -1743,7 +1752,9 @@ final class Browser: NSObject {
         guard #available(macOS 15.4, *) else { return nil }
         let url = Extensions.current(url)
         guard url.scheme == Extensions.scheme else { return nil }
-        return Extensions.shared.controller.extensionContext(for: url)?.webViewConfiguration
+        // Fork (ardia profiles): the profile's whose tab is being built, else any that runs it.
+        let building = Extensions.of(profile: Spaces.profileStore.flatMap { Profiles.of(store: $0) })
+        return (building.controller.extensionContext(for: url) ?? Extensions.every.lazy.compactMap { $0.controller.extensionContext(for: url) }.first)?.webViewConfiguration
     }
 
     /// A page for the bench: at the end of the row, behind whatever you are
@@ -1843,8 +1854,58 @@ final class Browser: NSObject {
         lift(active, quietly: true)
     }
 
+    /// Fork (ardia polish): the video floats too when you leave Copper or
+    /// the window is covered, and comes home when you are back with the
+    /// window in front. Never while the screen is locked or asleep, and not
+    /// headless (nobody is looking).
+    private func wireAway() {
+        guard !Headless.on else { return }
+        let center = NotificationCenter.default
+        center.publisher(for: NSApplication.didResignActiveNotification)
+            .sink { [weak self] _ in self?.away(true) }
+            .store(in: &bag)
+        center.publisher(for: NSApplication.didBecomeActiveNotification)
+            .sink { [weak self] _ in self?.away(false) }
+            .store(in: &bag)
+        center.publisher(for: NSWindow.didChangeOcclusionStateNotification)
+            .sink { [weak self] note in
+                guard let self, let window = note.object as? NSWindow, window === Windows.window(of: self) else { return }
+                self.away(!window.occlusionState.contains(.visible))
+            }
+            .store(in: &bag)
+    }
+
+    /// `gone`: Copper went to the back, or the window out of sight. Asked
+    /// again a beat later, so ⌘⇥ there and back, or a lock screen coming
+    /// up, floats nothing. `now` is the bench's (`player away|back`).
+    func away(_ gone: Bool, now: Bool = false) {
+        guard gone else {
+            guard awayFloated, now || (NSApp.isActive && Windows.window(of: self)?.occlusionState.contains(.visible) == true) else { return }
+            awayFloated = false
+            if let id = floating, id == activeID { land() }
+            return
+        }
+        if now { liftAway(now: true) } else { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.liftAway(now: false) } }
+    }
+
+    private func liftAway(now: Bool) {
+        guard !floater.showing, let window = Windows.window(of: self), window.isVisible || now else { return }
+        guard now || !NSApp.isActive || !window.occlusionState.contains(.visible) else { return }
+        guard now || !Browser.screenAway else { return }
+        awayFloated = true
+        lift(active, quietly: true)
+    }
+
+    /// The screen locked or the display asleep: nobody to float a video for.
+    private static var screenAway: Bool {
+        if CGDisplayIsAsleep(CGMainDisplayID()) != 0 { return true }
+        let session = CGSessionCopyCurrentDictionary() as? [String: Any]
+        return session?["CGSSessionScreenIsLocked"] as? Bool == true
+    }
+
     /// ⌘⇧P, for lifting one out by hand.
     func toggleFloat() {
+        awayFloated = false // Fork (ardia polish): one lifted by hand stays out until you say
         if floater.showing {
             land()
             return
@@ -1858,11 +1919,11 @@ final class Browser: NSObject {
         // A tab just put down with ⌘W has no page to lift a video out of, and
         // asking it would only build an empty view to ask.
         guard let tab, !tab.isBlank, !tab.asleep, !floater.showing else { return }
-        // On its own, only from a site whose video is the point of the site.
-        // A hero background on a studio's home page is a video too, and it
+        // On its own, from a site whose video is the point of the site — or,
+        // elsewhere, only a video you can hear (Fork (ardia polish)): a hero
+        // background on a studio's home page is a video too, muted, and it
         // followed people around the desktop. ⌘⇧P still lifts from anywhere.
-        if quietly, !Players.knows(tab.address) { return }
-        tab.web.evaluateJavaScript(Isolate.on) { [weak self] answer, _ in
+        tab.web.evaluateJavaScript(Isolate.on(strict: quietly && !Players.knows(tab.address))) { [weak self] answer, _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 guard (answer as? String) == "floating" else {
@@ -2019,19 +2080,20 @@ final class Browser: NSObject {
                 user = NewPassword.account(host: host, named: user, target: Credentials.saveTarget,
                                            pickedHere: signedInWith[tab.id]).user
             }
-            let known = Vault.logins(for: host)
+            let profile = Profiles.of(tab) // Fork (ardia profiles): the tab's profile's logins
+            let known = Vault.logins(for: host, in: profile)
             let target = Credentials.saveTarget
             // Nothing to ask about one that is already known. Only the
             // account with this name is read — one item, not the site's list.
             if target == .keychain, let same = known.first(where: { $0.user == user }) {
                 if let full = Vault.resolve(same), full.password == password {
                     // Fork (origin-save): one kept before its scheme and port were learns them from this sign-in (a bare localhost login becomes an agent's again).
-                    if same.origin == nil, let origin { _ = Vault.save(host: host, user: user, password: password, used: Date(), origin: origin) } else { Vault.touch(full) }
+                    if same.origin == nil, let origin { _ = Vault.save(host: host, user: user, password: password, used: Date(), origin: origin, in: profile) } else { Vault.touch(full) }
                     return
                 }
             }
             let offer = Offer(
-                login: Login(host: host, user: user, password: password, used: nil, origin: origin), // Fork (origin-save)
+                login: Login(host: host, user: user, password: password, used: nil, origin: origin, profile: profile), // Fork (origin-save, ardia profiles)
                 changed: target == .keychain && known.contains { $0.user == user },
                 target: target
             )
@@ -2167,7 +2229,7 @@ final class Browser: NSObject {
     /// where to, and no tab until there is an answer. An extension's new tab
     /// page, when one was allowed to take over, still gets the new tab.
     func launch() {
-        if #available(macOS 15.4, *), Extensions.shared.newTabPage != nil {
+        if #available(macOS 15.4, *), Extensions.of(profile: Profiles.shown(in: self)).newTabPage != nil {
             newTab()
             return
         }
@@ -2794,6 +2856,8 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
         // A page with nothing to lay out never has a first frame. Done is
         // done, and it is shown.
         (webView as? PageView)?.showFirstFrame()
+        // Fork (ardia polish): a page in Little Copper or Peek is in no row, and goes into History too.
+        if tab(for: webView) == nil, let tab = Little.outside(webView), let url = tab.address, !tab.shy { history.record(url, title: tab.title) }
         guard let tab = tab(for: webView), let url = tab.address else { return }
         Pace.page("finish", bench: tab.bench); if !tab.bench { Launch.shared.pageShown() } // Fork (pace, launch)
         tab.uncover()
@@ -2805,7 +2869,8 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
         // fetch looks broken.
         Favicons.shared.fetch(for: tab)
         guard !tab.shy, !tab.bench else { return }
-        history.record(url, title: tab.title)
+        history.record(url, title: tab.title, profile: Profiles.of(tab)) // Fork (ardia profiles): the tab's profile's history
+        PageTranslate.shared.consider(tab, in: self) // Fork (ardia polish): the once-a-site offer (Fork/Translate.swift)
     }
 
     private func fail(_ webView: WKWebView, _ error: Error) {

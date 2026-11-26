@@ -37,8 +37,8 @@ struct GroupedRows: View {
 
     private var drag: SideDrag { SideDrag.of(browser) }
 
-    static let row: CGFloat = 34 // Fork (uitype): Arc's ~34 with 14 pt titles (was 37 with 15)
-    static let gap: CGFloat = 4
+    static var row: CGFloat { 34.ui } // Fork (uitype): Arc's ~34 with 14 pt titles (was 37 with 15); Fork (ardia layout): at the interface size
+    static var gap: CGFloat { 4.ui }
 
     private var loose: [Tab] {
         browser.tabs.filter { $0.pin == nil && (only?.contains($0.id) ?? true) }
@@ -232,6 +232,7 @@ struct GroupedRows: View {
 /// where Arc keeps its own, and rotates as the folder opens.
 struct GroupHead: View {
     let browser: Browser
+    var scale = Metrics.ui // Fork (ardia layout): a new interface size draws it again
     @ObservedObject var groups = Groups.shared
     let group: TabGroup
     let count: Int
@@ -275,21 +276,21 @@ struct GroupHead: View {
                     Image(systemName: "folder.fill").foregroundStyle(paper)
                     Image(systemName: "folder").foregroundStyle(colour)
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 7, weight: .heavy))
+                        .font(.system(size: 7.ui, weight: .heavy))
                         .foregroundStyle(colour)
                         .offset(y: 1.5)
                 }
             }
-            .font(.system(size: 15))
+            .font(.system(size: 15.ui))
             .opacity(hovering ? 0 : 1)
 
             Image(systemName: "chevron.right")
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 9.ui, weight: .semibold))
                 .foregroundStyle(tint.muted)
                 .rotationEffect(.degrees(group.collapsed ? 0 : 90))
                 .opacity(hovering ? 1 : 0)
         }
-        .frame(width: 16, height: 16)
+        .frame(width: 16.ui, height: 16.ui)
     }
 
     var body: some View {
@@ -300,12 +301,13 @@ struct GroupHead: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .foregroundStyle(tint.ink)
+            SharedFolderMark(group: group.id, tint: tint) // Fork (ardia folders): Fork/SharedFoldersUI.swift
             Spacer(minLength: 2)
             // Arc shows no count; a shut folder says how much it holds only
             // when the pointer asks.
             if group.collapsed, count > 0, hovering {
                 Text("\(count)")
-                    .font(.system(size: 11))
+                    .font(.system(size: 11.ui))
                     .foregroundStyle(tint.muted) // Fork (uitype): words never in faint
                     .padding(.trailing, 9)
                     .transition(.opacity)
@@ -359,6 +361,7 @@ struct GroupHead: View {
         }
         Button(group.collapsed ? "Expand" : "Collapse") { groups.toggleCollapsed(group.id) }
         Button("New Folder Inside…") { draft = ""; adding = true }
+        SharedFolderMenu(browser: browser, group: group) // Fork (ardia folders): Share Folder…, Fork/SharedFoldersUI.swift
         Divider()
         Button("Ungroup") { groups.dissolve(group.id) }
         Button("Close Tabs in Group", role: .destructive) { groups.closeAll(group.id, in: browser) }
@@ -400,6 +403,7 @@ struct GroupMenu: View {
 struct GroupCommands: Commands {
     let browser: Browser
     @ObservedObject var groups = Groups.shared
+    @ObservedObject var keys = Shortcuts.shared // Fork (ardia-shortcuts)
 
     var body: some Commands {
         CommandMenu("Groups") {
@@ -408,11 +412,12 @@ struct GroupCommands: Commands {
                 let group = groups.create(named: Fork.brand(tab.address?.host()))
                 groups.assign(tab, to: group, in: browser)
             }
-            .keyboardShortcut("g", modifiers: [.control, .shift])
+            .shortcut(.newGroup)
             .disabled(browser.active?.isBlank ?? true)
             Button("Remove from Group") {
                 if let tab = browser.active { groups.takeOut(tab, in: browser) }
             }
+            .shortcut(.removeFromGroup)
             .disabled(browser.active.map { groups.group(of: $0) == nil } ?? true)
             if !groups.all.isEmpty {
                 Divider()

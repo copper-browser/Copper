@@ -231,6 +231,33 @@ last time: after it, turn Copper on again in System Settings › Privacy & Secur
 Access and Files & Folders, and click Always Allow once more if the keychain asks. After that,
 they stay.
 
+### Moving to Developer ID (the bridge)
+
+Releases are moving from Copper's own certificate to a **Developer ID Application** certificate
+of Copper's Apple Developer team (`95X7XYUVNX`), notarized, so Gatekeeper opens a download with
+no `xattr` step. That is a certificate rotation (below), done in two releases:
+
+1. **The bridge (now).** Releases are still signed with Copper's own certificate and
+   `release/designated-requirement.txt` is unchanged, but the updater accepts either
+   (`Signing.releaseRequirement`):
+
+   ```
+   identifier "com.collinrijock.copper" and (certificate leaf = H"76264b1f74fbc16100eb71c855edd6d4165c4fbe"
+     or (anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6]
+         and certificate leaf[field.1.2.840.113635.100.6.1.13] and certificate leaf[subject.OU] = "95X7XYUVNX"))
+   ```
+
+   The second half is the requirement Apple's tools give a Developer ID app: any Developer ID
+   Application certificate Apple issued to that team, so a renewed certificate still passes.
+2. **The switch** (the next release after the bridge has reached people): signed with the
+   Developer ID, hardened runtime, notarized and stapled; the designated requirement becomes
+   the team's. It costs everyone one re-grant, like the first signed release.
+
+The Developer ID's private key and the notary API key live on Copper's Mac mini in
+`~/.config/copper-developer-id/` (0600) and in the repository secrets
+`COPPER_DEVELOPER_ID_P12_BASE64` / `_PASSWORD`, `COPPER_NOTARY_KEY_BASE64` / `_KEY_ID` /
+`_ISSUER`; the bridge reads none of them.
+
 ## Development builds have their own identity
 
 `./build.sh` without `COPPER_RELEASE=1` (and without the `dmg`/`ship` steps) builds

@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import WebKit
 
 // Little Copper (⌥⌘N): one page in a small window. No sidebar and no row of
 // tabs — a slim bar with the address and "Open in Copper", which moves the
@@ -114,6 +115,12 @@ final class Little: NSObject, NSWindowDelegate {
             Windows.openFirst("little")
         }
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Fork (ardia polish): the tab of a page in Little Copper or Peek, in no row (its loads go into History too).
+    static func outside(_ web: WKWebView) -> Tab? {
+        if let little = all.first(where: { $0.tab.built === web }) { return little.tab }
+        return Peek.shown.flatMap { $0.tab.built === web ? $0.tab : nil }
     }
 
     // MARK: - keys

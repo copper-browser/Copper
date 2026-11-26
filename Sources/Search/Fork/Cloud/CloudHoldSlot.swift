@@ -88,12 +88,12 @@ struct CloudHoldCorner: View {
     private var columnless: Bool { !prefs.sidebar || (browser.folded && !browser.peeking) }
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
+        ZStack(alignment: prefs.sidebar && prefs.sideRight ? .bottomTrailing : .bottomLeading) { // Fork (ardia layout): the column's side
             if columnless, let hold = sync.hold {
                 CloudHoldCard(hold: hold, tint: SpaceTint(space: spaces.space(in: browser), dark: scheme == .dark).offColumn)
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous)) // over a page, not see-through
                     .frame(width: 270)
-                    .padding(.leading, 12)
+                    .padding(prefs.sidebar ? prefs.columnEdge : .leading, 12)
                     .padding(.bottom, 12)
                     .transition(still ? .opacity : .offset(y: 14).combined(with: .opacity))
             }

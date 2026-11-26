@@ -146,7 +146,7 @@ enum SideHand {
         // listens to the window's tracking areas: the row is told as well.
         SideRowHover.shared.forced = tab?.id
         guard let window = window(of: browser), let view = window.contentView else { return ["error": "no window"] }
-        var point = CGPoint(x: 2, y: 2)
+        var point = CGPoint(x: browser.prefs.sideRight ? view.bounds.width - browser.prefs.sideWidth + 2 : 2, y: 2) // Fork (ardia layout)
         if let tab {
             guard let frame = Self.frame(of: tab, in: browser) else { return ["error": "row \(Bench.short(tab)) is not laid out"] }
             point = CGPoint(x: frame.midX, y: frame.midY)
@@ -171,7 +171,9 @@ enum SideHand {
                                                   [.boundsIgnoreFraming, .bestResolution]) else { return ["error": "no image"] }
         let scale = CGFloat(image.width) / max(1, window.frame.width)
         let width = min(CGFloat(image.width), (browser.prefs.sideWidth + extra) * scale)
-        let cut = image.cropping(to: CGRect(x: 0, y: 0, width: width, height: CGFloat(image.height))) ?? image
+        // Fork (ardia layout): a right column is cut from the right edge.
+        let x = browser.prefs.sideRight ? CGFloat(image.width) - width : 0
+        let cut = image.cropping(to: CGRect(x: x, y: 0, width: width, height: CGFloat(image.height))) ?? image
         let rep = NSBitmapImageRep(cgImage: cut)
         guard let png = rep.representation(using: .png, properties: [:]) else { return ["error": "no png"] }
         do { try png.write(to: URL(fileURLWithPath: path)) } catch { return ["error": "\(error)"] }

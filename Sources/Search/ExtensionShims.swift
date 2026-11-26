@@ -1935,7 +1935,9 @@ enum ExtensionShims {
         }
         let args = body["args"] as? [Any] ?? []
         do {
-            return ["value": try await run(api, args, context: context, owner: owner) ?? NSNull()]
+            // Fork (ardia profiles): history and the rest as the extension's own profile has them.
+            let value = try await Profiles.$bound.withValue(Profiles.key(owner.profile)) { try await run(api, args, context: context, owner: owner) }
+            return ["value": value ?? NSNull()]
         } catch {
             return ["error": error.localizedDescription]
         }
