@@ -1056,7 +1056,7 @@ final class Flow: ObservableObject {
             guard let plain = PasswordCSV.canonical(csv) else { return (found, 0, 0) }
             if !seams {
                 // What is already here, by site and account — no secret read.
-                let have = Set(Vault.all().map { $0.host + "\u{1}" + $0.user })
+                let have = Set(Vault.all(in: nil).map { $0.host + "\u{1}" + $0.user })
                 let new = Set(PasswordCSV.accounts(csv)).subtracting(have).count
                 return (found, Vault.take(csv: plain).kept, new)
             }

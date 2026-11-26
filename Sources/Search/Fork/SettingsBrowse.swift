@@ -210,11 +210,15 @@ enum SettingsBrowseBench {
         return [
             "look": prefs.look.rawValue,
             "searchEngine": SearchEngines.current.id, // Fork (omnibox)
+            "searchSuggestions": SearchEngines.suggests, // Fork (suggest)
             "autocorrect": prefs.autocorrect,
             "sheer": prefs.sheer,
             "webkitAutocorrect": UserDefaults.standard.bool(forKey: "WebAutomaticSpellingCorrectionEnabled"),
             "bench": prefs.bench,
             "sidebar": prefs.sidebar,
+            "sideRight": prefs.sideRight, // Fork (ardia layout)
+            "interfaceSize": prefs.interfaceSize.rawValue,
+            "pageFrame": prefs.pageFrame.rawValue,
             "tabSwitching": prefs.tabSwitching.rawValue,
             "swipeDirection": prefs.swipeDirection.rawValue,
             "sleepsTabs": prefs.sleepsTabs,

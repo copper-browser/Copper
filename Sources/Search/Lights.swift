@@ -22,14 +22,22 @@ final class Lights: NSObject {
     private static var kept: [ObjectIdentifier: Lights] = [:]
 
     /// Starts looking after a window's lights, once. `moved` hears each time
-    /// they have been put in place.
-    static func keep(_ window: NSWindow, moved: @escaping () -> Void) {
+    /// they have been put in place. `column`: the width of a right column
+    /// the lights ride on, nil while they keep the window's corner.
+    static func keep(_ window: NSWindow, column: @escaping () -> CGFloat? = { nil }, moved: @escaping () -> Void) {
         guard kept[ObjectIdentifier(window)] == nil else { return }
-        kept[ObjectIdentifier(window)] = Lights(window, moved: moved)
+        kept[ObjectIdentifier(window)] = Lights(window, column: column, moved: moved)
     }
+
+    /// Fork (ardia layout): put them in place now — the column changed sides or width.
+    static func refresh(_ window: NSWindow) { kept[ObjectIdentifier(window)]?.place() }
 
     private weak var window: NSWindow?
     private let moved: () -> Void
+    /// Fork (ardia layout): with the column on the right the lights ride it,
+    /// set in from its left edge as they are from the window's (Arc's way),
+    /// so the column's head is the same on either side.
+    private let column: () -> CGFloat?
     private var placing = false
     /// AppKit's own spacing between the three, read once from its first
     /// layout and kept. Read again on every pass, it was caught while AppKit
@@ -39,9 +47,10 @@ final class Lights: NSObject {
     /// from the one before. Reproduced with ./bench resize, 23 Sep 2026.
     private let spacing: CGFloat
 
-    private init(_ window: NSWindow, moved: @escaping () -> Void) {
+    private init(_ window: NSWindow, column: @escaping () -> CGFloat?, moved: @escaping () -> Void) {
         self.window = window
         self.moved = moved
+        self.column = column
         let row = [NSWindow.ButtonType.closeButton, .miniaturizeButton].compactMap { window.standardWindowButton($0) }
         let measured = row.count == 2 ? row[1].frame.minX - row[0].frame.minX : 0
         spacing = (16...32).contains(measured) ? measured : 20
@@ -88,10 +97,11 @@ final class Lights: NSObject {
             container.frame = frame
         }
         // Only the row moves; the spacing is AppKit's, from its first layout.
+        let start = column().map { max(0, window.frame.width - $0) } ?? 0
         for (index, button) in buttons.enumerated() {
             let size = button.frame.size
             let origin = NSPoint(
-                x: Lights.centre.x - size.width / 2 + CGFloat(index) * spacing,
+                x: start + Lights.centre.x - size.width / 2 + CGFloat(index) * spacing,
                 y: bar.bounds.height - Lights.centre.y - size.height / 2
             )
             if button.frame.origin != origin { button.setFrameOrigin(origin) }

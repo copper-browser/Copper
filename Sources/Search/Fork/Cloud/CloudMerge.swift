@@ -363,6 +363,7 @@ enum CloudSettingsKeys {
         "look",             // light / dark / system
         "sheer",            // see-through window
         "sidebar",          // tabs down the left
+        "sidebar.right",    // Fork (ardia layout): …or down the right
         "tabs.switching",   // ⌃Tab: the row or most recent
         "tabs.sleep",       // put idle tabs to sleep
         "spaces.swipe",     // which way a swipe moves the column

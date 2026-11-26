@@ -122,7 +122,7 @@ struct CommandPalette: View {
                 // The card belongs to the window, not to the page area it
                 // happens to be drawn in, so it is shifted back over the
                 // column of tabs by half that column's width.
-                .offset(x: -inset / 2, y: top)
+                .offset(x: -inset / 2 * browser.prefs.columnSign, y: top) // Fork (ardia layout): either way round
         }
         .background(WindowRuler { place = $0; CommandPalette.lastPlace = $0 })
         // The rows change on every letter, and as Google and history land.

@@ -47,9 +47,11 @@ enum CommandBar {
             .init(id: "pin", name: "Pin Tab", glyph: "pin") { b in if let t = b.active { b.pin(t) } },
             .init(id: "bookmark", name: "Bookmark This Page", glyph: "bookmark") { $0.bookmarkCurrent() },
             .init(id: "sidebar", name: "Toggle Sidebar", glyph: "sidebar.left") { $0.toggleSidebar() },
+            .init(id: "sidebar-side", name: "Sidebar on the Other Side", glyph: "sidebar.right") { $0.toggleSide() }, // Fork (ardia layout)
             .init(id: "hard-reload", name: "Hard Reload", glyph: "arrow.clockwise") { $0.hardReload() },
             .init(id: "reader", name: "Reading Mode", glyph: "doc.plaintext") { $0.toggleReader() },
             .init(id: "inspect", name: "Inspect Element", glyph: "ladybug") { $0.inspectElement() },
+            .init(id: "task-manager", name: "Task Manager", glyph: "memorychip") { _ in TaskManager.shared.show() }, // Fork (ardia: automation)
             .init(id: "float", name: "Float the Video", glyph: "pip") { $0.toggleFloat() },
             .init(id: "hide", name: "Hide Something on This Page", glyph: "eye.slash") { $0.toggleHiding() },
             .init(id: "history", name: "History", glyph: "clock.arrow.circlepath") { $0.recalling = true },
@@ -96,6 +98,7 @@ enum CommandBar {
         if Split.shared.on(in: browser) { list += Split.commands } // Fork (ardia split): flip, stack, even, separate
         PageTools.add(to: &list, in: browser) // Fork (page-tools): Copy Link (as Markdown, to Highlight), Share…, Translate Page (Fork/PageShare.swift)
         list += Cleaned.commands(browser) // Fork (ardia-tabs): Clean Up Tabs, Recently Cleaned (Fork/Cleaned.swift)
+        list += LiveFolders.commands // Fork (ardia folders): live and shared folders
         if Spaces.shared.all.count > 1 {
             list.append(.init(id: "delete-space", name: "Delete Space…", glyph: "trash") { b in SpaceDelete.ask(Spaces.shared.current(in: b), in: b) })
         }

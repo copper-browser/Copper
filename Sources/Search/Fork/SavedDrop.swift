@@ -523,7 +523,7 @@ struct SideDragCardRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            RowMark(icon: tab.icon, tint: tint, size: 16)
+            RowMark(icon: tab.icon, tint: tint, size: 16.ui) // Fork (ardia layout): as the row draws it
             FadingTitle(text: Text(tab.label) // Fork (motion): the row's own title, as on the row
                 .font(.system(size: SideBar.title))
                 .foregroundStyle(tint.ink))
@@ -590,10 +590,10 @@ struct SavedDropSlot: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "plus")
-                .font(.system(size: 12, weight: .medium))
-                .frame(width: 16)
+                .font(.system(size: 12.ui, weight: .medium))
+                .frame(width: 16.ui)
             Text("Drop here to save")
-                .font(.system(size: 13.5))
+                .font(.system(size: 13.5.ui))
                 .lineLimit(1)
             Spacer(minLength: 0)
         }

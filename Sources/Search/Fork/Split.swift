@@ -585,6 +585,11 @@ struct SplitStage: View {
     /// Fork (page-frame): the sidebar layout, where the stage is a card (or
     /// several) inset in the space's ground, which the window draws behind it.
     var inset = false
+    /// Fork (ardia layout): inset beside a column on the right — the margin
+    /// goes on the left and the column is the margin on the right.
+    var right = false
+    /// Fork (ardia layout): the page frame when made, so a new one draws the stage again.
+    var pageFrame = SplitMetrics.frame
     /// Fork (uitype): the top-tab layout, page on screen (not immersed): the
     /// page is the same card there, on the split's ground, a margin all round.
     var framed = false
@@ -618,7 +623,7 @@ struct SplitStage: View {
         // Fork (page-frame): inset, the page and the pane are cards on the
         // space's ground, with the margin round them (not left of them: the
         // column is the margin there).
-        .padding(inset ? EdgeInsets(top: SplitMetrics.margin, leading: 0, bottom: SplitMetrics.margin, trailing: SplitMetrics.margin) : EdgeInsets())
+        .padding(inset ? EdgeInsets(top: SplitMetrics.margin, leading: right ? SplitMetrics.margin : 0, bottom: SplitMetrics.margin, trailing: right ? 0 : SplitMetrics.margin) : EdgeInsets())
         // Fork (uitype): framed, the one page (or page and pane) sits in the
         // split's own margin and ground — the split keeps its own (below).
         .padding(card && !inset ? SplitMetrics.margin : 0)
@@ -1022,7 +1027,7 @@ extension Split {
                   let frame = SplitDrop.shared.stages[ObjectIdentifier(browser)], let from = SideHand.frame(of: row, in: browser)
             else { return ["error": "drag ID X Y [hold], with the row laid out"] }
             let to = CGPoint(x: frame.minX + frame.width * fx, y: frame.minY + frame.height * fy)
-            SideHand.how = "view"
+            SideHand.how = "window"
             out["drag"] = SideHand.drag(row, dy: to.y - from.midY, dx: to.x - from.midX, steps: 24, hold: words.contains("hold"), in: browser)
         case "link":
             guard let url = words.dropFirst().first.flatMap(URL.init(string:)), let source = browser.active else { return ["error": "link URL"] }

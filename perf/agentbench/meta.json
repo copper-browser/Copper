@@ -1,0 +1,15 @@
+{
+  "pluginsCommit": "d87fc6cf8aa7b3fa26ad1393a7ef6caa7e7fec28",
+  "bench": "https://github.com/ardia-browser/plugins/tree/d87fc6cf8aa7b3fa26ad1393a7ef6caa7e7fec28/plugins/cli/bench",
+  "machine": "Mac mini (Apple M6, 24 GB), macOS 27.0.1",
+  "versions": {
+    "copper": "1.0.20261124.117",
+    "ardia": "0.2.48",
+    "ardiaCli": "0.0.0-bench.1 (built from plugins d87fc6c, cli 0.7.0)",
+    "chrome": "158.0.8127.89",
+    "playwrightMcp": "0.0.86",
+    "claudeCode": "2.1.322",
+    "codex": "0.167.2",
+    "models": {"claude": "claude-opus-5-5 (effort high)", "codex": "gpt-6.1-sol (reasoning effort high)"}
+  }
+}

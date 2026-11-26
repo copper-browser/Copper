@@ -68,7 +68,7 @@ struct SharePicker: View {
                             pick: { share.pick($0) }, cancel: { share.choose(.cancel) }, clear: { share.edited("") },
                             toggleAudio: { share.shareAudio.toggle() })
                 .frame(width: SharePicker.width)
-                .offset(x: -inset / 2, y: place.height > 0 ? place.height * SharePicker.drop - place.top : 200)
+                .offset(x: -inset / 2 * browser.prefs.columnSign, y: place.height > 0 ? place.height * SharePicker.drop - place.top : 200)
         }
         .background(WindowRuler { place = $0 })
     }

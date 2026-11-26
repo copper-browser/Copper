@@ -82,13 +82,21 @@ if [ -f Canvas/dist/canvas.html ] && [ Canvas/dist/canvas.html -nt "$CANVAS_PAGE
   cp Canvas/dist/canvas.html "$CANVAS_PAGE"
 fi
 
+# Fork (ardia polish): the SDK the app is built with, stamped into the
+# binary's LC_BUILD_VERSION (check: vtool -show-build). SwiftPM's linker line
+# writes the oldest macOS there as the SDK too (sdk 14.0), and macOS reads
+# that stamp for "linked on or after" behaviour: Translation then calls the
+# languages a newer Mac already has "supported" (to download again) instead
+# of installed. The oldest macOS it runs on stays $MINIMUM.
+SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
+STAMP=(-Xlinker -platform_version -Xlinker macos -Xlinker "$MINIMUM" -Xlinker "$SDK_VERSION")
 if [ -n "$ARCH" ]; then
   # The oldest macOS goes into the triple too, as it is in the plist.
-  swift build -c "$CONFIG" --triple "$ARCH-apple-macosx$MINIMUM"
+  swift build -c "$CONFIG" --triple "$ARCH-apple-macosx$MINIMUM" "${STAMP[@]}"
   # Where depends on the build system SwiftPM picked for the triple, so ask.
-  PRODUCTS="$(swift build -c "$CONFIG" --triple "$ARCH-apple-macosx$MINIMUM" --show-bin-path)"
+  PRODUCTS="$(swift build -c "$CONFIG" --triple "$ARCH-apple-macosx$MINIMUM" "${STAMP[@]}" --show-bin-path)"
 else
-  swift build -c "$CONFIG"
+  swift build -c "$CONFIG" "${STAMP[@]}"
   PRODUCTS=".build/$CONFIG"
 fi
 BINARY="$PRODUCTS/Search"
@@ -109,6 +117,8 @@ mkdir -p "$APP/Contents/Resources/phonon-coreml"
 cp Sources/Search/Fork/Voice/Phonon/LICENSE Sources/Search/Fork/Voice/Phonon/NOTICE "$APP/Contents/Resources/phonon-coreml/"
 # Copper's own licence, which carries the MIT notice it was forked under.
 cp LICENSE "$APP/Contents/Resources/LICENSE"
+# Fork (ardia: automation): the AppleScript dictionary (Fork/Scripting.swift).
+cp Sources/Search/Fork/Copper.sdef "$APP/Contents/Resources/Copper.sdef"
 
 # Symbols stay out of the app. The linker leaves every function's name and a
 # map back to the source in the binary — 15,000 entries, more than half of
@@ -148,6 +158,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
   <key>NSHumanReadableCopyright</key><string>© Collin Rijock and Felipe Arce.</string>
   <key>NSHighResolutionCapable</key><true/>
+  <!-- AppleScript: windows, tabs, execute javascript (Fork/Copper.sdef). -->
+  <key>NSAppleScriptEnabled</key><true/>
+  <key>OSAScriptingDefinition</key><string>Copper.sdef</string>
   <!-- Owning http and https is what lets macOS offer this app as the default
        browser, and what sends a link clicked in Mail here. -->
   <key>CFBundleURLTypes</key>

@@ -110,7 +110,10 @@ open tabs (to look at — nothing opens by itself), and extensions: one
 installed from the Web Store here installs from the Web Store on the others
 (the switch is the consent, as Move in's list is); one removed here is marked
 removed and never uninstalled elsewhere. Folder-loaded extensions and every
-extension's settings stay put. **Never passwords** in this version.
+extension's settings stay put. **Never passwords** in this version. Each
+place and each extension carries the profiles it belongs to (`p`, absent
+for Shared — docs/spaces.md › Profiles), so a Work page stays in Work's
+history and a Work extension runs in Work on every Mac.
 
 ## Cycle and compaction
 

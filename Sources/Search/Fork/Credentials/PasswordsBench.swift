@@ -20,6 +20,7 @@ enum PasswordsBench {
         case "status":
             return [
                 "probeKeychain": ProbeKeychain.active,
+                "profile": Profiles.front ?? "", // Fork (ardia profiles): whose drawers `list`, `add` and `check` read
                 "count": ProbeKeychain.active ? Vault.all().count : -1,
                 "never": Vault.never.sorted(),
                 "panel": browser.managing,
@@ -28,7 +29,7 @@ enum PasswordsBench {
             ]
         case "list":
             return ["logins": Vault.all().map { login -> [String: Any] in
-                ["host": login.host, "user": login.user, "used": login.used?.timeIntervalSince1970 ?? NSNull()]
+                ["host": login.host, "user": login.user, "used": login.used?.timeIntervalSince1970 ?? NSNull(), "profile": login.profile ?? ""]
             }]
         case "add":
             guard words.count >= 3 else { return ["error": "passwords add HOST USER PASSWORD"] }

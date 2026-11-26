@@ -77,9 +77,10 @@ enum ExtensionPages {
 
     // MARK: - the tabs extensions see
 
-    /// Whether each page view was built with the extension controller,
-    /// asked once per view (`configuration` is a copy each time it's read).
-    private static let served = NSMapTable<WKWebView, NSNumber>.weakToStrongObjects()
+    /// The extension controller each page view was built with (NSNull for
+    /// none), asked once per view (`configuration` is a copy each time it's
+    /// read).
+    private static let served = NSMapTable<WKWebView, AnyObject>.weakToStrongObjects()
 
     /// A tab's page as extensions may be handed it: only a view built with
     /// Copper's extension controller. Every space's tab is listed (`every`),
@@ -90,12 +91,17 @@ enum ExtensionPages {
     /// WKWebExtensionController" dozens of times a second while 1Password's
     /// worker walked the tabs. Such a tab is still a tab extensions see, as a
     /// chrome:// page is in Chrome, but without a page to reach into.
-    static func view(of tab: Tab?) -> WKWebView? {
-        guard #available(macOS 15.4, *), let web = tab?.built else { return nil }
-        if let known = served.object(forKey: web) { return known.boolValue ? web : nil }
-        let ok = web.configuration.webExtensionController === Extensions.shared.controller
-        served.setObject(NSNumber(value: ok), forKey: web)
-        return ok ? web : nil
+    /// Fork (ardia profiles): built with that controller — the profile's
+    /// whose extension asks — not merely with one of Copper's.
+    @available(macOS 15.4, *)
+    static func view(of tab: Tab?, in controller: WKWebExtensionController) -> WKWebView? {
+        guard let web = tab?.built else { return nil }
+        let built = served.object(forKey: web) ?? {
+            let made: AnyObject = web.configuration.webExtensionController.map { $0 as AnyObject } ?? NSNull()
+            served.setObject(made, forKey: web)
+            return made
+        }()
+        return built === controller ? web : nil
     }
 
     /// Every tab in every space, pins first, then each space's row in the

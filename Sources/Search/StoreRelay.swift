@@ -168,14 +168,15 @@ extension Browser {
     /// The page's "Add to Copper" was pressed: the extension this tab is showing.
     func addFromStore(_ tab: Tab) {
         guard #available(macOS 15.4, *), let url = tab.address, StoreOffer.isStorePage(url) else { return }
-        Extensions.shared.install(from: url.absoluteString)
+        Extensions.shared.install(from: url.absoluteString, confirm: true, in: Profiles.of(tab)) // Fork (ardia profiles): into the store tab's profile
     }
 
     /// Tells a store page what is installed and what is on its way, so its
     /// button can say "Added to Copper" or "Adding…".
     func tellStore(_ tab: Tab) {
         guard #available(macOS 15.4, *), let url = tab.address, StoreOffer.isStorePage(url) else { return }
-        tab.tellStore(installed: Extensions.shared.installed.map(\.id), busy: Extensions.shared.busy)
+        let profile = Profiles.of(tab) // Fork (ardia profiles): "Added" only where it runs
+        tab.tellStore(installed: Extensions.shared.installed.filter { $0.reaches(profile) }.map(\.id), busy: Extensions.shared.busy)
     }
 
     /// And tells every store page again whenever either changes.

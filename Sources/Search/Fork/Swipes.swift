@@ -376,6 +376,10 @@ enum SwipeDirection: String, CaseIterable, Identifiable {
     static func overSidebar(_ location: CGPoint, in browser: Browser) -> Bool {
         guard browser.prefs.sidebar, browser.active?.immersed != true,
               !browser.folded || browser.peeking else { return false }
+        // Fork (ardia layout): a right column, from the window's right edge in.
+        if browser.prefs.sideRight, let width = Windows.window(of: browser)?.contentView?.bounds.width {
+            return location.x >= width - browser.prefs.sideWidth
+        }
         return location.x <= browser.prefs.sideWidth
     }
 }

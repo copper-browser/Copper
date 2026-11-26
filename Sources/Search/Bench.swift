@@ -261,8 +261,15 @@ final class Bench {
         case "spaces", "bar", "split", "summon", "window", "groups", "sections", "passkeys", "passwords", "privacy", "about", "agent", "ai", "swipe", "mouse", "heat", "downloads", "updates", "bw", "op", "flow", "history", "drive", "render", "ext-manager", "storage", "windows", "flight", "trails", "pace", "stage", "calendar", "pins", "covers", "shield":
             answer(Fork.bench(verb, request, in: browser))
 
-        case "little", "peek", "atc": // Fork (ardia: windows): Fork/Little.swift, Fork/Peek.swift, Fork/AirTraffic.swift
+        case "player": answer(MiniPlayer.bench(request, in: browser)) // Fork (ardia polish): Fork/MiniPlayer.swift
+
+        case "little", "peek", "atc", "shortcuts": // Fork (ardia: windows): Fork/Little.swift, Fork/Peek.swift, Fork/AirTraffic.swift; (ardia-shortcuts) Fork/Shortcuts.swift
             answer(Fork.bench(verb, request, in: browser))
+
+        case "tasks", "handoff": // Fork (ardia: automation): Fork/TaskManager.swift, Fork/PageHandoff.swift
+            answer(Fork.bench(verb, request, in: browser))
+
+        case "script": Scripting.bench(request, answer: answer) // Fork (ardia: automation): AppleScript, Fork/Scripting.swift
 
         case "settings": // Fork (settings-revamp): open/search/pick/index check — Fork/SettingsBench.swift
             SettingsBench.handle(request, in: browser, answer: answer)
@@ -301,6 +308,7 @@ final class Bench {
             CloudBench.handle(request, in: browser, answer: answer)
 
         case "icloud": FolderSyncBench.handle(request, in: browser, answer: answer) // Fork (icloud): Fork/FolderSync/FolderSyncBench.swift
+        case "folders": FoldersBench.handle(request, in: browser, answer: answer) // Fork (ardia folders): live and shared folders, Fork/FoldersBench.swift
 
         case "voice":
             // Fork (voice): the speech engine's selftest and replay, async (Fork/Voice/VoiceBench.swift).
@@ -533,6 +541,14 @@ final class Bench {
                 ]
             }
             if let window = Links.window { out["lights"] = Bench.lights(of: window) }
+            // Fork (ardia layout): the column's side and sizes, where the column and the page area are (global points).
+            let rows = SideDrag.of(browser).rows
+            let box = { (r: CGRect) in [Int(r.minX.rounded()), Int(r.minY.rounded()), Int(r.width.rounded()), Int(r.height.rounded())] }
+            out["layout"] = ["side": browser.prefs.sideRight ? "right" : "left", "size": browser.prefs.interfaceSize.rawValue, "frame": browser.prefs.pageFrame.rawValue,
+                             "column": box(SpaceSlide.shared.column(in: browser)), "stage": box(SplitDrop.shared.stages[ObjectIdentifier(browser)] ?? .zero),
+                             "window": Links.window.map { [Int($0.frame.width), Int($0.frame.height)] } ?? [],
+                             "rows": Dictionary(uniqueKeysWithValues: rows.map { (String($0.key.uuidString.prefix(8)).lowercased(), Double(($0.value.midY * 10).rounded() / 10)) }),
+                             "row": Double(SideBar.row)] as [String: Any] // rows: each loose row's centre, as a drag reads it
             out["keysQuieted"] = PageView.quieted
             // Who has the keyboard, and the last link click WebKit reported
             // (its button number and modifiers) — for the mouse-button work. (Fork)
@@ -696,6 +712,12 @@ final class Bench {
             if let on = request["settings"] as? Bool { browser.tuning = on }
             if let on = request["passwords"] as? Bool { browser.managing = on }
             if let on = request["welcome"] as? Bool { Headless.benchWelcome = on; browser.welcoming = on } // Fork (bench-hooks)
+            if let page = (request["welcomepage"] as? String).flatMap(Int.init) { // Fork (ardia polish): the panel on page N
+                Headless.benchWelcome = true
+                Headless.benchWelcomePage = page
+                browser.welcoming = false
+                DispatchQueue.main.async { browser.welcoming = true }
+            }
             if let on = request["history"] as? Bool { browser.recalling = on }
             // Fork (uiflows r4): as ⌘⇧J opens it — the popover from the glyph where there is one.
             if let on = request["downloads"] as? Bool {
@@ -716,6 +738,10 @@ final class Bench {
                 }
             }
             if let on = request["sidebar"] as? Bool { browser.prefs.sidebar = on }
+            // Fork (ardia layout): `ui side left|right`, `ui size small|default|large`, `ui frame none|thin|default`.
+            if let side = request["side"] as? String { browser.prefs.sideRight = side == "right" }
+            if let size = request["size"] as? String { browser.prefs.interfaceSize = InterfaceSize(rawValue: size == "default" ? "standard" : size) ?? .standard }
+            if let frame = request["frame"] as? String { browser.prefs.pageFrame = PageFrameSize(rawValue: frame == "default" ? "standard" : frame) ?? .standard }
             if let on = request["folded"] as? Bool { browser.folded = on }
             if let on = request["sheer"] as? Bool { browser.prefs.sheer = on } // Fork (sheer)
             // `ui fullscreen on|off`: the window into or out of full screen, as the green light does. (Fork: sheer)
@@ -759,11 +785,12 @@ final class Bench {
         switch verb {
         case "extensions":
             answer(["busy": extensions.busy ?? "", "extensions": extensions.installed.map { item -> [String: Any] in
-                let context = extensions.contexts[item.id]
-                let action = context?.action(for: extensions.activeAdapter)
+                let context = extensions.context(item.id) // Fork (ardia profiles): the page in front's profile's first
+                let action = context?.action(for: Extensions.front.activeAdapter)
                 return [
                     "id": item.id, "name": item.name, "version": item.version, "enabled": item.enabled,
                     "loaded": context != nil,
+                    "profiles": item.profiles ?? ["*"], "runs": Extensions.every.filter { $0.contexts[item.id] != nil }.map { Profiles.key($0.profile) }.sorted(),
                     "base": context?.baseURL.absoluteString ?? "",
                     "errors": (context?.errors ?? []).map { error in
                         let e = error as NSError
@@ -847,7 +874,7 @@ final class Bench {
         case "ext-page":
             // One of the extension's own pages in a bench tab, where `eval`
             // runs with the extension's APIs.
-            guard let id = request["id"] as? String, let context = extensions.contexts[id] else {
+            guard let id = request["id"] as? String, let context = extensions.context(id) else {
                 answer(["error": "no such extension loaded"])
                 return
             }

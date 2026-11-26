@@ -243,7 +243,8 @@ final class FlowPresenter: NSObject, ObservableObject {
         guard let host else { return }
         let frame = host.frame
         let column = hostBrowser.map { $0.prefs.sidebar && !$0.folded ? $0.prefs.sideWidth : 0 } ?? 0
-        let x = frame.minX + column + (frame.width - column - Self.width) / 2
+        let right = hostBrowser?.prefs.sideRight == true // Fork (ardia layout): beside a right column
+        let x = frame.minX + (right ? 0 : column) + (frame.width - column - Self.width) / 2
         let y = frame.minY + (frame.height - height) / 2
         panel.setFrame(NSRect(x: x.rounded(), y: y.rounded(), width: Self.width, height: height), display: true)
     }
