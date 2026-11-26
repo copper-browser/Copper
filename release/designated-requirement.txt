@@ -1,1 +1,1 @@
-identifier "com.collinrijock.copper" and certificate leaf = H"76264b1f74fbc16100eb71c855edd6d4165c4fbe"
+identifier "com.collinrijock.copper" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] and certificate leaf[field.1.2.840.113635.100.6.1.13] and certificate leaf[subject.OU] = "95X7XYUVNX"

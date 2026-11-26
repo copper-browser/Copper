@@ -5,8 +5,8 @@
 #   curl -fsSL https://github.com/copper-browser/Copper/releases/latest/download/copper-install.sh | sh
 #
 # Downloads the latest release from GitHub, verifies its SHA-256, backs up
-# your tab session, replaces /Applications/Copper.app, clears the quarantine
-# flag (builds are signed with Copper's own certificate, not notarized), links the `copper` CLI shim
+# your tab session, replaces /Applications/Copper.app (signed with Copper's
+# Developer ID and notarized, so Gatekeeper opens it as it is), links the `copper` CLI shim
 # onto PATH when the build ships one, and relaunches. Re-running upgrades in
 # place. Never uses sudo.
 #
@@ -224,10 +224,6 @@ install_app() {
 	# ditto preserves the bundle's resource forks and permissions, which a
 	# plain cp -R does not reliably do for app bundles.
 	ditto "$tmp/unpack/Copper.app" "$APP"
-	# Not notarized (Copper's own certificate, not a Developer ID): Gatekeeper
-	# refuses to launch a quarantined build, so strip the flag exactly like the
-	# cask's postflight.
-	xattr -cr "$APP" 2>/dev/null || true
 
 	installed="$(app_version "$APP")"
 	if [ -n "$previous" ] && [ "$previous" != "$installed" ]; then

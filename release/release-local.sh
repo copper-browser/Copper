@@ -12,8 +12,9 @@
 #                                               (default: its external disk)
 #
 # What it makes is what .github/workflows/release.yml makes — the same build
-# commands and checks, the same signature (Copper's own certificate and the
-# requirement in release/designated-requirement.txt), the same assets, the same
+# commands and checks, the same signature (Copper's Developer ID, the hardened
+# runtime, Copper.entitlements and the requirement in
+# release/designated-requirement.txt), notarized and stapled, the same assets, the same
 # copper-version.json and the same release text — so the updater, the curl
 # installer and the Homebrew tap can't tell which path cut a release. The
 # workflow still exists for Collin's runner; this is the path that uses no
@@ -21,9 +22,10 @@
 # Actions).
 #
 # Where each part runs, and why:
-#   - The laptop: preflight, version, signing, packaging, publishing. The
-#     signing key (~/.config/copper-signing, 0600) never leaves it, and no
-#     keychain is involved anywhere: rcodesign reads the p12 itself.
+#   - The laptop: preflight, version, signing, notarizing, packaging,
+#     publishing. The Developer ID key and the notary key
+#     (~/.config/copper-developer-id, 0600) never leave it, and no keychain is
+#     involved anywhere: rcodesign reads the p12 itself, notarytool the .p8.
 #   - The Mac mini (MINI below): both builds, the Xos test and the launch
 #     check. It has the full Xcode, Rosetta and the cores; the job folder
 #     (REMOTE_DIR below) is deleted at the end, whatever happened.
@@ -48,9 +50,12 @@ REMOTE_DIR="${COPPER_RELEASE_REMOTE_DIR:-/Volumes/Farm/farm-exowatt/copper-relea
 # about 1 GB of .build on the mini, plus the sources and the two apps with
 # their dSYMs: about 3.5 GB. The build reports what it used.
 REMOTE_FREE_GB=5
-SIGNING=$HOME/.config/copper-signing
-P12=$SIGNING/copper-release-signing.p12
+SIGNING=$HOME/.config/copper-developer-id
+P12=$SIGNING/copper-developer-id.p12
 P12_PASSWORD=$SIGNING/p12-password
+# The App Store Connect API key notarytool signs in with: AuthKey_<key id>.p8
+# beside the issuer's id in notary-issuer (docs/releasing.md › Keeping the key).
+NOTARY_ISSUER=$SIGNING/notary-issuer
 # rcodesign (apple-codesign), pinned: the tarball's SHA-256 as the project
 # publishes it, and the binary inside it.
 RCODESIGN_VERSION=0.29.0
@@ -89,7 +94,7 @@ mini() { local seconds="$1"; shift; timeout "$seconds" ssh "${ssh_opts[@]}" "$MI
 # ---------------------------------------------------------------------------
 step "Preflight"
 
-for tool in git gh node curl shasum ditto codesign csreq plutil lipo dwarfdump tar timeout ssh; do
+for tool in git gh node curl shasum ditto codesign csreq plutil lipo dwarfdump tar timeout ssh xcrun spctl python3; do
   command -v "$tool" > /dev/null || fail "needs $tool on PATH"
 done
 gh auth status > /dev/null 2>&1 || fail "gh is not signed in (gh auth login)"
@@ -112,21 +117,32 @@ if [ -n "$dirty" ]; then
   note "dry run: uncommitted changes are not in the build (it is $(git rev-parse --short=12 HEAD) as committed)"
 fi
 
-# The key and its password: present, and private to this account. Never
-# printed, copied or sent anywhere; rcodesign reads both where they are.
-for secret in "$P12" "$P12_PASSWORD"; do
+# The keys and the password: present, and private to this account. Never
+# printed, copied or sent anywhere; rcodesign and notarytool read them where
+# they are.
+notary_keys=("$SIGNING"/AuthKey_*.p8)
+[ "${#notary_keys[@]}" = 1 ] && [ -f "${notary_keys[0]}" ] \
+  || fail "want exactly one $SIGNING/AuthKey_<key id>.p8 (docs/releasing.md › Keeping the key)"
+NOTARY_KEY="${notary_keys[0]}"
+NOTARY_KEY_ID="$(basename "$NOTARY_KEY" .p8)"
+NOTARY_KEY_ID="${NOTARY_KEY_ID#AuthKey_}"
+for secret in "$P12" "$P12_PASSWORD" "$NOTARY_KEY" "$NOTARY_ISSUER"; do
   [ -f "$secret" ] || fail "missing $secret (docs/releasing.md › Keeping the key)"
   mode="$(stat -f %Lp "$secret")"
   [ "$mode" = 600 ] || fail "$secret is mode $mode; it must be 0600"
 done
 
 requirement="$(git show "$commit:release/designated-requirement.txt" | tr -d '\n')"
-# The requirement names the certificate in release/ (hashes are public).
-want="$(git show "$commit:release/copper-release-signing.cer" | shasum -a 1 | cut -d' ' -f1)"
+# The requirement names the team of the certificate in release/, and the p12
+# holds that certificate (hashes are public).
+want="$(git show "$commit:release/copper-developer-id.cer" | shasum -a 1 | cut -d' ' -f1)"
+team="$(git show "$commit:release/copper-developer-id.cer" | openssl x509 -inform der -noout -subject | sed -n 's/.*OU *= *\([0-9A-Z]*\).*/\1/p')"
 case "$requirement" in
-  *"certificate leaf = H\"$want\""*) ;;
-  *) fail "release/designated-requirement.txt does not name release/copper-release-signing.cer ($want)" ;;
+  *"certificate leaf[subject.OU] = \"$team\""*) ;;
+  *) fail "release/designated-requirement.txt does not name release/copper-developer-id.cer's team (${team:-none})" ;;
 esac
+have="$(openssl pkcs12 -in "$P12" -passin "file:$P12_PASSWORD" -nokeys -clcerts 2> /dev/null | openssl x509 -outform der | shasum -a 1 | cut -d' ' -f1)"
+[ "$have" = "$want" ] || fail "$P12 does not hold release/copper-developer-id.cer ($want). Renewed? See docs/releasing.md."
 
 # Every tag and release name in the repository, drafts included.
 existing="$(
@@ -354,13 +370,14 @@ for app in "$work/build/Copper.app" "$work/build/x86_64/Copper.app"; do
 done
 
 # ---------------------------------------------------------------------------
-step "Stamp $version, sign with rcodesign, zip"
+step "Stamp $version, sign with rcodesign, notarize, zip"
 
 git show "$commit:release/designated-requirement.txt" > "$work/requirement.txt"
 # rcodesign takes the requirement compiled, not as text; csreq compiles it the
 # way codesign -r would.
 csreq -r "$work/requirement.txt" -b "$work/requirement.bin"
-[ "$(csreq -r "$work/requirement.bin" -t)" = "$requirement" ] || fail "csreq did not round-trip the requirement"
+[ "$(csreq -r "$work/requirement.bin" -t | sed 's: /\* exists \*/::g')" = "$requirement" ] || fail "csreq did not round-trip the requirement"
+git show "$commit:Copper.entitlements" > "$work/entitlements.plist"
 
 # release/package-app.sh's stamp and checks, with rcodesign doing what
 # codesign and a keychain do there.
@@ -374,18 +391,18 @@ sign_and_zip() {
     *"identifier \"$bundle_id\" "*) ;;
     *) fail "bundle id $bundle_id is not the release's ($requirement)" ;;
   esac
-  # The updater inside checks every later release against the same
-  # certificate (Fork/Signing.swift); a bundle that pins another isn't signed.
-  LC_ALL=C grep -a -q -F "$want" "$app/Contents/MacOS/Copper" \
-    || fail "the $arch app's updater does not pin $want (Fork/Signing.swift)"
+  # The updater inside checks every later release against the same team
+  # (Fork/Signing.swift); a bundle that pins another isn't signed.
+  LC_ALL=C grep -a -q -F "certificate leaf[subject.OU] = \"$team\"" "$app/Contents/MacOS/Copper" \
+    || fail "the $arch app's updater does not pin team $team (Fork/Signing.swift)"
 
   # Homebrew needs a monotonic version; About and MCP serverInfo show it.
   plutil -replace CFBundleShortVersionString -string "$version" "$plist"
 
   # rcodesign carries an existing signature's flags and entitlements over, so
   # build.sh's ad-hoc one goes first: the release signature has only what is
-  # given below — no hardened runtime, no entitlements, no timestamp, like
-  # package-app.sh's.
+  # given below — the hardened runtime, Copper.entitlements and Apple's
+  # timestamp, like package-app.sh's.
   codesign --remove-signature "$app"
   rm -rf "$app/Contents/_CodeSignature"
   # One pass, inside out: nested code first, then the app with the explicit
@@ -396,7 +413,8 @@ sign_and_zip() {
   "$rcodesign" sign \
     --p12-file "$P12" --p12-password-file "$P12_PASSWORD" \
     --code-requirements-file "$work/requirement.bin" \
-    --timestamp-url none \
+    --code-signature-flags runtime \
+    --entitlements-xml-file "$work/entitlements.plist" \
     --exclude 'Contents/Resources/**' \
     "$app" > "$logs/rcodesign-$arch.log" 2>&1 \
     || { tail -20 "$logs/rcodesign-$arch.log" >&2; fail "rcodesign could not sign the $arch app"; }
@@ -410,6 +428,22 @@ sign_and_zip() {
   # would carry it into the zip as ._ AppleDouble files — which a plain unzip
   # leaves in the bundle, unsealed. The runner's zips have none, nor do these.
   local zip="copper-${version}-macos-${arch}.zip"
+  ditto -c -k --norsrc --noextattr --noqtn --noacl --keepParent "$app" "$assets/$zip"
+  # Apple's notary service looks the zip over; its ticket is stapled to the
+  # app and the zip made again around it, as package-app.sh does.
+  xcrun notarytool submit "$assets/$zip" --key "$NOTARY_KEY" --key-id "$NOTARY_KEY_ID" \
+    --issuer "$(cat "$NOTARY_ISSUER")" --wait --timeout 45m --output-format json > "$logs/notary-$arch.json" || true
+  local status id
+  status="$(plutil -extract status raw -o - "$logs/notary-$arch.json" 2> /dev/null || true)"
+  id="$(plutil -extract id raw -o - "$logs/notary-$arch.json" 2> /dev/null || true)"
+  note "$arch: notarized ${status:-no answer} (${id:-no id})"
+  if [ "$status" != Accepted ]; then
+    [ -z "$id" ] || xcrun notarytool log "$id" --key "$NOTARY_KEY" --key-id "$NOTARY_KEY_ID" \
+      --issuer "$(cat "$NOTARY_ISSUER")" > "$logs/notary-$arch-log.json" 2>&1 || true
+    fail "Apple did not notarize the $arch app ($logs/notary-$arch.json, $logs/notary-$arch-log.json)"
+  fi
+  xcrun stapler staple "$app" > "$logs/staple-$arch.log" 2>&1 || { cat "$logs/staple-$arch.log" >&2; fail "could not staple the $arch app"; }
+  rm -f "$assets/$zip"
   ditto -c -k --norsrc --noextattr --noqtn --noacl --keepParent "$app" "$assets/$zip"
   (cd "$assets" && shasum -a 256 "$zip" > "$zip.sha256")
   note "$arch: stamped $(plutil -extract CFBundleShortVersionString raw -o - "$plist") (build $(plutil -extract CFBundleVersion raw -o - "$plist")), packed $zip ($(du -h "$assets/$zip" | cut -f1 | tr -d " "))"
@@ -443,21 +477,31 @@ for arch in arm64 x86_64; do
   [ "$(lipo -archs "$app/Contents/MacOS/Copper")" = "$arch" ] || fail "$arch: the binary is $(lipo -archs "$app/Contents/MacOS/Copper")"
   # The designated requirement macOS files grants under: the same text for
   # every release, and for both CPUs.
-  dr="$(codesign -d -r- "$app" 2> /dev/null | sed -n 's/^designated => //p')"
+  dr="$(codesign -d -r- "$app" 2> /dev/null | sed -n 's/^designated => //p' | sed 's: /\* exists \*/::g')"
   echo "designated => $dr"
   [ "$dr" = "$requirement" ] || fail "$arch: designated requirement is '$dr', expected '$requirement'"
   # The updater's own two checks, argument for argument (Updates.swift, then
-  # Signing.unsatisfied): integrity alone, which is all a Copper from before
-  # signing checks, and the requirement.
+  # Signing.unsatisfied): integrity alone, and the requirement.
   codesign --verify --deep --strict "$app" || fail "$arch: codesign --verify --deep --strict failed"
   codesign --verify --deep --strict -R "=$requirement" "$app" || fail "$arch: does not satisfy $requirement"
   details="$(codesign -dvv "$app" 2>&1)"
-  printf '%s\n' "$details" | grep -E '^(Identifier|Format|CodeDirectory|Authority|Signature|TeamIdentifier|Runtime|Sealed)' || true
-  # No hardened runtime and no other flags, as every release so far.
-  printf '%s\n' "$details" | grep -q '^CodeDirectory .* flags=0x0(none) ' || fail "$arch: code signature flags are set; releases carry none"
-  printf '%s\n' "$details" | grep -q '^Authority=Copper Release Signing$' || fail "$arch: not signed by Copper Release Signing"
-  entitlements="$(codesign -d --entitlements - "$app" 2> /dev/null || true)"
-  [ -z "$entitlements" ] || { printf '%s\n' "$entitlements"; fail "$arch: entitlements appeared; releases carry none"; }
+  printf '%s\n' "$details" | grep -E '^(Identifier|Format|CodeDirectory|Authority|Signature|Timestamp|TeamIdentifier|Runtime|Sealed)' || true
+  # The hardened runtime and no other flags, Apple's timestamp, the Developer ID.
+  printf '%s\n' "$details" | grep -q '^CodeDirectory .* flags=0x10000(runtime) ' || fail "$arch: the flags are not the hardened runtime alone"
+  printf '%s\n' "$details" | grep -q '^Timestamp=' || fail "$arch: no secure timestamp"
+  printf '%s\n' "$details" | grep -q "^Authority=Developer ID Application: .*($team)\$" || fail "$arch: not signed by a Developer ID of team $team"
+  # The entitlements are Copper.entitlements, no more, no less.
+  codesign -d --entitlements - --xml "$app" 2> /dev/null > "$work/entitlements-$arch.plist"
+  python3 -c 'import plistlib, sys; a, b = (plistlib.load(open(f, "rb")) for f in sys.argv[1:]); sys.exit(a != b)' \
+    "$work/entitlements.plist" "$work/entitlements-$arch.plist" || fail "$arch: entitlements are not Copper.entitlements"
+  # Notarized and stapled: Gatekeeper opens it, offline too.
+  xcrun stapler validate "$app" > /dev/null || fail "$arch: no valid stapled ticket"
+  assessment="$(spctl -a -vvv -t exec "$app" 2>&1 || true)"
+  echo "$assessment"
+  case "$assessment" in
+    *"accepted"*"source=Notarized Developer ID"*) ;;
+    *) fail "$arch: Gatekeeper does not accept it as a notarized Developer ID app" ;;
+  esac
   echo "cdhash $(codesign -dvvv "$app" 2>&1 | sed -n 's/^CDHash=//p' | head -1)"
 done
 
@@ -696,7 +740,7 @@ or
 curl -fsSL https://github.com/${REPO}/releases/latest/download/copper-install.sh | sh
 \`\`\`
 
-or download the zip for your Mac below — \`${zip_name}\` for Apple Silicon, \`${x86_64_zip_name}\` for Intel — unzip, move Copper.app to /Applications and run \`xattr -cr /Applications/Copper.app\` once (signed with Copper's own certificate, not notarized).
+or download the zip for your Mac below — \`${zip_name}\` for Apple Silicon, \`${x86_64_zip_name}\` for Intel — unzip and move Copper.app to /Applications (signed with Copper's Developer ID and notarized by Apple).
 
 macOS 14 Sonoma or later, Apple Silicon or Intel. Already installed? Copper updates itself — Settings › Updates.
 

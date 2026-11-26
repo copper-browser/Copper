@@ -31,11 +31,10 @@ brew install --cask copper-browser/copper/copper
 curl -fsSL https://github.com/copper-browser/Copper/releases/latest/download/copper-install.sh | sh
 ```
 
-Both put `Copper.app` in `/Applications`, clear the download quarantine flag
-(Copper is signed with its own certificate, not notarized), link the `copper` command
-and open the app. The installer keeps your tab session if Copper was already
-installed. Downloading the zip by hand also works: move `Copper.app` to
-`/Applications` and run `xattr -cr /Applications/Copper.app` once.
+Both put `Copper.app` in `/Applications`, link the `copper` command and open the
+app. The installer keeps your tab session if Copper was already installed.
+Downloading the zip by hand also works: move `Copper.app` to `/Applications`. Copper
+is signed with its Developer ID and notarized by Apple, so Gatekeeper opens it as it is.
 
 ### First launch
 

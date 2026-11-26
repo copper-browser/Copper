@@ -2,8 +2,8 @@
 
 Copper's updater (`Sources/Search/Fork/Updates.swift`) verifies the feed manifest, the
 archive's SHA-256, the bundle's identity and version, its code signature, and that the signature
-satisfies Copper's release requirement — Copper's own certificate, as `com.collinrijock.copper`
-(`Fork/Signing.swift`, docs/releasing.md) — before it swaps anything (README › Updates). This page is about how an update is offered — the sidebar's pill —
+satisfies Copper's release requirement — a Developer ID of Copper's team, as
+`com.collinrijock.copper` (`Fork/Signing.swift`, docs/releasing.md) — before it swaps anything (README › Updates). This page is about how an update is offered — the sidebar's pill —
 and the part after the swap: getting the new
 Copper running again, in the same world, every time — and about the instance lock that keeps
 agents' probe worlds from swallowing the real browser.
@@ -14,13 +14,13 @@ macOS keeps a person's permissions for Copper (Full Disk Access, Files & Folders
 the keychain's Always Allow) against the app's designated requirement. Before 1.0.20261007.42
 releases were signed ad hoc, so each one's requirement was its own cdhash and every update
 looked like a new app: the grants were dropped while System Settings still showed Copper
-switched on. Releases are now signed with one certificate of Copper's own, and the updater makes
-sure every update keeps that true. Why and how releases are signed: [releasing.md](releasing.md).
+switched on. Releases are now signed with a Developer ID of Copper's team (notarized), and the
+updater makes sure every update keeps that true. Why and how releases are signed: [releasing.md](releasing.md).
 
 `Updates.requirement` is `Signing.requirement(forBundleID:)` (`Fork/Signing.swift`): for the
-release id, `identifier "com.collinrijock.copper" and (certificate leaf = H"<release
-certificate's SHA-1>" or <a Developer ID of Copper's team>)` — the second half since the bridge
-release (releasing.md › Moving to Developer ID); for any other id (a development build, a test copy), `identifier
+release id, `identifier "com.collinrijock.copper" and anchor apple generic and … certificate
+leaf[subject.OU] = "95X7XYUVNX"` (any Developer ID Application certificate of Copper's team;
+releasing.md › How a release is signed); for any other id (a development build, a test copy), `identifier
 "<that id>"`. The updater checks it twice:
 
 - **Staging** (`fetchAndStage`), after the checksum, identity, version and `codesign --verify

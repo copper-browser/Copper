@@ -1,27 +1,26 @@
-import CryptoKit
 import Foundation
+import Security
 import Testing
 @testable import Search
 
-// Release signing (Fork/Signing.swift, docs/releasing.md): the certificate the
-// updater pins is the one in release/, the requirement text is the one the
-// release workflow signs with, and `unsatisfied` tells a bundle that meets a
-// requirement from one that doesn't. Ad-hoc bundles only — nothing here
-// touches a keychain.
+// Release signing (Fork/Signing.swift, docs/releasing.md): the team the
+// updater pins is the one in release/'s Developer ID certificate, the
+// requirement text is the one the release workflow signs with, and
+// `unsatisfied` tells a bundle that meets a requirement from one that doesn't.
+// Ad-hoc bundles only — nothing here touches a keychain.
 
 private let repo = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 
 @Suite struct SigningTests {
-    @Test func theUpdaterPinsTheCertificateInRelease() throws {
-        let cer = try Data(contentsOf: repo.appendingPathComponent("release/copper-release-signing.cer"))
-        let sha1 = Insecure.SHA1.hash(data: cer).map { String(format: "%02x", $0) }.joined()
-        #expect(sha1 == Signing.releaseCertificate)
+    @Test func theUpdaterPinsTheTeamInRelease() throws {
+        let cer = try Data(contentsOf: repo.appendingPathComponent("release/copper-developer-id.cer"))
+        let certificate = try #require(SecCertificateCreateWithData(nil, cer as CFData))
+        let subject = SecCertificateCopySubjectSummary(certificate) as String? ?? ""
+        #expect(subject == "Developer ID Application: Collin Rijock (95X7XYUVNX)")
         let text = try String(contentsOf: repo.appendingPathComponent("release/designated-requirement.txt"), encoding: .utf8)
-        // The bridge: releases are still signed with this certificate, and the
-        // updater also takes the team's Developer ID (docs/releasing.md).
-        #expect(text.trimmingCharacters(in: .whitespacesAndNewlines) == "identifier \"com.collinrijock.copper\" and certificate leaf = H\"\(sha1)\"")
-        #expect(Signing.releaseRequirement == "identifier \"com.collinrijock.copper\" and (certificate leaf = H\"\(sha1)\" or (\(Signing.developerIDRequirement)))")
+        #expect(text.trimmingCharacters(in: .whitespacesAndNewlines) == Signing.releaseRequirement)
+        #expect(Signing.releaseRequirement == "identifier \"com.collinrijock.copper\" and \(Signing.developerIDRequirement)")
         #expect(Signing.developerIDRequirement.hasSuffix("certificate leaf[subject.OU] = \"95X7XYUVNX\""))
     }
 
@@ -38,7 +37,7 @@ private let repo = URL(fileURLWithPath: #filePath)
         let out = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
         csreq.waitUntilExit()
         #expect(csreq.terminationStatus == 0)
-        #expect(out.contains("95X7XYUVNX") && out.contains(Signing.releaseCertificate))
+        #expect(out.contains("anchor apple generic") && out.contains("95X7XYUVNX"))
     }
 
     @Test func eachIdentityIsHeldToItsOwnRequirement() {
@@ -72,6 +71,6 @@ private let repo = URL(fileURLWithPath: #filePath)
         #expect(Signing.unsatisfied(app, requirement: Signing.releaseRequirement) != nil)
         #expect(Signing.unsatisfied(app, requirement: "identifier \"com.collinrijock.copper\"") != nil)
         // A certificate requirement an ad-hoc signature can never meet.
-        #expect(Signing.unsatisfied(app, requirement: "identifier \"com.collinrijock.copper.dev\" and certificate leaf = H\"\(Signing.releaseCertificate)\"") != nil)
+        #expect(Signing.unsatisfied(app, requirement: "identifier \"com.collinrijock.copper.dev\" and \(Signing.developerIDRequirement)") != nil)
     }
 }
