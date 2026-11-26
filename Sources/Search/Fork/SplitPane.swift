@@ -304,17 +304,22 @@ struct SplitMenu: View {
     let browser: Browser
     /// The pane the menu was opened on; nil from the menu bar.
     var tab: Tab? = nil
+    @ObservedObject var keys = Shortcuts.shared // Fork (ardia-shortcuts)
 
     var body: some View {
         let split = Split.shared
         Button("Flip Panes") { split.flip() }
+            .shortcut(.flipPanes)
         Button(split.stacked ? "Put Panes Side by Side" : "Stack Panes") { split.rotate() }
+            .shortcut(.rotatePanes)
         Button("Make Panes Even") { withAnimation(Motion.glide) { split.even() } }
+            .shortcut(.evenPanes)
         Divider()
         if let tab, split.panes.count > 2 {
             Button("Separate This Pane") { split.separate(tab, in: browser) }
         }
         Button("Separate All Panes") { split.close() }
+            .shortcut(.separatePanes)
     }
 }
 

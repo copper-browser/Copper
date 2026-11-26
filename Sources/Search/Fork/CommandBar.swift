@@ -51,6 +51,7 @@ enum CommandBar {
             .init(id: "hard-reload", name: "Hard Reload", glyph: "arrow.clockwise") { $0.hardReload() },
             .init(id: "reader", name: "Reading Mode", glyph: "doc.plaintext") { $0.toggleReader() },
             .init(id: "inspect", name: "Inspect Element", glyph: "ladybug") { $0.inspectElement() },
+            .init(id: "task-manager", name: "Task Manager", glyph: "memorychip") { _ in TaskManager.shared.show() }, // Fork (ardia: automation)
             .init(id: "float", name: "Float the Video", glyph: "pip") { $0.toggleFloat() },
             .init(id: "hide", name: "Hide Something on This Page", glyph: "eye.slash") { $0.toggleHiding() },
             .init(id: "history", name: "History", glyph: "clock.arrow.circlepath") { $0.recalling = true },

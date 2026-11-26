@@ -305,12 +305,14 @@ final class Spaces: ObservableObject {
     }
 
     func frontChanged(_ browser: Browser) {
+        PageHandoff.shared.soon() // Fork (ardia: automation): Handoff follows the window in front
         guard currentByBrowser[ObjectIdentifier(browser)] != nil else { return }
         current = current(in: browser)
         objectWillChange.send()
     }
 
     func activeChanged(_ browser: Browser) {
+        PageHandoff.shared.soon() // Fork (ardia: automation): and its active tab
         guard let space = currentByBrowser[ObjectIdentifier(browser)] else { return }
         if let active = browser.activeID {
             activeByBrowserSpace[ObjectIdentifier(browser), default: [:]][space] = active
@@ -1227,42 +1229,43 @@ struct ForkCommands: Commands {
     @ObservedObject var spaces = Spaces.shared
     @ObservedObject var split = Split.shared
     @ObservedObject var agent = Agent.shared
+    @ObservedObject var keys = Shortcuts.shared // Fork (ardia-shortcuts): the keys below are the table's
 
     var body: some Commands {
         CommandGroup(after: .sidebar) {
             Button("Move in from Another Browser…") { Flow.shared.present(from: Windows.current, via: .menu) }
-                .keyboardShortcut("i", modifiers: [.command, .shift, .option])
+                .shortcut(.moveIn)
             Button(split.on ? "Close Split View" : "Split View") { split.toggle(in: browser) }
-                .keyboardShortcut("d", modifiers: [.command, .shift])
+                .shortcut(.split)
             Menu("Split Panes") { SplitMenu(browser: browser) }.disabled(!split.on) // Fork (ardia split): flip, stack, even, separate
             Button(agent.open ? "Close Agent" : "Agent") { agent.toggle() }
-                .keyboardShortcut("e", modifiers: [.command])
+                .shortcut(.agent)
             Button("Ask About This Page") { agent.askOnPage(in: browser) }
-                .keyboardShortcut("e", modifiers: [.command, .shift])
+                .shortcut(.askPage)
             // ⌘⇧C is Copy Address; O for "open the board".
             Button("Canvas") { CanvasHost.show(Canvases.personalID, in: browser) }
-                .keyboardShortcut("o", modifiers: [.command, .shift])
+                .shortcut(.canvas)
             // Jev's timeline had no way back once closed; and with two or
             // three panes open there was no one move that put them all away.
             // The timeline is the agent pane's driver cards now: this opens
             // the pane at the newest one, even when the pane is already open.
             Button("Driver Timeline") { agent.reveal() }
-                .keyboardShortcut("j", modifiers: [.command, .option])
+                .shortcut(.driverTimeline)
             // Never disabled: a menu item's enabled state is decided when the
             // menu is built, and ⌘⌥E pressed with two panes open did nothing
             // because the item still remembered a window with none. Closing
             // nothing is harmless.
             Button("Close All Panes") { Panes.closeAll(in: browser) }
-                .keyboardShortcut("e", modifiers: [.command, .option])
+                .shortcut(.closePanes)
         }
         CommandMenu("Spaces") {
             Button("New Space") { spaces.add(in: browser) }
-                .keyboardShortcut("n", modifiers: [.control])
+                .shortcut(.newSpace)
             Divider()
             Button("Previous Space") { spaces.step(-1, in: browser) }
-                .keyboardShortcut(.leftArrow, modifiers: [.control, .option])
+                .shortcut(.previousSpace)
             Button("Next Space") { spaces.step(1, in: browser) }
-                .keyboardShortcut(.rightArrow, modifiers: [.control, .option])
+                .shortcut(.nextSpace)
             Divider()
             ForEach(Array(spaces.all.prefix(9).enumerated()), id: \.element.id) { i, space in
                 Button(space.name) { spaces.select(space.id, in: browser) }
@@ -1272,6 +1275,11 @@ struct ForkCommands: Commands {
         // The Groups menu lives in GroupsUI.swift; it rides here because
         // App.swift's .commands builder is at its cap of ten.
         GroupCommands(browser: browser)
+        // Fork (ardia: automation): Window › Task Manager (Fork/TaskManager.swift).
+        CommandGroup(before: .windowList) {
+            Button("Task Manager") { TaskManager.shared.show() }
+            Divider()
+        }
     }
 }
 

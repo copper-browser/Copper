@@ -331,16 +331,16 @@ struct Helm: View {
             // Fork: arrows rather than chevrons in the sidebar, as Arc draws them.
             let arrows = ink != nil
             HStack(spacing: 2) {
-                Door(icon: arrows ? "arrow.left" : "chevron.left", help: "Back   ⌘[", size: size, ink: ink, glow: glow, glyph: glyph) { browser.back() }
+                Door(icon: arrows ? "arrow.left" : "chevron.left", help: "Back" + Shortcuts.hint(.back), size: size, ink: ink, glow: glow, glyph: glyph) { browser.back() }
                     .disabled(!back)
                     .opacity(back ? 1 : 0.3)
-                Door(icon: arrows ? "arrow.right" : "chevron.right", help: "Forward   ⌘]", size: size, ink: ink, glow: glow, glyph: glyph) { browser.forward() }
+                Door(icon: arrows ? "arrow.right" : "chevron.right", help: "Forward" + Shortcuts.hint(.forward), size: size, ink: ink, glow: glow, glyph: glyph) { browser.forward() }
                     .disabled(!forward)
                     .opacity(forward ? 1 : 0.3)
                 // Reload, or stop while it is still coming.
                 Door(
                     icon: tab.loading ? "xmark" : "arrow.clockwise",
-                    help: tab.loading ? "Stop   ⌘." : "Reload   ⌘R · Hard reload   ⇧⌘R",
+                    help: tab.loading ? "Stop   ⌘." : "Reload" + Shortcuts.hint(.reload) + " · Hard reload" + Shortcuts.hint(.hardReload), // Fork (ardia-shortcuts)
                     size: size, ink: ink, glow: glow, glyph: glyph
                 ) {
                     if tab.loading { tab.stop() } else { browser.reload() }

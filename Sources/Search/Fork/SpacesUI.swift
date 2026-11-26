@@ -387,9 +387,9 @@ struct SpaceStrip<Tools: View>: View {
         .help("New Space — right-click for New Canvas")
         .contextMenu {
             Button("New Space", action: newSpace)
-                .keyboardShortcut("n", modifiers: [.control])
+                .shortcut(.newSpace) // Fork (ardia-shortcuts)
             Button("New Canvas") { CanvasTabs.newCanvas(in: browser) }
-                .keyboardShortcut("e", modifiers: [.control, .shift])
+                .shortcut(.newCanvas)
         }
     }
 

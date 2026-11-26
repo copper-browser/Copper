@@ -253,9 +253,9 @@ struct NewItemMenu: View {
 
     var body: some View {
         Button("New Tab") { browser.launch() }
-            .keyboardShortcut("t")
+            .shortcut(.newTab) // Fork (ardia-shortcuts)
         Button("New Canvas") { CanvasTabs.newCanvas(in: browser) }
-            .keyboardShortcut("e", modifiers: [.control, .shift])
+            .shortcut(.newCanvas)
         Divider()
         Button("New Live Folder: GitHub Pull Requests") { LiveFolders.addFromMenu(in: browser) } // Fork (ardia folders)
         Button("Add Shared Folder…") { AddSharedFolderSheet.show(browser: browser) }

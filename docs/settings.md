@@ -34,7 +34,7 @@ While Settings is open, the app's key monitor asks `SettingsKeys.take`
 
 | Group | Pages, in rail order | Drawn in |
 |---|---|---|
-| Browsing | General (with Downloads), Tabs, Spaces, Extensions (with Addons) | `Settings.swift` (`general`, `downloads`, `tabs`); `Fork/SpacePage.swift`; `ExtensionsUI.swift` with `Fork/ExtensionsManager.swift` and `Fork/Addons/AddonUI.swift` (`AddonsPage`) |
+| Browsing | General (with Downloads), Tabs, Spaces, Extensions (with Addons), Shortcuts | `Settings.swift` (`general`, `downloads`, `tabs`); `Fork/SpacePage.swift`; `ExtensionsUI.swift` with `Fork/ExtensionsManager.swift` and `Fork/Addons/AddonUI.swift` (`AddonsPage`); `Fork/ShortcutsSettings.swift` (`ShortcutsPage`: every menu command's key from `Fork/Shortcuts.swift`, recorded by the key monitor) |
 | AI & agents | Intelligence (with Voice), Agents | `Fork/SettingsFork.swift` (`IntelligencePage`, `AgentsPage`); `Fork/Voice/VoiceSettings.swift` (`VoicePage`) |
 | Data & privacy | Passwords, Privacy | `Settings.swift` (`passwords`, `privacy`) with `Fork/CredentialsSettings.swift` and `Fork/PrivacySettings.swift` |
 | Copper | Cloud, About (with Updates) | `Fork/Cloud/CloudSettings.swift`; `Settings.swift` (`about`) with `Fork/SettingsFork.swift` (`UpdatesPage`) |
