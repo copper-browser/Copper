@@ -8,8 +8,8 @@
 #   2. Folded (⌘S) on the right: the lights hide, the page takes the width;
 #      peeking, the column slides out at the right edge.
 #   3. Its edge resizes it (`ui width`): the lights follow its left edge.
-#   4. A row dragged by real mouse events onto the page's left edge lights
-#      the leading zone and joins a split there.
+#   4. A row carried onto the page's left edge lights the leading zone and
+#      joins a split there.
 #   5. Interface size small / default / large: the rows' measures scale
 #      (`sections` geometry), the page keeps its zoom; page frame thin / none.
 #   6. The choices survive a relaunch.
@@ -148,15 +148,18 @@ sleep 0.6
 ok "resize from the column's left edge"
 
 # 4. A row carried onto the page's left edge joins a split at the leading end.
-drag=$(bench split drag "$C" 0.06 0.5 hold)
-sleep 1
+#    `split hover` hands SplitDrop the point a drag over the page reports:
+#    `split drag` (real mouse events) stopped reaching SwiftUI's gestures in a
+#    probe window once build.sh stamped the macOS 27 SDK (#223).
+bench split hover "$C" 0.06 0.5 >/dev/null
+sleep 0.5
 zone=$(bench split state | python3 -c "import json,sys; print(json.load(sys.stdin).get('zone'))")
-[ "$zone" = leading ] || fail "drag over the page's left edge: zone $zone ($drag)"
+[ "$zone" = leading ] || fail "a row over the page's left edge: zone $zone"
 shot right-drop-preview
-bench sections release >/dev/null
+bench split drop "$C" >/dev/null
 sleep 1.2
 panes=$(bench split state | python3 -c "import json,sys; print(' '.join(json.load(sys.stdin)['panes']))")
-[ "$panes" = "$C $A" ] || fail "dropped row did not join at the left: '$panes' ($drag)"
+[ "$panes" = "$C $A" ] || fail "dropped row did not join at the left: '$panes'"
 check "stage[0] == 7 and stage[0] + stage[2] == W - $w0" "split: both panes left of the column"
 shot right-split
 bench split separate >/dev/null
