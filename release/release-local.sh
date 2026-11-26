@@ -214,9 +214,14 @@ here_job=""
 # Whatever happens: nothing of ours keeps running on the mini, its job folder
 # and the throwaway worlds go, and so do the build folder and the scratch
 # folder here.
+packing=()  # the package-app.sh jobs running in the background, if any
 cleanup() {
   local status=$?
   set +e
+  # A CPU still packaging when the other failed (or on ^C): stop it.
+  for pid in ${packing[@]+"${packing[@]}"}; do
+    kill "$pid" 2> /dev/null
+  done
   if $on_mini; then
     mini 300 bash -s -- "$job" > /dev/null 2>&1 <<'REMOTE'
 job="$1"
@@ -493,14 +498,25 @@ done
 step "Stamp $version, sign, notarize, staple, zip, disk image (release/package-app.sh)"
 
 # The dSYMs stay with the unsigned build: signing keeps LC_UUID, so they
-# still name the shipped binaries.
+# still name the shipped binaries. The two CPUs are packaged side by side:
+# each waits on Apple's notary service twice (the app, then the disk image
+# made from the stapled app), which can take an hour a time.
 for arch in arm64 x86_64; do
   app="$work/build/Copper.app"
   [ "$arch" = arm64 ] || app="$work/build/$arch/Copper.app"
   COPPER_PROFILE="$profile" COPPER_RCODESIGN="$rcodesign" EXO_MACSIGN_CONFIG_DIR="$SIGNING" \
     bash "$work/src/release/package-app.sh" "$app" "$version" "$assets" "$arch" \
-    > "$logs/package-$arch.out" 2> "$logs/package-$arch.log" \
+    > "$logs/package-$arch.out" 2> "$logs/package-$arch.log" &
+  packing+=("$!")
+done
+packed=(arm64 x86_64)  # the order packing was started in (bash 3.2: no associative arrays)
+for i in 0 1; do
+  arch="${packed[$i]}"
+  wait "${packing[$i]}" \
     || { tail -40 "$logs/package-$arch.log" >&2; fail "release/package-app.sh failed for $arch ($logs/package-$arch.log)"; }
+done
+packing=()
+for arch in arm64 x86_64; do
   sed 's/^/    /' "$logs/package-$arch.log" | grep -v '^    $' | grep -E '^    (profile|  claims|  not claimed|  allowed|signed|notary|stamped|packed)' || true
   grep -q "^profile=$profile_uuid\$" "$logs/package-$arch.out" || fail "$arch: package-app.sh did not embed profile $profile_uuid"
   printf -v "notary_$arch" '%s' "$(sed -n 's/^notary_id=//p' "$logs/package-$arch.out")"

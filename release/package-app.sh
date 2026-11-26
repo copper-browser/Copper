@@ -263,12 +263,27 @@ say signed "$(codesign -d -r- "$app" 2> /dev/null | grep '^designated')"
 # Notarize, staple, zip, disk image
 
 # notarize FILE WHAT: Apple's notary service looks it over; prints the id.
+# A submission can sit "In Progress" for an hour or more (a team's first ones
+# get a closer look, and the queue is shared): past the first wait, the same
+# submission is waited on again, up to COPPER_NOTARY_HOURS (default 4) in all,
+# never sent twice.
 notarize() {
-  local file="$1" what="$2" status id
+  local file="$1" what="$2" status id waited=45
+  # On a timeout notarytool says so on stderr, as JSON with the id.
   xcrun notarytool submit "$file" --key "$notary_key" --key-id "$notary_key_id" --issuer "$notary_issuer" \
-    --wait --timeout 45m --output-format json > "$work/notary.json" || true
+    --wait --timeout 45m --output-format json > "$work/notary.json" 2> "$work/notary.err" || true
   status="$(plutil -extract status raw -o - "$work/notary.json" 2> /dev/null || true)"
-  id="$(plutil -extract id raw -o - "$work/notary.json" 2> /dev/null || true)"
+  id="$(plutil -extract id raw -o - "$work/notary.json" 2> /dev/null \
+    || sed -n 's/.*"id" *: *"\([0-9a-f-]*\)".*/\1/p' "$work/notary.err" | head -1)"
+  while [ -n "$id" ] && { [ -z "$status" ] || [ "$status" = "In Progress" ]; } \
+    && [ "$waited" -lt $((${COPPER_NOTARY_HOURS:-4} * 60)) ]; do
+    say notary "$arch $what: still in progress after $waited min ($id); waiting on"
+    xcrun notarytool wait "$id" --key "$notary_key" --key-id "$notary_key_id" --issuer "$notary_issuer" \
+      --timeout 30m --output-format json > "$work/notary.json" 2> "$work/notary.err" || true
+    waited=$((waited + 30))
+    status="$(plutil -extract status raw -o - "$work/notary.json" 2> /dev/null || true)"
+  done
+  [ -s "$work/notary.err" ] && cat "$work/notary.err" >&2
   say notary "$arch $what: ${status:-no answer} (${id:-no id})"
   if [ "$status" != Accepted ]; then
     cat "$work/notary.json" >&2
