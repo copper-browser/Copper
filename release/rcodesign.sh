@@ -9,6 +9,10 @@
 # project publishes and the one pinned here, the binary inside it against its
 # own pin, on every run. macOS universal binary; COPPER_RCODESIGN_CACHE names
 # another cache folder.
+#
+# An rcodesign of the pinned version already on PATH (a Roadrunner macOS
+# agent's, exo-macsign's) is used as it is: whoever put it there vouches for
+# it. COPPER_RCODESIGN_PATH=0 always takes the pinned download.
 set -euo pipefail
 
 RCODESIGN_VERSION=0.29.0
@@ -19,6 +23,11 @@ RCODESIGN_URL=https://github.com/indygreg/apple-platform-rs/releases/download/ap
 
 fail() { printf 'rcodesign.sh: %s\n' "$*" >&2; exit 1; }
 
+if [ "${COPPER_RCODESIGN_PATH:-1}" != 0 ] && on_path="$(command -v rcodesign 2> /dev/null)" \
+  && [ "$("$on_path" --version 2> /dev/null | awk '{ print $2 }')" = "$RCODESIGN_VERSION" ]; then
+  printf '%s\n' "$on_path"
+  exit 0
+fi
 cache="${COPPER_RCODESIGN_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/copper-release}"
 rcodesign="$cache/apple-codesign-$RCODESIGN_VERSION/rcodesign"
 if [ -x "$rcodesign" ] && [ "$(shasum -a 256 "$rcodesign" | cut -d' ' -f1)" = "$RCODESIGN_SHA256" ]; then

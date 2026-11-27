@@ -1,0 +1,62 @@
+# Roadrunner (Woodpecker, https://cicd.apps.exowatt.com): cut a Copper release on the macOS agent.
+# Built, signed with Exowatt's Developer ID (rcodesign from the .p12, no keychain), notarized and
+# stapled, checked, published to GitHub, then the Homebrew tap is pointed at it.
+#
+#   push a tag v<VERSION>.<YYYYMMDD>.<n> on a commit of fork   publish that version from it
+#   manual run on fork, variable RELEASE=1                     publish fork as the next version
+#   manual run on fork, variable DRY_RUN=1                     build and sign only: nothing goes
+#                                                              to Apple, GitHub or the tap
+#   (optional: VERSION=<v>; FRESH=1 forgets a stopped run; NOTARIZE=1 with DRY_RUN=1 notarizes)
+#
+# Apple's notary queue can take hours. The release waits until shortly before the pipeline's
+# timeout (repo timeout 600 min), then stops with everything kept on the agent: restart the
+# pipeline and it waits on the same submissions (never sends the same bytes twice) and publishes
+# what is notarized. A tag this release makes runs this again; it sees the release and stops.
+# Script: release/release-ci.sh → release/release-local.sh --here; tap: release/bump-tap.sh.
+# Docs: docs/releasing.md. `$$` escapes `$` for Woodpecker.
+labels:
+  platform: darwin/arm64
+  tier: macos
+when:
+  - event: tag
+    ref: refs/tags/v*
+  - event: manual
+    branch: fork
+    evaluate: 'RELEASE == "1" || DRY_RUN == "1"'
+clone:
+  - name: clone
+    image: woodpeckerci/plugin-git
+    settings:
+      depth: 0
+      partial: false
+      recursive: false
+      lfs: false
+steps:
+  - name: release
+    image: bash
+    environment:
+      GH_TOKEN:
+        from_secret: github_release_token
+      EXO_MACSIGN_P12_BASE64:
+        from_secret: exo_macsign_p12_base64
+      EXO_MACSIGN_P12_PASSWORD:
+        from_secret: exo_macsign_p12_password
+      EXO_MACSIGN_ASC_KEY_P8_BASE64:
+        from_secret: exo_macsign_asc_key_p8_base64
+      EXO_MACSIGN_ASC_KEY_ID:
+        from_secret: exo_macsign_asc_key_id
+      EXO_MACSIGN_ASC_ISSUER:
+        from_secret: exo_macsign_asc_issuer
+      EXO_MACSIGN_TEAM_ID:
+        from_secret: exo_macsign_team_id
+    commands:
+      - bash release/release-ci.sh
+  - name: tap
+    image: bash
+    when:
+      - evaluate: 'DRY_RUN != "1"'
+    environment:
+      GH_TOKEN:
+        from_secret: github_release_token
+    commands:
+      - bash release/bump-tap.sh

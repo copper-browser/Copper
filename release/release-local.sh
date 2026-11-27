@@ -1,54 +1,75 @@
 #!/bin/bash
-# Cut a Copper release from a Mac, without GitHub Actions: build, sign with
-# Exowatt's Developer ID, notarize, check, launch, publish.
+# Cut a Copper release on a Mac: build, sign with Exowatt's Developer ID,
+# notarize, check, launch, publish. Roadrunner runs it on its macOS agent
+# (.woodpecker/release.yaml through release/release-ci.sh, with --here); by
+# hand it builds on the Mac mini and signs where it runs (docs/releasing.md).
 #
-#   release/release-local.sh --dry-run          everything but the tag, the release and the upload
+#   release/release-local.sh --dry-run          build and sign; no notarization, no tag, no release
+#   release/release-local.sh --dry-run --notarize
+#                                               and notarize, staple and check that too
 #   release/release-local.sh                    publish fork's HEAD as the next version
 #   release/release-local.sh --version 1.0.20261111.106 [--dry-run]
 #   release/release-local.sh --preflight        only the checks before the build
+#   release/release-local.sh --here …           everything on this Mac (the build, the
+#                                               launch check); no ssh. Roadrunner's way
+#   release/release-local.sh --fresh …          start over: forget what a stopped run left
+#   release/release-local.sh --again …          release a commit that already has a release
 #   release/release-local.sh --reuse-assets <commit>
 #                                               check, launch and publish the assets a
-#                                               run left in build/release-local/<version>
+#                                               run left in <out>/<version>
 #                                               (built from <commit>) without rebuilding
 #
 #   COPPER_RELEASE_BUILD_HERE=~/src/sign-builds/copper release/release-local.sh …
 #                                               build on this Mac, in that folder
 #                                               (default: on the mini, in REMOTE_DIR)
 #   COPPER_RELEASE_REMOTE_DIR='~/sign-builds/copper' release/release-local.sh …
-#                                               the folder on the mini for the build
-#                                               and the launch check
+#                                               the folder on the mini (with --here, on
+#                                               this Mac) for the build and the launch check
+#   COPPER_RELEASE_OUT=<folder>                 where runs keep their state and assets
+#                                               (<out>; default build/release-local)
 #
-# What it makes is what .github/workflows/release.yml makes — the same build
-# commands and checks, the same signature (release/package-app.sh: Exowatt's
-# Developer ID, the hardened runtime, the provisioning profile, the
-# entitlements it allows and the requirement in
-# release/designated-requirement.txt), notarized and stapled, the same assets,
-# the same copper-version.json and the same release text — so the updater, the
-# curl installer and the Homebrew tap can't tell which path cut a release. The
-# workflow still exists for Collin's runner; this is the path that uses no
-# GitHub Actions at all (docs/releasing.md › Cutting a release without GitHub
-# Actions).
+# A publishing run that stops — Apple still notarizing at the deadline (exit
+# 75), a lost connection, a killed pipeline — keeps what it made in
+# <out>/<version>/: the built apps, each signed zip and disk image, and the id
+# of every notary submission (release/package-app.sh, release/notary.sh). Run
+# it again on the same commit and it takes the same version and carries on:
+# it doesn't build or sign again what it has, never sends Apple bytes it
+# already sent (it waits on that submission), and publishes what is notarized.
+# A commit that already has a release is not released again (--again does).
+#
+# Every release is the same whoever cuts it — the same build commands and
+# checks, the same signature (release/package-app.sh: Exowatt's Developer ID,
+# the hardened runtime, the provisioning profile, the entitlements it allows
+# and the requirement in release/designated-requirement.txt), notarized and
+# stapled, the same assets, the same copper-version.json and the same release
+# text — so the updater, the curl installer and the Homebrew tap can't tell
+# where a release was cut.
 #
 # Where each part runs, and why:
 #   - This Mac: preflight, version, signing, notarizing, packaging,
 #     publishing. The Developer ID key and the App Store Connect key
 #     (exo-macsign's: EXO_MACSIGN_* or ~/.config/exowatt-apple-signing, 0600)
 #     never leave it, and no keychain is involved anywhere: rcodesign reads the
-#     .p12 itself, notarytool the .p8.
+#     .p12 itself, notarytool the .p8. EXO_MACSIGN_* from the environment go
+#     into 0600 files in a private folder that is deleted when the run ends,
+#     and are unset, so nothing the run starts (the build) sees them.
 #   - The builds and the Xos test: here when COPPER_RELEASE_BUILD_HERE names a
 #     folder, otherwise on the Mac mini (MINI below). One heavy job at a time
 #     on either: the build waits for COPPER_RELEASE_LOCK (lockf), at nice 10.
-#   - The launch check: on the mini, always, in a session nobody is using,
-#     with Rosetta for the Intel build. Only the two zips go there; the job
+#   - The launch check: on the mini, in a session nobody is using, with
+#     Rosetta for the Intel build (--here: on this Mac, when this account has
+#     a login session; a Roadrunner agent has none, so it is skipped there). Only the two zips go there; the job
 #     folder (REMOTE_DIR below) is deleted at the end, whatever happened.
 #
 # The version is <VERSION file>.<UTC YYYYMMDD>.<n>, n one more than the highest
-# trailing number of any v… tag or release in copper-browser/Copper. The
-# workflow's n is its run number, so both paths share one sequence: a local
-# release never takes a number the workflow already used, or sorts below one.
+# trailing number of any v… tag or release in copper-browser/Copper, so it
+# never takes a number a release already has or sorts below one.
 #
-# Writes build/release-local/<version>/ (gitignored): assets/ is exactly what
-# a release uploads, release-notes.md its text, logs/ the build and sign logs.
+# Writes <out>/<version>/ (dry runs: <out>/dry-run/<version>/): assets/ is
+# exactly what a release uploads, release-notes.md its text, logs/ the build
+# and sign logs, build/ the apps while a release is under way, state/ the
+# notary submissions. <out>/commits/<commit> names the version a commit's
+# release has taken.
 set -euo pipefail
 
 REPO=copper-browser/Copper
@@ -75,19 +96,29 @@ LAUNCH_FREE_GB=1
 SIGNING="${EXO_MACSIGN_CONFIG_DIR:-$HOME/.config/exowatt-apple-signing}"
 BUNDLE_ID=com.collinrijock.copper
 
-usage() { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,31p' "$0" | sed 's/^# \{0,1\}//'; }
 step() { printf '\n==> [%s] %s\n' "$(date +%H:%M:%S)" "$*"; }
 note() { printf '    %s\n' "$*"; }
 fail() { printf 'release-local: %s\n' "$*" >&2; exit 1; }
 
+args=("$@")
 dry_run=false
 preflight=false
+notarize=true
+notarize_dry=false
+here=false
+fresh=false
+again=false
 version=""
 reuse=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) dry_run=true ;;
     --preflight) preflight=true; dry_run=true ;;
+    --notarize) notarize_dry=true ;;
+    --here) here=true ;;
+    --fresh) fresh=true ;;
+    --again) again=true ;;
     --version) version="${2:?--version needs a value}"; shift ;;
     --version=*) version="${1#*=}" ;;
     --reuse-assets) reuse="${2:?--reuse-assets needs the commit they were built from}"; shift ;;
@@ -97,33 +128,61 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+# A dry run sends nothing to Apple unless --notarize asks it to; a release
+# always notarizes.
+! $dry_run || $notarize_dry || notarize=false
+
 cd "$(dirname "$0")/.."
 root="$(pwd)"
+# Where runs keep what they make: per version, and per commit the version its
+# release took (absolute: the build and launch steps cd elsewhere).
+OUT_ROOT="${COPPER_RELEASE_OUT:-$root/build/release-local}"
+case "$OUT_ROOT" in /*) ;; *) fail "COPPER_RELEASE_OUT must be absolute, got: $OUT_ROOT" ;; esac
+# One run at a time per <out>: two would share a version's state.
+if [ -z "${COPPER_RELEASE_LOCKED:-}" ] && ! $preflight; then
+  mkdir -p "$OUT_ROOT"
+  COPPER_RELEASE_LOCKED=1 exec /usr/bin/lockf -t 0 "$OUT_ROOT/.lock" "$root/release/release-local.sh" ${args[@]+"${args[@]}"}
+fi
 ssh_opts=(-o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=6)
 # Every call to the mini has a deadline, so a dropped connection is an error
-# and not a terminal waiting forever.
-mini() { local seconds="$1"; shift; timeout "$seconds" ssh "${ssh_opts[@]}" "$MINI" "$@"; }
+# and not a terminal waiting forever. With --here, "the mini" is this Mac:
+# the same commands run in a local shell.
+mini() {
+  local seconds="$1"
+  shift
+  if $here; then bash -c "$*"; else timeout "$seconds" ssh "${ssh_opts[@]}" "$MINI" "$@"; fi
+}
+where="$MINI"
+! $here || where="this Mac"
 
 # ---------------------------------------------------------------------------
 step "Preflight"
 
-for tool in git gh node curl shasum ditto codesign csreq plutil lipo dwarfdump tar timeout ssh xcrun spctl python3 hdiutil openssl; do
+tools=(git gh node curl shasum ditto codesign csreq plutil lipo dwarfdump tar xcrun spctl python3 hdiutil openssl)
+$here || tools+=(timeout ssh)
+for tool in "${tools[@]}"; do
   command -v "$tool" > /dev/null || fail "needs $tool on PATH"
 done
-gh auth status > /dev/null 2>&1 || fail "gh is not signed in (gh auth login)"
+gh auth status > /dev/null 2>&1 || fail "gh is not signed in (gh auth login, or GH_TOKEN)"
 
 commit="$(git rev-parse HEAD)"
 fork_head="$(gh api "repos/$REPO/branches/fork" --jq .commit.sha)"
 dirty="$(git status --porcelain)"
 note "commit   $commit"
 note "fork     $fork_head ($REPO)"
-# A release is fork's HEAD, built from a tree that is exactly that commit —
-# the workflow publishes from fork only, too. The build itself is
+# A release is a commit of fork, built from a tree that is exactly that
+# commit: fork's HEAD, or one fork has moved past since (a pipeline started on
+# it, a tag, a run carried on hours later). The build itself is
 # `git archive <commit>`, so a dry run of a dirty tree still builds only what
 # is committed; it says so.
 if [ "$commit" != "$fork_head" ]; then
-  $dry_run || fail "HEAD is not $REPO fork's HEAD ($fork_head); a release is built from fork only"
-  note "dry run of a commit that is not fork's HEAD"
+  on_fork="$(gh api "repos/$REPO/compare/$commit...$fork_head" --jq .status 2> /dev/null || true)"
+  if [ "$on_fork" = ahead ]; then
+    note "fork has moved on since $commit; releasing $commit"
+  else
+    $dry_run || fail "HEAD is not a commit of $REPO fork ($fork_head is its head); a release is built from fork only"
+    note "dry run of a commit that is not on fork"
+  fi
 fi
 if [ -n "$dirty" ]; then
   $dry_run || fail "the working tree has uncommitted changes; a release is built from a clean tree"
@@ -143,11 +202,42 @@ if [ -n "$reuse" ]; then
   note "reuse    the assets built from $commit"
 fi
 
+work="$(mktemp -d "${TMPDIR:-/tmp}/copper-release.XXXXXX")"
+chmod 700 "$work"
+trap 'rm -rf "$work"' EXIT
+
 # The keys and the password, exo-macsign's: from the environment
 # (EXO_MACSIGN_P12_BASE64, _P12_PASSWORD, _ASC_KEY_P8_BASE64, _ASC_KEY_ID,
-# _ASC_ISSUER), else files in $SIGNING, present and private to this account.
-# Never printed, copied or sent anywhere; release/package-app.sh hands them to
-# rcodesign and notarytool, and to nothing else.
+# _ASC_ISSUER, _TEAM_ID: Roadrunner's secrets), else files in $SIGNING,
+# present and private to this account. From the environment they are written
+# once into $work/signing (0700, files 0600, deleted with $work however the run
+# ends) and unset, so the build and everything else this run starts never
+# sees them. Never printed, copied or sent anywhere; release/package-app.sh
+# hands them to rcodesign and notarytool, and to nothing else.
+if [ -n "${EXO_MACSIGN_P12_BASE64:-}" ] || [ -n "${EXO_MACSIGN_ASC_KEY_P8_BASE64:-}" ]; then
+  for var in EXO_MACSIGN_P12_BASE64 EXO_MACSIGN_P12_PASSWORD EXO_MACSIGN_ASC_KEY_P8_BASE64 EXO_MACSIGN_ASC_KEY_ID EXO_MACSIGN_ASC_ISSUER; do
+    [ -n "${!var+set}" ] || fail "$var is not set; with EXO_MACSIGN_* from the environment, all of them are needed"
+  done
+  env_key_id="$(printf '%s' "$EXO_MACSIGN_ASC_KEY_ID" | tr -d ' \t\r\n')"
+  case "$env_key_id" in "" | *[!A-Za-z0-9]*) fail "EXO_MACSIGN_ASC_KEY_ID is not an App Store Connect key id" ;; esac
+  SIGNING="$work/signing"
+  (
+    umask 077
+    mkdir -p "$SIGNING"
+    decode() { case "$1" in -----BEGIN*) printf '%s\n' "$1" ;; *) printf '%s' "$1" | tr -d ' \t\r\n' | base64 --decode ;; esac; }
+    decode "$EXO_MACSIGN_P12_BASE64" > "$SIGNING/developer-id-application.p12" 2> /dev/null || exit 1
+    printf '%s' "$EXO_MACSIGN_P12_PASSWORD" > "$SIGNING/p12-password"
+    decode "$EXO_MACSIGN_ASC_KEY_P8_BASE64" > "$SIGNING/AuthKey_$env_key_id.p8" 2> /dev/null || exit 1
+    printf '%s' "$env_key_id" > "$SIGNING/asc-key-id"
+    printf '%s' "$EXO_MACSIGN_ASC_ISSUER" | tr -d ' \t\r\n' > "$SIGNING/asc-issuer"
+    if [ -n "${EXO_MACSIGN_TEAM_ID:-}" ]; then printf '%s' "$EXO_MACSIGN_TEAM_ID" | tr -d ' \t\r\n' > "$SIGNING/team-id"; fi
+  ) || fail "EXO_MACSIGN_P12_BASE64 or EXO_MACSIGN_ASC_KEY_P8_BASE64 is not valid base64"
+  unset EXO_MACSIGN_P12_BASE64 EXO_MACSIGN_P12_PASSWORD EXO_MACSIGN_ASC_KEY_P8_BASE64 \
+    EXO_MACSIGN_ASC_KEY_ID EXO_MACSIGN_ASC_ISSUER EXO_MACSIGN_TEAM_ID
+  note "signing  EXO_MACSIGN_* from the environment (0600 files in this run's private folder)"
+else
+  note "signing  $SIGNING"
+fi
 private() {
   [ -f "$1" ] || fail "missing $1 (docs/releasing.md › Credentials)"
   local mode
@@ -161,10 +251,9 @@ notary_key_id="$(setting EXO_MACSIGN_ASC_KEY_ID asc-key-id)"
 notary_issuer="$(setting EXO_MACSIGN_ASC_ISSUER asc-issuer)"
 [ -n "$notary_key_id" ] || fail "no App Store Connect key id: EXO_MACSIGN_ASC_KEY_ID or $SIGNING/asc-key-id"
 [ -n "$notary_issuer" ] || fail "no App Store Connect issuer: EXO_MACSIGN_ASC_ISSUER or $SIGNING/asc-issuer"
-[ -n "${EXO_MACSIGN_P12_BASE64:-}" ] || private "$SIGNING/developer-id-application.p12"
-[ -n "${EXO_MACSIGN_P12_PASSWORD+set}" ] || private "$SIGNING/p12-password"
-[ -n "${EXO_MACSIGN_ASC_KEY_P8_BASE64:-}" ] || private "$SIGNING/AuthKey_$notary_key_id.p8"
-if [ -n "${EXO_MACSIGN_P12_BASE64:-}" ]; then note "signing  EXO_MACSIGN_* from the environment, then $SIGNING"; else note "signing  $SIGNING"; fi
+private "$SIGNING/developer-id-application.p12"
+private "$SIGNING/p12-password"
+private "$SIGNING/AuthKey_$notary_key_id.p8"
 
 requirement="$(git show "$commit:release/designated-requirement.txt" | tr -d '\n')"
 # The requirement accepts the team of the certificate in release/; that the
@@ -175,22 +264,44 @@ case "$requirement" in
   *"certificate leaf[subject.OU] = \"$team\""*) ;;
   *) fail "release/designated-requirement.txt does not accept release/exowatt-developer-id.cer's team (${team:-none})" ;;
 esac
-if [ -z "${EXO_MACSIGN_P12_BASE64:-}" ] && [ -z "${EXO_MACSIGN_P12_PASSWORD+set}" ]; then
-  have="$(openssl pkcs12 -in "$SIGNING/developer-id-application.p12" -passin "file:$SIGNING/p12-password" -nokeys -clcerts 2> /dev/null \
-    | openssl x509 -outform der 2> /dev/null | shasum -a 1 | cut -d' ' -f1)"
-  [ "$have" = "$want" ] || fail "$SIGNING/developer-id-application.p12 does not hold release/exowatt-developer-id.cer ($want). Renewed? See docs/releasing.md."
-fi
+have="$(openssl pkcs12 -in "$SIGNING/developer-id-application.p12" -passin "file:$SIGNING/p12-password" -nokeys -clcerts 2> /dev/null \
+  | openssl x509 -outform der 2> /dev/null | shasum -a 1 | cut -d' ' -f1)"
+[ "$have" = "$want" ] || fail "the .p12 does not hold release/exowatt-developer-id.cer ($want). Renewed? See docs/releasing.md."
 note "team     $team (certificate $want)"
 
-# Every tag and release name in the repository, drafts included.
+# Every tag and release in the repository, drafts included: "<tag> <target> <draft>".
+tags="$(gh api --paginate "repos/$REPO/tags?per_page=100" --jq '.[].name')"
+releases="$(gh api --paginate "repos/$REPO/releases?per_page=100" --jq '.[] | "\(.tag_name) \(.target_commitish) \(.draft)"')"
 existing="$(
-  {
-    gh api --paginate "repos/$REPO/tags?per_page=100" --jq '.[].name'
-    gh api --paginate "repos/$REPO/releases?per_page=100" --jq '.[].tag_name'
-  } | sed -n -E 's/^v([0-9]+\.[0-9]+\.[0-9]{8}\.[0-9]+)$/\1/p' | sort -u -V
+  { printf '%s\n' "$tags"; printf '%s\n' "$releases" | cut -d' ' -f1; } \
+    | sed -n -E 's/^v([0-9]+\.[0-9]+\.[0-9]{8}\.[0-9]+)$/\1/p' | sort -u -V
 )"
 latest="$(printf '%s\n' "$existing" | tail -1)"
 highest="$(printf '%s\n' "$existing" | sed -E 's/.*\.//' | sort -n | tail -1)"
+# A commit is released once: a run started again after it published (a
+# pipeline rerun, the tag event its own release fires) has nothing to do.
+released="$(printf '%s\n' "$releases" | awk -v c="$commit" '$2 == c && $3 == "false" { print $1; exit }')"
+if [ -n "$released" ] && ! $dry_run && ! $again && { [ -z "$version" ] || [ "v$version" = "$released" ]; }; then
+  step "$commit is already released: $released"
+  note "https://github.com/$REPO/releases/tag/$released (--again releases it once more, as a new version)"
+  rm -f "$OUT_ROOT/commits/$commit"
+  exit 0
+fi
+# A run of this commit that stopped before publishing took a version and
+# left its state in <out>/<version>: carry on with that version.
+pointer="$OUT_ROOT/commits/$commit"
+resuming=false
+if ! $dry_run && [ -z "$reuse" ] && [ -f "$pointer" ]; then
+  previous="$(tr -d '[:space:]' < "$pointer")"
+  if $fresh; then
+    note "--fresh: not carrying on from $previous"
+  elif { [ -z "$version" ] || [ "$version" = "$previous" ]; } && [ -f "$OUT_ROOT/$previous/commit" ] \
+    && [ "$(cat "$OUT_ROOT/$previous/commit")" = "$commit" ]; then
+    version="$previous"
+    resuming=true
+    note "resume   a run of $commit stopped before publishing $previous; carrying on ($OUT_ROOT/$previous)"
+  fi
+fi
 if [ -z "$version" ]; then
   base="$(git show "$commit:VERSION" | tr -d '[:space:]')"
   version="${base}.$(date -u +%Y%m%d).$((${highest:-0} + 1))"
@@ -201,11 +312,27 @@ else
   esac
 fi
 tag="v$version"
+tag_ok=false
 if printf '%s\n' "$existing" | grep -qxF "$version"; then
-  fail "$tag already exists in $REPO"
+  # The one tag that may be there already: one pushed to start this release
+  # (Roadrunner's tag event), on this commit, with no release yet.
+  # Or a draft of this commit's release that a stopped publish left: it goes
+  # before the release is made again.
+  tag_commit="$(printf '%s\n' "$tags" | grep -qxF "$tag" && gh api "repos/$REPO/commits/$tag" --jq .sha 2> /dev/null || true)"
+  release_line="$(printf '%s\n' "$releases" | awk -v t="$tag" '$1 == t { print; exit }')"
+  if { [ -z "$tag_commit" ] || [ "$tag_commit" = "$commit" ]; } \
+    && { [ -z "$release_line" ] || [ "$release_line" = "$tag $commit true" ]; }; then
+    tag_ok=true
+    if [ -n "$release_line" ]; then note "draft    $tag is a draft of $commit's release a stopped run left: this run replaces it"; fi
+    if [ -n "$tag_commit" ]; then note "tag      $tag is there, on $commit, with no release: this run makes it"; fi
+  else
+    fail "$tag already exists in $REPO"
+  fi
 fi
 # The updater, the installer and the tap only ever move forward.
+latest="$(printf '%s\n' "$existing" | { grep -vxF "$version" || true; } | tail -1)"
 if [ -n "$latest" ] && [ "$(printf '%s\n%s\n' "$latest" "$version" | sort -V | tail -1)" != "$version" ]; then
+  ! $resuming || fail "$version, the version a stopped run of $commit took, no longer sorts above the latest release, $latest: --fresh starts over with a new one"
   $dry_run || fail "$version does not sort above the latest release, $latest"
   note "dry run: $version sorts below the latest release, $latest"
 fi
@@ -215,17 +342,17 @@ x86_64_zip_name="copper-${version}-macos-x86_64.zip"
 note "version  $version ($tag; latest is ${latest:-none})"
 if $preflight; then
   note "mode     preflight: the checks only, nothing is built"
+elif $dry_run && ! $notarize; then
+  note "mode     dry run: signed, not notarized; nothing is tagged, released or uploaded"
 elif $dry_run; then
-  note "mode     dry run: nothing is tagged, released or uploaded"
+  note "mode     dry run, notarized: nothing is tagged, released or uploaded"
 else
   note "mode     PUBLISH"
 fi
 
-out="$root/build/release-local/$version"
+if $dry_run; then out="$OUT_ROOT/dry-run/$version"; else out="$OUT_ROOT/$version"; fi
 assets="$out/assets"
 logs="$out/logs"
-work="$(mktemp -d "${TMPDIR:-/tmp}/copper-release.XXXXXX")"
-chmod 700 "$work"
 job=""
 on_mini=false
 here_job=""
@@ -282,9 +409,9 @@ rmdir "$(dirname "$job")" 2> /dev/null
 exit 0
 REMOTE
     if mini 30 "test ! -e '$job'"; then
-      echo "    removed $MINI:$job"
+      echo "    removed $where:$job"
     else
-      echo "release-local: could not remove $MINI:$job — delete it by hand" >&2
+      echo "release-local: could not remove $where:$job — delete it by hand" >&2
     fi
   fi
   if [ -n "$here_job" ]; then
@@ -305,15 +432,14 @@ git archive --format=tar "$commit" release Copper.entitlements | tar -x -C "$wor
 # The provisioning profile, once for both apps: the newest active Developer ID
 # profile App Store Connect has for the App ID, else the one in $SIGNING.
 key_file="$SIGNING/AuthKey_$notary_key_id.p8"
-if [ -n "${EXO_MACSIGN_ASC_KEY_P8_BASE64:-}" ]; then
-  key_file="$work/AuthKey.p8"
-  (umask 077; case "$EXO_MACSIGN_ASC_KEY_P8_BASE64" in
-    -----BEGIN*) printf '%s\n' "$EXO_MACSIGN_ASC_KEY_P8_BASE64" ;;
-    *) printf '%s' "$EXO_MACSIGN_ASC_KEY_P8_BASE64" | tr -d ' \t\r\n' | base64 --decode ;;
-  esac > "$key_file") || fail "EXO_MACSIGN_ASC_KEY_P8_BASE64 is not valid base64"
-fi
 profile="$work/embedded.provisionprofile"
-if ! python3 "$work/src/release/provisioning.py" fetch --key "$key_file" --key-id "$notary_key_id" --issuer "$notary_issuer" \
+if $resuming && [ -f "$out/state/embedded.provisionprofile" ]; then
+  # What the stopped run signed with: the same profile, whatever App Store
+  # Connect would hand out now.
+  cp "$out/state/embedded.provisionprofile" "$profile"
+  : > "$work/profile.log"
+  note "profile  the one the stopped run signed with ($out/state)"
+elif ! python3 "$work/src/release/provisioning.py" fetch --key "$key_file" --key-id "$notary_key_id" --issuer "$notary_issuer" \
   --bundle-id "$BUNDLE_ID" --team "$team" --cert-sha1 "$want" --out "$profile" 2> "$work/profile.log"; then
   [ -f "$SIGNING/Copper_Developer_ID.provisionprofile" ] || { cat "$work/profile.log" >&2; fail "no profile from App Store Connect, and no $SIGNING/Copper_Developer_ID.provisionprofile"; }
   cp "$SIGNING/Copper_Developer_ID.provisionprofile" "$profile"
@@ -325,7 +451,9 @@ python3 "$work/src/release/provisioning.py" check --profile "$profile" --bundle-
 python3 "$work/src/release/provisioning.py" entitlements --base "$work/src/Copper.entitlements" --profile "$profile" \
   --bundle-id "$BUNDLE_ID" --team "$team" --out "$work/entitlements.plist" 2>&1 | sed 's/^/    /'
 profile_uuid="$(python3 "$work/src/release/provisioning.py" uuid --profile "$profile")"
-rcodesign="$("$work/src/release/rcodesign.sh")"
+# The signer: COPPER_RCODESIGN, else an rcodesign 0.29.0 on PATH (the
+# agent's), else the pinned download (release/rcodesign.sh).
+rcodesign="${COPPER_RCODESIGN:-$("$work/src/release/rcodesign.sh")}"
 note "signer   $("$rcodesign" --version) ($rcodesign)"
 
 # ---------------------------------------------------------------------------
@@ -346,14 +474,16 @@ esac
 case "$remote_dir" in
   /Volumes/*) fail "COPPER_RELEASE_REMOTE_DIR is on an external disk ($remote_dir); use the mini's internal one, e.g. '~/sign-builds/copper'" ;;
 esac
+# --here: the build is here too, in the same folder.
+if $here && [ -z "$BUILD_HERE" ]; then BUILD_HERE="$remote_dir"; fi
 remote_free_gb=$LAUNCH_FREE_GB
-[ -n "$BUILD_HERE" ] || [ -n "$reuse" ] || remote_free_gb=$BUILD_FREE_GB
+[ -n "$BUILD_HERE" ] || [ -n "$reuse" ] || { $resuming && [ -f "$out/build/.built" ]; } || remote_free_gb=$BUILD_FREE_GB
 # The disk it is on, or will be: the nearest folder of it that exists.
 free_kb="$(mini 60 "d='$remote_dir'; while [ ! -d \"\$d\" ]; do d=\"\$(dirname \"\$d\")\"; done; df -k \"\$d\" | awk 'NR == 2 { print \$4 }'")"
 free_gb="$(awk -v k="$free_kb" 'BEGIN { printf "%.1f", k / 1048576 }')"
-note "mini     $free_gb GB free for $remote_dir"
+note "disk     $free_gb GB free for $remote_dir ($where)"
 [ "$free_kb" -ge $((remote_free_gb * 1024 * 1024)) ] \
-  || fail "the mini has $free_gb GB free for $remote_dir; this release wants $remote_free_gb there"
+  || fail "$where has $free_gb GB free for $remote_dir; this release wants $remote_free_gb there"
 if [ -n "$BUILD_HERE" ]; then
   # shellcheck disable=SC2088  # a literal ~/, as the variable may hold it
   case "$BUILD_HERE" in "~/"*) BUILD_HERE="$HOME/${BUILD_HERE#"~/"}" ;; esac
@@ -379,15 +509,26 @@ if [ -n "$reuse" ]; then
       || fail "--reuse-assets: the $arch assets are not the ones their .sha256 name"
   done
   rm -f "$assets/copper-version.json" "$assets"/*.dSYM.zip
+elif $resuming; then
+  mkdir -p "$assets" "$logs"
+  rm -f "$assets/copper-version.json" "$assets"/*.dSYM.zip
 else
   rm -rf "$out"
   mkdir -p "$assets" "$logs"
+  printf '%s\n' "$commit" > "$out/commit"
+  mkdir -p "$out/state"
+  cp "$profile" "$out/state/embedded.provisionprofile"
+  # The version this commit's release takes, until it is published.
+  if ! $dry_run; then
+    mkdir -p "$OUT_ROOT/commits"
+    printf '%s\n' "$version" > "$pointer"
+  fi
 fi
 stamp="$version-$(date -u +%H%M%S)-$$"
 job="$remote_dir/$stamp"
 on_mini=true
 mini 60 mkdir -p "$job"
-note "job      $MINI:$job"
+note "job      $where:$job"
 
 cat > "$work/build.sh" <<'BUILD'
 #!/bin/bash
@@ -407,8 +548,11 @@ mkdir -p "$job/home" "$job/tmp"
 export HOME="$job/home" TMPDIR="$job/tmp/"
 caches="$(getconf DARWIN_USER_CACHE_DIR 2> /dev/null || true)"
 before="$(ls "$caches" 2> /dev/null || true)"
-# The full Xcode when there is one; the Command Line Tools build Copper too.
-if [ -d /Applications/Xcode.app/Contents/Developer ]; then
+# Nothing the build runs needs a GitHub token.
+unset GH_TOKEN GITHUB_TOKEN
+# The Xcode DEVELOPER_DIR names (a Roadrunner agent sets it), else the full
+# Xcode when there is one; the Command Line Tools build Copper too.
+if [ -z "${DEVELOPER_DIR:-}" ] && [ -d /Applications/Xcode.app/Contents/Developer ]; then
   export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 fi
 # With SEARCH_SIGN_IDENTITY empty, build.sh asks the keychain for a Developer
@@ -484,12 +628,18 @@ $low && exit 1
 echo "--- built"
 BUILD
 
-mkdir -p "$work/build"
+# The apps and dSYMs: in <out>/build, so a run that stops after the build
+# carries on from them (deleted once the release is out).
+built="$out/build"
+mkdir -p "$built"
 if [ -n "$reuse" ]; then
   step "Reuse the signed, notarized assets of $commit"
   note "no build and no signing: the dSYMs went with that run's unsigned build"
 else
-if [ -n "$BUILD_HERE" ]; then
+if $resuming && [ -f "$built/.built" ]; then
+  step "Carry on with the apps built for $version ($built)"
+elif [ -n "$BUILD_HERE" ]; then
+  rm -rf "$built" && mkdir -p "$built"
   step "Build here ($BUILD_HERE)"
   here_job="$BUILD_HERE/$stamp"
   mkdir -p "$here_job/src"
@@ -501,12 +651,13 @@ if [ -n "$BUILD_HERE" ]; then
   nice -n 10 /usr/bin/lockf -t 10800 "$LOCK" bash "$work/build.sh" "$here_job" "$BUILD_FREE_GB" "$BUILD_FLOOR_GB" < /dev/null 2>&1 | tee "$logs/build.log"
   # shellcheck disable=SC2046  # names without spaces, only those that exist
   (cd "$here_job/src/build" && COPYFILE_DISABLE=1 tar -cf - $(ls -d Copper.app Copper.app.dSYM x86_64/Copper.app x86_64/Copper.app.dSYM 2> /dev/null)) \
-    | tar -x -C "$work/build"
+    | tar -x -C "$built"
   note "the build used $(du -sk "$here_job" | awk '{ printf "%.1f", $1 / 1048576 }') GB"
   # The sources and the build products (gigabytes) are done with.
   rm -rf "$here_job"
   here_job=""
 else
+  rm -rf "$built" && mkdir -p "$built"
   step "Build on the Mac mini ($MINI)"
   mini 60 mkdir -p "$job/src"
   git archive --format=tar "$commit" | mini 600 tar -x -C "$job/src"
@@ -517,7 +668,7 @@ else
   step "Bring the unsigned apps and dSYMs back"
   # Only the bundles; COPYFILE_DISABLE keeps the mini's tar from adding ._ files.
   mini 900 "cd '$job/src/build' && COPYFILE_DISABLE=1 tar -cf - \$(ls -d Copper.app Copper.app.dSYM x86_64/Copper.app x86_64/Copper.app.dSYM 2> /dev/null)" \
-    | tar -x -C "$work/build"
+    | tar -x -C "$built"
   note "the build used $(mini 120 "du -sk '$job' | awk '{ printf \"%.1f\", \$1 / 1048576 }'") GB on the mini"
   # The sources, the build products and the caches are gigabytes on a shared
   # disk: all of it goes now. The launch check brings its own files.
@@ -525,32 +676,60 @@ else
   mini 30 "test ! -e '$job'" || fail "could not remove $MINI:$job"
   note "removed $MINI:$job"
 fi
-for app in "$work/build/Copper.app" "$work/build/x86_64/Copper.app"; do
+for app in "$built/Copper.app" "$built/x86_64/Copper.app"; do
   [ -x "$app/Contents/MacOS/Copper" ] || fail "missing $app"
 done
+touch "$built/.built"
 
 # ---------------------------------------------------------------------------
-step "Stamp $version, sign, notarize, staple, zip, disk image (release/package-app.sh)"
+if $notarize; then
+  step "Stamp $version, sign, notarize, staple, zip, disk image (release/package-app.sh)"
+else
+  step "Stamp $version, sign, zip, disk image; not notarized (release/package-app.sh)"
+fi
 
 # The dSYMs stay with the unsigned build: signing keeps LC_UUID, so they
 # still name the shipped binaries. The two CPUs are packaged side by side:
 # each waits on Apple's notary service twice (the app, then the disk image
-# made from the stapled app), which can take an hour a time.
+# made from the stapled app), which can take hours on a slow day. Both share
+# one deadline (COPPER_NOTARY_HOURS from now, default 4); past it with Apple
+# still working, this run stops with 75 and keeps everything in $out/state,
+# and the next run of this commit waits on the same submissions.
+export COPPER_NOTARY_DEADLINE="${COPPER_NOTARY_DEADLINE:-$(($(date +%s) + ${COPPER_NOTARY_HOURS:-4} * 3600))}"
+if $notarize; then
+  note "notary   waiting on Apple until $(date -r "$COPPER_NOTARY_DEADLINE" '+%H:%M %Z') at the latest"
+fi
+notarize_flag=1
+$notarize || notarize_flag=0
 for arch in arm64 x86_64; do
-  app="$work/build/Copper.app"
-  [ "$arch" = arm64 ] || app="$work/build/$arch/Copper.app"
+  app="$built/Copper.app"
+  [ "$arch" = arm64 ] || app="$built/$arch/Copper.app"
   COPPER_PROFILE="$profile" COPPER_RCODESIGN="$rcodesign" EXO_MACSIGN_CONFIG_DIR="$SIGNING" \
+    COPPER_NOTARIZE="$notarize_flag" COPPER_PACKAGE_STATE="$out/state/$arch" \
     bash "$work/src/release/package-app.sh" "$app" "$version" "$assets" "$arch" \
     > "$logs/package-$arch.out" 2> "$logs/package-$arch.log" &
   packing+=("$!")
 done
 packed=(arm64 x86_64)  # the order packing was started in (bash 3.2: no associative arrays)
+waiting=""
 for i in 0 1; do
   arch="${packed[$i]}"
-  wait "${packing[$i]}" \
-    || { tail -40 "$logs/package-$arch.log" >&2; fail "release/package-app.sh failed for $arch ($logs/package-$arch.log)"; }
+  code=0
+  wait "${packing[$i]}" || code=$?
+  case "$code" in
+    0) ;;
+    75) waiting="$waiting $arch" ;;
+    *) tail -40 "$logs/package-$arch.log" >&2; fail "release/package-app.sh failed for $arch ($logs/package-$arch.log)" ;;
+  esac
 done
 packing=()
+if [ -n "$waiting" ]; then
+  grep -h '^notary' "$logs"/package-*.log | sed 's/^/    /'
+  step "Apple is still notarizing ($waiting ): stopping here, nothing published"
+  note "everything is kept in $out; run this again on $commit and it carries on with $version,"
+  note "waiting on the same submissions (it never sends Apple the same bytes twice)"
+  exit 75
+fi
 fi
 for arch in arm64 x86_64; do
   sed 's/^/    /' "$logs/package-$arch.log" | grep -v '^    $' | grep -E '^    (profile|  claims|  not claimed|  allowed|signed|notary|stamped|packed)' || true
@@ -609,13 +788,17 @@ for arch in arm64 x86_64; do
   python3 -c 'import plistlib, sys; a, b = (plistlib.load(open(f, "rb")) for f in sys.argv[1:]); sys.exit(a != b)' \
     "$work/entitlements.plist" "$work/entitlements-$arch.plist" || fail "$arch: entitlements are not Copper.entitlements and the profile's"
   # Notarized and stapled: Gatekeeper opens it, offline too.
-  xcrun stapler validate "$app" > /dev/null || fail "$arch: no valid stapled ticket"
-  assessment="$(spctl -a -vvv -t exec "$app" 2>&1 || true)"
-  echo "$assessment"
-  case "$assessment" in
-    *"accepted"*"source=Notarized Developer ID"*) ;;
-    *) fail "$arch: Gatekeeper does not accept it as a notarized Developer ID app" ;;
-  esac
+  if $notarize; then
+    xcrun stapler validate "$app" > /dev/null || fail "$arch: no valid stapled ticket"
+    assessment="$(spctl -a -vvv -t exec "$app" 2>&1 || true)"
+    echo "$assessment"
+    case "$assessment" in
+      *"accepted"*"source=Notarized Developer ID"*) ;;
+      *) fail "$arch: Gatekeeper does not accept it as a notarized Developer ID app" ;;
+    esac
+  else
+    echo "not notarized (dry run): no ticket, Gatekeeper not asked"
+  fi
   cdhash="$(codesign -dvvv "$app" 2>&1 | sed -n 's/^CDHash=//p' | head -1)"
   echo "cdhash $cdhash"
 
@@ -627,13 +810,15 @@ for arch in arm64 x86_64; do
   # still writing, would fail the pipeline (pipefail) on a good disk image.
   dmg_details="$(codesign -dvv "$dmg" 2>&1)"
   printf '%s\n' "$dmg_details" | grep -q "^Authority=Developer ID Application: .*($team)\$" || fail "$arch: the disk image is not signed by team $team"
-  xcrun stapler validate "$dmg" > /dev/null || fail "$arch: no valid stapled ticket on the disk image"
-  assessment="$(spctl -a -vv -t open --context context:primary-signature "$dmg" 2>&1 || true)"
-  echo "$assessment"
-  case "$assessment" in
-    *"accepted"*"source=Notarized Developer ID"*) ;;
-    *) fail "$arch: Gatekeeper does not accept the disk image as notarized Developer ID" ;;
-  esac
+  if $notarize; then
+    xcrun stapler validate "$dmg" > /dev/null || fail "$arch: no valid stapled ticket on the disk image"
+    assessment="$(spctl -a -vv -t open --context context:primary-signature "$dmg" 2>&1 || true)"
+    echo "$assessment"
+    case "$assessment" in
+      *"accepted"*"source=Notarized Developer ID"*) ;;
+      *) fail "$arch: Gatekeeper does not accept the disk image as notarized Developer ID" ;;
+    esac
+  fi
   mount="$work/mount-$arch"
   mkdir -p "$mount"
   hdiutil attach -quiet -readonly -nobrowse -noautoopen -mountpoint "$mount" "$dmg"
@@ -641,9 +826,9 @@ for arch in arm64 x86_64; do
   diff -rq "$mount/Copper.app" "$app" > /dev/null 2>&1 && same=true || same=false
   [ -L "$mount/Applications" ] && apps=true || apps=false
   hdiutil detach -quiet "$mount" || hdiutil detach -quiet -force "$mount"
-  [ "$inside" = "$cdhash" ] && $same || fail "$arch: the app in the disk image is not the zip's"
+  { [ "$inside" = "$cdhash" ] && $same; } || fail "$arch: the app in the disk image is not the zip's"
   $apps || fail "$arch: the disk image has no Applications shortcut"
-  echo "disk image: the zip's app (cdhash $inside), stapled"
+  if $notarize; then echo "disk image: the zip's app (cdhash $inside), stapled"; else echo "disk image: the zip's app (cdhash $inside)"; fi
 done
 
 # ---------------------------------------------------------------------------
@@ -654,8 +839,8 @@ step "Zip the dSYMs"
 # a dSYM that doesn't match would only mislead. Missing is a warning, as in
 # build.sh and the workflow.
 for arch in arm64 x86_64; do
-  app="$work/build/Copper.app"
-  [ "$arch" = arm64 ] || app="$work/build/$arch/Copper.app"
+  app="$built/Copper.app"
+  [ "$arch" = arm64 ] || app="$built/$arch/Copper.app"
   dsym="$app.dSYM"
   if [ ! -d "$dsym" ]; then
     note "warning: no $arch dSYM — this release's $arch crash reports won't symbolicate"
@@ -736,8 +921,8 @@ git show "$commit:NOTES.md" > "$work/meta/NOTES.md" 2> /dev/null || : > "$work/m
     '
 )
 cat "$assets/copper-version.json"
-# If release.yml's manifest gains or loses a field, the two paths would hand
-# the updater and the tap different shapes: hold this one to the published one.
+# The updater and the tap read this shape: hold it to the published one, so a
+# field never goes missing or changes type between releases.
 curl -fsSL --retry 3 -o "$work/published-version.json" "https://github.com/$REPO/releases/latest/download/copper-version.json"
 # shellcheck disable=SC2016  # JavaScript, not shell
 node -e '
@@ -748,13 +933,25 @@ node -e '
   const theirs = paths(JSON.parse(fs.readFileSync(process.argv[2], "utf8"))).join("\n");
   if (mine !== theirs) { console.error("this manifest:\n" + mine + "\n\nthe published one:\n" + theirs); process.exit(1); }
 ' "$assets/copper-version.json" "$work/published-version.json" \
-  || fail "copper-version.json does not have the published manifest's fields (release.yml changed? keep the two in step)"
+  || fail "copper-version.json does not have the published manifest's fields (changed on purpose? then both readers must take the new shape first)"
 note "copper-version.json has the published manifest's fields, in its order"
 (cd "$assets" && shasum -a 256 ./*)
 
 # ---------------------------------------------------------------------------
-step "Launch the shipped apps on the mini (headless, throwaway worlds)"
+launching=true
+if $here && ! launchctl print "gui/$(id -u)" > /dev/null 2>&1; then
+  # A Roadrunner agent is a LaunchDaemon: no login session, no window server,
+  # so no app can start. The signature checks above are what it can do.
+  launching=false
+  step "Launch check skipped: this account has no login session here (a CI agent)"
+  note "the signature, requirement, entitlements and Gatekeeper checks above still ran"
+elif $here; then
+  step "Launch the shipped apps here (headless, throwaway worlds)"
+else
+  step "Launch the shipped apps on the mini (headless, throwaway worlds)"
+fi
 
+if $launching; then
 mini 60 mkdir -p "$job/launch"
 COPYFILE_DISABLE=1 tar -C "$assets" -cf - "$zip_name" "$x86_64_zip_name" | mini 600 tar -x -C "$job/launch"
 mini 60 "cat > '$job/launch.sh'" <<'REMOTE'
@@ -870,6 +1067,7 @@ else
 fi
 REMOTE
 mini 600 bash "$job/launch.sh" "$job" "$version" < /dev/null 2>&1 | tee "$logs/mini-launch.log"
+fi
 
 # The release text, as the workflow writes it.
 cat > "$out/release-notes.md" <<EOF
@@ -906,10 +1104,21 @@ if $dry_run; then
   note "no tag, no release, no upload — what would ship is in $assets"
 else
   step "Publish $tag"
-  # The build took a while; a workflow run may have taken this number since.
-  if gh release view "$tag" -R "$REPO" > /dev/null 2>&1 \
-    || gh api "repos/$REPO/git/ref/tags/$tag" > /dev/null 2>&1; then
+  # The build took a while; another run may have taken this number since. A
+  # tag or draft of this commit's release that was there at the start is ours.
+  now_tag="$(gh api "repos/$REPO/git/ref/tags/$tag" --jq .object.sha 2> /dev/null || true)"
+  now_release="$(gh api "repos/$REPO/releases?per_page=100" --jq ".[] | select(.tag_name == \"$tag\") | \"\(.target_commitish) \(.draft) \(.id)\"" | head -1)"
+  if [ -n "$now_tag" ] && ! $tag_ok; then
     fail "$tag appeared in $REPO during the build; nothing uploaded — run again for the next number"
+  fi
+  if [ -n "$now_release" ]; then
+    case "$now_release" in
+      "$commit true "*)
+        note "deleting the draft a stopped publish of $tag left (release ${now_release##* })"
+        gh api -X DELETE "repos/$REPO/releases/${now_release##* }"
+        ;;
+      *) fail "$tag has a release in $REPO now; nothing uploaded — run again for the next number" ;;
+    esac
   fi
   dsym_zips=()
   for arch in arm64 x86_64; do
@@ -955,14 +1164,29 @@ else
   done
   verify "https://github.com/$REPO/releases/latest/download/copper-version.json" \
     "$(shasum -a 256 "$assets/copper-version.json" | cut -d' ' -f1)"
+
+  # Published: the next run of this commit has nothing to carry on.
+  rm -f "$pointer"
+  rm -rf "$built" "$out/state"
+  # COPPER_RELEASE_KEEP_ASSETS=0 (Roadrunner): the assets are on GitHub now.
+  [ "${COPPER_RELEASE_KEEP_ASSETS:-1}" != 0 ] || rm -rf "$out"
+
+  step "Point the Homebrew tap at $version (release/bump-tap.sh)"
+  if [ "${COPPER_RELEASE_TAP:-1}" = 0 ]; then
+    note "COPPER_RELEASE_TAP=0: left to the caller"
+  elif ! bash "$work/src/release/bump-tap.sh" "$version"; then
+    note "warning: the tap was not updated; the release is out. Run release/bump-tap.sh $version"
+    tap_failed=true
+  fi
 fi
+rm -rf "$built"
 
 step "Copper $version"
 if $dry_run; then
   note "dry run: nothing published (no tag, no release); the signed zips are in $assets"
 else
   note "release: https://github.com/$REPO/releases/tag/$tag"
-  note "the tap (copper-browser/homebrew-copper) picks this up from copper-version.json on its next bump run"
+  if [ "${tap_failed:-false}" = true ]; then note "the tap is NOT updated: release/bump-tap.sh $version"; fi
 fi
 note "source: https://github.com/$REPO/commit/$commit"
 note "sha256 (arm64): $sha256"

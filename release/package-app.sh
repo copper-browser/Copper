@@ -60,6 +60,21 @@
 # location, Apple Events). The certificate in the .p12 must be the one in
 # release/exowatt-developer-id.cer, so a secret holding any other fails here.
 #
+# COPPER_NOTARIZE=0 signs (Developer ID, profile, entitlements, requirement,
+# the disk image too) but sends nothing to Apple: no notarization, no
+# stapling; the dry run of a release (release/release-local.sh --dry-run).
+# notary_id and dmg_notary_id are then "none".
+#
+# COPPER_PACKAGE_STATE=<folder> makes a notarizing run resumable: each phase
+# (signed, the app's ticket stapled, the disk image signed, its ticket
+# stapled) is marked there with the SHA-256 of what it left in <out-dir>, and
+# each notary submission's id is kept by the SHA-256 of the bytes sent
+# (release/notary.sh). Run again with the same app, version, out-dir and state
+# and it carries on where it stopped: it never signs again what it signed, and
+# never sends Apple bytes it already sent; it waits on that submission. Past
+# the notary deadline (COPPER_NOTARY_DEADLINE / COPPER_NOTARY_HOURS) with Apple
+# still working, it exits 75: run again.
+#
 # COPPER_ADHOC=1 signs ad hoc and doesn't notarize, for trying this script out
 # without credentials; a release refuses such a bundle.
 set -euo pipefail
@@ -88,12 +103,41 @@ built="$(lipo -archs "$app/Contents/MacOS/Copper")"
 plist="$app/Contents/Info.plist"
 requirement="$(tr -d '\n' < "$here/designated-requirement.txt")"
 bundle_id="$(plutil -extract CFBundleIdentifier raw -o - "$plist")"
-plutil -replace CFBundleShortVersionString -string "$version" "$plist"
 if [ -x "$app/Contents/Resources/bin/copper" ]; then has_cli=true; else has_cli=false; fi
 mkdir -p "$out"
 zip="$out/copper-${version}-macos-${arch}.zip"
 dmg="$out/copper-${version}-macos-${arch}.dmg"
-rm -f "$zip" "$zip.sha256" "$dmg" "$dmg.sha256"
+notarizing=true
+[ "${COPPER_NOTARIZE:-1}" != 0 ] || notarizing=false
+
+# Where a run that stopped left off (COPPER_PACKAGE_STATE): a phase counts only
+# when the file it left is still there, byte for byte.
+state="${COPPER_PACKAGE_STATE:-}"
+sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
+at() { [ -n "$state" ] && [ -f "$state/$1" ] && [ -f "$2" ] && [ "$(cat "$state/$1")" = "$(sha "$2")" ]; }
+mark() { [ -z "$state" ] || sha "$2" > "$state/$1"; }
+resume=""
+if $notarizing && [ -n "$state" ] && [ "${COPPER_ADHOC:-}" != 1 ]; then
+  mkdir -p "$state"
+  if at dmg-stapled "$dmg" && at app-stapled "$zip"; then
+    resume="done"
+  elif at dmg-signed "$dmg" && at app-stapled "$zip"; then
+    resume="dmg-notary"
+  elif at app-stapled "$zip"; then
+    resume="dmg"
+  elif at app-signed "$zip"; then
+    resume="app-notary"
+  fi
+fi
+if [ -z "$resume" ]; then
+  plutil -replace CFBundleShortVersionString -string "$version" "$plist"
+  rm -f "$zip" "$zip.sha256" "$dmg" "$dmg.sha256"
+  [ -z "$state" ] || rm -f "$state"/app-signed "$state"/app-stapled "$state"/dmg-signed "$state"/dmg-stapled
+else
+  say resume "$arch: carrying on from $resume ($state)"
+  [ "$(plutil -extract CFBundleShortVersionString raw -o - "$plist")" = "$version" ] \
+    || fail "$app is not stamped $version, but $state says it was signed as that; delete $state to start again"
+fi
 # Nothing but the bundle: no extended attributes (this Mac's com.apple.provenance
 # would become ._ AppleDouble files that a plain unzip leaves in the bundle,
 # unsealed), no resource forks, no quarantine, no ACLs.
@@ -203,57 +247,64 @@ esac
 LC_ALL=C grep -a -q -F "certificate leaf[subject.OU] = \"$team\"" "$app/Contents/MacOS/Copper" \
   || fail "the app's updater does not accept team $team (Fork/Signing.swift): refusing to sign it for that team"
 
-# ---------------------------------------------------------------------------
-# The profile and the entitlements
-
-profile="$work/embedded.provisionprofile"
-if [ -n "${COPPER_PROFILE:-}" ]; then
-  cp "$COPPER_PROFILE" "$profile"
-  say profile "$COPPER_PROFILE (COPPER_PROFILE)"
-elif python3 "$here/provisioning.py" fetch --key "$notary_key" --key-id "$notary_key_id" --issuer "$notary_issuer" \
-  --bundle-id "$bundle_id" --team "$team" --cert-sha1 "$want" --out "$profile"; then
-  :
-else
-  cp "$(private_file "$conf/Copper_Developer_ID.provisionprofile")" "$profile"
-  say profile "App Store Connect could not be asked; using $conf/Copper_Developer_ID.provisionprofile"
-fi
-python3 "$here/provisioning.py" entitlements --base "$here/../Copper.entitlements" --profile "$profile" \
-  --bundle-id "$bundle_id" --team "$team" --cert-sha1 "$want" --out "$work/entitlements.plist"
-profile_uuid="$(python3 "$here/provisioning.py" uuid --profile "$profile")"
-
-# ---------------------------------------------------------------------------
-# Sign, inside out
-
+# The signer: COPPER_RCODESIGN, else an rcodesign of the pinned version on
+# PATH (a CI agent's), else the pinned one release/rcodesign.sh fetches.
 rcodesign="${COPPER_RCODESIGN:-$("$here/rcodesign.sh")}"
 case "$("$rcodesign" --version)" in
   "apple-codesign 0.29.0"*) ;;
   *) fail "$rcodesign is $("$rcodesign" --version), not the pinned 0.29.0 (release/rcodesign.sh)" ;;
 esac
-# rcodesign takes the requirement compiled, not as text; csreq compiles it the
-# way codesign -r would, and gives it back as written.
-printf '%s\n' "$requirement" > "$work/requirement.txt"
-csreq -r "$work/requirement.txt" -b "$work/requirement.bin"
-[ "$(csreq -r "$work/requirement.bin" -t | sed 's: /\* exists \*/::g')" = "$requirement" ] || fail "csreq did not round-trip the requirement"
 
-# rcodesign carries an existing signature's flags and entitlements over, so
-# build.sh's ad-hoc one goes first: the release signature has only what is
-# given below.
-codesign --remove-signature "$app"
-rm -rf "$app/Contents/_CodeSignature"
-install -m 644 "$profile" "$app/Contents/embedded.provisionprofile"
-# One pass, inside out: nested code first (none today), then the app with the
-# entitlements and the explicit requirement (rcodesign applies both to the
-# main executable only). Contents/Resources is data, as codesign's own rules
-# have it: the SwiftPM resource bundle there is sealed file by file, not signed
-# as a bundle of its own. The profile is sealed with the rest of Contents.
-"$rcodesign" sign \
-  --p12-file "$p12" --p12-password-file "$p12_password" \
-  --code-requirements-file "$work/requirement.bin" \
-  --code-signature-flags runtime \
-  --entitlements-xml-file "$work/entitlements.plist" \
-  --exclude 'Contents/Resources/**' \
-  "$app" > "$work/rcodesign.log" 2>&1 \
-  || { tail -20 "$work/rcodesign.log" >&2; fail "rcodesign could not sign the $arch app"; }
+if [ -z "$resume" ]; then
+  # -------------------------------------------------------------------------
+  # The profile and the entitlements
+
+  profile="$work/embedded.provisionprofile"
+  if [ -n "${COPPER_PROFILE:-}" ]; then
+    cp "$COPPER_PROFILE" "$profile"
+    say profile "$COPPER_PROFILE (COPPER_PROFILE)"
+  elif python3 "$here/provisioning.py" fetch --key "$notary_key" --key-id "$notary_key_id" --issuer "$notary_issuer" \
+    --bundle-id "$bundle_id" --team "$team" --cert-sha1 "$want" --out "$profile"; then
+    :
+  else
+    cp "$(private_file "$conf/Copper_Developer_ID.provisionprofile")" "$profile"
+    say profile "App Store Connect could not be asked; using $conf/Copper_Developer_ID.provisionprofile"
+  fi
+  python3 "$here/provisioning.py" entitlements --base "$here/../Copper.entitlements" --profile "$profile" \
+    --bundle-id "$bundle_id" --team "$team" --cert-sha1 "$want" --out "$work/entitlements.plist"
+  profile_uuid="$(python3 "$here/provisioning.py" uuid --profile "$profile")"
+
+  # -------------------------------------------------------------------------
+  # Sign, inside out
+
+  # rcodesign takes the requirement compiled, not as text; csreq compiles it the
+  # way codesign -r would, and gives it back as written.
+  printf '%s\n' "$requirement" > "$work/requirement.txt"
+  csreq -r "$work/requirement.txt" -b "$work/requirement.bin"
+  [ "$(csreq -r "$work/requirement.bin" -t | sed 's: /\* exists \*/::g')" = "$requirement" ] || fail "csreq did not round-trip the requirement"
+
+  # rcodesign carries an existing signature's flags and entitlements over, so
+  # build.sh's ad-hoc one goes first: the release signature has only what is
+  # given below.
+  codesign --remove-signature "$app"
+  rm -rf "$app/Contents/_CodeSignature"
+  install -m 644 "$profile" "$app/Contents/embedded.provisionprofile"
+  # One pass, inside out: nested code first (none today), then the app with the
+  # entitlements and the explicit requirement (rcodesign applies both to the
+  # main executable only). Contents/Resources is data, as codesign's own rules
+  # have it: the SwiftPM resource bundle there is sealed file by file, not signed
+  # as a bundle of its own. The profile is sealed with the rest of Contents.
+  "$rcodesign" sign \
+    --p12-file "$p12" --p12-password-file "$p12_password" \
+    --code-requirements-file "$work/requirement.bin" \
+    --code-signature-flags runtime \
+    --entitlements-xml-file "$work/entitlements.plist" \
+    --exclude 'Contents/Resources/**' \
+    "$app" > "$work/rcodesign.log" 2>&1 \
+    || { tail -20 "$work/rcodesign.log" >&2; fail "rcodesign could not sign the $arch app"; }
+else
+  profile_uuid="$(python3 "$here/provisioning.py" uuid --profile "$app/Contents/embedded.provisionprofile")"
+fi
 if ! codesign --verify --deep --strict -R="$requirement" "$app"; then
   fail "the $arch app does not satisfy $requirement"
 fi
@@ -262,61 +313,66 @@ say signed "$(codesign -d -r- "$app" 2> /dev/null | grep '^designated')"
 # ---------------------------------------------------------------------------
 # Notarize, staple, zip, disk image
 
-# notarize FILE WHAT: Apple's notary service looks it over; prints the id.
-# A submission can sit "In Progress" for an hour or more (a team's first ones
-# get a closer look, and the queue is shared): past the first wait, the same
-# submission is waited on again, up to COPPER_NOTARY_HOURS (default 4) in all,
-# never sent twice.
-notarize() {
-  local file="$1" what="$2" status id waited=45
-  # On a timeout notarytool says so on stderr, as JSON with the id.
-  xcrun notarytool submit "$file" --key "$notary_key" --key-id "$notary_key_id" --issuer "$notary_issuer" \
-    --wait --timeout 45m --output-format json > "$work/notary.json" 2> "$work/notary.err" || true
-  status="$(plutil -extract status raw -o - "$work/notary.json" 2> /dev/null || true)"
-  id="$(plutil -extract id raw -o - "$work/notary.json" 2> /dev/null \
-    || sed -n 's/.*"id" *: *"\([0-9a-f-]*\)".*/\1/p' "$work/notary.err" | head -1)"
-  while [ -n "$id" ] && { [ -z "$status" ] || [ "$status" = "In Progress" ]; } \
-    && [ "$waited" -lt $((${COPPER_NOTARY_HOURS:-4} * 60)) ]; do
-    say notary "$arch $what: still in progress after $waited min ($id); waiting on"
-    xcrun notarytool wait "$id" --key "$notary_key" --key-id "$notary_key_id" --issuer "$notary_issuer" \
-      --timeout 30m --output-format json > "$work/notary.json" 2> "$work/notary.err" || true
-    waited=$((waited + 30))
-    status="$(plutil -extract status raw -o - "$work/notary.json" 2> /dev/null || true)"
-  done
-  [ -s "$work/notary.err" ] && cat "$work/notary.err" >&2
-  say notary "$arch $what: ${status:-no answer} (${id:-no id})"
-  if [ "$status" != Accepted ]; then
-    cat "$work/notary.json" >&2
-    [ -z "$id" ] || xcrun notarytool log "$id" --key "$notary_key" --key-id "$notary_key_id" --issuer "$notary_issuer" >&2 || true
-    fail "Apple did not notarize the $arch $what"
+# shellcheck source=release/notary.sh
+. "$here/notary.sh"
+notary="$work/notary"
+[ -z "$state" ] || notary="$state/notary"
+id=none
+dmg_id=none
+
+if [ -z "$resume" ]; then
+  pack
+  mark app-signed "$zip"
+fi
+if $notarizing; then
+  if [ -z "$resume" ] || [ "$resume" = "app-notary" ]; then
+    # The ticket is stapled to the app, so Gatekeeper accepts it offline too,
+    # and the zip and the disk image are made around the stapled app. A
+    # submission can sit "In Progress" for hours (a team's first ones get a
+    # closer look, and the queue is shared): release/notary.sh waits on it,
+    # never sends it twice.
+    id="$(notary_run "$zip" "$arch app" "$notary")"
+    [ -z "$state" ] || printf '%s\n' "$id" > "$state/app.id"
+    xcrun stapler staple "$app" >&2
+    xcrun stapler validate "$app" >&2
+    rm -f "$zip"
+    pack
+    mark app-stapled "$zip"
+  else
+    id="$(cat "$state/app.id" 2> /dev/null || echo unknown)"
   fi
-  printf '%s' "$id"
-}
+else
+  say notary "$arch: not notarized (COPPER_NOTARIZE=0)"
+fi
 
-pack
-# The ticket is stapled to the app, so Gatekeeper accepts it offline too, and
-# the zip and the disk image are made around the stapled app.
-id="$(notarize "$zip" app)"
-xcrun stapler staple "$app" >&2
-xcrun stapler validate "$app" >&2
-rm -f "$zip"
-pack
-
-# The disk image: the stapled app beside a shortcut to /Applications, signed
-# (it has no designated requirement of its own to keep), notarized on its own
-# and stapled, so it opens on a Mac that is offline and has never seen Copper.
-stage="$work/dmg"
-mkdir -p "$stage"
-ditto --norsrc --noextattr --noqtn --noacl "$app" "$stage/$(basename "$app")"
-ln -s /Applications "$stage/Applications"
-hdiutil create -quiet -volname Copper -srcfolder "$stage" -fs HFS+ -format UDZO -ov "$dmg" \
-  || fail "hdiutil could not make the $arch disk image"
-rm -rf "$stage"
-"$rcodesign" sign --p12-file "$p12" --p12-password-file "$p12_password" "$dmg" > "$work/rcodesign-dmg.log" 2>&1 \
-  || { tail -20 "$work/rcodesign-dmg.log" >&2; fail "rcodesign could not sign the $arch disk image"; }
-dmg_id="$(notarize "$dmg" "disk image")"
-xcrun stapler staple "$dmg" >&2
-xcrun stapler validate "$dmg" >&2
+# The disk image: the app (stapled, when notarizing) beside a shortcut to
+# /Applications, signed (it has no designated requirement of its own to keep),
+# notarized on its own and stapled, so it opens on a Mac that is offline and
+# has never seen Copper.
+if [ "$resume" != "dmg-notary" ] && [ "$resume" != "done" ]; then
+  rm -f "$dmg"
+  stage="$work/dmg"
+  mkdir -p "$stage"
+  ditto --norsrc --noextattr --noqtn --noacl "$app" "$stage/$(basename "$app")"
+  ln -s /Applications "$stage/Applications"
+  hdiutil create -quiet -volname Copper -srcfolder "$stage" -fs HFS+ -format UDZO -ov "$dmg" \
+    || fail "hdiutil could not make the $arch disk image"
+  rm -rf "$stage"
+  "$rcodesign" sign --p12-file "$p12" --p12-password-file "$p12_password" "$dmg" > "$work/rcodesign-dmg.log" 2>&1 \
+    || { tail -20 "$work/rcodesign-dmg.log" >&2; fail "rcodesign could not sign the $arch disk image"; }
+  mark dmg-signed "$dmg"
+fi
+if $notarizing; then
+  if [ "$resume" != "done" ]; then
+    dmg_id="$(notary_run "$dmg" "$arch disk image" "$notary")"
+    [ -z "$state" ] || printf '%s\n' "$dmg_id" > "$state/dmg.id"
+    xcrun stapler staple "$dmg" >&2
+    xcrun stapler validate "$dmg" >&2
+    mark dmg-stapled "$dmg"
+  else
+    dmg_id="$(cat "$state/dmg.id" 2> /dev/null || echo unknown)"
+  fi
+fi
 say packed "$dmg ($(du -h "$dmg" | cut -f1 | tr -d ' '))"
 finish
 echo "notary_id=$id"
