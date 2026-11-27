@@ -593,6 +593,21 @@ your Copper Cloud, and your own number is back after sign-out. `./bench agent
 turns N` sets it; `./bench agent chat` shows `maxTurns`, `turnBudget` and
 `turnSource`. (`jev_run`'s own 60-action budget is separate.)
 
+A question that asks for rows of JSON (a fenced template like
+`{"rows": [{"name": …, "value": …, "source": …}]}`) gets a second look once
+the model has answered: the agent counts the asked rows × fields that are
+filled and rest on a page its tools loaded (`browser_read`'s ok pages, a
+page's URL line, the addresses a call names; a `source` field, if the
+template has one, must be one of them). Under 95%, the rows still short are
+asked again in fresh helper conversations — the question plus only their
+batch of 10 rows and what the answer had for them, 3 at once, each with the
+per-question round budget — and a row a helper covers better replaces the
+answer's. It stops when coverage holds, every missing row was asked twice,
+two rounds find nothing, or an hour after the question (no helper starts
+with under 5 minutes left). Settings › Agents › *Fill in missing rows*
+(on by default); `./bench agent coverage on|off`. Files:
+`Fork/Agent/Coverage.swift` (the counting), `Agent.cover` (the loop).
+
 The composer grows with what you type: Return sends, ⇧Return breaks the
 line. The chip under it is the page in front of every question (the tab's
 address, title and first 3000 characters, or the canvas by name) — click it
