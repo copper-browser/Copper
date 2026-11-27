@@ -239,7 +239,7 @@ final class MCP: ObservableObject {
     var agentPrompt: String {
         """
         If you already have Copper set up, just type `/jev <goal>`.
-        Copper is the user's own browser, signed in as them; the current tab is the one they are looking at — work there unless the task names another tab. First action: call browser_snapshot with interactive: true on the current tab, then act with its refs. Call browser_tabs only when another tab is named; take a screenshot when layout matters; nothing is sandboxed — act as the user would.
+        Copper is the user's own browser, signed in as them; the current tab is the one they are looking at — work there unless the task names another tab. To read or research pages use `browser_read` (many URLs per call; independent reads in parallel). To act on a page, first call browser_snapshot with interactive: true on it, then act with its refs. Call browser_tabs only when another tab is named; take a screenshot when layout matters; nothing is sandboxed — act as the user would.
         Connect MCP server `copper` at \(endpoint) with `Authorization: Bearer \(config.token)`. Claude Code: `claude mcp add -s user --transport http copper \(endpoint) --header \"Authorization: Bearer \(config.token)\"`.
         """
     }
@@ -248,7 +248,7 @@ final class MCP: ObservableObject {
     var jevPrompt: String {
         """
         If you already have Copper set up, just type `/jev <goal>`.
-        Copper is the user's own browser, signed in as them; the current tab is the one they are looking at — work there unless task names another tab. ANY task: FIRST call `jev_run` with whole goal (all concrete values: places, dates, names, filters; stop condition); no `browser_tabs` or snapshot first. Add `url` only for named non-current page. `jev_observe` = indexed read; `jev_extract` = JSON; `jev_step` = one decision. BLOCKED → browser_snapshot/click/type for that part then `jev_run`; DONE is Jev's claim — verify with `jev_observe`/`jev_extract`.
+        Copper is the user's own browser, signed in as them; the current tab is the one they are looking at — work there unless task names another tab. To read or research pages use `browser_read` (many URLs per call; independent reads in parallel). To act on a page (forms, clicks, multi-step UI): FIRST call `jev_run` with whole goal (all concrete values: places, dates, names, filters; stop condition); no `browser_tabs` or snapshot first. Add `url` only for named non-current page. `jev_observe` = indexed read; `jev_extract` = JSON; `jev_step` = one decision. BLOCKED → browser_snapshot/click/type for that part then `jev_run`; DONE is Jev's claim — verify with `jev_observe`/`jev_extract`.
         Connect MCP server `copper` at \(endpoint) with `Authorization: Bearer \(config.token)`. Claude Code: `claude mcp add -s user --transport http copper \(endpoint) --header \"Authorization: Bearer \(config.token)\"`.
         """
     }

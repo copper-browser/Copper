@@ -632,7 +632,7 @@ private struct AgentsJevSection: View {
                 Rule()
                 Line("Tools it adds", "jev_run, jev_step, jev_observe and jev_extract, about every 200 ms per step") { EmptyView() }
                 Rule()
-                Line("Text model", brain.modelReady ? "Writes what Jev types and answers jev_extract. Small and fast is the point; empty types with a fast small model (\(Tools.Ultrafast.fastTextModel), else haiku) and reads with \(brain.modelName)." : "Typing text and jev_extract need a model — set one up in Intelligence.") {
+                Line("Text model", brain.modelReady ? "Writes what Jev types and reads pages for jev_extract and browser_read. Small and fast is the point; " + Tools.Ultrafast.textModelNote(brain.lane, chosen: brain.modelName) : "Typing text and jev_extract need a model — set one up in Intelligence.") {
                     HStack(spacing: 8) {
                         Circle().fill(brain.modelReady ? Color.green.opacity(0.8) : Color.orange.opacity(0.8)).frame(width: 8, height: 8)
                             .help(brain.modelReady ? "A model is set up" : "No model is set up")
@@ -713,10 +713,15 @@ private struct AgentsPaneSection: View {
                 Rule()
                 ServerRow(server: server)
             }
-            SettingsAdvanced("agents.pane.more", holds: ["agents.turns"]) { // Fork (settings-merge)
+            SettingsAdvanced("agents.pane.more", holds: ["agents.turns", "agents.coverage"]) { // Fork (settings-merge)
                 Rule()
                 turnsRow
                     .settingsAnchor("agents.turns")
+                Rule()
+                Line("Fill in missing rows", "When a question asks for rows of JSON and the answer leaves some without a value or a page it read, ask again for just those, a few at a time.") {
+                    Switch(on: $chat.config.coverage)
+                }
+                .settingsAnchor("agents.coverage")
             }
         }
     }

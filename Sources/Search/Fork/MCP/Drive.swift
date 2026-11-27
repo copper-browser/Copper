@@ -524,6 +524,10 @@ final class Drive: ObservableObject {
             return (named.isEmpty ? "Choosing \(values)" : "Choosing \(values) in \(named)", detail)
         case "browser_drag": return ("Dragging \((args["startElement"] as? String) ?? (args["startRef"] as? String) ?? "") to \((args["endElement"] as? String) ?? (args["endRef"] as? String) ?? "")", detail)
         case "browser_navigate": return (host.isEmpty ? "Opening a page" : "Opening \(host)", detail)
+        case "browser_read":
+            if let s = (args["search"] as? [Any])?.count, s > 0 { return ("Searching the web for \(s) quer\(s == 1 ? "y" : "ies")", detail) }
+            let n = (args["urls"] as? [Any])?.count ?? 1
+            return ("Reading \(n) page\(n == 1 ? "" : "s") in the background", detail)
         case "browser_navigate_back": return ("Going back", detail)
         case "browser_navigate_forward": return ("Going forward", detail)
         case "browser_take_screenshot":
@@ -595,7 +599,7 @@ final class Drive: ObservableObject {
         case "browser_evaluate": return "SCRIPT"
         case "browser_wait_for": return "WAIT"
         case "browser_scroll": return "SCROLL"
-        case "browser_snapshot", "browser_get_text", "browser_console_messages", "browser_find", "jev_observe", "jev_extract", "browser_crashes": return "READ"
+        case "browser_snapshot", "browser_get_text", "browser_console_messages", "browser_find", "jev_observe", "jev_extract", "browser_crashes", "browser_read": return "READ"
         case "browser_tabs":
             switch (args["action"] as? String) ?? "list" {
             case "new", "close", "select": return "TABS"

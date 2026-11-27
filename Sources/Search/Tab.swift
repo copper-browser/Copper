@@ -161,6 +161,8 @@ final class Tab: ObservableObject, Identifiable {
     /// the network's (a refused download, a missing canvas).
     var failureHost: String?
     var failureDetail: String?
+    /// Fork (browser_read): a tab that only reads — no other app, no download, no new window (Tools.Read.refusal).
+    var readOnly = false
     /// How far down the page you are, nought to one. The tab's own pill fills
     /// with it.
     @Published var reading: Double = 0
