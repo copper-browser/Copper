@@ -83,7 +83,7 @@ pill once and the arrow hops twice; under Reduce Motion it only fades in. Anothe
 folded column peeking out or a redraw does not replay it (`UpdatePill.introduced`).
 
 Right-click: the click's own action, **What's New…** (a popover with the feed's `notes` — the
-first paragraph of `NOTES.md`, written into `copper-version.json` by `release.yml` — and Full
+first paragraph of `NOTES.md`, written into `copper-version.json` by `release/release-local.sh` — and Full
 Changelog, `CHANGELOG.md` at the release's commit), **Remind Me Later** (hidden for that version
 until the next launch; a newer version brings it back) and **Settings…** (Settings › About › Updates).
 

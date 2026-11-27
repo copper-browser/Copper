@@ -4,187 +4,223 @@
 release to the next, how development builds stay out of the installed Copper's way, and how to
 renew the certificate. Files: `build.sh`, `release/package-app.sh`,
 `release/designated-requirement.txt`, `release/exowatt-developer-id.cer`,
-`release/provisioning.py`, `release/rcodesign.sh`, `Copper.entitlements`,
-`.github/workflows/release.yml`, `release/release-local.sh`, `Sources/Search/Fork/Signing.swift`,
+`release/provisioning.py`, `release/rcodesign.sh`, `release/notary.sh`, `Copper.entitlements`,
+`.woodpecker/release.yaml`, `release/release-ci.sh`, `release/release-local.sh`, `release/bump-tap.sh`, `Sources/Search/Fork/Signing.swift`,
 `Sources/Search/Fork/Updates.swift`, `Sources/Search/Fork/Credentials/CopperKeychain.swift`.*
 
 ## Cutting a release
 
-```sh
-gh workflow run release.yml -R copper-browser/Copper -f ref=fork                  # publish
-gh workflow run release.yml -R copper-browser/Copper --ref <branch> -f publish=false   # dry run
-gh workflow run release.yml -R copper-browser/Copper -f ref=fork -f runner=macos-15   # on a GitHub-hosted Mac
-```
+Releases are cut on **Roadrunner** (Exowatt's Woodpecker CI, https://cicd.apps.exowatt.com), on its
+macOS agent: `.woodpecker/release.yaml`, which runs `release/release-ci.sh`
+(`release/release-local.sh --here`) and then `release/bump-tap.sh`. Nobody's laptop and no
+person's copy of the certificate is involved: the Developer ID `.p12`, the App Store Connect key
+and the bot's GitHub token are Woodpecker secrets of this repository (`exo_macsign_*`,
+`github_release_token`), handed to the one step that needs them.
 
-The workflow builds on Copper's own Mac, a self-hosted runner labelled `copper-mini`
-(`COPPER_RELEASE=1 ./build.sh release app`), stamps
-`<VERSION>.<YYYYMMDD>.<run>` into the bundle, signs it with Exowatt Inc's Developer ID (team
-62D5L6T44Y) and the provisioning profile, has Apple notarize it and staples the ticket, makes a
-disk image of the stapled app and has that notarized and stapled too, checks the signature and
-Gatekeeper's verdict on the zipped bytes and the disk image, launches the zipped app headless and
-asks `/health` for its version, and then publishes the zip, the disk image, their `.sha256`s,
-`copper-version.json`, `copper-install.sh` and the dSYM as a `v<version>` release. The updater, the curl installer and
-the Homebrew tap all read that release.
+| To | Do |
+|---|---|
+| **Publish** fork as the next version | Run a manual pipeline on `fork` with the variable `RELEASE=1` (UI: *copper-browser/Copper › Run pipeline*, branch `fork`, add variable `RELEASE` = `1`) |
+| Publish a version you name | Push the tag: `git tag v1.0.20261127.126 <commit on fork> && git push origin v1.0.20261127.126` — or `RELEASE=1` plus `VERSION=1.0.20261127.126` |
+| **Dry run**: build and sign, nothing else | A manual pipeline on `fork` with `DRY_RUN=1`. Nothing goes to Apple, GitHub or the tap |
+| Dry run, notarized too | `DRY_RUN=1` and `NOTARIZE=1` (Apple's queue, nothing published) |
+| Carry on a release that stopped | Restart the pipeline (`gh rr rerun`, or *Restart* in the UI), or run `RELEASE=1` again on the same commit |
+| Start that over instead | `RELEASE=1` and `FRESH=1` (a new version; Apple's earlier submissions are left to finish on their own) |
+
+Watch it with `gh rr status -R copper-browser/Copper`, `gh rr watch` and `gh rr logs`
+(`gh run` only sees GitHub Actions; this repository has no release workflow there any more).
+
+The pipeline, in order:
+
+1. **Clone** the whole history (`depth: 0`) at the commit: `fork`'s head for a manual run, the
+   tagged commit for a tag. A release is only ever a commit of `fork`: its head, or one `fork`
+   has since moved past.
+2. **Release** (`release-ci.sh` → `release-local.sh --here`): the preflight, the version, the
+   build with the workflow's assertions (`COPPER_RELEASE=1 SEARCH_SIGN_IDENTITY= ./build.sh
+   release app`, `swift test --filter xosInsert`, the Intel cross-build) with the agent's Xcode
+   (`DEVELOPER_DIR`), the signature, notarization and stapling of both CPUs' zips and disk images
+   (`package-app.sh`, *How a release is signed*), *Check the signature*, the dSYMs,
+   `copper-version.json`, then `gh release create v<version> --target <commit> --latest` as
+   `exowatt-woodpecker-bot` and a check of the published bytes. `EXO_MACSIGN_*` are written once
+   into 0600 files in a private folder that is deleted when the step ends, and unset, so the
+   build never sees them; `GH_TOKEN` is unset for the build too. The signer is the agent's
+   `rcodesign` 0.29.0 (`EXO_MACSIGN_RCODESIGN`, else the one on `PATH`, else the pinned
+   download). The agent is a LaunchDaemon with no login session, so the headless launch check
+   (step 4 below) is skipped there; every signature, entitlement and Gatekeeper check still runs.
+3. **Tap**: `release/bump-tap.sh` renders `Casks/copper.rb` with the tap's own
+   `scripts/bump.mjs` from the release's `copper-version.json` (each zip's `.sha256` checked
+   against it) and commits it to `copper-browser/homebrew-copper` main through GitHub's contents
+   API as the bot, conditional on the file it read. It never moves the tap back and is a no-op
+   when the cask already names the release, so a rerun is harmless. Not in a dry run.
+
+**Apple's queue takes hours sometimes.** Each CPU's app and disk image is a submission of its own
+(`release/notary.sh`): submitted once (`notarytool submit` without `--wait`), its id kept at once
+by the SHA-256 of the bytes sent, then waited on by id (`notarytool info`/`wait`, 30 minutes at
+a time). The step waits until 45 minutes before the pipeline's timeout (the repository's
+Woodpecker timeout is 600 minutes; `COPPER_NOTARY_DEADLINE` / `COPPER_NOTARY_HOURS` change it).
+Past that with Apple still *In Progress*, it stops with exit 75 (*Apple is still notarizing*),
+publishing nothing. Everything is kept on the agent in `~roadrunner/copper-release/<version>/`,
+outside the workspace Woodpecker deletes: the built apps, each signed zip and disk image with the
+phase it reached, the profile it was signed with and every submission id. Restart the pipeline
+(or `RELEASE=1` again on that commit) and it takes the same version, builds and signs nothing it
+has, never sends Apple the same bytes twice — it waits on the same submission — and publishes
+once both CPUs are *Accepted*. The same goes for a pipeline killed by its timeout, a lost agent
+or a failed upload: a draft a stopped `gh release create` left is deleted and made again. Once a
+commit is released, any later run of it (the tag event of its own release, a rerun) says so and
+exits 0; `--again` releases a commit a second time, as a new version. Unfinished state is pruned
+after 14 days.
+
+**What still needs the agent.** The pipeline asks for `platform: darwin/arm64, tier: macos`.
+Until a company Mac is registered with that label (`Exowatt-Labs/cicd` docs/macos.md › *Bring up a
+macOS agent*), a run waits in the queue and nothing is built; cut the release by hand meanwhile
+(below). Personal machines, Felipe's Mac mini included, are never registered as agents.
 
 **Block lists first** (once a release, on a Mac): `tools/shield/refresh.py`, then commit what
 changed in `Sources/Search/Resources/shield`. It fetches EasyList, EasyPrivacy, uBlock's
 filters, the cookie-notice lists and the regional lists and converts them for WebKit
 (tools/shield/README.md); the app compiles each new version once, on first launch.
 
-**Two CPUs.** Every release is built twice on the same Apple Silicon runner: natively for
+**Two CPUs.** Every release is built twice on the same Apple Silicon Mac: natively for
 `arm64`, and cross-built for Intel with `COPPER_ARCH=x86_64 ./build.sh release app`
 (`swift build --triple x86_64-apple-macosx14.0`, into `build/x86_64/Copper.app`). Both are
 stamped and signed the same way (`release/package-app.sh … <arch>`, which refuses a binary that
-isn't that CPU), both are checked, and both are launched — the Intel one through Rosetta, when
-the runner has it (`softwareupdate --install-rosetta --agree-to-license`; without it the run
-warns and skips only that launch). Each CPU gets `copper-<version>-macos-<arch>.zip`, its stable
-`copper-macos-<arch>.zip` name, the `.sha256`s and a dSYM. `copper-version.json` lists both under
-`archives`; its top-level `zip`, `sha256` and `archiveUrl` stay arm64's, which is all a Copper
-from before the Intel build reads. The updater (`Fork/Updates.swift`) takes its own CPU's archive
-— an Intel Copper never falls back to the arm64 one — and checks the unpacked bundle's
-architecture before the swap. The curl installer picks by `uname -m` (arm64 under a Rosetta
-shell), and the tap's cask switches with Homebrew's `arch` stanza.
+isn't that CPU), both are checked, and both are launched when there is a login session — the
+Intel one through Rosetta, when the Mac has it (`softwareupdate --install-rosetta
+--agree-to-license`; without it the run warns and skips only that launch). Each CPU gets
+`copper-<version>-macos-<arch>.zip`, its stable `copper-macos-<arch>.zip` name, the disk images,
+the `.sha256`s and a dSYM. `copper-version.json` lists both under `archives`; its top-level
+`zip`, `sha256` and `archiveUrl` stay arm64's, which is all a Copper from before the Intel build
+reads. The updater (`Fork/Updates.swift`) takes its own CPU's archive — an Intel Copper never
+falls back to the arm64 one — and checks the unpacked bundle's architecture before the swap.
+The curl installer picks by `uname -m` (arm64 under a Rosetta shell), and the tap's cask
+switches with Homebrew's `arch` stanza.
 
-**`publish=false`** is a dry run: everything up to and including the launch check, then the zip,
-its `.sha256`, `copper-version.json` and the dSYM are kept as the run's artifact (7 days) and
-nothing else happens — no tag, no GitHub release, no asset upload, nothing the updater,
-installer or tap reads. Only the *Create the GitHub release* step is handed a token
-(`GH_TOKEN`; checkout keeps no credentials), and it and *Verify the published bytes* run only
-when publish is exactly `true`.
-`ref` defaults to the branch the run was started from (`fork` from the Actions page). A
-publishing run refuses any ref but `fork`; dry runs build any ref.
+**A dry run** (`DRY_RUN=1`, `--dry-run`) builds and signs both CPUs exactly as a release does
+(Developer ID, profile, entitlements, requirement, the disk images too) and runs every check
+that doesn't need Apple's ticket, then stops: nothing is sent to Apple's notary service (unless
+`NOTARIZE=1` / `--notarize`), no tag, no GitHub release, no upload, no tap. The version is the
+one a release would take; dry runs build any commit.
 
-**`runner`** picks the Mac. `copper-mini` (the default) is Copper's own, always-on Mac with
-Xcode, registered to this repository as a self-hosted runner; it picks a run up at once.
-`macos-15` is a GitHub-hosted Mac, for when that Mac is offline (the run would otherwise wait
-in the queue). Hosted macOS arm64 runners are often short: a job nobody picks up is cancelled
-after 15 minutes with *not acquired by Runner of type hosted* and no steps run. Because the
-repository is public, workflows from outside contributors' pull requests wait for a
-maintainer's approval (Settings › Actions › Fork pull request workflows), and only
-`release.yml` names the `copper-mini` label.
-
-## Cutting a release without GitHub Actions
+## Cutting a release by hand (the fallback)
 
 ```sh
 release/release-local.sh --preflight                  # the checks before the build, nothing more
-release/release-local.sh --dry-run                    # build, sign, check, launch; publish nothing
+release/release-local.sh --dry-run                    # build, sign, check, launch; nothing to Apple, nothing published
+release/release-local.sh --dry-run --notarize         # and notarize, staple and check that too
 release/release-local.sh                              # publish fork's HEAD as the next version
 release/release-local.sh --version 1.0.20261111.106   # a version of your choosing
 release/release-local.sh --reuse-assets <commit>      # publish what a run that stopped after notarizing left
+release/release-local.sh --here …                     # everything on this Mac (what the pipeline runs)
 COPPER_RELEASE_REMOTE_DIR='~/sign-builds/copper' release/release-local.sh   # the mini's folder (the default)
 COPPER_RELEASE_BUILD_HERE=~/src/sign-builds/copper release/release-local.sh # build on this Mac (needs Xcode)
+release/bump-tap.sh [<version>]                       # point the tap at a release (default: the latest)
 ```
 
-Exowatt's work stopped using GitHub Actions on 2026-11-09, and Roadrunner has no Mac to build
-on yet, so a release can also be cut from Felipe's laptop: `release/release-local.sh` builds on
-his Mac mini, signs on the laptop and publishes with `gh` as whoever is signed in (an owner of
-`copper-browser`). The workflow above stays as it is for Collin's runner. Both make the same
-release — the same build commands and checks, the same certificate and requirement, the same
-assets, `copper-version.json` and release text — so the updater, the curl installer and the tap
-can't tell which path cut one.
+When Roadrunner can't (no macOS agent yet, or it is down), the same script cuts the release from
+Felipe's laptop: it builds on his Mac mini, signs on the laptop and publishes with `gh` as whoever
+is signed in (an owner of `copper-browser`), then bumps the tap. It is the pipeline's own script,
+so the release is the same — the same build commands and checks, the same certificate and
+requirement, the same assets, `copper-version.json` and release text — and the updater, the curl
+installer and the tap can't tell where it was cut. A stopped run carries on exactly as in the
+pipeline (its state is in `build/release-local/<version>/`, or `COPPER_RELEASE_OUT`).
 
-In the workflow's order:
+In order:
 
-1. **Preflight.** `HEAD` must be `fork`'s head on GitHub and the tree clean; a dry run says when
-   it isn't and goes on, since it builds the commit (`git archive`), never the working tree. The
-   version is `<VERSION>.<UTC YYYYMMDD>.<n>`, `n` one more than the highest trailing number of
-   any `v…` tag or release in the repository, so it never takes a number the workflow used or
-   sorts below one. `--version` picks it instead; it must be new, and to publish, above the
-   latest. The credentials are exo-macsign's (*How a release is signed*): `EXO_MACSIGN_*` in the
-   environment, or the files in `~/.config/exowatt-apple-signing` (`EXO_MACSIGN_CONFIG_DIR`),
-   mode 0600; the `.p12` must hold `release/exowatt-developer-id.cer`, and the requirement and the
-   bundle must name its team.
-2. **Build on the mini** (`felipe-exowatt@100.112.175.26`, over Tailscale). The commit's tree
-   goes to a job folder in `~/sign-builds/copper/` on the mini's internal disk, or wherever
-   `COPPER_RELEASE_REMOTE_DIR` says (quoted, `~/` is the mini's home). A folder under `/Volumes`
-   is refused: the external disk has hung whole sessions. The mini's disk is shared and nearly
-   full, so the build starts only with 6 GB free there, checked once it holds the lock, and is
-   stopped (its whole process group) if the disk drops under 3 GB while it runs. It compiles
-   three configurations (arm64 release, the debug build `swift test` needs, x86_64 release),
-   each about 1 GB of `.build`, plus the sources and the two apps with their dSYMs, about 3.5 GB
-   in all; every run prints what it used. One heavy job at a time: the build waits for
-   `/tmp/exo-sign-build.lock` (`lockf`, `COPPER_RELEASE_LOCK`), which the other signing builds on
-   that Mac take too, and runs at `nice 10`. `HOME` and `TMPDIR` point into the job folder, so
-   SwiftPM's and the compilers' caches go with it. Then the workflow's build steps run there with
+1. **Preflight.** `HEAD` must be a commit of `fork` on GitHub and the tree clean; a dry run says
+   when it isn't and goes on, since it builds the commit (`git archive`), never the working tree.
+   The version is `<VERSION>.<UTC YYYYMMDD>.<n>`, `n` one more than the highest trailing number
+   of any `v…` tag or release in the repository, so it never takes a number already used or
+   sorts below one. `--version` picks it instead; it must be new (or a tag pushed on this commit
+   with no release yet), and to publish, above the latest. A commit that already has a release is
+   not released again (`--again` does). The credentials are exo-macsign's (*How a release is
+   signed*): `EXO_MACSIGN_*` in the environment, or the files in `~/.config/exowatt-apple-signing`
+   (`EXO_MACSIGN_CONFIG_DIR`), mode 0600; the `.p12` must hold `release/exowatt-developer-id.cer`,
+   and the requirement and the bundle must name its team. One run at a time per state folder.
+2. **Build on the mini** (`felipe-exowatt@100.112.175.26`, over Tailscale; `--here`: on this
+   Mac). The commit's tree goes to a job folder in `~/sign-builds/copper/` on the mini's internal
+   disk, or wherever `COPPER_RELEASE_REMOTE_DIR` says (quoted, `~/` is the mini's home). A folder
+   under `/Volumes` is refused: the external disk has hung whole sessions. The mini's disk is
+   shared and nearly full, so the build starts only with 6 GB free there, checked once it holds
+   the lock, and is stopped (its whole process group) if the disk drops under 3 GB while it runs.
+   It compiles three configurations (arm64 release, the debug build `swift test` needs, x86_64
+   release), each about 1 GB of `.build`, plus the sources and the two apps with their dSYMs,
+   about 3.5 GB in all; every run prints what it used. One heavy job at a time: the build waits
+   for `/tmp/exo-sign-build.lock` (`lockf`, `COPPER_RELEASE_LOCK`), which the other signing
+   builds on that Mac take too, and runs at `nice 10`. `HOME` and `TMPDIR` point into the job
+   folder, so SwiftPM's and the compilers' caches go with it. Then the build steps run there with
    their assertions: `COPPER_RELEASE=1 SEARCH_SIGN_IDENTITY= ./build.sh release app`,
-   `swift test --filter xosInsert` and the Intel cross-build, with Xcode
-   (`DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`). With `SEARCH_SIGN_IDENTITY`
-   empty, `build.sh` asks the keychain for a Developer ID; here it is handed a `security` that
-   finds nothing, so the build is ad hoc as on the runner and no keychain is touched on either
-   Mac. The two unsigned apps and their dSYMs come back to the laptop, and the whole job folder
-   on the mini is deleted at once.
+   `swift test --filter xosInsert` and the Intel cross-build, with the Xcode `DEVELOPER_DIR`
+   names, else `/Applications/Xcode.app`. With `SEARCH_SIGN_IDENTITY` empty, `build.sh` asks the
+   keychain for a Developer ID; here it is handed a `security` that finds nothing, so the build is
+   ad hoc and no keychain is touched on either Mac. The two unsigned apps and their dSYMs come back
+   to the laptop, and the whole job folder on the mini is deleted at once.
    `COPPER_RELEASE_BUILD_HERE=<folder>` builds on this Mac instead, the same way, under the same
    lock. It needs the full Xcode: with the Command Line Tools alone, SwiftUI's `@State` (a macro
    from SDK 27 on) has no plugin (*plugin for module 'SwiftUIMacros' not found*). Building
    against an older SDK would compile, but a release is never linked against another SDK than
    the one before it.
 3. **Sign on the laptop** with [rcodesign](https://github.com/indygreg/apple-platform-rs)
-   (apple-codesign 0.29.0, the `macos-universal` build, pinned by SHA-256 in
-   `release/rcodesign.sh` and fetched once into `~/.cache/copper-release/`). It reads the `.p12`
-   and its password where they are (`--p12-file`, `--p12-password-file`): no keychain, and the key
-   is never copied, printed or sent anywhere. The rest is `package-app.sh`'s (*How a release is
-   signed*): the provisioning profile (fetched from App Store Connect once a run), the
-   entitlements it allows, the signature inside-out, and `xcrun notarytool submit --wait` with the
-   App Store Connect key for the app and again for the disk image, each ticket stapled.
-   build.sh's ad-hoc signature is removed first, because rcodesign carries an existing
-   signature's flags and entitlements over. `--exclude 'Contents/Resources/**'` keeps rcodesign
-   from signing the SwiftPM resource bundle in `Resources` as a bundle of its own; codesign's
-   rules treat `Resources` as data, and the bundle's files are sealed one by one, as before.
-4. **Check, package, launch.** The workflow's *Check the signature* on the zipped bytes (plus: the
+   (apple-codesign 0.29.0: an `rcodesign` of that version on `PATH`, else the `macos-universal`
+   build pinned by SHA-256 in `release/rcodesign.sh` and fetched once into
+   `~/.cache/copper-release/`). It reads the `.p12` and its password where they are
+   (`--p12-file`, `--p12-password-file`): no keychain, and the key is never copied, printed or
+   sent anywhere. The rest is `package-app.sh`'s (*How a release is signed*): the provisioning
+   profile (fetched from App Store Connect once a run), the entitlements it allows, the signature
+   inside-out, and Apple's notary service for the app and again for the disk image, each ticket
+   stapled (not in a dry run). build.sh's ad-hoc signature is removed first, because rcodesign
+   carries an existing signature's flags and entitlements over. `--exclude
+   'Contents/Resources/**'` keeps rcodesign from signing the SwiftPM resource bundle in
+   `Resources` as a bundle of its own; codesign's rules treat `Resources` as data, and the
+   bundle's files are sealed one by one, as before.
+4. **Check, package, launch.** *Check the signature* on the zipped bytes (the requirement, the
    hardened runtime and no other flag, signed by a Developer ID of the team, the embedded profile
-   the one fetched, the entitlements exactly Copper.entitlements and the profile's) and on the
-   disk images (signed, stapled, `spctl -t open` accepts them, and the app inside is the zipped
-   app: same cdhash, same files, and an `/Applications` link); the versioned and stable zips and
-   disk images and their `.sha256`s; the dSYMs; `copper-version.json`, written by the workflow's own code and
-   held to the fields of the manifest `releases/latest` serves; `copper-install.sh`. The zips are
-   `ditto -c -k --norsrc --noextattr --noqtn --noacl --keepParent`: the laptop gives every file a
+   the one fetched, the entitlements exactly Copper.entitlements and the profile's, and — when
+   notarized — the stapled ticket and Gatekeeper's verdict) and on the disk images (signed,
+   stapled, `spctl -t open` accepts them, and the app inside is the zipped app: same cdhash, same
+   files, and an `/Applications` link); the versioned and stable zips and disk images and their
+   `.sha256`s; the dSYMs; `copper-version.json`, held to the fields of the manifest
+   `releases/latest` serves; `copper-install.sh`. The zips are `ditto -c -k --norsrc
+   --noextattr --noqtn --noacl --keepParent`: the laptop gives every file a
    `com.apple.provenance` attribute, which plain `ditto` stores as `._` files that a plain
-   `unzip` would leave inside the bundle, unsealed. The runner's zips have none, and neither do
-   these. Then both zips are opened headless on the mini, in throwaway worlds on free ports, and
-   `/health` must report the version within 90 s (the Intel app under Rosetta, 120 s). An app
-   has to start in the session of whoever is logged in there: `open` over ssh has no window
-   server (LaunchServices answers -10810) and `launchctl asuser` needs root, so a one-shot agent
-   in that session's launchd domain (`launchctl bootstrap gui/<uid>`) runs the `open`. That
-   session may not read the external disk, so the two apps are unzipped into the user's
-   temporary folder on the internal one. Only those pids are stopped; the apps, the worlds'
-   folders and defaults, and the WebKit and cache folders the check created are deleted. The
-   launch log must show no `amfid` or AMFI refusal of the app (an entitlement the profile doesn't
-   allow kills a Developer ID app at launch).
-5. **Publish** (not in a dry run): the tag is checked once more (a workflow run may have taken the
+   `unzip` would leave inside the bundle, unsealed. Then both zips are opened headless on the
+   mini (`--here`: on this Mac, when this account has a login session), in throwaway worlds on
+   free ports, and `/health` must report the version within 90 s (the Intel app under Rosetta,
+   120 s). An app has to start in the session of whoever is logged in there: `open` over ssh has
+   no window server (LaunchServices answers -10810) and `launchctl asuser` needs root, so a
+   one-shot agent in that session's launchd domain (`launchctl bootstrap gui/<uid>`) runs the
+   `open`. The two apps are unzipped into the user's temporary folder on the internal disk. Only
+   those pids are stopped; the apps, the worlds' folders and defaults, and the WebKit and cache
+   folders the check created are deleted. The launch log must show no `amfid` or AMFI refusal of
+   the app (an entitlement the profile doesn't allow kills a Developer ID app at launch).
+5. **Publish** (not in a dry run): the tag is checked once more (another run may have taken the
    number during the build), then `gh release create v<version> --target <commit> --latest` with
-   every asset and the workflow's release text (with `release/release-note.md` above it, when
-   there is one), and the published bytes are checked — the versioned zips and disk images, and
-   the stable zips, disk images and manifest behind `releases/latest/download`.
+   every asset and the release text (with `release/release-note.md` above it, when there is one),
+   and the published bytes are checked — the versioned zips and disk images, and the stable
+   zips, disk images and manifest behind `releases/latest/download`. Then `release/bump-tap.sh`
+   points the tap at it (a failure there is a warning: the release is out; run it again).
 
-**A run that stops after notarizing** (a check that failed on good assets, a lost connection)
-leaves its signed, notarized, stapled assets in `build/release-local/<version>/`. Fix what
-stopped it, commit, and `--reuse-assets <commit they were built from>` checks, launches and
-publishes those instead of building and notarizing again; the release is that commit, whose tree
-must be HEAD's but for `release/release-local.sh` and `docs/`. Their dSYMs went with the unsigned
-build, so that release has none (crash reports from it won't symbolicate).
+**A run that stops after notarizing** carries on by itself when run again on the same commit
+(above). `--reuse-assets <commit they were built from>` is for when the fix is a new commit: it
+checks, launches and publishes the assets in `build/release-local/<version>/` instead of building
+and notarizing again; the release is that commit, whose tree must be HEAD's but for
+`release/release-local.sh` and `docs/`. Their dSYMs went with the unsigned build, so that release
+has none (crash reports from it won't symbolicate).
 
-Everything lands in `build/release-local/<version>/` (gitignored): `assets/` is exactly what a
-release uploads, `release-notes.md` its text, `logs/` the mini's build and launch output and
-rcodesign's. The job folder on the mini is deleted at the end, whatever happened.
+Everything lands in `build/release-local/<version>/` (gitignored; dry runs in `dry-run/<version>/`):
+`assets/` is exactly what a release uploads, `release-notes.md` its text, `logs/` the build and
+launch output and rcodesign's, `build/` and `state/` what a stopped run carries on from (gone
+once it is published). The job folder on the mini is deleted at the end, whatever happened.
 
-**What differs from a workflow release.** Only the signer. The requirement, the flags (the
-hardened runtime), the entitlements,
+**rcodesign, not codesign.** The requirement, the flags (the hardened runtime), the entitlements,
 the sealed resources (the same `CodeResources`), the certificate and the signed attributes are
-the same, and `codesign` verifies both the same way. rcodesign hashes code in 4 KB pages where
-codesign uses 16 KB for arm64 (x86_64 is 4 KB in both), so the arm64 signature is about
-140 KB instead of 36. That is not part of the designated requirement: macOS keeps a person's
-grants and an installed Copper's updater accepts the bundle exactly as it does a workflow
-release (`codesign --verify --deep --strict -R=…`), and the kernel checks 4 KB pages on Apple
-silicon as it does on Intel. (Notarizing an rcodesign signature is rcodesign's documented use.)
-The first dry run was rehearsed against the real thing: Copper
-1.0.20261110.104 as released, headless in a test world pointed at a stub feed, staged the
-rcodesign-signed 1.0.20261110.105 and passed the pre-swap check (`updates dry-run on`, then
-`updates upgrade`).
-
-**One sequence of numbers.** The workflow's `n` is its run number. A workflow run on the same
-UTC day as a local release can land on the number the local one took; its *Create the GitHub
-release* step then fails on the existing release and publishes nothing. Run it again, or cut
-the release here.
+what codesign would make, and `codesign` verifies them the same way. rcodesign hashes code in
+4 KB pages where codesign uses 16 KB for arm64 (x86_64 is 4 KB in both), so the arm64 signature
+is about 140 KB instead of 36. That is not part of the designated requirement: macOS keeps a
+person's grants and an installed Copper's updater accepts the bundle exactly as it would a
+codesign one (`codesign --verify --deep --strict -R=…`), and the kernel checks 4 KB pages on
+Apple silicon as it does on Intel. (Notarizing an rcodesign signature is rcodesign's documented
+use.) The first dry run was rehearsed against the real thing: Copper 1.0.20261110.104 as
+released, headless in a test world pointed at a stub feed, staged the rcodesign-signed
+1.0.20261110.105 and passed the pre-swap check (`updates dry-run on`, then `updates upgrade`).
 
 ## How a release is signed
 
@@ -213,9 +249,11 @@ the release here.
   | `EXO_MACSIGN_TEAM_ID` | `team-id` | 62D5L6T44Y, checked against the certificate |
   | `COPPER_PROFILE` | `Copper_Developer_ID.provisionprofile` | the profile, when App Store Connect can't be reached |
 
-  The repository secrets of the same `EXO_MACSIGN_*` names hold them for the workflow; the
-  secrets alone can't be read back out of GitHub. Values from the environment are written into
-  0600 files of the run's own and deleted when it exits. The `COPPER_DEVELOPER_ID_P12_*`,
+  Roadrunner's repository secrets `exo_macsign_*` hold them for the pipeline (pushed by
+  exo-macsign's `tools/rr-secrets.sh`); GitHub's repository secrets of the `EXO_MACSIGN_*`
+  names are left from the GitHub Actions workflow, which is gone. Neither can be read back
+  out. Values from the environment are written into 0600 files in the run's own private folder,
+  deleted when it exits, and unset before the build. The `COPPER_DEVELOPER_ID_P12_*`,
   `COPPER_NOTARY_*` and `COPPER_SIGNING_P12_*` secrets are the team before's, kept but no longer
   read. Neither is ever in the repository, and no step makes, reads or changes a keychain:
   rcodesign reads the `.p12` itself and notarytool the `.p8`.
@@ -259,18 +297,23 @@ the release here.
   — a build without `COPPER_RELEASE=1`), with a `.p12` that doesn't hold
   `release/exowatt-developer-id.cer`, or without the App Store Connect key. Then
   `codesign --verify --deep --strict -R=<requirement>`.
-- **Notarized and stapled.** The zip goes to Apple's notary service
-  (`xcrun notarytool submit --wait --key AuthKey_<id>.p8 --key-id … --issuer …`). That usually
-  takes minutes, but the queue is shared with every app the team signs and a new team's first
-  submissions get a closer look: on 2026-11-26 each took over an hour. Past the first 45 minutes
-  the same submission is waited on again (`notarytool wait`, up to `COPPER_NOTARY_HOURS`,
-  default 4), never sent twice (`release-local.sh` packages the two CPUs side by side, so they
-  wait together);
-  on *Accepted* the ticket is stapled to the app and the zip made again around it, so Gatekeeper
-  opens a download offline too. The disk image (`hdiutil`, UDZO: the stapled app and an
-  `/Applications` link, volume *Copper*) is made from that stapled app, signed with the same
-  Developer ID, notarized on its own and stapled. On anything but *Accepted* the run prints
-  Apple's log (`notarytool log`) and stops. No installer, cask or page clears the quarantine flag.
+- **Notarized and stapled** (`release/notary.sh`). The zip goes to Apple's notary service
+  (`xcrun notarytool submit --key AuthKey_<id>.p8 --key-id … --issuer …`, without `--wait`) and
+  the submission id is kept at once, by the SHA-256 of the bytes sent, so these bytes are never
+  sent again; the id is then asked after (`notarytool info`, `notarytool wait` 30 minutes at a
+  time). That usually takes minutes, but the queue is shared with every app the team signs and a
+  new team's first submissions get a closer look: on 2026-11-26 each took over an hour, and on
+  2026-11-27 submissions sat *In Progress* for more than 11 hours. It waits until
+  `COPPER_NOTARY_DEADLINE` (the pipeline: 45 minutes before its timeout; by hand:
+  `COPPER_NOTARY_HOURS`, default 4) and then stops with 75, keeping the ids, for the next run
+  to wait on (*Cutting a release*); `release-local.sh` packages the two CPUs side by side, so
+  they wait together. On *Accepted* the ticket is stapled to the app and the zip made again
+  around it, so Gatekeeper opens a download offline too. The disk image (`hdiutil`, UDZO: the
+  stapled app and an `/Applications` link, volume *Copper*) is made from that stapled app,
+  signed with the same Developer ID, notarized on its own and stapled. On *Invalid* or
+  *Rejected* the run prints Apple's log (`notarytool log`) and stops. No installer, cask or page
+  clears the quarantine flag. `COPPER_NOTARIZE=0` (a dry run) signs everything and sends nothing.
+  `release/test-notary.sh` runs `notary.sh` against a stand-in `notarytool`.
 - **The checks** (*Check the signature*): `codesign -dr -` must print exactly that requirement
   (Apple's `/* exists */` comments aside); `codesign --verify --deep --strict` and the same with
   `-R="<requirement>"` must pass; the hardened runtime and a secure timestamp must be there, the
@@ -327,7 +370,7 @@ and the first that keeps every grant.
 The last ad-hoc Copper updates to the first signed one through its own, older checks: the
 feed's SHA-256, the bundle id (`com.collinrijock.copper`, unchanged), the version and
 `codesign --verify --deep --strict` — integrity only, which a certificate-signed bundle passes
-(the workflow runs that exact command on every release). From then on, Copper also checks the
+(every release runs that exact command). From then on, Copper also checks the
 requirement.
 
 That one update still changes the DR (from a cdhash to the certificate), so its grants go one
@@ -491,15 +534,14 @@ valid after it, thanks to the secure timestamp.
    this page too). Then the secrets, from the files, without printing them:
 
    ```sh
-   cd ~/.config/exowatt-apple-signing
-   base64 -i developer-id-application.p12 | tr -d '\n' | gh secret set EXO_MACSIGN_P12_BASE64 -R copper-browser/Copper
-   gh secret set EXO_MACSIGN_P12_PASSWORD -R copper-browser/Copper < p12-password
+   # Roadrunner's exo_macsign_* (all six, from ~/.config/exowatt-apple-signing): in an exo-macsign checkout
+   tools/rr-secrets.sh copper-browser/Copper
    ```
 
    `package-app.sh` refuses a `.p12` that doesn't hold `release/exowatt-developer-id.cer`, in the
-   workflow and locally.
-4. A dry run (`-f publish=false`, or `release/release-local.sh --dry-run`) must sign, notarize and
-   pass every check before the next real release.
+   pipeline and locally.
+4. A dry run that notarizes (`DRY_RUN=1` and `NOTARIZE=1`, or `release/release-local.sh
+   --dry-run --notarize`) must sign, notarize and pass every check before the next real release.
 
 The App Store Connect key doesn't expire; if it leaks, revoke it (App Store Connect › Users and
 Access › Integrations › Team Keys) and replace it with one of the same role, then
@@ -507,9 +549,7 @@ Access › Integrations › Team Keys) and replace it with one of the same role,
 `EXO_MACSIGN_ASC_ISSUER` and the files in `~/.config/exowatt-apple-signing`:
 
 ```sh
-base64 -i AuthKey_<id>.p8 | tr -d '\n' | gh secret set EXO_MACSIGN_ASC_KEY_P8_BASE64 -R copper-browser/Copper
-gh secret set EXO_MACSIGN_ASC_KEY_ID -R copper-browser/Copper < asc-key-id
-gh secret set EXO_MACSIGN_ASC_ISSUER -R copper-browser/Copper < asc-issuer
+tools/rr-secrets.sh copper-browser/Copper     # in an exo-macsign checkout: Roadrunner's exo_macsign_*
 ```
 
 **Another team** is a new requirement: a rotation like *The move to Exowatt's team* — a release
@@ -518,7 +558,7 @@ whose requirement accepts both teams first, then the switch.
 ### Keeping the key
 
 The `.p12`, its password and the App Store Connect key are exo-macsign's, kept where its README
-says, beside the repository secrets; the secrets alone can't be read back out of GitHub. If the
+says, beside Roadrunner's repository secrets; the secrets alone can't be read back out. If the
 Developer ID key is lost, renew (above): the requirement names the team, so nothing else
 changes. If it leaks, renew at once and ask Apple Developer Support to revoke the old
 certificate; they set the revocation date, so copies signed before the leak keep opening.

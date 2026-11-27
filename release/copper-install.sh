@@ -26,7 +26,7 @@
 #   COPPER_NO_LAUNCH    set to 1 to skip `open -a Copper`
 #
 # This file is attached verbatim to every GitHub release by
-# .github/workflows/release.yml in copper-browser/Copper — keep it
+# release/release-local.sh in copper-browser/Copper — keep it
 # dependency-free POSIX sh (no jq, no python: a fresh Mac without the Xcode
 # CLT must be able to run it).
 

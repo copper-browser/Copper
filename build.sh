@@ -7,7 +7,7 @@
 #                                as the development app (com.collinrijock.copper.dev)
 #   COPPER_RELEASE=1 ./build.sh release app
 #                              the same, as Copper itself (com.collinrijock.copper):
-#                                what .github/workflows/release.yml builds and then
+#                                what a release (docs/releasing.md) builds and then
 #                                signs with Copper's Developer ID and notarizes
 #   ./build.sh release dmg     + build/Copper.dmg and build/Copper.zip, signed
 #                                with Developer ID if there is one in the keychain
@@ -15,7 +15,7 @@
 #   COPPER_ARCH=x86_64 ./build.sh release app
 #                              the Intel app, cross-built on Apple Silicon, in
 #                                build/x86_64/ beside the arm64 one: a release
-#                                carries both (.github/workflows/release.yml)
+#                                carries both (release/release-local.sh)
 #
 # Same shape as the one next door: SwiftPM builds the executable, and a macOS
 # app bundle is just a folder with a plist and the binary in the right place.

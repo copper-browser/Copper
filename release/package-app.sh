@@ -116,9 +116,9 @@ state="${COPPER_PACKAGE_STATE:-}"
 sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
 at() { [ -n "$state" ] && [ -f "$state/$1" ] && [ -f "$2" ] && [ "$(cat "$state/$1")" = "$(sha "$2")" ]; }
 mark() { [ -z "$state" ] || sha "$2" > "$state/$1"; }
+[ -z "$state" ] || mkdir -p "$state"
 resume=""
 if $notarizing && [ -n "$state" ] && [ "${COPPER_ADHOC:-}" != 1 ]; then
-  mkdir -p "$state"
   if at dmg-stapled "$dmg" && at app-stapled "$zip"; then
     resume="done"
   elif at dmg-signed "$dmg" && at app-stapled "$zip"; then

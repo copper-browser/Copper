@@ -99,7 +99,7 @@ not apply it.
 - Hard rules: no horizontal scrolling at any width ≥ 360 px; AA contrast in both themes; real
   focus styles. Copper is presented on its own — the page names no other browser project as its
   origin. Facts on the page come from this repo's README and `docs/`; don't invent features.
-- Install commands must match what `release.yml` publishes: the tap
+- Install commands must match what a release (docs/releasing.md) publishes: the tap
   (`brew install --cask copper-browser/copper/copper`), the installer
   (`releases/latest/download/copper-install.sh`) and the zips
   (`releases/latest/download/copper-macos-arm64.zip` and `…/copper-macos-x86_64.zip`). See
