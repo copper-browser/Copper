@@ -488,8 +488,10 @@ if [ -n "$BUILD_HERE" ]; then
   # shellcheck disable=SC2088  # a literal ~/, as the variable may hold it
   case "$BUILD_HERE" in "~/"*) BUILD_HERE="$HOME/${BUILD_HERE#"~/"}" ;; esac
   case "$BUILD_HERE" in /*) ;; *) fail "COPPER_RELEASE_BUILD_HERE must be absolute or start with ~/, got: $BUILD_HERE" ;; esac
-  mkdir -p "$BUILD_HERE"
-  here_free_kb="$(df -k "$BUILD_HERE" | awk 'NR == 2 { print $4 }')"
+  # The disk it is on, or will be (preflight makes no folder).
+  d="$BUILD_HERE"
+  while [ ! -d "$d" ]; do d="$(dirname "$d")"; done
+  here_free_kb="$(df -k "$d" | awk 'NR == 2 { print $4 }')"
   note "here     $(awk -v k="$here_free_kb" 'BEGIN { printf "%.1f", k / 1048576 }') GB free for $BUILD_HERE"
   [ "$here_free_kb" -ge $((BUILD_FREE_GB * 1024 * 1024)) ] || fail "$BUILD_HERE has less than $BUILD_FREE_GB GB free"
 fi
