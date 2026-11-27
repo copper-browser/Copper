@@ -141,6 +141,8 @@ case "$OUT_ROOT" in /*) ;; *) fail "COPPER_RELEASE_OUT must be absolute, got: $O
 # One run at a time per <out>: two would share a version's state.
 if [ -z "${COPPER_RELEASE_LOCKED:-}" ] && ! $preflight; then
   mkdir -p "$OUT_ROOT"
+  # (Asked first: lockf's own "busy" is exit 75, which is also "Apple is still notarizing".)
+  /usr/bin/lockf -s -t 0 "$OUT_ROOT/.lock" true || fail "another release run is using $OUT_ROOT"
   COPPER_RELEASE_LOCKED=1 exec /usr/bin/lockf -t 0 "$OUT_ROOT/.lock" "$root/release/release-local.sh" ${args[@]+"${args[@]}"}
 fi
 ssh_opts=(-o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=6)
