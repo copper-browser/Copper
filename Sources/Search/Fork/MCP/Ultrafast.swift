@@ -37,6 +37,43 @@ enum Ultrafast {
     struct Covered: Error { let by: String }
 
     static let maxSteps = 60
+    /// What a jev_run takes before it hands back unless `seconds` says less.
+    /// A run stopped by its time keeps its session: jev_run with the same goal
+    /// on that tab carries on. A run that can't get past its page ends early
+    /// instead (humanCheckGrace, idleDecisions), not at the cap.
+    static let runSeconds: TimeInterval = 180
+    /// A human check on the page this long: BLOCKED, the user's to answer
+    /// (a run used to drive at one to the action cap while the caller waited).
+    static let humanCheckGrace: TimeInterval = 3
+    /// Decisions in a row that moved nothing on (no page shown anew, nothing
+    /// typed, chosen or sent, the address the same): BLOCKED.
+    static let idleDecisions = 8
+
+    /// An action that moved the run on: something typed or chosen, something
+    /// sent, another address, the page showing anything new, its target's own
+    /// state changed (`toggled`: a box ticked, a radio chosen, a section
+    /// opened), or a control the run had not used before (`unused`): a form
+    /// of eight toggles is eight steps on, not eight idle ones.
+    static func progressed(kind: String, sent: Bool, moved: Bool, nothingNew: Bool, toggled: Bool = false, unused: Bool = false) -> Bool {
+        kind == "fill" || kind == "select" || sent || moved || !nothingNew || toggled || unused
+    }
+
+    /// A click's target, read before and after it: its checked, selected,
+    /// expanded state or its value changed. Nil (not read): no change seen.
+    static func toggled(_ before: [String: Any]?, _ after: [String: Any]?) -> Bool {
+        guard let before, let after else { return false }
+        return ["checked", "selected", "expanded", "value", "current_value"].contains { key in
+            before[key].map { "\($0)" } != after[key].map { "\($0)" }
+        }
+    }
+
+    /// A jev_run that ended on its time, not on DONE/BLOCKED or its action cap: its session is kept.
+    static func keepsSession(finished: Bool, actions: Int, cap: Int) -> Bool { !finished && actions < cap }
+
+    /// A kept run carries on for the same goal — not when the call names another address than the run began on: that starts afresh.
+    static func carriesOn(goal: String, url: String?, run: (goal: String, url: String?, finished: Bool)) -> Bool {
+        !run.finished && run.goal == goal && (url == nil || url == run.url)
+    }
 
     // MARK: - what Jev sees of the picture
 
@@ -449,7 +486,7 @@ enum Ultrafast {
         ]
         if let schema { user["schema"] = schema }
         guard let data = try? JSONSerialization.data(withJSONObject: user, options: [.sortedKeys]) else { throw Failure(text: "couldn't encode the page") }
-        let reply = try await Router.ask(system: extractValue, user: String(decoding: data, as: UTF8.self), keys: keys, timeout: timeout, maxTokens: 2000, model: keys.textModel)
+        let reply = try await askReader(system: extractValue, user: String(decoding: data, as: UTF8.self), keys: keys, timeout: timeout, maxTokens: readTokens)
         return (reply, obs.title + "\n" + text + "\n" + obs.actions.compactMap { $0["label"] as? String }.joined(separator: "\n"))
     }
 
@@ -488,6 +525,15 @@ enum Ultrafast {
         var actions: [[String: Any]] { raw["actions"] as? [[String: Any]] ?? [] }
         var marker: String { raw["marker"] as? String ?? "" }
         var pageKey: String { raw["page_key"] as? String ?? "" }
+        /// The document read (cache.doc) and the tab's navigation generation then (Tools.gen): an input taken on this read goes nowhere else.
+        var doc: String? { raw["doc"] as? String }
+        var gen: Int? { raw["gen"] as? Int }
+        /// The whole page is about one screen tall (scrollHeight against the viewport); unknown counts as one.
+        var oneScreen: Bool {
+            guard let view = (raw["h"] as? NSNumber)?.doubleValue, view > 0,
+                  let height = ((raw["scroll"] as? [String: Any])?["height"] as? NSNumber)?.doubleValue else { return true }
+            return height <= view * 1.25
+        }
         var omitted: Int { (raw["omitted_actions"] as? NSNumber)?.intValue ?? 0 }
         /// Nodes (on screen or off) whose words the goal names (`reach`).
         var relevant: Set<Int> { Set((raw["relevant"] as? [NSNumber] ?? []).map(\.intValue)) }
@@ -633,7 +679,8 @@ enum Ultrafast {
     /// the node ids across reads; a navigation starts a fresh one.
     static let script = #"""
     (() => {
-      const cache = window.__jevFast ||= {ids:new WeakMap(), nodes:new Map(), next:1};
+      // `doc` names this document: an input bound to it refuses to run in the next one (Ultrafast.js(in:)).
+      const cache = window.__jevFast ||= {ids:new WeakMap(), nodes:new Map(), next:1, doc:Math.random().toString(36).slice(2)+Date.now().toString(36)};
       if (cache.ready) return true;
       const identity = e => {
         if (!cache.ids.has(e)) cache.ids.set(e,cache.next++);
@@ -703,10 +750,14 @@ enum Ultrafast {
         return referenced || e.getAttribute('aria-label') ||
           [...(e.labels||[])].map(l=>name(l,seen)).filter(Boolean).join(' ') ||
           (['button','submit','reset'].includes(e.type) ? e.value : '') || e.getAttribute('alt') ||
-          (e.tagName==='INPUT' ? '' : [...e.childNodes].map(n=>n.nodeType===3 ? n.textContent :
+          (['INPUT','SELECT'].includes(e.tagName) ? '' : [...e.childNodes].map(n=>n.nodeType===3 ? n.textContent :
             n.nodeType===1 && n.getAttribute('aria-hidden')!=='true' ? name(n,seen) : '').join(' ').trim()) ||
           e.getAttribute('title') || e.getAttribute('placeholder') || '';
       };
+      // The name Jev is sent: one space for each run of the page's indentation. Labels are paid
+      // per decision (twice, table and target head) and a select's name rides on each option;
+      // a select never takes its name from its options (ARIA), else n options carried n² words.
+      const said = e => name(e).replace(/\s+/g,' ').trim();
       const roles=['button','link','checkbox','radio','switch','tab','menuitem','menuitemradio',
         'option','gridcell','combobox','textbox','searchbox','spinbutton'];
       const selector='a[href],button,input,textarea,select,summary,[contenteditable="true"],'+
@@ -819,7 +870,7 @@ enum Ultrafast {
             continue;
           }
           if (rname==='gridcell' && e.querySelector('button,[role="button"]')) continue;
-          const base={node:identity(e),role:rname,label:name(e)||rname,
+          const base={node:identity(e),role:rname,label:said(e)||rname,
             rect:{x:r.x,y:r.y,w:r.width,h:r.height}};
           // Where a link goes (two links there are one choice) and whether a
           // button sends its form (never twice without the page answering).
@@ -925,7 +976,7 @@ enum Ultrafast {
           }
           for (const it of chosen) {
             const e=it.o.e, r=it.o.r;
-            actions.push({node:identity(e),role:'link',label:name(e)||e.textContent.trim().slice(0,90)||'link',
+            actions.push({node:identity(e),role:'link',label:said(e)||e.textContent.trim().slice(0,90)||'link',
               rect:{x:r.x,y:r.y,w:r.width,h:r.height},kind:'click',value:'',offscreen:r.y<0?'above':'below',href:e.href.split('#')[0]});
             guards[identity(e)]=cache.guard(e);
           }
@@ -937,7 +988,7 @@ enum Ultrafast {
         if (scrollY>0) actions.push({id:'scroll_up',kind:'scroll',label:'Scroll up',delta:-step});
         actions.push({id:'wait',kind:'wait',label:'Wait for the page to update'});
         return {url:location.href,title:document.title,w:innerWidth,h:innerHeight,text,
-          scroll:{y:scrollY,height},actions,marker,page_key,guards,omitted_actions,relevant};
+          scroll:{y:scrollY,height},actions,marker,page_key,guards,omitted_actions,relevant,doc:cache.doc};
       };
       cache.marker=()=>{ const s=cache.observe(); return s ? s.marker : null; };
       // An offered link above or below the viewport, brought in before the click.
@@ -1199,6 +1250,17 @@ enum Ultrafast {
         return try await Page.raw(web, "(\(script), \(expression))")
     }
 
+    /// `expression` only in the document `doc` names (Observation.doc): in
+    /// any other — a navigation landed since the read — it never runs and
+    /// the input is Stale. No `doc` (an older read): as js().
+    @MainActor
+    static func js(_ web: WKWebView, in doc: String?, _ expression: String) async throws -> Any? {
+        guard let doc else { return try await js(web, expression) }
+        guard let boxed = try await js(web, "window.__jevFast.doc === \(Page.quote(doc)) ? [\(expression)] : null") as? [Any]
+        else { throw Stale(text: "The page changed before the input; nothing typed. Observe again.") }
+        return boxed.first.flatMap { $0 is NSNull ? nil : $0 }
+    }
+
     static func encode(_ value: Any) -> String {
         guard JSONSerialization.isValidJSONObject(value), let data = try? JSONSerialization.data(withJSONObject: value) else { return "null" }
         return String(decoding: data, as: UTF8.self)
@@ -1213,9 +1275,13 @@ enum Ultrafast {
     /// read after an action carries how the settle went (`settle`).
     @MainActor
     static func observe(_ tab: Tab, after action: [String: Any]? = nil, terms: [String: Any]? = nil, near: Bool = false,
-                        calm: Bool = false, deep: Bool = false) async throws -> Observation {
+                        calm: Bool = false, deep: Bool = false, until: Date? = nil) async throws -> Observation {
         let web = tab.web
         let read = "window.__jevFast.observe(" + (terms.map { encode($0) } ?? "undefined") + ", {deep: \(deep)})"
+        // One cap for the whole read: waiting for a load and for its commit share it.
+        let until = until ?? Date().addingTimeInterval(Arrival.cap)
+        // Fork (ready-pages): never the document being left (Tools.committed).
+        try await Tools.committed(tab, cap: max(0, until.timeIntervalSinceNow))
         var settled: [String: Any]? = nil
         // A navigation already under way: the leaving document's settle may never answer.
         // A WAIT settles too: what it waited for (Flights' results) is drawn in after.
@@ -1228,6 +1294,7 @@ enum Ultrafast {
             // A document's first read: put the helpers in, so its settle can run.
             if (action["kind"] as? String) == "read" { _ = try? await js(web, "true") }
             let started = Date()
+            let gen = Tools.gen(web)
             // The settle and the read in one round trip. Capped: when the
             // action navigates (a form submit), the old document's timers
             // and frames stop and WebKit may never call back — the run would
@@ -1260,8 +1327,10 @@ enum Ultrafast {
             }
             // Nothing navigating: that read is the page. (A click that starts
             // a navigation has told WebKit by now; the old page's read is
-            // dropped for the new one below.) A `read` is of the page as it is.
-            if let raw = once.raw, !tab.loading || (action["kind"] as? String) == "read" { return Observation(raw: raw) }
+            // dropped for the new one below.) A `read` is of the page as it is —
+            // unless a navigation began during the settle: that read is of the page being left.
+            if var raw = once.raw, Tools.still(web, gen),
+               !tab.loading || (action["kind"] as? String) == "read" { raw["gen"] = gen; return Observation(raw: raw) }
             let ms = Date().timeIntervalSince(started) * 1000
             settled = ["ms": ms, "capped": once.raw == nil && ms >= 990, "why": tab.loading ? "navigating" : once.raw == nil ? "no answer" : ""]
         }
@@ -1271,8 +1340,7 @@ enum Ultrafast {
         // the new one does not yet. A page that is slow past that is Jev's
         // WAIT to spend.
         let navigated = tab.loading
-        let loadDeadline = Date().addingTimeInterval(10)
-        while tab.loading, Date() < loadDeadline {
+        while tab.loading, Date() < until {
             if let state = try? await Page.raw(web, "window.__jevFast ? '' : document.readyState") as? String,
                state == "interactive" || state == "complete" { break }
             try await Task.sleep(nanoseconds: 20_000_000)
@@ -1281,21 +1349,32 @@ enum Ultrafast {
         // enhanced, menus filled in): with `near`, it stands still before the
         // read, or the first decision on it is thrown away as stale.
         if near, navigated, (action?["kind"] as? String) != "read" {
-            let again = try await observe(tab, after: ["kind": "read"], terms: terms, near: true, calm: calm, deep: deep)
+            let again = try await observe(tab, after: ["kind": "read"], terms: terms, near: true, calm: calm, deep: deep, until: until)
             guard let settled else { return again }
             var raw = again.raw
             raw["settle"] = settled
             return Observation(raw: raw)
         }
         var lastTrouble = "document is navigating"
+        try await Tools.committed(tab, cap: max(0, until.timeIntervalSinceNow)) // a navigation the page began since the check above
         for attempt in 0..<12 {
+            let gen = Tools.gen(web)
             do {
                 if var raw = try await js(web, read) as? [String: Any] {
-                    if let settled { raw["settle"] = settled }
-                    return Observation(raw: raw)
+                    // A navigation that began (or landed) during the read: the read was of the page being left.
+                    if Tools.still(web, gen) {
+                        if let settled { raw["settle"] = settled }
+                        raw["gen"] = gen
+                        return Observation(raw: raw)
+                    }
                 }
             } catch {
                 lastTrouble = (error as? Page.Failure)?.text ?? error.localizedDescription
+            }
+            if !Tools.still(web, gen) {
+                lastTrouble = "document is navigating"
+                try await Tools.committed(tab, cap: max(0, until.timeIntervalSinceNow))
+                continue
             }
             try await Task.sleep(nanoseconds: attempt < 6 ? 20_000_000 : 100_000_000)
         }
@@ -1305,6 +1384,7 @@ enum Ultrafast {
     /// Whole-page freshness: the semantic marker still matches.
     @MainActor
     static func fresh(_ web: WKWebView, _ obs: Observation) async -> Bool {
+        guard !Tools.pending(web) else { return false } // the page is being left
         guard let marker = try? await js(web, "window.__jevFast.marker()") as? String else { return false }
         return marker == obs.marker
     }
@@ -1323,6 +1403,7 @@ enum Ultrafast {
     /// Unrelated content may move; that is the point of the narrower check.
     @MainActor
     static func fresh(_ web: WKWebView, _ obs: Observation, target node: Int) async -> Bool {
+        guard !Tools.pending(web) else { return false } // the page is being left
         guard let pair = try? await js(web, "window.__jevFast.check(\(node))") as? [Any], pair.count == 2 else { return false }
         let key = pair[0] as? String
         let guardNow = pair[1] as? String
@@ -1757,15 +1838,128 @@ enum Ultrafast {
     /// model Settings names, when it names one; else the fast one on a
     /// gateway; and haiku behind either, so a gateway without that name (or
     /// a model having a bad minute) costs one failed request, not the run.
-    static func textModels(_ keys: Intelligence.Keys) -> [String] {
+    static func textModels(_ keys: Intelligence.Keys, fast: String = fastTextModel) -> [String] {
         let named = keys.textModel.trimmingCharacters(in: .whitespacesAndNewlines)
-        var out = named.isEmpty ? (keys.lane == .key ? [fastTextModel] : []) : [named]
+        var out = named.isEmpty ? (keys.lane == .key ? [fast] : []) : [named]
         if !out.contains(where: { Intelligence.family(of: $0) == .haiku }) { out.append("haiku") }
         return out
     }
 
-    /// Text models that failed this launch; they are not asked again.
+    /// The small model the gateway reads a page's asked values with
+    /// (browser_read's `want`, jev_extract) when Settings names no text
+    /// model; else every page went to the chosen model, sonnet. Measured
+    /// 2026-11-20 on 40 pages of the long-task bench: it gave sonnet's values
+    /// on 94% of the asked fields (95.5% where sonnet was right; sonnet run
+    /// twice, 97%) for 1/25 the price; haiku 89%, the 3–4B models under 60%.
+    static let readModel = "luna"
+
+    /// Who reads a page's values, in the order they are asked. browser_read
+    /// (`cheap`): the text model Settings names, haiku behind it; else, on an
+    /// API key (the gateway), the cheap reader with haiku behind; else (a
+    /// Claude account) the chosen model. jev_extract and Jev's answer read:
+    /// the text model Settings names, else the chosen model ("" asks Router
+    /// for it), as before the cheap reader.
+    static func readModels(_ keys: Intelligence.Keys, cheap: Bool = false) -> [String] {
+        let named = keys.textModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard cheap else { return [named] }
+        guard named.isEmpty, keys.lane != .key else { return textModels(keys, fast: readModel) }
+        return [""]
+    }
+
+    /// What Settings says the text model field does when it is left empty.
+    static func textModelNote(_ lane: Intelligence.Lane, chosen: String) -> String {
+        lane == .key
+            ? "empty types with \(fastTextModel) and reads pages with \(readModel), haiku behind both."
+            : "empty types with haiku and reads pages with \(chosen)."
+    }
+
+    /// A reader's answer budget. The cheap reader thinks first and its
+    /// thinking counts against it: at 1000 it used 700–1000 tokens thinking
+    /// on list pages (search results, home pages) and the JSON was cut off;
+    /// haiku's verbatim lists ran past 1000 too. Both failed in turn, 12–16 s.
+    static let readTokens = 4000
+
+    /// How hard the cheap reader thinks before a page's values (`cheap` only;
+    /// the gateway's default for it is medium). Measured 2026-11-24 on 32
+    /// asked pages from the long-task bench, judged by opus: low gave
+    /// medium's values (98.2% of fields right, both) at p50 1.2 s for 3.0 s
+    /// and a third of the tokens; none was as fast but 89% right.
+    static let readEffort = "low"
+
+    /// The reasoning effort a reader is asked with: only the cheap reader's is set.
+    static func effort(_ model: String, cheap: Bool) -> String? { cheap && model == readModel ? readEffort : nil }
+
+    /// A page's values from the first reader that answers with JSON; a
+    /// gateway without the cheap name costs one failed request, not the read.
+    /// A reader the gateway refused by name (400/404) is not asked again this launch (refuse).
+    /// The last reader is asked without JSON mode, exactly as it always was
+    /// (fieldText does the same), for a gateway that refuses the flag.
+    static func askReader(system: String, user: String, keys: Intelligence.Keys, timeout: TimeInterval, maxTokens: Int,
+                          json: Bool = false, cheap: Bool = false) async throws -> Router.Reply {
+        let refused = await MainActor.run { Ultrafast.refused(at: keys) }
+        let models = unrefused(readModels(keys, cheap: cheap), refused: refused)
+        return try await askInTurn(models, timeout: timeout) { model, wait in
+            func ask(_ level: String?) async throws -> Router.Reply {
+                try await Router.ask(system: system, user: user, keys: keys, timeout: wait, maxTokens: maxTokens, model: model,
+                                     json: json && model != models.last, effort: level)
+            }
+            do {
+                return try await ask(effort(model, cheap: cheap))
+            } catch {
+                var error = error
+                // A gateway may refuse the effort field, not the reader: asked once more without it before the reader is refused.
+                if effort(model, cheap: cheap) != nil, (error as? Router.Failure)?.status == 400 {
+                    do { return try await ask(nil) } catch let again { error = again }
+                }
+                if model != models.last, let status = (error as? Router.Failure)?.status, status == 400 || status == 404 {
+                    await MainActor.run { refuse(model, at: keys) }
+                }
+                throw error
+            }
+        }
+    }
+
+    /// `models` without the refused ones, the last always kept: someone is asked.
+    static func unrefused(_ models: [String], refused: Set<String>) -> [String] {
+        let last = models.last
+        return models.filter { !refused.contains($0) || $0 == last }
+    }
+
+    /// `models` asked in turn, each with its share of `timeout`, until one
+    /// answers with JSON. A bad answer or a quick error goes to the next at
+    /// once; a timeout ends it (the caller falls back to the page's text), so
+    /// a read never waits out two slow failures in a row.
+    /// Only the cheap reader in front shares the time; a model the user named gets all of it.
+    static func askInTurn(_ models: [String], timeout: TimeInterval, _ ask: (String, TimeInterval) async throws -> Router.Reply) async throws -> Router.Reply {
+        let wait = models.count > 1 && models.first == readModel ? timeout / 2 : timeout
+        for model in models.dropLast() {
+            do {
+                let reply = try await ask(model, wait)
+                if !reply.json.isEmpty { return reply }
+            } catch let error as URLError where error.code == .timedOut {
+                throw error
+            } catch {}
+            try Task.checkCancellation()
+        }
+        return try await ask(models.last ?? "haiku", wait)
+    }
+
+    /// Text models a gateway refused by name this launch, as "endpoint|model":
+    /// not asked there again; another gateway may well have them.
     @MainActor private static var refusedTextModels = Set<String>()
+
+    /// Where a text model is asked: the gateway's address, or the account lane.
+    static func endpoint(_ keys: Intelligence.Keys) -> String {
+        keys.lane == .key ? keys.routerURL.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() : "\(keys.lane)"
+    }
+
+    @MainActor static func refuse(_ model: String, at keys: Intelligence.Keys) { refusedTextModels.insert(endpoint(keys) + "|" + model) }
+
+    /// The models refused at this endpoint.
+    @MainActor static func refused(at keys: Intelligence.Keys) -> Set<String> {
+        let scope = endpoint(keys) + "|"
+        return Set(refusedTextModels.compactMap { $0.hasPrefix(scope) ? String($0.dropFirst(scope.count)) : nil })
+    }
 
     /// The router writes the value. Exactly one key, `text`, a non-empty
     /// string; anything else and nothing is typed.
@@ -1774,10 +1968,9 @@ enum Ultrafast {
         guard ready else {
             throw Failure(text: "TYPE_TEXT needs a model (Settings › Intelligence › Model access) to write the value; nothing typed.")
         }
-        let refused = await MainActor.run { refusedTextModels }
-        var models = textModels(keys)
+        let refused = await MainActor.run { Ultrafast.refused(at: keys) }
+        let models = unrefused(textModels(keys), refused: refused)
         let last = models.last
-        models.removeAll { refused.contains($0) && $0 != last }
         var spent = 0.0, tokensIn = 0, tokensOut = 0, cost = 0.0
         var trouble = ""
         for model in models {
@@ -1802,7 +1995,7 @@ enum Ultrafast {
                 trouble = "The text helper failed (\(error.localizedDescription.prefix(160))); nothing typed."
                 // "No such model" is remembered; a slow minute is not.
                 if model != last, let status = (error as? Router.Failure)?.status, status == 400 || status == 404 {
-                    await MainActor.run { _ = refusedTextModels.insert(model) }
+                    await MainActor.run { refuse(model, at: keys) }
                 }
             }
         }
@@ -1819,14 +2012,21 @@ enum Ultrafast {
                     glide: Bool = true, checked: Bool = true, paste: Bool = false, watch: Bool = false, submit: Bool = false,
                     narrow: Bool = false, since: UInt64? = nil) async throws -> Bool {
         let web = tab.web
+        // The document this decision is checked against: the input refuses if any navigation started or landed since.
+        // A burst's later fields skip the freshness check, so theirs is the read's own generation.
+        let gen = checked ? Tools.gen(web) : obs.gen ?? Tools.gen(web)
+        let doc = obs.doc
+        let moved = Stale(text: "The page changed after the click; nothing typed. Observe again.")
+        // Fork (ready-pages): nothing goes into a page being left; the caller reads the new one.
+        if Tools.pending(web) { throw Stale(text: "Page changed since this decision (a navigation is under way). Observe again.") }
         let kind = action["kind"] as? String ?? ""
         if kind == "SIGN_IN" {
-            guard await fresh(web, obs) else { throw Stale(text: "Page changed since this decision. Observe again.") }
+            guard await fresh(web, obs), Tools.still(web, gen) else { throw Stale(text: "Page changed since this decision. Observe again.") }
             _ = try await AgentTabs.$pinned.withValue(tab.id) { try await SignIn.run([:], in: browser, source: .jev) }
             return false
         }
         if kind == "AUTOFILL_CARD" || kind == "AUTOFILL_IDENTITY" {
-            guard await fresh(web, obs) else { throw Stale(text: "Page changed since this decision. Observe again.") }
+            guard await fresh(web, obs), Tools.still(web, gen) else { throw Stale(text: "Page changed since this decision. Observe again.") }
             let fillKind = kind == "AUTOFILL_CARD" ? "card" : "identity"
             _ = try await AgentTabs.$pinned.withValue(tab.id) { try await AgentAutofill.run(["kind": fillKind, "first": true], in: browser, source: .jev) }
             return false
@@ -1909,29 +2109,39 @@ enum Ultrafast {
             let zoom = web.pageZoom
             let at = CGPoint(x: px * zoom, y: py * zoom)
             let real = Input.canPost(to: web)
+            // Nothing started or landed since act() began (pending() alone misses an ask not loading yet).
+            if !Tools.still(web, gen) { throw Stale(text: "The page began to change before the input. Observe again.") }
             // Armed on every click: whether a form went in is the run's to know (`formSent`).
             if kind == "click" { _ = try? await js(web, "window.__jevFast.arm(\(node))") }
+            // A navigation that began (or even committed) since the checks: the point is on another document.
+            if !Tools.still(web, gen) { throw Stale(text: "The page began to change before the input. Observe again.") }
             if real { Input.click(web, at: at, button: "left", count: 1, modifiers: []) }
-            else { _ = try await js(web, "window.__jevFast.domClick(\(node))") }
+            else { _ = try await js(web, in: doc, "window.__jevFast.domClick(\(node))") }
             if kind == "fill" {
                 guard let text else { throw Failure(text: "TYPE_TEXT without a value") }
                 try await Task.sleep(nanoseconds: 40_000_000)
+                // The click (a field's focus handler) may have sent the page
+                // away: the same generation through every key and the Return,
+                // and script writes only into the document that was read.
+                if !Tools.still(web, gen) { throw moved }
                 // paste: the whole value as one trusted edit, read back. A
                 // field that took nothing (it was swapped out under the
                 // click, or eats edits it didn't see keys for) gets the keys.
                 var held: String? = nil
-                if paste || !real { held = try await js(web, "window.__jevFast.insert(\(node), \(Page.quote(text)))") as? String }
+                if paste || !real { held = try await js(web, in: doc, "window.__jevFast.insert(\(node), \(Page.quote(text)))") as? String }
                 if real, (held ?? "").isEmpty {
                     // Real keystrokes replace the selection, and an
                     // autocomplete field hears each one.
-                    _ = try await js(web, "window.__jevFast.selectAll(\(node))")
+                    _ = try await js(web, in: doc, "window.__jevFast.selectAll(\(node))")
+                    if !Tools.still(web, gen) { throw moved }
                     Input.type(web, text)
                 }
                 // cosmetic only: a small label with the value beside the field.
                 Trail.typed(web, x: px, y: py, text: text)
-                if submit, (try? await js(web, "window.__jevFast.loneSearch(\(node))")) as? Bool == true {
-                    _ = try? await js(web, "window.__jevFast.arm(\(node))")
-                    if real { Input.key(web, "Enter", modifiers: []) } else { _ = try await js(web, "window.__jevFast.submit(\(node))") }
+                if submit, (try? await js(web, in: doc, "window.__jevFast.loneSearch(\(node))")) as? Bool == true {
+                    _ = try? await js(web, in: doc, "window.__jevFast.arm(\(node))")
+                    if !Tools.still(web, gen) { throw moved }
+                    if real { Input.key(web, "Enter", modifiers: []) } else { _ = try await js(web, in: doc, "window.__jevFast.submit(\(node))") }
                     return true
                 }
             }
@@ -1963,6 +2173,8 @@ enum Ultrafast {
     @MainActor
     final class Session {
         let goal: String
+        /// The address jev_run opened it on (normalised), for carriesOn.
+        var url: String?
         let tab: Tab
         unowned let browser: Browser
         let started = Date()
@@ -2045,6 +2257,9 @@ enum Ultrafast {
         private let terms: [String: Any]?
         private var relevantSeen = Set<Int>()
         private(set) var barrenScrolls = 0
+        /// The decision count at the last progress, and the controls clicked so far (`document|node`).
+        private var progressAt = 0
+        private var usedControls = Set<String>()
         /// Scrolls in a row with nothing new the goal names, after which
         /// scrolling is not offered until something else is done.
         static let barrenLimit = 4
@@ -2106,10 +2321,11 @@ enum Ultrafast {
         var elapsedMs: Int { Int(Date().timeIntervalSince(started) * 1000) }
         var finished: Bool { status != "ready" }
 
-        /// The trace ends once, whichever path got here first.
-        func finishTrace(_ status: String? = nil, note: String? = nil) {
+        /// The trace ends once, whichever path got here first; a run that
+        /// stopped on its time (`final` false) ends this card and may start another.
+        func finishTrace(_ status: String? = nil, note: String? = nil, final: Bool = true) {
             guard !traced else { return }
-            traced = true
+            traced = final
             // cosmetic only: the run is over, take the layer off the page.
             Trail.clear(tab.web)
             Drive.shared.finish(Drive.Status(rawValue: status ?? self.status) ?? .error, note: note ?? self.note)
@@ -2128,6 +2344,18 @@ enum Ultrafast {
         /// taken, or nil when the decision ended the run or the page went
         /// stale and was read again.
         func tick() async throws -> Step? {
+            guard !finished else { return nil }
+            do {
+                if tab.failure == nil { return try await advance() }
+            } catch where tab.failure != nil {}
+            // A load that failed under the run (or a dropped answer on the page it had):
+            // nothing on this tab can be read or acted on, so the run hands it back.
+            status = "blocked"
+            note = Arrival.unloaded(tab.failure ?? "", asked: nil)
+            return nil
+        }
+
+        private func advance() async throws -> Step? {
             guard !finished else { return nil }
             if stopped() { return nil }
             let keys = Intelligence.shared.effective
@@ -2156,6 +2384,25 @@ enum Ultrafast {
                 observation = obs
                 shot = nil
                 trace.close(phase: reading, detail: Ultrafast.read(obs))
+            }
+            // A human check is only looked at: no decision, no action. It gets
+            // humanCheckGrace to clear itself, read again meanwhile, then the
+            // run hands it back BLOCKED — the user's to answer, never Jev's.
+            if Ultrafast.humanCheck(on: obs) != nil {
+                let since = Date()
+                while let check = Ultrafast.humanCheck(on: obs) {
+                    if stopped() { return nil }
+                    if Date().timeIntervalSince(since) >= Ultrafast.humanCheckGrace {
+                        status = "blocked"
+                        note = "The page asks for a human check (\(check)): hand it to the user — agents don't answer these"
+                        return nil
+                    }
+                    try await Task.sleep(nanoseconds: 300_000_000)
+                    obs = try await Ultrafast.observe(tab, terms: terms, calm: strategy.calm, deep: strategy.deep)
+                    observation = obs
+                    reused = false
+                }
+                shot = nil
             }
             // Jev reads a date picker's days of the goal's month only (`lean`):
             // Google Flights' two-month grid was ~60 named days a decision.
@@ -2194,6 +2441,11 @@ enum Ultrafast {
             spent.observeMs += observeMs
             spent.shotMs += shotMs
 
+            if decisions - progressAt >= Ultrafast.idleDecisions {
+                status = "blocked"
+                note = "No progress in \(decisions - progressAt) decisions: nothing typed, sent or shown anew — take over for this part"
+                return nil
+            }
             if decisions >= Ultrafast.maxSteps * 2 { status = "budget"; note = "Reached the \(Ultrafast.maxSteps * 2)-decision budget"; return nil }
             if history.count >= Ultrafast.maxSteps { status = "budget"; note = "Reached the \(Ultrafast.maxSteps)-action budget"; return nil }
             decisions += 1
@@ -2255,15 +2507,7 @@ enum Ultrafast {
                     observation = nil; shot = nil; return nil
                 }
                 let claim = decision.choice
-                // A human check on the page is never DONE (Amazon's bot page at 80%, r6): it is the user's.
-                if claim == "DONE", let check = Ultrafast.humanCheck(on: obs) {
-                    status = "blocked"
-                    note = String(format: "Jev said DONE, %.0f%% sure, but the page asks for a human check (%@): hand it to the user", decision.probability * 100, check)
-                    trace.outcome(Drive.Outcome(operation: "BLOCKED", label: "human check: " + check, text: nil,
-                                                   probability: decision.probability, confidence: decision.confidence,
-                                                   pageChanged: nil, stale: false, candidates: []))
-                    return nil
-                }
+                // (A human check never gets this far: the read above hands it back BLOCKED.)
                 // A question (asksAnswer): its DONE stands on the answer, read
                 // off this page and found on it, not on how sure Jev is. Not
                 // found: as strict as any DONE (the second look, the floor).
@@ -2279,10 +2523,10 @@ enum Ultrafast {
                 // Not sure (under its floor): the page settles in full — its
                 // load, the last action's data calls — and is read and asked
                 // again, once per kind, with "is anything left undone?" beside
-                // it; a BLOCKED then off the table. Not for a human check or
-                // the end of barren scrolling: those BLOCKEDs are the answer.
+                // it; a BLOCKED then off the table. Not for the end of barren
+                // scrolling: that BLOCKED is the answer.
                 // Nor for the answer to a form sent without a word: that ends the run.
-                let settledBlock = claim == "BLOCKED" && (Ultrafast.humanCheck(on: obs) != nil || barrenScrolls >= Session.barrenLimit)
+                let settledBlock = claim == "BLOCKED" && barrenScrolls >= Session.barrenLimit
                 let sure = decision.probability >= Ultrafast.floor(claim)
                 let answering = confirmOnly
                 if !sure, !settledBlock, !answering, !doubted.contains(claim) {
@@ -2327,9 +2571,7 @@ enum Ultrafast {
                 }
                 status = claim.lowercased()
                 note = String(format: "Jev said %@, %.0f%% sure", claim, decision.probability * 100)
-                if claim == "BLOCKED", let check = Ultrafast.humanCheck(on: obs) {
-                    note += " — the page asks for a human check (\(check)): hand it to the user"
-                } else if claim == "BLOCKED", barrenScrolls >= Session.barrenLimit {
+                if settledBlock {
                     note += " after \(barrenScrolls) scrolls that found nothing more the goal names"
                 }
                 if claim == "DONE", !sure || !unshown.isEmpty {
@@ -2662,6 +2904,12 @@ enum Ultrafast {
             // A link that loads its page sends nothing, whatever that page posts on its own.
             step.sent = step.formSent || (kind != "wait" && !link && NetLog.posted(web, after: netMark))
             step.nothingNew = Ultrafast.textLines(next.text).isSubset(of: shownLines)
+            let target = node.flatMap { n in next.actions.first { ($0["node"] as? NSNumber)?.intValue == n && ($0["kind"] as? String) == kind } }
+            let unused = kind == "click" && node.map { usedControls.insert("\(Ultrafast.documentStart(obs.marker))|\($0)").inserted } == true
+            if Ultrafast.progressed(kind: kind, sent: step.sent || submitted, moved: Ultrafast.place(next.url) != Ultrafast.place(obs.url),
+                                    nothingNew: step.nothingNew, toggled: kind == "click" && Ultrafast.toggled(action, target), unused: unused) {
+                progressAt = decisions
+            }
             // Only a send that changes something arms the resend guards; a search or a retry is `repeats`' to back off.
             step.commit = (step.sent || submitted) && Ultrafast.commit(action, label: label, posts: NetLog.posts(web, after: netMark), page: next.url)
             if step.quietSend { quietSend = (Ultrafast.textLines(next.text), next.url, (action["node"] as? NSNumber)?.intValue, label) }
@@ -2787,20 +3035,20 @@ enum Ultrafast {
         return [
             [
                 "name": "jev_run",
-                "description": "FAST PATH. One plain-English goal; Copper drives your tab (else the user's) until DONE or BLOCKED. Returns the trace, page and elements. Verify DONE yourself.",
+                // The only guidance a planner sees about Jev: reading-shaped goals cost 50–340k Jev tokens a run and mostly came back unsure.
+                "description": "Act on one page: fill and send a form, set a control or filter, multi-step UI; drives your tab (else the user's) until DONE, BLOCKED or time is up. Not to read, search or collect facts (browser_read: many pages a call; search and filters often work as URL parameters) nor to find a link (browser_snapshot interactive): Jev reports only the page it ends on, and each decision is costly. Goal: short, exact values, when to stop; pass seconds ~30 and maxSteps. Verify DONE.",
                 "inputSchema": ["type": "object", "properties": [
-                    "goal": string("Everything to achieve, with concrete values and when to stop"),
+                    "goal": string("This page's actions, exact values, when to stop"),
                     "url": string("Open this first"),
                     "newTab": bool("url in a background tab of yours"),
                     "focus": bool("With newTab: show it"),
                     "private": bool("With newTab: private, nothing kept"),
                     "tab": Tools.tabProperty,
                     "maxSteps": number("Default \(maxSteps)"),
-                    "elements": bool("Default true"),
-                    "vision": string("auto (default), off, screenshot, marks, box, pixels"),
-                    "model": string("jev-latest, jev-preview, jev-1.14.0"),
-                    "json": bool("JSON, not the text report"),
-                    "strategy": string("Comma-separated: classic, fast, literal, burst, lean, paste, watch, turbo, verify, submit, llm[=model]; default this Mac's Fast mode"),
+                    "seconds": number("Default \(Int(runSeconds)); ~30 returns sooner"),
+                    // Expert knobs (benches): listed bare, their bytes went to the guidance above.
+                    "elements": ["type": "boolean"], "vision": ["type": "string"], "model": ["type": "string"],
+                    "json": ["type": "boolean"], "strategy": ["type": "string"],
                 ], "required": ["goal"]] as [String: Any],
             ],
             [
@@ -2927,8 +3175,14 @@ enum Ultrafast {
             if args["strategy"] != nil, parsedStrategy == nil { throw Failure(text: "strategy: classic, fast, literal, burst, lean, paste, watch, turbo, llm, llm=<model>") }
             let strategy: Strategy? = args["strategy"] == nil ? nil : parsedStrategy
             let wantsJSON = (args["json"] as? Bool) ?? false
+            // The same goal on a tab whose run stopped on its time: it carries
+            // on from where it was, its url not opened again.
+            let asked = (args["url"] as? String).flatMap { Address.url(from: $0)?.absoluteString }
+            let paused: Session? = (args["newTab"] as? Bool) == true ? nil : (try? Tools.current(browser)).flatMap { current in
+                sessions[current.id].flatMap { carriesOn(goal: goal, url: asked, run: ($0.goal, $0.url, $0.finished)) ? $0 : nil }
+            }
             var tab: Tab
-            if let raw = args["url"] as? String, let url = Address.url(from: raw) {
+            if paused == nil, let raw = args["url"] as? String, let url = Address.url(from: raw) {
                 if (args["newTab"] as? Bool) ?? false {
                     // A tab of the caller's own, behind the user's: the run
                     // and every call after it work there.
@@ -2972,10 +3226,13 @@ enum Ultrafast {
                 Drive.shared.begin(goal: goal, tab: tab)
             }
             // begin() happened above, on whichever road got here.
-            let session = Session(goal: goal, tab: tab, browser: browser, vision: vision, model: args["model"] as? String, strategy: strategy)
+            let session = paused ?? Session(goal: goal, tab: tab, browser: browser, vision: vision, model: args["model"] as? String, strategy: strategy)
+            if paused == nil { session.url = asked }
             sessions[tab.id] = session
-            let cap = min((args["maxSteps"] as? NSNumber)?.intValue ?? maxSteps, maxSteps)
-            let deadline = Date().addingTimeInterval(180)
+            let base = session.history.count
+            let cap = base + min((args["maxSteps"] as? NSNumber)?.intValue ?? maxSteps, maxSteps)
+            let seconds = min(max((args["seconds"] as? NSNumber)?.doubleValue ?? runSeconds, 1), 180)
+            let deadline = Date().addingTimeInterval(seconds)
             while !session.finished, session.history.count < cap, Date() < deadline {
                 do { _ = try await session.tick() } catch {
                     let text = (error as? Failure)?.text ?? (error as? Stale)?.text ?? error.localizedDescription
@@ -2993,18 +3250,20 @@ enum Ultrafast {
                                   (session.history.isEmpty ? "" : session.history.map(\.line).joined(separator: "\n") + "\n\n") + Tools.pageLine(tab))]
                 }
             }
+            let kept = keepsSession(finished: session.finished, actions: session.history.count, cap: cap)
+            let stopped = kept ? "its \(Int(seconds)) s time budget; jev_run with the same goal (and the same url, or none) carries on" : "the \(cap - base)-action cap"
             if session.finished { session.finishTrace() }
-            else { session.finishTrace("budget", note: "Stopped at the \(cap)-action cap") }
-            sessions[tab.id] = nil
+            else { session.finishTrace("budget", note: "Stopped at \(stopped)", final: !kept) }
+            if !kept { sessions[tab.id] = nil }
             MCP.shared.jevNote = String(format: "%@ · %d actions · %.1f s", session.status, session.history.count, Double(session.elapsedMs) / 1000)
             Tools.summary?.line = summary(session.finished ? session.status : "budget", actions: session.history.count, ms: session.elapsedMs, tab: tab)
             if wantsJSON {
                 var object = session.json()
-                if !session.finished { object["status"] = "budget"; object["note"] = "Stopped at the \(cap)-action cap" }
+                if !session.finished { object["status"] = "budget"; object["note"] = "Stopped at \(stopped)" }
                 return [.text(encodeJSON(object))]
             }
             var report = session.report(elements: (args["elements"] as? Bool) ?? true)
-            if !session.finished { report = report.replacingOccurrences(of: "### Jev run — ready", with: "### Jev run — stopped at the \(cap)-action cap") }
+            if !session.finished { report = report.replacingOccurrences(of: "### Jev run — ready", with: "### Jev run — stopped at \(stopped)") }
             return [.text(report)]
         default:
             throw Failure(text: "Unknown tool \(name)")

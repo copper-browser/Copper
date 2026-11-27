@@ -61,6 +61,7 @@ enum AgentTabs {
         switch name {
         case "browser_tabs": return (args["action"] as? String) == "new"
         case "jev_run": return (args["newTab"] as? Bool) == true
+        case "browser_read": return true
         default: return false
         }
     }

@@ -411,9 +411,12 @@ extension Tools.Ultrafast {
         return String(text[r])
     }
 
-    /// A page that is a human check: its title, its text or a control says so.
+    /// A page that is a human check: its title, a control (not a link), or
+    /// its text when the page is short (Read.humanCheck) — an article or a
+    /// help page that mentions "unusual activity" is not one. Jev's text is
+    /// only the screen, so it counts only on a page about one screen tall.
     static func humanCheck(on obs: Observation) -> String? {
-        if let hit = humanCheck(obs.title + "\n" + String(obs.text.prefix(3000))) { return hit }
+        if let hit = Tools.Read.humanCheck(title: obs.title, text: obs.oneScreen ? obs.text : "") { return hit }
         for action in obs.actions where (action["role"] as? String) != "link" {
             if let hit = humanCheck(action["label"] as? String ?? "") { return hit }
         }
@@ -721,11 +724,14 @@ extension Tools.Ultrafast {
     @MainActor
     static func actAtPoint(_ tab: Tab, _ obs: Observation, x: Double, y: Double, text: String?, glide: Bool, paste: Bool = false) async throws {
         let web = tab.web
+        let gen = Tools.gen(web)
         guard await fresh(web, obs) else { throw Stale(text: "Page changed since this decision. Observe again.") }
         guard x >= 0, y >= 0, x < Double(web.bounds.width) / max(web.pageZoom, 0.01), y < Double(web.bounds.height) / max(web.pageZoom, 0.01) else {
             throw Tools.Failure(text: "The box is outside the page; nothing executed.")
         }
         if glide { await Tools.Trail.glide(web, x: x, y: y) }
+        // A navigation that started or landed since the check: the point is on another document.
+        guard Tools.still(web, gen) else { throw Stale(text: "The page began to change before the input. Observe again.") }
         Tools.Trail.click(web, x: x, y: y)
         let zoom = web.pageZoom
         if Input.canPost(to: web) {
@@ -735,18 +741,23 @@ extension Tools.Ultrafast {
         }
         guard let text else { return }
         try await Task.sleep(nanoseconds: 40_000_000)
+        // The click may have sent the page away (a focus handler): no key and no
+        // script write past a navigation, and script only in the document read.
+        let moved = Stale(text: "The page changed after the click; nothing typed. Observe again.")
+        guard Tools.still(web, gen) else { throw moved }
         // Never type into a password field from a picture: the element table
         // leaves them out on purpose (SIGN_IN fills saved accounts instead).
-        let secret = try? await Tools.Page.raw(web, "(function(){var e=document.activeElement; return !!(e && e.type==='password')})()") as? Bool
+        let secret = try await js(web, in: obs.doc, "(function(){var e=document.activeElement; return !!(e && e.type==='password')})()") as? Bool
         if secret == true { throw Tools.Failure(text: "The box landed on a password field; Jev never types passwords. Nothing typed.") }
-        _ = try await Tools.Page.raw(web, "(function(){var e=document.activeElement; if(!e) return false; if(typeof e.select==='function'){e.select(); return true} return false})()")
+        _ = try await js(web, in: obs.doc, "(function(){var e=document.activeElement; if(!e) return false; if(typeof e.select==='function'){e.select(); return true} return false})()")
+        guard Tools.still(web, gen) else { throw moved }
         if Input.canPost(to: web), !paste {
             Input.type(web, text)
         } else {
             // One trusted edit over the selection (as in act()); a field that
             // refuses the command has its value set the way frameworks notice.
             let quoted = Tools.Page.quote(text)
-            _ = try await Tools.Page.raw(web, "(function(t){var e=document.activeElement; if(!e) return false; var ok=false; try{ok=document.execCommand('insertText',false,t)}catch(_){} if(ok) return true; var d=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e),'value'); if(d&&d.set) d.set.call(e,t); else e.value=t; e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true})); return true})(\(quoted))")
+            _ = try await js(web, in: obs.doc, "(function(t){var e=document.activeElement; if(!e) return false; var ok=false; try{ok=document.execCommand('insertText',false,t)}catch(_){} if(ok) return true; var d=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e),'value'); if(d&&d.set) d.set.call(e,t); else e.value=t; e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true})); return true})(\(quoted))")
         }
         Tools.Trail.typed(web, x: x, y: y, text: text)
     }

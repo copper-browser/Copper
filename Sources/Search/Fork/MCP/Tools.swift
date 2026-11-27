@@ -97,6 +97,19 @@ enum Tools {
     /// What every tool tells the agent about its own tab.
     static let tabNote = "Work that the user need not watch goes in a tab of your own: browser_tabs new (or jev_run with newTab) opens one in the background without switching the user's tab, and every later call of yours lands there — snapshots, screenshots, clicks and typing all work while the user looks at something else. browser_tabs select binds you to another tab the same way; pass focus: true only when the user should see it. Any page tool takes tab (an id or index from browser_tabs list) to work on another tab without changing which is yours."
 
+    /// How to read and research: few, full turns (pages in batches, parallel calls,
+    /// stop when every asked item has a loaded page). The same text closes Agent.system.
+    static let readNote = """
+    Research in few, full turns: each costs seconds.
+    1. Plan first: list every item and field the task asks for, the pages likely to hold them, and every search you need.
+    2. Read with browser_read: up to 12 full URLs per call and put independent calls in the same turn. Never read one page per turn.
+    3. Search with browser_read too: all planned query URLs in one call. Pick results by title and snippet, then read them by URL. Search again only for an item still missing. Only for a link whose address the text does not show, take one browser_snapshot (interactive: true) of that page. Never click a result.
+    4. If a guessed URL errors, take the real one from the site's own page or a search; do not guess again. Never reload a read page unless the task asks.
+    5. Use browser_tabs, snapshot, click and type only to act on a page; never list, check or close tabs unless the task asks, and if pages must stay open, open them at the end in one turn of parallel browser_tabs new calls.
+    6. Stop when every asked item and field is backed by a page you loaded this run; a search snippet is not a source. If one more targeted read can't find a value, write "not shown".
+    7. Finish with one complete answer in the asked format.
+    """
+
     /// What every tool tells the agent about `reason`: the user is watching.
     static let reasonNote = "The user watches every call in a pane beside the page: pass `reason` (one short sentence: what you are doing and why) on each call, and `element` for anything you click or type into. If a call answers \"Stopped by the user\", stop and say so — do not retry."
 
@@ -106,9 +119,9 @@ enum Tools {
     static func instructions(jev: Bool, voice: Bool = false) -> String {
         let listen = voice && !VoiceTools.instruction.isEmpty ? " " + VoiceTools.instruction : ""
         guard jev else {
-            return "Copper is the user's own browser, signed in as them; the current tab is the one they are looking at — work there unless the task names another tab. First action: call browser_snapshot with interactive: true on the current tab, then act with its refs. Call browser_tabs only when another tab is named. Take a screenshot when layout matters. Nothing is sandboxed — act as the user would. For sign-in forms call browser_sign_in first; it fills a saved account in-process and never returns the password. For checkout, address, or sign-up forms call browser_autofill (kind card|identity) — it fills from the vault and never returns the values; for a new or changed password call it with kind new-password. To keep a login or backup codes you were given, call browser_vault_save or browser_vault_note. \(tabNote) \(reasonNote) \(CanvasTools.briefing)\(listen)"
+            return "Copper is the user's own browser, signed in as them; the current tab is the one they are looking at — work there unless the task names another tab. \(readNote) To act on a page, first call browser_snapshot with interactive: true on it, then act with its refs. Call browser_tabs only when another tab is named. Take a screenshot when layout matters. Nothing is sandboxed — act as the user would. For sign-in forms call browser_sign_in first; it fills a saved account in-process and never returns the password. For checkout, address, or sign-up forms call browser_autofill (kind card|identity) — it fills from the vault and never returns the values; for a new or changed password call it with kind new-password. To keep a login or backup codes you were given, call browser_vault_save or browser_vault_note. \(tabNote) \(reasonNote) \(CanvasTools.briefing)\(listen)"
         }
-        return "Copper is the user's own browser, signed in as them; the current tab is the one they are looking at — work there unless the task names another tab. ANY task: the FIRST call is jev_run with the whole goal, every concrete place/date/name/filter and stop condition; no browser_tabs or snapshot first. Add url only for a named page that is not current. jev_observe = fast indexed read; jev_extract = JSON values; jev_step = one decision. BLOCKED → browser_snapshot/click/type for that part, then jev_run again. DONE is Jev's claim — verify with jev_observe/jev_extract. Screenshot when layout matters; nothing is sandboxed — act as the user. For sign-in forms call browser_sign_in first; it fills a saved account in-process and never returns the password. For checkout, address, or sign-up forms call browser_autofill (kind card|identity) — it fills from the vault and never returns the values; for a new or changed password call it with kind new-password. To keep a login or backup codes you were given, call browser_vault_save or browser_vault_note. \(tabNote) \(reasonNote) \(CanvasTools.briefing)\(listen)"
+        return "Copper is the user's own browser, signed in as them; the current tab is the one they are looking at — work there unless the task names another tab. \(readNote) To act on a page (forms, clicks, multi-step UI) the FIRST call is jev_run with the whole goal, every concrete place/date/name/filter and stop condition; no browser_tabs or snapshot first. Pass seconds (about 30) to get it back sooner; the same goal again (same url or none) carries on. Add url only for a named page that is not current. jev_observe = fast indexed read; jev_extract = JSON values; jev_step = one decision. BLOCKED → browser_snapshot/click/type for that part, then jev_run again. DONE is Jev's claim — verify with jev_observe/jev_extract. Screenshot when layout matters; nothing is sandboxed — act as the user. For sign-in forms call browser_sign_in first; it fills a saved account in-process and never returns the password. For checkout, address, or sign-up forms call browser_autofill (kind card|identity) — it fills from the vault and never returns the values; for a new or changed password call it with kind new-password. To keep a login or backup codes you were given, call browser_vault_save or browser_vault_note. \(tabNote) \(reasonNote) \(CanvasTools.briefing)\(listen)"
     }
 
     // MARK: - the catalogue
@@ -208,6 +221,7 @@ enum Tools {
                 "text": string("The note's text"),
                 "folder": string("Default Agents, when agent access is folder"),
             ], required: ["name", "text"]),
+            Read.tool,
             tool("browser_navigate", "Navigate to a URL in the current tab", ["url": string("The URL to navigate to")], required: ["url"]),
             tool("browser_navigate_back", "Go back to the previous page"),
             tool("browser_navigate_forward", "Go forward to the next page"),
@@ -347,9 +361,16 @@ enum Tools {
 
     @MainActor
     private static func dispatch(_ name: String, _ args: [String: Any], in browser: Browser) async throws -> [Content] {
-        if !["browser_tabs", "browser_close", "browser_resize", "browser_groups", "browser_crashes", "browser_vault_save", "browser_vault_note", CloudHistoryTool.name].contains(name), !CanvasTools.names.contains(name), !StateTools.tabless(name, args),
+        if !["browser_tabs", "browser_close", "browser_resize", "browser_groups", "browser_crashes", "browser_vault_save", "browser_vault_note", CloudHistoryTool.name, Read.name].contains(name), !CanvasTools.names.contains(name), !StateTools.tabless(name, args),
            !(name == "jev_run" && (args["newTab"] as? Bool) == true) {
             await AgentTabs.ready(in: browser)
+        }
+        // Fork (ready-pages): a read never lands on the page being left, nor
+        // on the page before a failed load. Jev's own reads and acts check
+        // the same inside (Ultrafast.observe/act), so jev_run/jev_step do too.
+        if reads.contains(name) || name == "browser_evaluate" || name == "jev_extract", let tab = AgentTabs.target(in: browser) {
+            if let web = tab.built, pending(web) { _ = await arrive(tab, since: .distantPast) }
+            try readable(tab)
         }
         switch name {
         case "browser_tabs": return try await tabs(args, in: browser)
@@ -366,6 +387,7 @@ enum Tools {
             window.setFrame(frame, display: true, animate: false)
             return [.text("Window is \(Int(w))×\(Int(h))")]
         case "browser_groups": return try groups(args, in: browser)
+        case Read.name: return try await Read.run(args, in: browser) // its own tabs, never the caller's
         case "jev_run", "jev_step", "jev_observe", "jev_extract": return try await Ultrafast.call(name, args, in: browser)
         case _ where CanvasTools.names.contains(name): return try await CanvasTools.call(name, args, in: browser)
         case "browser_crashes": return [.text(try Crashes.answer(args))]
@@ -404,17 +426,17 @@ enum Tools {
         case "browser_navigate":
             guard let raw = args["url"] as? String else { throw Failure(text: "url required") }
             guard let url = Address.url(from: raw) else { throw Failure(text: "not an address: \(raw) — pass a full URL such as https://example.com/page") }
+            let began = Date()
             tab.go(to: url)
-            try await settle(tab, navigating: true)
-            return [.text(pageLine(tab))]
+            return try arrivedAnswer(tab, await arrive(tab, since: began), asked: url)
         case "browser_navigate_back":
+            let began = Date()
             guard web.goBack() != nil else { throw Failure(text: "No page to go back to: this tab's history starts here. Use browser_navigate with the address you want. \(pageLine(tab))") }
-            try await settle(tab, navigating: true)
-            return [.text(pageLine(tab))]
+            return try arrivedAnswer(tab, await arrive(tab, since: began))
         case "browser_navigate_forward":
+            let began = Date()
             guard web.goForward() != nil else { throw Failure(text: "No page to go forward to: this is the newest page in the tab's history. Use browser_navigate with the address you want. \(pageLine(tab))") }
-            try await settle(tab, navigating: true)
-            return [.text(pageLine(tab))]
+            return try arrivedAnswer(tab, await arrive(tab, since: began))
         case "browser_snapshot":
             let interactive = (args["interactive"] as? Bool) ?? false
             let limit = (args["limit"] as? NSNumber)?.intValue ?? 600
@@ -839,13 +861,15 @@ enum Tools {
                 throw Failure(text: "not an address: \(raw ?? "")")
             }
             // Behind the user's tab, not in front of it. Unless asked.
+            let began = Date()
             let tab = browser.open(url, foreground: focus || pane)
             AgentTabs.opened.insert(tab.id) // Fork (tab-memory)
             AgentTabs.bind(tab)
             AgentTabs.prepare(tab)
-            if raw != nil { try await settle(tab, navigating: true) }
+            var arrived = true
+            if raw != nil { arrived = await arrive(tab, since: began) }
             let note = focus || pane ? "Opened and shown to the user." : "Opened in the background — the user's tab did not change; your calls now land on it."
-            return [.text("\(note) {tab \(AgentTabs.short(tab))}\n\(pageLine(tab))\n\n\(tabList(browser))")]
+            return [.text("\(note) {tab \(AgentTabs.short(tab))}\n\(arrivedLine(tab, arrived))\n\n\(tabList(browser))")]
         case "close":
             let said = close(try AgentTabs.resolve(args["tab"] ?? index, in: browser) ?? closable(browser))
             return [.text("\(said) \(tabList(browser))")]
@@ -1004,18 +1028,28 @@ enum Tools {
     /// (Browser.decidePolicyFor, `asked`). A click's settle compares the
     /// count from before the click with the count once the page has taken
     /// it, instead of watching `isLoading` for 50 ms. Fork (C8, r4): held
-    /// weakly, so a closed tab's count goes with its view.
-    @MainActor private static let navigationAsks = NSMapTable<WKWebView, NSNumber>.weakToStrongObjects()
-
-    @MainActor static func asks(_ web: WKWebView) -> Int { navigationAsks.object(forKey: web)?.intValue ?? 0 }
+    /// weakly, so a closed tab's count goes with its view (Arrival.swift `Nav`).
+    @MainActor static func asks(_ web: WKWebView) -> Int { nav(web).asks }
 
     /// A main-frame navigation to another document asked for (not a jump
     /// to an anchor on this one: that loads nothing).
-    @MainActor static func asked(_ web: WKWebView, _ action: WKNavigationAction) {
-        guard action.targetFrame?.isMainFrame == true, let url = action.request.url else { return }
+    /// Its time, for unasked; nil when it asks for no document.
+    @discardableResult @MainActor static func asked(_ web: WKWebView, _ action: WKNavigationAction) -> Date? {
+        guard asksDocument(web, action) else { return nil }
+        return nav(web).ask()
+    }
+
+    /// Browser's policy said cancel to the main-frame ask made `at`: it takes
+    /// its ask back, or reads would wait on (and refuse for) a page never coming.
+    @MainActor static func unasked(_ web: WKWebView, at: Date) {
+        nav(web).unask(at)
+    }
+
+    /// A main-frame ask for another document, not a jump within this one.
+    @MainActor private static func asksDocument(_ web: WKWebView, _ action: WKNavigationAction) -> Bool {
+        guard action.targetFrame?.isMainFrame == true, let url = action.request.url else { return false }
         func bare(_ u: URL) -> Substring { u.absoluteString.prefix { $0 != "#" } }
-        if let here = web.url, url.fragment != nil, bare(url) == bare(here) { return }
-        navigationAsks.setObject(NSNumber(value: asks(web) + 1), forKey: web)
+        return !(url.fragment != nil && web.url.map { bare(url) == bare($0) } == true)
     }
 
     /// Where a page stood just before an input: its navigation asks, its
@@ -1083,6 +1117,9 @@ enum Tools {
                 return
             }
         }
+        // Fork (ready-pages): an input that left the page answers with the
+        // new one there (Arrival.swift); Jev's opening load keeps the mark below.
+        guard navigating else { _ = await arrive(tab, since: .distantPast, cap: min(Arrival.cap, deadline.timeIntervalSinceNow)); return }
         // The document being left is marked; the new one is ready when it
         // answers unmarked and past "loading". If the mark landed in the new
         // one (it committed first), this waits for the full load instead.

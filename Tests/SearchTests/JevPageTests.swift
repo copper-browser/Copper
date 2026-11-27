@@ -171,3 +171,51 @@ private func labels(_ obs: [String: Any]?) -> [String] {
     }
     #expect(lone == [true, false])
 }
+
+// An input bound to the document Jev read (Observation.doc) never runs in the
+// next one: a field whose focus sends the page away gets nothing typed there.
+@MainActor @Test func inputsStayInTheDocumentRead() async throws {
+    let web = await page("<input id='q' placeholder='Search'>")
+    let read = try #require(try await U.js(web, "window.__jevFast.observe(undefined, {deep: false})") as? [String: Any])
+    let doc = try #require(read["doc"] as? String)
+    #expect(try await U.js(web, in: doc, "1+1") as? Int == 2)
+    #expect(try await U.js(web, in: nil, "1+1") as? Int == 2)
+
+    let loaded = Loaded()
+    kept.append(loaded)
+    web.navigationDelegate = loaded
+    await withCheckedContinuation { c in loaded.done = c; web.loadHTMLString("<input id='q' autofocus>", baseURL: URL(string: "https://jev.test/next")) }
+    await #expect(throws: U.Stale.self) { try await U.js(web, in: doc, "(document.getElementById('q').value='typed', true)") }
+    #expect(try await U.js(web, "document.getElementById('q').value") as? String == "")
+    // the new document names itself anew
+    let again = try await U.js(web, "window.__jevFast.observe(undefined, {deep: false})") as? [String: Any]
+    #expect((again?["doc"] as? String).map { !$0.isEmpty && $0 != doc } == true)
+
+    // the read carries both through copies (a burst's fields check against its generation)
+    var raw = read
+    raw["gen"] = 7
+    let obs = U.Observation(raw: raw)
+    #expect(obs.doc == doc && obs.gen == 7)
+    #expect(U.Observation(raw: obs.raw).gen == 7)
+}
+
+// Labels Jev is sent: indentation collapsed to one space, and a select named
+// by its label (or nothing) — never by its options' text, which rode on every option.
+@MainActor @Test func labelsAreCollapsedAndSelectsAreNotNamedByTheirOptions() async throws {
+    let web = await page("""
+    <a href="/p">Planetary
+                     system</a>
+    <select id="period">
+                 <option>year</option>
+                 <option selected>month</option>
+                 <option>week</option>
+    </select>
+    <label>Region <select><option>North</option><option>South</option></select></label>
+    """)
+    let obs = try await U.js(web, "window.__jevFast.observe(undefined, {deep: false})") as? [String: Any]
+    let all = labels(obs)
+    #expect(all.contains("Planetary system"))
+    #expect(all.contains("combobox → year") && all.contains("combobox → week"))
+    #expect(all.contains("Region → South"))
+    #expect(!all.contains { $0.contains("  ") || $0.contains("\n") || $0.hasPrefix("year") })
+}

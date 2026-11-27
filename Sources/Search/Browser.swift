@@ -1525,6 +1525,7 @@ final class Browser: NSObject {
     /// behind; closing that blank tab closes the window.
     func close(_ tab: Tab) {
         guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+        if tab.pin == nil { Tools.Ultrafast.sessions[tab.id] = nil } // Fork (jev): a kept run goes with its tab
         signedInWith[tab.id] = nil
         signedInAt[tab.id] = nil // Fork (auto-codes)
         autoCoded[tab.id] = nil
@@ -1677,10 +1678,13 @@ final class Browser: NSObject {
     }
 
     private func remember(_ tab: Tab, at index: Int) {
-        guard !tab.shy, let url = tab.address else { return }
+        guard Self.reopens(tab), let url = tab.address else { return }
         ghosts.append(Ghost(url: url, title: tab.title, index: index))
         if ghosts.count > 12 { ghosts.removeFirst() }
     }
+
+    /// A closed tab ⌘⇧T can bring back: not a private one, nor an agent's read tab (browser_read).
+    static func reopens(_ tab: Tab) -> Bool { !tab.shy && !tab.readOnly }
 
     /// Dragged from one place in the row to another.
     func move(_ tab: Tab, to index: Int) {
@@ -1716,7 +1720,7 @@ final class Browser: NSObject {
     /// the far end of the row — unless it is one of a batch, which keeps the
     /// order it came in.
     @discardableResult
-    func open(_ url: URL, foreground: Bool, atEnd: Bool = false) -> Tab {
+    func open(_ url: URL, foreground: Bool, atEnd: Bool = false, readOnly: Bool = false) -> Tab {
         if let board = CanvasTabs.already(url, in: self, foreground: foreground) { return board } // Fork (canvas-hooks): one tab per board
         // An extension's own page is served only to a view built from that
         // extension's configuration.
@@ -1727,6 +1731,7 @@ final class Browser: NSObject {
         // Fork: global pins — beside a pin means the head of the loose tabs;
         // the pins are the same in every space and take no tab in among them.
         tabs.insert(tab, at: here.map { max($0 + 1, pinnedCount) } ?? tabs.count)
+        tab.readOnly = readOnly // Fork (browser_read): before its first load
         tab.go(to: url)
         Recent.shared.prune(tabs)
         if foreground {
@@ -2595,9 +2600,33 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
     func webView(
         _ webView: WKWebView,
         decidePolicyFor action: WKNavigationAction,
-        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        decisionHandler decide: @escaping (WKNavigationActionPolicy) -> Void
     ) {
-        Tools.asked(webView, action) // Fork (perf): an agent's click knows it set off a page (Tools.settle)
+        let askedAt = Tools.asked(webView, action) // Fork (perf): an agent's click knows it set off a page (Tools.settle)
+        // Fork (ready-pages): a cancelled ask is taken back, whichever hook below cancels it — if no newer ask came since.
+        let decisionHandler: (WKNavigationActionPolicy) -> Void = { policy in
+            if policy == .cancel, let askedAt { Tools.unasked(webView, at: askedAt) }
+            decide(policy)
+        }
+        // Fork (browser_read): a read tab only loads pages, before any hook
+        // below runs: no other app, no download, no link Copper itself acts
+        // on (a canvas join, an extension's sign-in answer), no ⌘-click tab.
+        if let tab = tab(for: webView), tab.readOnly {
+            let url = action.request.url
+            let native = url.map { CanvasJoinFlow.accepts($0) != nil || ($0.host()?.lowercased().hasSuffix(".chromiumapp.org") ?? false) } ?? false
+            if let refused = Tools.Read.refusal(scheme: url?.scheme?.lowercased() ?? "about", download: action.shouldPerformDownload, native: native) {
+                decisionHandler(.cancel)
+                // Only the first document's: a page that loaded and then asked for another app is still the page read.
+                if action.targetFrame?.isMainFrame ?? true, !Tools.nav(webView).committed { tab.failure = refused }
+                return
+            }
+            if action.targetFrame?.isMainFrame ?? true, let url {
+                tab.arm(hiding: curtain.css(on: curtain.host(of: url)))
+                Shield.shared.tune(webView.configuration.userContentController, for: curtain.host(of: url))
+            }
+            decisionHandler(.allow)
+            return
+        }
         // "Download Image", "Download Linked File" from the page's own
         // context menu, and a link with the `download` attribute all arrive
         // as an ordinary-looking action with this one flag set. Answered
@@ -2687,6 +2716,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
         for action: WKNavigationAction,
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
+        if tab(for: webView)?.readOnly == true { return nil } // Fork (browser_read): a read tab opens no windows, before any hook
         if CanvasHost.popup(action, from: webView, browser: self) { return nil } // Fork (canvas-hooks): a window from a board's live frame is an ordinary tab (Fork/Canvas/CanvasFrames)
         if ExtensionPages.popup(action, from: webView, browser: self) { return nil } // Fork (extension-pages): an extension page's window at a web address is an ordinary tab
         let from = tab(for: webView)?.id ?? activeID
@@ -2715,7 +2745,15 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
         decidePolicyFor response: WKNavigationResponse,
         decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
     ) {
-        switch DownloadPolicy.decide(response) {
+        if response.isForMainFrame { Tools.responded(webView, response.response) } // Fork (browser_read): the page's HTTP status
+        let decision = DownloadPolicy.decide(response)
+        // Fork (browser_read): a read tab saves no file.
+        if case .download = decision, let tab = tab(for: webView), tab.readOnly {
+            decisionHandler(.cancel)
+            if response.isForMainFrame, !Tools.nav(webView).committed { tab.failure = Tools.Read.refusal(scheme: "https", download: true) }
+            return
+        }
+        switch decision {
         case .show: decisionHandler(.allow)
         case .download: decisionHandler(.download)
         case .drop(let reason):
@@ -2820,6 +2858,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         TabShare.shared.committed(webView) // Fork (tab-share): a new document ends what the old one shared or asked (Fork/TabShare/TabShare.swift)
+        Tools.landed(webView) // Fork (ready-pages): an agent's navigation has its document (Fork/MCP/Arrival.swift)
         guard let tab = tab(for: webView) else { return }
         Pace.page("commit", bench: tab.bench) // Fork (pace)
         tab.failure = nil
@@ -2886,6 +2925,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
         // page didn't load" over a download that had worked — clicked again,
         // it downloaded again.
         guard !(nsError.domain == "WebKitErrorDomain" && code == 102) else { return }
+        Tools.landed(webView) // Fork (ready-pages): a failed load is an outcome too
         guard let tab = tab(for: webView) else { return }
         // Fork (ui-system): which host, and what WebKit said, for the page.
         let failed = nsError.userInfo[NSURLErrorFailingURLErrorKey] as? URL

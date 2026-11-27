@@ -148,6 +148,167 @@ struct JevStrategyTests {
         #expect(U.textModels(keys) == ["haiku"])
     }
 
+    @Test func pageReadsGoToTheCheapReaderUnlessATextModelIsNamed() {
+        var keys = Intelligence.Keys()
+        #expect(keys.textModel.isEmpty) // a fresh install names none
+        #expect(U.readModels(keys, cheap: true) == [U.readModel, "haiku"])
+        // jev_extract and Jev's answer read keep the chosen model ("" = Router's choice).
+        #expect(U.readModels(keys) == [""])
+        keys.textModel = "sonnet"
+        #expect(U.readModels(keys, cheap: true) == ["sonnet", "haiku"])
+        #expect(U.readModels(keys) == ["sonnet"])
+        keys.textModel = "claude-haiku-4-5"
+        #expect(U.readModels(keys, cheap: true) == ["claude-haiku-4-5"])
+        // A Claude account with no text model reads with the chosen model ("" = Router's choice), no cheap reader.
+        keys.textModel = " "
+        keys.lane = .claude
+        #expect(U.readModels(keys, cheap: true) == [""])
+        #expect(U.readModels(keys) == [""])
+        keys.textModel = "sonnet"
+        #expect(U.readModels(keys, cheap: true) == ["sonnet", "haiku"])
+        #expect(U.textModels(Intelligence.Keys()) == [U.fastTextModel, "haiku"])
+        // Settings says what empty does on each lane.
+        #expect(U.textModelNote(.key, chosen: "sonnet").contains(U.readModel))
+        #expect(U.textModelNote(.claude, chosen: "sonnet").hasSuffix("reads pages with sonnet."))
+        #expect(!U.textModelNote(.claude, chosen: "sonnet").contains(U.readModel))
+    }
+
+    @Test func aReaderTheGatewayRefusedIsSkippedButSomeoneIsAlwaysAsked() {
+        #expect(U.unrefused(["luna", "haiku"], refused: ["luna"]) == ["haiku"])
+        #expect(U.unrefused(["luna", "haiku"], refused: ["haiku"]) == ["luna", "haiku"])
+        #expect(U.unrefused(["luna", "haiku"], refused: ["luna", "haiku"]) == ["haiku"])
+        #expect(U.unrefused([""], refused: []) == [""])
+    }
+
+    @MainActor @Test func aRefusedReaderIsRefusedOnlyWhereItWasRefused() {
+        var one = Intelligence.Keys(); one.routerURL = "https://gw-one.test.invalid"
+        var two = Intelligence.Keys(); two.routerURL = "https://gw-two.test.invalid"
+        U.refuse("luna-scope-test", at: one)
+        #expect(U.refused(at: one).contains("luna-scope-test"))
+        #expect(!U.refused(at: two).contains("luna-scope-test"))
+    }
+
+    @Test func readersFallBackOnceAndNeverWaitOutTwoTimeouts() async throws {
+        func reply(_ json: [String: Any]) -> Router.Reply { Router.Reply(json: json, text: "", latencyMs: 0, model: "") }
+        var asked: [(String, TimeInterval)] = []
+        // A cut-off answer (no JSON) goes to the next reader at once.
+        var got = try await U.askInTurn(["luna", "haiku"], timeout: 30) { model, wait in
+            asked.append((model, wait)); return reply(model == "luna" ? [:] : ["v": 1])
+        }
+        #expect(asked.map(\.0) == ["luna", "haiku"] && asked.allSatisfy { $0.1 == 15 } && got.json["v"] as? Int == 1)
+        // So does a quick error (a gateway without the name).
+        asked = []
+        got = try await U.askInTurn(["luna", "haiku"], timeout: 30) { model, wait in
+            asked.append((model, wait))
+            if model == "luna" { throw Router.Failure(detail: "no such model", status: 404) }
+            return reply(["v": 2])
+        }
+        #expect(asked.map(\.0) == ["luna", "haiku"] && got.json["v"] as? Int == 2)
+        // A timeout ends it: no second slow wait.
+        asked = []
+        await #expect(throws: URLError.self) {
+            _ = try await U.askInTurn(["luna", "haiku"], timeout: 30) { model, wait in
+                asked.append((model, wait)); throw URLError(.timedOut)
+            }
+        }
+        #expect(asked.map(\.0) == ["luna"])
+        // A good first answer asks no one else; a lone reader gets the whole timeout.
+        asked = []
+        _ = try await U.askInTurn(["luna", "haiku"], timeout: 30) { model, wait in asked.append((model, wait)); return reply(["v": 3]) }
+        #expect(asked.map(\.0) == ["luna"])
+        asked = []
+        _ = try await U.askInTurn(["haiku"], timeout: 30) { model, wait in asked.append((model, wait)); return reply(["v": 4]) }
+        #expect(asked.count == 1 && asked[0].1 == 30)
+        // A model the user named gets the whole timeout; only the cheap reader in front shares it.
+        asked = []
+        _ = try await U.askInTurn(["sonnet", "haiku"], timeout: 30) { model, wait in
+            asked.append((model, wait)); return reply(model == "sonnet" ? [:] : ["v": 5])
+        }
+        #expect(asked.map(\.0) == ["sonnet", "haiku"] && asked.allSatisfy { $0.1 == 30 })
+        #expect(U.readTokens >= 4000)
+    }
+
+    @MainActor @Test func instructionsSendReadsToBrowserReadAndActionsToJev() {
+        let text = Tools.instructions(jev: true)
+        #expect(!text.contains("ANY task"))
+        #expect(text.contains("browser_read") && text.contains("To act on a page"))
+        #expect(text.contains("every item and field the task asks for") && text.contains("same turn"))
+        #expect(Agent.system.hasSuffix(Tools.readNote)) // Copper's own agent gets the same research guide
+        // Tab housekeeping and reloads are barred for research only, never for a task that asks for them.
+        #expect(text.contains("Never reload a read page unless the task asks.") && text.contains("never list, check or close tabs unless the task asks"))
+        #expect(!Tools.instructions(jev: false).contains("First action"))
+        let run = U.catalogue.first { $0["name"] as? String == "jev_run" }
+        let properties = (run?["inputSchema"] as? [String: Any])?["properties"] as? [String: Any]
+        // Omitted, a run has its full 180 s; a caller asks for less.
+        #expect(properties?["seconds"] != nil && U.runSeconds == 180)
+    }
+
+    @Test func jevRunsDescriptionSendsReadsAndLinksElsewhere() {
+        // phi shows a planner only tool descriptions: this one has to say when not to call Jev.
+        let run = U.catalogue.first { $0["name"] as? String == "jev_run" }
+        let text = run?["description"] as? String ?? ""
+        #expect(text.contains("Not to read, search or collect") && text.contains("browser_read") && text.contains("browser_snapshot"))
+        #expect(text.contains("seconds") && text.contains("maxSteps"))
+        // The knobs stay accepted, listed bare.
+        let properties = (run?["inputSchema"] as? [String: Any])?["properties"] as? [String: Any] ?? [:]
+        for knob in ["strategy", "vision", "model", "json", "elements"] { #expect(properties[knob] != nil, "\(knob)") }
+    }
+
+    @Test func aRunStoppedOnItsTimeKeepsItsSessionOthersDoNot() {
+        #expect(U.keepsSession(finished: false, actions: 3, cap: 60))   // time ran out: same goal carries on
+        #expect(!U.keepsSession(finished: true, actions: 3, cap: 60))   // DONE / BLOCKED
+        #expect(!U.keepsSession(finished: false, actions: 60, cap: 60)) // the action cap
+        #expect(U.humanCheckGrace <= 5 && U.idleDecisions >= 5)
+    }
+
+    @Test func progressIsSomethingTypedSentShownOrAnotherAddress() {
+        #expect(U.progressed(kind: "fill", sent: false, moved: false, nothingNew: true))
+        #expect(U.progressed(kind: "select", sent: false, moved: false, nothingNew: true))
+        #expect(U.progressed(kind: "click", sent: true, moved: false, nothingNew: true))
+        #expect(U.progressed(kind: "click", sent: false, moved: true, nothingNew: true))
+        #expect(U.progressed(kind: "scroll", sent: false, moved: false, nothingNew: false))
+        #expect(!U.progressed(kind: "click", sent: false, moved: false, nothingNew: true))
+        #expect(!U.progressed(kind: "wait", sent: false, moved: false, nothingNew: true))
+    }
+
+    @Test func tickingABoxOrAFreshControlIsProgress() {
+        let box: [String: Any] = ["node": 4, "kind": "click", "role": "checkbox", "label": "Wi-Fi", "checked": "false"]
+        var ticked = box; ticked["checked"] = "true"
+        #expect(U.toggled(box, ticked))
+        var opened = box; opened["checked"] = nil; opened["expanded"] = "false"
+        var open = opened; open["expanded"] = "true"
+        #expect(U.toggled(opened, open))
+        #expect(!U.toggled(box, box))
+        #expect(!U.toggled(box, nil)) // the target gone from the read: no change seen
+        #expect(U.progressed(kind: "click", sent: false, moved: false, nothingNew: true, toggled: true))
+        #expect(U.progressed(kind: "click", sent: false, moved: false, nothingNew: true, unused: true))
+        #expect(!U.progressed(kind: "click", sent: false, moved: false, nothingNew: true, toggled: false, unused: false))
+    }
+
+    @Test func aHumanCheckIsTheTitleAControlOrAShortPageNotAWordInALongOne() {
+        // Jev's text is the visible screen only; `screens` is how tall the whole page is.
+        func obs(_ title: String, _ text: String, _ actions: [[String: Any]] = [], screens: Double = 1) -> U.Observation {
+            U.Observation(raw: ["title": title, "text": text, "actions": actions, "h": 880, "scroll": ["y": 0, "height": 880 * screens]])
+        }
+        let screen = "Account help\nWe noticed unusual activity? Press and hold the power button."
+        // A long page's screen of words is not a check (a help page about "unusual activity", "press and hold").
+        #expect(U.humanCheck(on: obs("Account help", screen, screens: 6)) == nil)
+        #expect(U.humanCheck(on: obs("Account help", screen)) != nil) // the same words as the whole page: they are the page
+        #expect(U.humanCheck(on: obs("Just a moment...", "Checking the site connection.", screens: 6)) != nil)
+        #expect(U.humanCheck(on: obs("shop.example", "Please verify you are human.")) != nil)
+        #expect(U.humanCheck(on: obs("shop.example", "Deals", [click(3, "checkbox", "I'm not a robot")], screens: 6)) != nil)
+        #expect(U.humanCheck(on: obs("shop.example", "Deals", [click(3, "link", "What is a CAPTCHA?")], screens: 6)) == nil)
+    }
+
+    @Test func aKeptRunCarriesOnOnlyForItsGoalAndAddress() {
+        let run = (goal: "find X", url: Optional("https://a.example/"), finished: false)
+        #expect(U.carriesOn(goal: "find X", url: nil, run: run))
+        #expect(U.carriesOn(goal: "find X", url: "https://a.example/", run: run))
+        #expect(!U.carriesOn(goal: "find X", url: "https://b.example/", run: run)) // another address: a fresh start
+        #expect(!U.carriesOn(goal: "find Y", url: nil, run: run))
+        #expect(!U.carriesOn(goal: "find X", url: nil, run: (run.goal, run.url, true)))
+    }
+
     @Test func shippedSubmitsAndVerifyIsOptIn() {
         #expect(!U.Strategy.shipped.verify && !U.Strategy.parse("turbo")!.verify && U.Strategy.parse("verify")!.verify)
         #expect(U.Strategy.shipped.submit && U.Strategy.shipped.name.hasSuffix("watch,near,reach,calm,deep,submit"))
