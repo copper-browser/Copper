@@ -247,6 +247,9 @@ enum SettingsIndex {
     private static let pageContext: (Browser) -> Binding<Bool> = { _ in
         Binding(get: { Agent.shared.config.pageContext }, set: { Agent.shared.config.pageContext = $0 })
     }
+    private static let coverage: (Browser) -> Binding<Bool> = { _ in
+        Binding(get: { Agent.shared.config.coverage }, set: { Agent.shared.config.coverage = $0 })
+    }
 
     private static let agents: [SettingsEntry] = [
         e(.agents, "Outside agents", "Let agents drive this window", "Only apps on this Mac — agents in your terminal or editor act in your tabs",
@@ -277,6 +280,8 @@ enum SettingsIndex {
           ["context", "ask on page", "agent pane", "cmd e", "page text"], "agents.context", toggle: pageContext),
         e(.agents, "The ⌘E agent", "Tool-call rounds per question", "How many times the agent may use its tools before it stops and asks",
           ["max turns", "turns", "rounds", "tool calls", "limit", "budget", "stopped after", "steps", "max steps", "iterations"], "agents.turns", fallback: "agents.pane.more"),
+        e(.agents, "The ⌘E agent", "Fill in missing rows", "After an answer of JSON rows, the agent asks again for the rows still missing a value or a source page",
+          ["coverage", "missing rows", "fill gaps", "complete table", "research"], "agents.coverage", fallback: "agents.pane.more", toggle: coverage),
         e(.agents, "The ⌘E agent", "Your other tool servers", "mcp.json servers — http with headers, or a command to run",
           ["mcp.json", "servers", "tools", "stdio", "mcp client"], "agents.servers"),
         e(.agents, "Terminal agents", "phi", "Adds Copper to phi (~/.pi/agent/mcp.json) and a /jev prompt",

@@ -713,10 +713,15 @@ private struct AgentsPaneSection: View {
                 Rule()
                 ServerRow(server: server)
             }
-            SettingsAdvanced("agents.pane.more", holds: ["agents.turns"]) { // Fork (settings-merge)
+            SettingsAdvanced("agents.pane.more", holds: ["agents.turns", "agents.coverage"]) { // Fork (settings-merge)
                 Rule()
                 turnsRow
                     .settingsAnchor("agents.turns")
+                Rule()
+                Line("Fill in missing rows", "When a question asks for rows of JSON and the answer leaves some without a value or a page it read, ask again for just those, a few at a time.") {
+                    Switch(on: $chat.config.coverage)
+                }
+                .settingsAnchor("agents.coverage")
             }
         }
     }

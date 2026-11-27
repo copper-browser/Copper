@@ -29,6 +29,9 @@ final class Agent: ObservableObject {
         /// Put the current page's address, title and a slice of its text in
         /// front of every question.
         var pageContext = true
+        /// After an answer of JSON rows, ask again for the rows it is still
+        /// missing (Agent.cover, Coverage.swift).
+        var coverage = true
 
         static let defaultMaxTurns = 60
         static let maxTurnsRange = 1...500
@@ -39,7 +42,7 @@ final class Agent: ObservableObject {
         static let legacyMaxTurns = 24
         static let version = 2
 
-        enum CodingKeys: String, CodingKey { case model, maxTurns, pageContext, version }
+        enum CodingKeys: String, CodingKey { case model, maxTurns, pageContext, coverage, version }
 
         static func clamped(_ n: Int) -> Int { min(max(n, maxTurnsRange.lowerBound), maxTurnsRange.upperBound) }
 
@@ -54,12 +57,14 @@ final class Agent: ObservableObject {
                 maxTurns = Config.defaultMaxTurns
             }
             pageContext = try c.decodeIfPresent(Bool.self, forKey: .pageContext) ?? true
+            coverage = try c.decodeIfPresent(Bool.self, forKey: .coverage) ?? true
         }
         func encode(to encoder: Encoder) throws {
             var c = encoder.container(keyedBy: CodingKeys.self)
             try c.encode(model, forKey: .model)
             try c.encode(maxTurns, forKey: .maxTurns)
             try c.encode(pageContext, forKey: .pageContext)
+            try c.encode(coverage, forKey: .coverage)
             try c.encode(Config.version, forKey: .version)
         }
     }
@@ -126,8 +131,19 @@ final class Agent: ObservableObject {
         if expanded.contains(id) { expanded.remove(id) } else { expanded.insert(id) }
     }
 
+    /// One conversation with the model: the pane's, or a coverage helper's
+    /// (Agent.cover), with the pages its tools loaded for this question.
+    final class Convo {
+        var messages: [[String: Any]] = []
+        var pages: Set<String> = []
+        init(_ messages: [[String: Any]] = []) { self.messages = messages }
+    }
+    private let convo = Convo()
     /// The model's side of the conversation, in the wire shape.
-    private var messages: [[String: Any]] = []
+    private var messages: [[String: Any]] {
+        get { convo.messages }
+        set { convo.messages = newValue }
+    }
     /// Each request's tokens as the answer counted them — prompt, read from
     /// the prompt cache, written to it, output (PromptCache.usage) — oldest
     /// first, for `bench agent chat`. Cleared with the conversation.
@@ -349,6 +365,20 @@ final class Agent: ObservableObject {
         let tools = Agent.modelTools(Tools.catalogue(jev: jev) + Servers.shared.toolsForModel,
                                      transcript: Transcript.shared.id != nil)
 
+        // Read once: a cloud refresh mid-run does not move the goalposts.
+        let budget = turnBudget
+        let started = Date()
+        convo.pages = []
+        guard let draft = await turns(convo, asked: asked, tools: tools, keys: keys, budget: budget, in: browser, live: live) else { return }
+        if config.coverage { await cover(text, draft: draft, tools: tools, keys: keys, budget: budget, in: browser, started: started, live: live) }
+    }
+
+    /// The model's turns on one conversation, tools run between them, until
+    /// it answers in words: that answer, or nil when it ended without one
+    /// (stopped, failed, out of turns, or past `deadline`). A coverage
+    /// helper's (`helper`) runs out of turns quietly.
+    private func turns(_ convo: Convo, asked: Int, tools: [[String: Any]], keys: Intelligence.Keys, budget: (turns: Int, cloud: Bool),
+                       in browser: Browser, live: () -> Bool, deadline: Date = .distantFuture, helper: Bool = false) async -> String? {
         // Replies cut off at the output limit in a row. The model is told and
         // tries again in smaller pieces; past `cutLimit` it is not getting
         // anywhere, and the user hears that rather than watching it spin.
@@ -356,28 +386,26 @@ final class Agent: ObservableObject {
         // Whether the model has already been told it announced work it never
         // started. Once per question: a second time it is an answer.
         var nudged = false
-        // Read once: a cloud refresh mid-run does not move the goalposts.
-        let budget = turnBudget
         for turn in 0..<budget.turns {
-            if !live() { return }
+            if !live() || Date() > deadline { return nil }
             status = turn == 0 ? "Thinking…" : "Thinking… (\(turn + 1))"
             let reply: [String: Any]
             do {
-                reply = try await Agent.complete(messages: Agent.sealed(messages), tools: tools, keys: keys, model: modelName)
+                reply = try await Agent.complete(messages: Agent.sealed(convo.messages), tools: tools, keys: keys, model: modelName)
             } catch {
                 // Stopped mid-request: stop() already wrote the transcript.
-                guard live() else { return }
+                guard live() else { return nil }
                 items.append(Item(kind: .note, text: Agent.words(for: error), ok: false))
                 // On the first turn the model never saw the question, so it
                 // goes. After that the tool results stay: dropping the last
                 // message would orphan a tool call and every later question
                 // would fail with "tool_use ids without tool_result".
-                if turn == 0, messages.count > asked { messages.removeSubrange(asked...) }
-                messages = Agent.sealed(messages)
+                if turn == 0, convo.messages.count > asked { convo.messages.removeSubrange(asked...) }
+                convo.messages = Agent.sealed(convo.messages)
                 status = ""
-                return
+                return nil
             }
-            guard live() else { return }
+            guard live() else { return nil }
             Intelligence.shared.noteAnswer(sent: modelName, answered: reply["_model"] as? String)
             if let tokens = reply["_usage"] as? [String: Int] { usage.append(tokens) }
             let cut = Agent.cutOff(reply)
@@ -402,8 +430,9 @@ final class Agent: ObservableObject {
             if let blocks = reply["_blocks"] { assistant["_blocks"] = blocks }
             // An empty assistant turn is no history worth keeping, and some
             // providers refuse one on the next request.
-            if !said.isEmpty || !calls.isEmpty || reply["_blocks"] != nil { messages.append(assistant) }
-            if !said.isEmpty { items.append(Item(kind: .assistant, text: content, aside: !calls.isEmpty)) }
+            if !said.isEmpty || !calls.isEmpty || reply["_blocks"] != nil { convo.messages.append(assistant) }
+            // A helper's answer is a step on the way: the merged one is the answer.
+            if !said.isEmpty { items.append(Item(kind: .assistant, text: content, aside: !calls.isEmpty || helper)) }
 
             if calls.isEmpty {
                 if cut {
@@ -411,30 +440,30 @@ final class Agent: ObservableObject {
                     guard cutoffs < Agent.cutLimit else {
                         items.append(Item(kind: .note, text: Agent.cutGiveUp, ok: false))
                         status = ""
-                        return
+                        return nil
                     }
                     // Half an answer, with more to come: narration, not the answer.
                     if !said.isEmpty, let last = items.indices.last { items[last].aside = true }
                     items.append(Item(kind: .note, text: Agent.tooLong, ok: false,
                                       detail: "The reply ran past the model's output limit (\(Agent.outputLimit.formatted()) tokens) and was cut off."))
-                    messages.append(["role": "user", "content": Agent.cutNudge])
+                    convo.messages.append(["role": "user", "content": Agent.cutNudge])
                     continue
                 }
                 if said.isEmpty {
                     items.append(Item(kind: .note, text: "The model sent back nothing — no words and no tool call. Ask again, or pick another model from the menu at the top.", ok: false))
                     status = ""
-                    return
+                    return nil
                 }
                 // "Let me do that now:" and then nothing is a reply that meant
                 // to call a tool and didn't. Said once, it is told so.
                 if !nudged, Agent.announces(said) {
                     nudged = true
                     if let last = items.indices.last { items[last].aside = true }
-                    messages.append(["role": "user", "content": Agent.actNudge])
+                    convo.messages.append(["role": "user", "content": Agent.actNudge])
                     continue
                 }
                 status = ""
-                return
+                return said
             }
             if cut {
                 cutoffs += 1
@@ -450,7 +479,7 @@ final class Agent: ObservableObject {
 
             var pictures: [Data] = []
             for (index, call) in calls.enumerated() {
-                if !live() { return }
+                if !live() { return nil }
                 let id = (call["id"] as? String) ?? UUID().uuidString
                 let function = call["function"] as? [String: Any] ?? [:]
                 let name = (function["name"] as? String) ?? ""
@@ -460,7 +489,7 @@ final class Agent: ObservableObject {
                 case .failure(let broken):
                     items.append(Item(kind: .tool, text: broken == .cutOff ? "→ Cut off at the output limit — not run" : "→ Its arguments were not valid JSON — not run",
                                       tool: name, ok: false, title: Agent.doing(name, [:])))
-                    messages.append(["role": "tool", "tool_call_id": id, "content": broken.forModel])
+                    convo.messages.append(["role": "tool", "tool_call_id": id, "content": broken.forModel])
                     continue
                 }
                 status = Agent.doing(name, args) + "…"
@@ -469,7 +498,7 @@ final class Agent: ObservableObject {
                 let step = items.count - 1
                 let stepID = items[step].id
                 let result = await execute(name, args, in: browser, pictures: &pictures)
-                guard live() else { return }
+                guard live() else { return nil }
                 // The transcript may have grown under the step (a driver card).
                 if let at = items.firstIndex(where: { $0.id == stepID }) {
                     items[at].running = false
@@ -481,7 +510,8 @@ final class Agent: ObservableObject {
                     if let warning = result.warning { items[at].warning = warning }
                     else if result.isError { items[at].warning = Agent.firstLine(result.text) }
                 }
-                messages.append(["role": "tool", "tool_call_id": id, "content": String(result.text.prefix(60_000))])
+                convo.messages.append(["role": "tool", "tool_call_id": id, "content": String(result.text.prefix(60_000))])
+                if !result.isError { convo.pages.formUnion((Coverage.pages(in: result.text) + Coverage.pages(args: args)).map(Coverage.canon)) }
             }
             // A screenshot goes to the model as a picture, the one shape a
             // tool result can't carry.
@@ -490,15 +520,94 @@ final class Agent: ObservableObject {
                 for picture in pictures.prefix(3) {
                     parts.append(["type": "image_url", "image_url": ["url": "data:image/png;base64," + picture.base64EncodedString()]])
                 }
-                messages.append(["role": "user", "content": parts])
+                convo.messages.append(["role": "user", "content": parts])
             }
             if cutoffs >= Agent.cutLimit {
                 items.append(Item(kind: .note, text: Agent.cutGiveUp, ok: false))
                 status = ""
-                return
+                return nil
             }
         }
-        items.append(Item(kind: .note, text: Agent.stopNote(turns: budget.turns, cloud: budget.cloud), ok: false))
+        if !helper { items.append(Item(kind: .note, text: Agent.stopNote(turns: budget.turns, cloud: budget.cloud), ok: false)) }
+        status = ""
+        return nil
+    }
+
+    // MARK: - coverage
+
+    /// The coverage loop's knobs, as measured on the bench (Hegemon v3).
+    enum Cover {
+        /// Covered share of asked rows × fields that ends the loop.
+        static let target = 0.95
+        /// Rows per helper, and helpers at once.
+        static let batch = 10, parallel = 3
+        /// Times a row is asked for before it is left as it is.
+        static let tries = 2
+        /// From the question's start; no helper starts with under `minLeft` to go.
+        static let budget: TimeInterval = 3600, minLeft: TimeInterval = 300
+    }
+
+    /// After a draft answer of JSON rows (Coverage.spec): while rows are
+    /// missing fields or a loaded source, fresh helper conversations — the
+    /// same model and tools, the question plus only their batch of rows — are
+    /// asked for them, `Cover.parallel` at once, and a row they cover better
+    /// replaces the draft's. Ends when coverage holds, every missing row was
+    /// asked `Cover.tries` times, two rounds bring nothing, or time is up.
+    /// The answer is then the draft with its rows merged.
+    private func cover(_ question: String, draft: String, tools: [[String: Any]], keys: Intelligence.Keys, budget: (turns: Int, cloud: Bool),
+                       in browser: Browser, started: Date, live: () -> Bool) async {
+        guard let asked = Coverage.spec(question) else { return }
+        let ticket = generation
+        let spec = Coverage.fit(asked, draft: Coverage.rows(draft, asked))
+        var table = Coverage.table(Coverage.rows(draft, spec), spec)
+        var loaded = convo.pages
+        var count = Coverage.count(table, spec, loaded: loaded)
+        let deadline = started.addingTimeInterval(Cover.budget)
+        var tries: [String: Int] = [:], shortTries = 0, idle = 0, helpers = 0
+        while live() {
+            let todo = count.missing.filter { tries[$0, default: 0] < Cover.tries }
+            let short = shortTries < Cover.tries ? count.short : 0
+            if count.ratio >= Cover.target || (todo.isEmpty && short == 0) || idle >= 2 || deadline.timeIntervalSinceNow < Cover.minLeft { break }
+            for k in todo { tries[k, default: 0] += 1 }
+            if short > 0 { shortTries += 1 }
+            let jobs = todo.isEmpty ? [[]] : Coverage.batches(todo, Cover.batch)
+            // Written before any merge: every helper sees the draft as it stood.
+            let prompts = jobs.enumerated().map { Coverage.batchPrompt(question, spec, items: $1, table: table, short: $0 == 0 ? short : 0) }
+            items.append(Item(kind: .note, text: "\(todo.count + short) of the rows asked for \(todo.count + short == 1 ? "is" : "are") still missing a value or a source page; looking for \(todo.count + short == 1 ? "it" : "them")."))
+            let before = count.done
+            var answers: [(items: [String], reply: String, pages: Set<String>)] = []
+            await withTaskGroup(of: (Int, String?, Set<String>).self) { group in
+                func take(_ done: (Int, String?, Set<String>)) {
+                    if let reply = done.1 { answers.append((jobs[done.0], reply, done.2)) }
+                }
+                for i in jobs.indices {
+                    if i >= Cover.parallel, let done = await group.next() { take(done) }
+                    group.addTask { @MainActor in
+                        // A helper that would start with too little time left doesn't.
+                        guard deadline.timeIntervalSinceNow >= Cover.minLeft else { return (i, nil, []) }
+                        let helper = Convo([["role": "user", "content": prompts[i]]])
+                        let reply = await self.turns(helper, asked: 0, tools: tools, keys: keys, budget: budget, in: browser,
+                                                     live: { ticket == self.generation && !Task.isCancelled }, deadline: deadline, helper: true)
+                        return (i, reply, helper.pages)
+                    }
+                }
+                for await done in group { take(done) }
+            }
+            guard live() else { return }
+            helpers += answers.count
+            for answer in answers {
+                loaded.formUnion(answer.pages)
+                Coverage.absorb(&table, Coverage.rows(answer.reply, spec), spec, loaded: loaded, items: Set(answer.items))
+            }
+            count = Coverage.count(table, spec, loaded: loaded)
+            idle = count.done <= before ? idle + 1 : 0
+        }
+        guard helpers > 0, live() else { return }
+        let answer = Coverage.render(draft, spec, table)
+        // The merged answer replaces the draft, in the transcript and in what the model reads next.
+        if let at = items.lastIndex(where: { $0.kind == .assistant && !$0.aside && $0.text.contains(draft) }) { items[at].aside = true }
+        if let at = messages.lastIndex(where: { $0["role"] as? String == "assistant" }) { messages[at]["content"] = answer }
+        items.append(Item(kind: .assistant, text: answer))
         status = ""
     }
 
@@ -971,6 +1080,9 @@ final class Agent: ObservableObject {
             // `bench agent turns N`: Settings › Agents' number, clamped like the field.
             guard let n = Int((request["arg"] as? String ?? "").trimmingCharacters(in: .whitespaces)) else { return ["error": "turns needs a number"] }
             config.maxTurns = n
+        case "coverage":
+            // `bench agent coverage on|off`: Settings › Agents › Fill in missing rows.
+            config.coverage = (request["arg"] as? String ?? "on") != "off"
         case "seed":
             if let error = seed(request["arg"] as? String ?? "chat", in: browser) { return ["error": error] }
         case "expand":
@@ -986,7 +1098,7 @@ final class Agent: ObservableObject {
         return ["open": open, "busy": busy, "status": status, "model": modelName, "draft": draft,
                 "lane": Intelligence.shared.lane.rawValue, "laneSource": Intelligence.shared.laneSource,
                 "tier": Intelligence.shared.tier.rawValue, "items": rows, "usage": usage,
-                "maxTurns": config.maxTurns, "turnBudget": turnBudget.turns, "turnSource": turnBudget.cloud ? "cloud" : "local",
+                "maxTurns": config.maxTurns, "coverage": config.coverage, "turnBudget": turnBudget.turns, "turnSource": turnBudget.cloud ? "cloud" : "local",
                 "servers": Servers.shared.all.map { ["name": $0.name, "state": $0.state, "tools": $0.tools.count] as [String: Any] }]
     }
 
